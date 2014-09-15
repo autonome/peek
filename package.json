@@ -2,8 +2,15 @@
     "name": "peek", 
     "license": "MPL 1.1/GPL 2.0/LGPL 2.1", 
     "author": "Dietrich Ayala", 
-    "version": "2.1", 
+    "version": "3", 
     "fullName": "Peek", 
     "id": "jid1-xEAuRv8GzibUdw", 
-    "description": "Peek at your app tabs without breaking your flow."
+    "description": "Peek at your favorite sites without breaking your flow.",
+    "preferences": [{
+        "name": "urls",
+        "title": "URLs",
+        "type": "string",
+        "value": "",
+        "hidden": true
+    }]
 }

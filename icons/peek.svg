@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="512px" height="512px" viewBox="0 0 512 512" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <!-- Generator: Sketch 43.2 (39069) - http://www.bohemiancoding.com/sketch -->
+    <title>Group 2</title>
+    <desc>Created with Sketch.</desc>
+    <defs>
+        <rect id="path-1" x="0" y="0" width="512" height="512" rx="8"></rect>
+    </defs>
+    <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="Group-2">
+            <mask id="mask-2" fill="white">
+                <use xlink:href="#path-1"></use>
+            </mask>
+            <use id="Rectangle" fill="#FFF46D" xlink:href="#path-1"></use>
+            <ellipse id="Oval" stroke="#312929" stroke-width="3" fill="#FBF3F3" mask="url(#mask-2)" cx="256.5" cy="569.5" rx="292.5" ry="244.5"></ellipse>
+            <ellipse id="Oval-2" fill="#4E6BED" mask="url(#mask-2)" cx="257" cy="555.5" rx="169" ry="171.5"></ellipse>
+            <ellipse id="Oval-2" fill="#3D4255" mask="url(#mask-2)" cx="256.5" cy="526.5" rx="97.5" ry="96.5"></ellipse>
+        </g>
+    </g>
+</svg>

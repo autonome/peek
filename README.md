@@ -1,5 +1,7 @@
 # Peek
 
+![peek logo of eyeball peeking up from bottom](https://raw.githubusercontent.com/autonome/Peek/master/icons/banner.png)
+
 Quickly peek at your favorite web pages without breaking your flow.
 
 Peek lets you choose 10 web pages to open with a keyboard shortcut, without opening a new tab, and able to close with the `escape` key.

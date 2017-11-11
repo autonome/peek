@@ -20,7 +20,7 @@ I use this for:
 
 * Create up to 10 bookmarks with "peek#" plus the number 0-9 in the title. Eg "My favorite website peek#1".
 
-* Use the keyboard shortcut `control+shift` plus the number you put in the bookmark title to peek at that URL.
+* Use the keyboard shortcut `alt+shift` plus the number you put in the bookmark title to peek at that URL.
 
 * A new minimal window will open with your chosen URL loaded.
 

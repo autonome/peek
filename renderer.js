@@ -10,14 +10,14 @@ const labels = {
   peeksPane: {
     paneTitle: 'Peeks',
     testBtn: 'Try',
-    newFolder: 'New peek',
+    newFolder: 'Add new peek',
     addBtn: 'Add',
     delBtn: 'Delete',
   },
   scriptsPane: {
     paneTitle: 'Scripts',
     testBtn: 'Try',
-    newFolder: 'New script',
+    newFolder: 'Add new script',
     addBtn: 'Add',
     delBtn: 'Delete',
   }
@@ -39,40 +39,44 @@ const updateToMain = data => {
   window.app.setConfig(data);
 };
 
-const containerEl = document.querySelector('.houseofpane');
 let panes = [];
 
 const init = cfg => {
   console.log('renderer: init');
   console.log('renderer: cfg', cfg);
 
+	let { data, schemas } = cfg;
+  const containerEl = document.querySelector('.houseofpane');
+
   // blow away panes if this is an update
   if (panes.length > 0) {
     panes.forEach(p => {
-      p.dispose();
+      p.pane.dispose();
     });
     panes = [];
   }
 
-  containerEl.replaceChildren();
-
   // build panes and wire up change handlers
-	let { data, schemas } = cfg;
-
-  panes.push(initShortcutsPane(containerEl, labels.shortcutsPane, schemas.prefs, data.prefs, newPrefs => {
+  const el1 = containerEl.querySelector('.shortcuts');
+  const pane1 = initValuesPane(el1, labels.shortcutsPane, schemas.prefs, data.prefs, newPrefs => {
     data.prefs = newPrefs;
     updateToMain(data);
-  }));
+  });
+  panes.push({ el: el1, pane: pane1});
 
-  panes.push(initPeeksPane(containerEl, labels.peeksPane, schemas.peek, data.peeks, newPeeks => {
+  const el2 = containerEl.querySelector('.peeks');
+  const pane2 = initListPane(el2, labels.peeksPane, schemas.peek, data.peeks, newPeeks => {
     data.peeks = newPeeks;
     updateToMain(data);
-  }));
+  });
+  panes.push({ el: el2, pane: pane2});
 
-  panes.push(initScriptsPane(containerEl, labels.scriptsPane, schemas.script, data.scripts, newScripts => {
+  const el3 = containerEl.querySelector('.scripts');
+  const pane3 = initListPane(el3, labels.scriptsPane, schemas.script, data.scripts, newScripts => {
     data.scripts = newScripts;
     updateToMain(data);
-  }));
+  });
+  panes.push({ el: el3, pane: pane3});
 };
 
 // listen for data changes
@@ -148,20 +152,20 @@ const exportPaneData = pane => {
   return val;
 };
 
-const initShortcutsPane = (container, labels, schema, prefs, onChange) => {
+const initValuesPane = (container, labels, schema, values, onChange) => {
   const pane = new Tweakpane.Pane({
     container: container,
     title: labels.paneTitle
   });
 
-  fillPaneFromSchema(pane, labels, schema, prefs);
+  fillPaneFromSchema(pane, labels, schema, values);
 
   const update = (ev) => {
     // TODO: this won't work forever
     // gotta fix when tweakpane state export exists
     // also, gotta add accelerator validation
-    prefs[ev.presetKey] = ev.value;
-    onChange(prefs);
+    values[ev.presetKey] = ev.value;
+    onChange(values);
   };
 
   // handle changes to existing entries
@@ -170,7 +174,7 @@ const initShortcutsPane = (container, labels, schema, prefs, onChange) => {
   return pane;
 };
 
-const initPeeksPane = (container, labels, schema, peeks, onChange) => {
+const initListPane = (container, labels, schema, items, onChange) => {
   const pane = new Tweakpane.Pane({
     container: container,
     title: labels.paneTitle
@@ -182,34 +186,28 @@ const initPeeksPane = (container, labels, schema, peeks, onChange) => {
     if (!all) {
       newData.pop();
     }
-    console.log(newData)
     onChange(newData);
   };
 
-  peeks.forEach(entry => {
+  items.forEach(entry => {
     const folder = pane.addFolder({
       title: entry.title,
       expanded: false
     });
-
-    const onChange = newEntry => {
-    };
 
     fillPaneFromSchema(folder, labels, schema, entry, onChange);
 
     // TODO: implement
     folder.addButton({title: labels.testBtn});
 
-    // TODO: implement
     const delBtn = folder.addButton({title: labels.delBtn});
     delBtn.on('click', () => {
-      //folder.dispose();
       pane.remove(folder);
       // https://github.com/cocopon/tweakpane/issues/533
       update();
     });
 
-    folder.on('change', update);
+    folder.on('change', () => update());
   });
 
   // add new item entry
@@ -226,49 +224,5 @@ const initPeeksPane = (container, labels, schema, peeks, onChange) => {
     update(true);
   });
 
-  // handle changes to existing entries
-  //pane.on('change', update);
-
   return pane;
 };
-
-const initScriptsPane = (container, labels, schema, scripts, onChange) => {
-  const pane = new Tweakpane.Pane({
-    container: container,
-    title: labels.paneTitle
-  });
-
-  scripts.forEach(entry => {
-    const folder = pane.addFolder({
-      title: entry.title,
-      expanded: false
-    });
-    fillPaneFromSchema(folder, labels, schema, entry);
-    // TODO: implement
-    folder.addButton({title: labels.testBtn});
-    // TODO: implement
-    folder.addButton({title: labels.delBtn});
-  });
-
-  const folder = pane.addFolder({
-    title: labels.newFolder
-  });
-
-  fillPaneFromSchema(folder, labels, schema);
-
-  const btn = pane.addButton({title: labels.addBtn});
-
-  const update = () => {
-    const newData = exportPaneData(pane);
-    onChange(newData);
-  };
-
-  // handle adds of new entries
-	btn.on('click', update);
-
-  // handle changes to existing entries
-  pane.on('change', update);
-
-  return pane;
-};
-

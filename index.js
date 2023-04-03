@@ -297,6 +297,8 @@ ipcMain.on('getconfig', () => {
 
 // listen for updates
 ipcMain.on('setconfig', (event, newData) => {
+  // TODO: if any shortcuts changed, unregister the old ones
+
   // write to datastore
   set(newData);
 });

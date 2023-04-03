@@ -6,6 +6,8 @@ Please meet Peek, a web user agent application designed for using the web where,
 * Peek is not a web browser! There are no tabs, and no windows in the browser sense of them. If that's what you're looking for, there are a few decent browsers for you to choose from.
 * Peek is not safe for general use yet! It is a crude proof of concept I whipped up while on vacation. While I have thoughts on security model and user interface, I have not written it up into a proper security model yet.
 
+<img width="969" alt="CleanShot 2023-04-03 at 18 50 22@2x" src="https://user-images.githubusercontent.com/50103/229501558-7084d66e-962a-4c0f-a10e-11787ef3ce68.png">
+
 ## Features
 
 You can use Peek in three ways, with more coming:

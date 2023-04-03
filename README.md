@@ -55,6 +55,11 @@ TODO
 * Need to look at whether could library-ize some of what Agregore implemented for non-HTTP protocol support.
 * Min browser might be interesting as a forkable base to work from and contribute to, if they're open to it. At least, should look more at the architecture.
 
+### Usage
+
+* `cmd/ctl+Escape` to open settings
+* `opt+0-9` to open Peeks
+
 ## Mobile
 
 TBD
@@ -70,6 +75,13 @@ TBD
 * Implement the Firefox "awesomebar" scoring and search algorithm so that Peek *learns* you
 * Extension model designed for web user agent user interface experimentation
 * Panorama
+
+## Development
+
+```
+yarn install
+yarn start
+```
 
 ## History
 

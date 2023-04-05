@@ -10,19 +10,16 @@ const labels = {
   },
   peeks: {
     paneTitle: 'Peeks',
+    type: 'Peek',
     testBtn: 'Try (❌)',
-    addBtn: 'Add',
-    delBtn: 'Delete',
   },
   slides: {
     paneTitle: 'Slides',
     testBtn: 'Try (❌)',
-    addBtn: 'Add',
-    delBtn: 'Delete',
   },
   scripts: {
     paneTitle: 'Scripts',
-    testBtn: 'Try',
+    testBtn: 'Try (❌)',
     newFolder: 'Add new script',
     addBtn: 'Add',
     delBtn: 'Delete',
@@ -73,24 +70,24 @@ const init = cfg => {
       peeks: ['keyNum'],
       slides: ['screenEdge'],
     };
+    const labelMaker = entry => {
+      if (type == 'peeks') {
+        return `${data.prefs.peekKeyPrefix}${entry.keyNum} - ${entry.address}`;
+      }
+      else if (type == 'slides') {
+        return `${entry.screenEdge} - ${entry.address}`;
+      }
+      return entry.title;
+    };
     const pane = f(el, labels[type], schemas[type], data[type], newData => {
       data[type] = newData;
       updateToMain(data);
-    }, allowNew, disabled[type]);
+    }, allowNew, disabled[type], labelMaker);
     panes.push({ el, pane });
   };
 
   ['prefs', 'peeks', 'slides', 'scripts'].forEach(initPane);
 };
-
-// listen for data changes
-window.app.onConfigChange(() => {
-  console.log('onconfigchange');
-  window.app.getConfig.then(init);
-});
-
-// initialization: get data and load ui
-window.app.getConfig.then(init);
 
 const fillPaneFromSchema = (pane, labels, schema, data, onChange, disabled) => {
 	const props = schema.properties;
@@ -162,7 +159,7 @@ const exportPaneData = pane => {
   return val;
 };
 
-const initValuesPane = (container, labels, schema, values, onChange, allowNew, disabled) => {
+const initValuesPane = (container, labels, schema, values, onChange, allowNew, disabled, labelMaker) => {
   const pane = new Tweakpane.Pane({
     container: container,
     title: labels.paneTitle
@@ -184,7 +181,7 @@ const initValuesPane = (container, labels, schema, values, onChange, allowNew, d
   return pane;
 };
 
-const initListPane = (container, labels, schema, items, onChange, allowNew, disabled) => {
+const initListPane = (container, labels, schema, items, onChange, allowNew, disabled, labelMaker) => {
   const pane = new Tweakpane.Pane({
     container: container,
     title: labels.paneTitle
@@ -201,7 +198,7 @@ const initListPane = (container, labels, schema, items, onChange, allowNew, disa
 
   items.forEach(entry => {
     const folder = pane.addFolder({
-      title: entry.title,
+      title: labelMaker(entry),
       expanded: false
     });
 
@@ -210,12 +207,14 @@ const initListPane = (container, labels, schema, items, onChange, allowNew, disa
     // TODO: implement
     folder.addButton({title: labels.testBtn});
 
-    const delBtn = folder.addButton({title: labels.delBtn});
-    delBtn.on('click', () => {
-      pane.remove(folder);
-      // https://github.com/cocopon/tweakpane/issues/533
-      update();
-    });
+    if (allowNew) {
+      const delBtn = folder.addButton({title: labels.delBtn});
+      delBtn.on('click', () => {
+        pane.remove(folder);
+        // TODO: https://github.com/cocopon/tweakpane/issues/533
+        update();
+      });
+    }
 
     folder.on('change', () => update());
   });
@@ -240,3 +239,13 @@ const initListPane = (container, labels, schema, items, onChange, allowNew, disa
 
   return pane;
 };
+
+// listen for data changes
+window.app.onConfigChange(() => {
+  console.log('onconfigchange');
+  window.app.getConfig.then(init);
+});
+
+// initialization: get data and load ui
+window.app.getConfig.then(init);
+

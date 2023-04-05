@@ -73,7 +73,6 @@ let _slideWins = {};
 
 let _win = null;
 const getMainWindow = () => {
-  console.log('GMW', typeof _win);
   if (_win === null || !_win) {
     _win = createMainWindow();
   }

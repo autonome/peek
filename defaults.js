@@ -293,7 +293,7 @@ const defaults = {
   ]
 };
 
-for (var i = 0; i < 10; i++) {
+for (var i = 0; i != 10; i++) {
   defaults.peeks.push({
     keyNum: i,
     title: `Peek key ${i}`,

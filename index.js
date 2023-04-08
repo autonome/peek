@@ -13,6 +13,8 @@ const {
   ipcMain,
   Menu,
   nativeTheme,
+  Notification,
+  screen,
   Tray
 } = require('electron');
 
@@ -26,9 +28,6 @@ const labels = {
     tooltip: 'Click to open Peek'
   }
 };
-
-// keep app out of dock and tab switcher
-app.dock.hide();
 
 // load data
 let { data, schemas, set, watch } = require('./defaults');
@@ -70,17 +69,22 @@ ipcMain.handle('dark-mode:system', () => {
 
 let _windows = [];
 let _peekWins = {};
+let _slideWins = {};
 
+// main window
 let _win = null;
+// tray
+let _tray = null;
+
 const getMainWindow = () => {
-  //console.log('getMainWindow', _win === null);
-  if (_win === null) {
+  if (_win === null || _win.isDestroyed()) {
     _win = createMainWindow();
   }
   return _win;
 };
 
 const createMainWindow = () => {
+  console.log('createMainWindow');
   // Create the browser window.
   const mainWindow = new BrowserWindow({
     width: 800,
@@ -89,6 +93,14 @@ const createMainWindow = () => {
       preload: path.join(__dirname, 'preload.js')
     }
   });
+
+  /*
+  mainWindow.on('close', (e) => {
+    console.log('onClose - just hiding');
+    e.preventDefault();
+    mainWindow.hide();
+  });
+  */
 
   // and load the index.html of the app.
   mainWindow.loadFile('main.html');
@@ -109,24 +121,31 @@ app.on('activate', () => {
 });
 
 const initTray = () => {
-  const tray = new Tray(ICON_PATH);
-  tray.setToolTip(labels.tray.tooltip);
-  tray.on('click', () => {
-    getMainWindow().show();
-  });
-  return tray;
+  if (!_tray || _tray.isDestroyed()) {
+    _tray = new Tray(ICON_PATH);
+    _tray.setToolTip(labels.tray.tooltip);
+    _tray.on('click', () => {
+      getMainWindow().show();
+    });
+  }
+  return _tray;
 };
 
 const execContentScript = (script, cb) => {
   const view = new BrowserView({
     webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
       // isolate content and do not persist it
       partition: Date.now()
     }
   });
 
-  //win.setBrowserView(view)
-  //view.setBounds({ x: 0, y: 0, width: 300, height: 300 })
+  view.webContents.send('window', {
+    id: 'view',
+    type: 'script',
+    data: script
+  });
+
   view.webContents.loadURL(script.address);
 
   const str = `
@@ -147,29 +166,66 @@ const execContentScript = (script, cb) => {
   });
 };
 
+let _intervals = [];
+
 const initScripts = scripts => {
-  return;
+  //console.log('initScripts', scripts);
+
+  // blow it all away for now
+  // someday make it right proper just cancel/update changed and add new
+  _intervals.forEach(clearInterval);
+
   // debounce me somehow so not shooting em all off
   // at once every time app starts
   scripts.forEach(script => {
-    const r = execContentScript(script, (res) => {
-      console.log('cs r', res);
-    });
+    setInterval(() => { 
+      //console.log('interval hit', script.title);
+      const r = execContentScript(script, (res) => {
+        //console.log('cs r', res);
+
+        if (script.previousValue != res) {
+          // update stored value
+          const previousValue = script.previousValue;
+          script.previousValue = res;
+          const idx = data.scripts.findIndex(el => el.id == script.id);
+          if (idx >= 0) {
+            data.scripts[idx] = script;
+            set(data);
+          }
+          else {
+            console.log('errrrr, wat');
+          }
+
+          // notification
+          // add to schema and support per script
+          /*
+          const title = `Peek :: Script :: ${script.title}`;
+          const body = [
+            `Script result changed for ${script.title}:`,
+            `- Old: ${previousValue}`,
+            `- New: ${res}`
+          ].join('\n');
+
+          new Notification({ title, body }).show();
+          */
+        }
+      });
+    }, script.interval);
   });
 };
 
 const initGlobalShortcuts = prefs => {
+  if (globalShortcut.isRegistered(prefs.globalKeyCmd)) {
+    globalShortcut.unregister(prefs.globalKeyCmd);
+  }
+
   // register global activation shortcut
-  if (!globalShortcut.isRegistered(prefs.globalKeyCmd)) {
-    const onActivate = () => {
-      getMainWindow().show();
-    };
+  const onGlobalKeyCmd = () => getMainWindow().show();
 
-    const ret = globalShortcut.register(prefs.globalKeyCmd, onActivate);
+  const ret = globalShortcut.register(prefs.globalKeyCmd, onGlobalKeyCmd);
 
-    if (!ret) {
-      console.error('Unable to register global key command.')
-    }
+  if (!ret) {
+    console.error('Unable to register global key command.')
   }
 };
 
@@ -196,14 +252,15 @@ const showPeek = (peek) => {
       autoHideMenuBar: true,
       titleBarStyle: 'hidden',
       webPreferences: {
-        preload: path.join(__dirname, 'peek-preload.js'),
+        preload: path.join(__dirname, 'preload.js'),
         // isolate content and do not persist it
-        partition: Date.now()
+        //partition: Date.now()
       }
     });
   }
 
   const onGoAway = () => {
+    /*
     if (peek.keepLive) {
       _peekWins[key] = win;
       win.hide();
@@ -211,6 +268,8 @@ const showPeek = (peek) => {
     else {
       win.destroy();
     }
+    */
+    win.destroy();
   }
   win.on('blur', onGoAway);
   win.on('close', onGoAway);
@@ -235,53 +294,288 @@ const showPeek = (peek) => {
   });
   */
 
-  //win.setBounds({ x: 0, y: 0, width, height })
+  win.webContents.send('window', {
+    path: path.join(__dirname),
+    id: win.id,
+    type: 'peek',
+    data: peek
+  });
+
   win.loadURL(peek.address);
 };
 
 const initPeeks = (cmdPrefix, peeks) => {
   peeks.forEach((p, i) => {
-    if (!globalShortcut.isRegistered(cmdPrefix + `${i}`)) {
-      const ret = globalShortcut.register(cmdPrefix + `${i}`, () => {
-        showPeek(p);
+    if (globalShortcut.isRegistered(cmdPrefix + `${i}`)) {
+      globalShortcut.unregister(cmdPrefix + `${i}`)
+    }
+
+    const ret = globalShortcut.register(cmdPrefix + `${i}`, () => {
+      showPeek(p);
+    });
+
+    if (!ret) {
+      console.error('Unable to register peek');
+    }
+  });
+};
+
+const animateSlide = (win, slide) => {
+  return new Promise((res, rej) => {
+    const { size, bounds } = screen.getPrimaryDisplay();
+
+    // get x/y field
+    const coord = slide.screenEdge == 'Left' || slide.screenEdge == 'Right' ? 'x' : 'y';
+
+    const dim = coord == 'x' ? 'width' : 'height';
+
+    const winBounds = win.getBounds();
+
+    // created window at x/y taking animation into account
+    let pos = winBounds[coord];
+
+    const speedMs = 150;
+    const timerInterval = 10;
+
+    let tick = 0;
+    const numTicks = parseInt(speedMs / timerInterval);
+
+    const offset = slide[dim] / numTicks;
+
+    //console.log('numTicks', numTicks, 'widthChunk', offset);
+
+    const timer = setInterval(() => {
+      tick++;
+
+      if (tick >= numTicks) {
+        clearInterval(timer);
+        res();
+      }
+
+      const winBounds = win.getBounds();
+
+      if (slide.screenEdge == 'Right' || slide.screenEdge == 'Down') {
+        // new position is current position +/- offset
+        pos = pos - offset;
+      }
+
+      const grownEnough = winBounds[dim] <= slide[dim];
+      const newDim = grownEnough ?
+        winBounds[dim] + offset
+        : winBounds[dim];
+
+      const newBounds = {};
+      newBounds[coord] = parseInt(pos, 10);
+      newBounds[dim] = parseInt(newDim, 10);
+
+      // set new bounds
+      win.setBounds(newBounds);
+
+    }, timerInterval);
+  });
+};
+
+const showSlide = (slide) => {
+  let win = null;
+
+  const key = 'slide' + slide.screenEdge;
+
+  // TODO: fix stored+live windows
+  if (_slideWins[key]) {
+    console.log('slide', slide.screenEdge, 'using stored window');
+    win = _slideWins[key];
+    win.show();
+  }
+  else {
+
+    const { size, bounds } = screen.getPrimaryDisplay();
+
+    let x, y, height, width, center = null;
+
+    switch(slide.screenEdge) {
+      case 'Up':
+        // horizontally center
+        x = (size.width - slide.width) / 2;
+
+        // y starts at screen top and stays there
+        y = 0;
+
+        width = slide.width;
+        height = 1;
+        break;
+      case 'Down':
+        // horizonally center
+        x = (size.width - slide.width) / 2;
+
+        // y ends up at window height from bottom
+        //
+        // eg: y = size.height - slide.height;
+        //
+        // but starts at screen bottom
+        y = size.height;
+
+        width = slide.width;
+        height = 1;
+        break;
+      case 'Left':
+        // x starts and ends at at left screen edge
+        // at left edge
+        x = 0;
+
+        // vertically center
+        y = (size.height - slide.height) / 2;
+
+        width = 1;
+        height = slide.height;
+        break;
+      case 'Right':
+        // x ends at at right screen edge - window size
+        //
+        // eg: x = size.width - slide.width;
+        //
+        // but starts at screen right edge, will animate in 
+        x = size.width;
+
+        // vertically center
+        y = (size.height - slide.height) / 2;
+
+        width = 1;
+        height = slide.height;
+        break;
+      default:
+        center = true;
+        console.log('waddafa');
+    }
+
+    win = new BrowserWindow({
+      height,
+      width,
+      x,
+      y,
+      skipTaskbar: true,
+      autoHideMenuBar: true,
+      titleBarStyle: 'hidden',
+      // maybe worth doing instead of animating width
+      //enableLargerThanScreen: true,
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.js'),
+        // isolate content and do not persist it
+        partition: Date.now()
+      }
+    });
+
+    //_slideWins[key] = win;
+  }
+
+  animateSlide(win, slide).then();
+
+  const onGoAway = () => {
+    /*
+    if (slide.keepLive) {
+      _slideWins[key] = win;
+      win.hide();
+    }
+    else {
+      win.destroy();
+    }
+    */
+    win.destroy();
+  }
+  win.on('blur', onGoAway);
+  win.on('close', onGoAway);
+
+  /*
+  const str = `
+    window.addEventListener('keyup', e => {
+      if (e.key == 'Escape') {
+        console.log('peek script esc');
+      }
+    });
+    1;
+  `;
+
+  win.webContents.on('dom-ready', async () => {
+    try {
+      const r = await win.webContents.executeJavaScript(str);
+      console.log(r);
+    } catch(ex) {
+      console.error('cs exec error', ex);
+    }
+  });
+  */
+
+  win.webContents.send('window', {
+    path: path.join(__dirname),
+    id: win.id,
+    type: 'slide',
+    data: slide
+  });
+
+  //win.setBounds({ x: 0, y: 0, width, height })
+  win.loadURL(slide.address);
+};
+
+const initSlides = (cmdPrefix, slides) => {
+  slides.forEach(s => {
+    if (!globalShortcut.isRegistered(cmdPrefix + `${s.screenEdge}`)) {
+      const ret = globalShortcut.register(cmdPrefix + `${s.screenEdge}`, () => {
+        showSlide(s);
       });
 
       if (!ret) {
-        console.error('Unable to register peek');
+        console.error('Unable to register slide');
       }
     }
   });
 };
 
+// initialized all bits which need updating if the data changes
+// can be called repeatedly to refresh on changes
 const initData = data => {
   // initialize prefs
   const prefs = data.prefs;
   initGlobalShortcuts(prefs);
 
   // initialize peeks
-  const peeks = data.peeks;
-  if (peeks.length > 0) {
-    initPeeks(prefs.peekKeyPrefix, peeks);
+  if (data.peeks.length > 0) {
+    initPeeks(prefs.peekKeyPrefix, data.peeks);
+  }
+
+  // initialize slides
+  if (data.slides.length > 0) {
+    initSlides(prefs.slideKeyPrefix, data.slides);
   }
 
   // initialize scripts
-  const scripts = data.scripts;
-  if (scripts.length > 0) {
-    initScripts(scripts);
+  if (data.scripts.length > 0) {
+    initScripts(data.scripts);
   }
 };
 
+// app load
 const onReady = () => {
+  console.log('onReady');
   // create main app window on app start
   const win = getMainWindow();
 
+  win.webContents.send('window', {
+    path: path.join(__dirname),
+    id: win.id,
+    type: 'main',
+  });
+
   initData(data);
+
+  // keep app out of dock and tab switcher
+  if (app.dock) {
+    app.dock.hide();
+  }
 
   initTray();
 
   watch(newData => {
     initData(newData);
-    getMainWindow().webContents.send('configchange', {});
+    win.webContents.send('configchange', {});
   });
 };
 
@@ -307,8 +601,14 @@ ipcMain.on('setconfig', (event, newData) => {
 ipcMain.on('esc', (event, title) => {
   console.log('esc');
   const win = getMainWindow();
-  win.close();
-  _win = null;
+  //
+  if (!win.isDestroyed()) {
+    console.log('esc: killingit');
+    win.close();
+    win.destroy();
+    _win = null;
+  }
+  //
   /*
   if (win.isVisible()) {
     console.log('win is visible, hide it');
@@ -322,7 +622,18 @@ ipcMain.on('esc', (event, title) => {
 // explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
   console.log('window-all-closed', process.platform);
-  if (process.platform !== 'darwin') {
+  //
+  if (!_win.isDestroyed()) {
+    console.log('wac: killingit');
+    _win.destroy();
+    _win = null;
+  }
+  //
+  if (_win.isVisible()) {
+    console.log('win is visible, hide it');
+    //_win.hide();
+  }
+  else if (process.platform !== 'darwin') {
     onQuit();
   }
 });

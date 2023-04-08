@@ -3,7 +3,7 @@
 Please meet Peek, a web user agent application designed for using the web where, when and how you want it.
 
 ** WARNING**
-* Peek is not a web browser! There are no tabs, and no windows in the browser sense of them. If that's what you're looking for, there are a few decent browsers for you to choose from.
+* Peek is not a web browser! Yet! And likely never will be a browser as you would expect from browsers to date. There are no tabs, and no windows in the tabbed-browser-like sense of them. If that's what you're looking for, there are a few decent browsers for you to choose from.
 * Peek is not safe for general use yet! It is a crude proof of concept I whipped up while on vacation. While I have thoughts on security model and user interface, I have not written it up into a proper security model yet.
 
 <img width="969" alt="CleanShot 2023-04-03 at 18 50 22@2x" src="https://user-images.githubusercontent.com/50103/229501558-7084d66e-962a-4c0f-a10e-11787ef3ce68.png">
@@ -12,8 +12,8 @@ Please meet Peek, a web user agent application designed for using the web where,
 
 You can use Peek in three ways, with more coming:
 
-* Peeks - Keyboard activated modal chromeless web pages mapped to `Opt+0-9`
-* Slides - Gesture activated modal chromeless web pages which slide in from left/right/bottom/top
+* Peeks - Keyboard activated modal chromeless web pages
+* Slides - Keyboard or gesture activated modal chromeless web pages which slide in from any screen edges
 * Scripts - Scripts periodically executed against a web page in the background which extract data and notify on changes
 
 ### Peeks
@@ -59,8 +59,10 @@ TODO
 
 ### Usage
 
-* `cmd/ctl+Escape` to open settings
-* `opt+0-9` to open Peeks
+* `cmd/ctl+Escape` or launch app to open settings
+* Configure Peeks/Slides/Scripts in settings
+* `Opt+0-9` to open Peeks
+* `Opt+←→↑↓` to open Slides
 
 ## Mobile
 
@@ -70,13 +72,22 @@ TBD
 
 * Going full crypto payments for distributed compute on this one.
 
-## Future
+## Roadmap
 
-* GCLI - not just a command bar, but like the Ubiquity extension
-* Lossless personal encrypted archive of web history
+Next
+* Modularize feature types, eyeing the extensibility model
+* Basic command bar to open pages
+* Basic history store
+
+After that
+* Extension model
+* Ubiquity-like
+* Panorama-like
+
+Further
 * Implement the Firefox "awesomebar" scoring and search algorithm so that Peek *learns* you
 * Extension model designed for web user agent user interface experimentation
-* Panorama
+* Infinite lossless personal encrypted archive of web history
 
 ## Development
 
@@ -84,6 +95,23 @@ TBD
 yarn install
 yarn start
 ```
+
+## Resources
+
+Agregore ext protocol impl
+* where all are registered: https://github.com/AgregoreWeb/agregore-browser/blob/master/app/protocols/index.js#L74
+* how convert the fetch APIs to be compatible with the streaming protocol handler API in electron: https://github.com/AgregoreWeb/agregore-browser/blob/master/app/protocols/fetch-to-handler.js
+* where register IPFS: https://github.com/AgregoreWeb/agregore-browser/blob/electron-23/app/protocols/ipfs-protocol.js
+
+Browsers
+* Min browser architecture - https://github.com/minbrowser/min/wiki/Architecture
+* Dot browser https://www.dothq.org/en-US
+
+Misc
+* https://github.com/Rajaniraiyn/awesome-electron-browsers
+* https://github.com/mawie81/electron-window-state
+* https://antonfisher.com/posts/2020/12/27/how-to-animate-native-electron-window/
+* https://stackoverflow.com/questions/44818508/how-do-i-move-a-frameless-window-in-electron-without-using-webkit-app-region
 
 ## History
 

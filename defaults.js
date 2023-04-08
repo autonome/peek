@@ -7,7 +7,7 @@ const prefsSchema = {
   "title": "Peek - prefs",
   "description": "Peek user preferences",
   "type": "object",
-	"properties": {
+  "properties": {
     "globalKeyCmd": {
       "description": "Global OS hotkey to load app",
       "type": "string",
@@ -15,6 +15,11 @@ const prefsSchema = {
     },
     "peekKeyPrefix": {
       "description": "Global OS hotkey prefix to trigger peeks - will be followed by 0-9",
+      "type": "string",
+      "default": "Option+"
+    },
+    "slideKeyPrefix": {
+      "description": "Global OS hotkey prefix to trigger slides - will be followed by U/D/L/R arrows",
       "type": "string",
       "default": "Option+"
     },
@@ -28,10 +33,12 @@ const peekSchema = {
   "title": "Peek - page peek",
   "description": "Peek page peek",
   "type": "object",
-	"properties": {
+  "properties": {
     "keyNum": {
       "description": "Number on keyboard to open this peek, 0-9",
       "type": "integer",
+      "minimum": 0,
+      "maximum": 9,
       "default": 0
     },
     "title": {
@@ -40,7 +47,7 @@ const peekSchema = {
       "default": "New Peek"
     },
     "address": {
-      "description": "URL to execute script against",
+      "description": "URL to load",
       "type": "string",
       "default": "https://example.com"
     },
@@ -71,7 +78,65 @@ const peekSchema = {
     },
   },
   "required": [ "keyNum", "title", "address", "persistState", "keepLive", "allowSound",
-								"height", "width" ]
+                "height", "width" ]
+};
+
+const slideSchema = {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "peek.slide.schema.json",
+  "title": "Peek - page slide",
+  "description": "Peek page slide",
+  "type": "object",
+  "properties": {
+    "screenEdge": {
+      "description": "Edge of screen or arrow key to open this slide, up/down/left/right",
+      "type": "string",
+      "oneOf": [
+        { "format": "Up" },
+        { "format": "Down" },
+        { "format": "Left" },
+        { "format": "Right" }
+      ],
+      "default": "Right"
+    },
+    "title": {
+      "description": "Name of the slide - user defined label",
+      "type": "string",
+      "default": "New Slide"
+    },
+    "address": {
+      "description": "URL to load",
+      "type": "string",
+      "default": "https://example.com"
+    },
+    "persistState": {
+      "description": "Whether to persist local state or load page into empty container - defaults to false",
+      "type": "boolean",
+      "default": false
+    },
+    "keepLive": {
+      "description": "Whether to keep page alive in background or load fresh when triggered - defaults to false",
+      "type": "boolean",
+      "default": false
+    },
+    "allowSound": {
+      "description": "Whether to allow the page to emit sound or not (eg for background music player slides - defaults to false",
+      "type": "boolean",
+      "default": false
+    },
+    "height": {
+      "description": "User-defined height of slide page",
+      "type": "integer",
+      "default": 600
+    },
+    "width": {
+      "description": "User-defined width of slide page",
+      "type": "integer",
+      "default": 800
+    },
+  },
+  "required": [ "screenEdge", "title", "address", "persistState", "keepLive", "allowSound",
+                "height", "width" ]
 };
 
 const scriptSchema = {
@@ -80,7 +145,7 @@ const scriptSchema = {
   "title": "Peek - script",
   "description": "Peek background script",
   "type": "object",
-	"properties": {
+  "properties": {
     "id": {
       "description": "The unique identifier for a script",
       "type": "string",
@@ -106,7 +171,7 @@ const scriptSchema = {
       "type": "string",
       "default": "body > h1"
     },
-    "value": {
+    "property": {
       "description": "Which element property to return - currently 'textContent' is the only supported value",
       "type": "string",
       "default": "textContent"
@@ -115,68 +180,103 @@ const scriptSchema = {
       "description": "How often to execute the script, in milliseconds - defaults to five minutes",
       "type": "integer",
       "default": 300000,
-			"minimum": 0
+      "minimum": 0
     },
     "storeHistory": {
       "description": "Whether to store historic values - defaults to false",
       "type": "boolean",
       "default": false
     },
+    "notifyOnChange": {
+      "description": "Whether to notify using local OS notifications when script value changes",
+      "type": "boolean",
+      "default": true
+    },
+    "previousValue": {
+      "description": "The most recently fetched result of script exection",
+      "type": "string",
+      "default": "",
+    },
   },
-  "required": [ "id", "title", "address", "version", "selector", "value",
-								"interval", "storeHistory" ]
+  "required": [ "id", "title", "address", "version", "selector", "property",
+                "interval", "notifyOnChange", "storeHistory" ]
 };
 
 const schemas = {
-	prefs: prefsSchema,
-	peek: peekSchema,
-	script: scriptSchema
+  prefs: prefsSchema,
+  peeks: peekSchema,
+  slides: slideSchema,
+  scripts: scriptSchema
 };
 
+// TODO: schemaize 0-9 constraints for peeks and UPLR constraints for slides
 const fullSchema = {
   prefs: prefsSchema,
   peek: peekSchema,
+  slide: slideSchema,
   script: scriptSchema,
   peeks: {
     type: 'array',
-    items: {
-      type: 'peek'
-    }
+    items: { "$ref": "#/$defs/peek" }
+  },
+  slides: {
+    type: 'array',
+    items: { "$ref": "#/$defs/slide" }
   },
   scripts: {
     type: 'array',
-    items: {
-      type: 'script'
-    }
+    items: { "$ref": "#/$defs/script" }
   },
 };
 
 const defaults = {
   prefs: {
     globalKeyCmd: 'CommandOrControl+Escape',
-    peekKeyPrefix: 'Option+'
+    peekKeyPrefix: 'Option+',
+    slideKeyPrefix: 'Option+'
   },
-  peeks: [
+  peeks: [],
+  slides: [
     {
-      keyNum: 0,
-      title: 'localhost',
+      screenEdge: 'Up',
+      title: 'Slide from top',
       address: 'http://localhost/',
       persistState: false,
       keepLive: false,
       allowSound: false,
-      height: '',
-      width: '',
+      height: 600,
+      width: 800,
     },
     {
-      keyNum: 1,
-      title: 'everytimezone',
-      address: 'https://everytimezone.com/',
+      screenEdge: 'Down',
+      title: 'Slide from bottom',
+      address: 'http://localhost/',
       persistState: false,
       keepLive: false,
       allowSound: false,
-      height: '',
-      width: '',
-    }
+      height: 600,
+      width: 800,
+    },
+    {
+      screenEdge: 'Left',
+      title: 'Slide from left',
+      address: 'http://localhost/',
+      persistState: false,
+      keepLive: false,
+      allowSound: false,
+      height: 600,
+      width: 800,
+    },
+    {
+      screenEdge: 'Right',
+      title: 'Slide from right',
+      address: 'http://localhost/',
+      persistState: false,
+      keepLive: false,
+      allowSound: false,
+      height: 600,
+      width: 800,
+    },
   ],
   scripts: [
     {
@@ -185,16 +285,31 @@ const defaults = {
       address: 'http://localhost/',
       version: '1',
       selector: 'body > h1',
-      value: 'textContent',
+      property: 'textContent',
       interval: 300000,
-      storehistory: false
+      storehistory: false,
+      notifyOnChange: false
     },
   ]
 };
 
+for (var i = 0; i != 10; i++) {
+  defaults.peeks.push({
+    keyNum: i,
+    title: `Peek key ${i}`,
+    address: 'http://localhost/',
+    persistState: false,
+    keepLive: false,
+    allowSound: false,
+    height: 600,
+    width: 800,
+  });
+}
+
 const set = data => {
   store.set('prefs', data.prefs);
   store.set('peeks', data.peeks);
+  store.set('slides', data.slides);
   store.set('scripts', data.scripts);
 };
 
@@ -212,14 +327,16 @@ if (!tmp) {
   console.log('initializing datastore');
   store.set('prefs', defaults.prefs);
   store.set('peeks', defaults.peeks);
+  store.set('slides', defaults.slides);
   store.set('scripts', defaults.scripts);
 }
 
 module.exports = {
-	schemas,
-	data: {
+  schemas,
+  data: {
     get prefs() { return store.get('prefs'); },
     get peeks() { return store.get('peeks'); },
+    get slides() { return store.get('slides'); },
     get scripts() { return store.get('scripts'); }
   },
   set,

@@ -62,14 +62,18 @@ const init = cfg => {
   // janky but hey it all is soooo
   const initPane = (type) => {
     const el = containerEl.querySelector('.' + type);
-    const f = type == 'prefs' ? initValuesPane : initListPane;
+
+    const initPane = type == 'prefs' ? initValuesPane : initListPane;
+
     const allowNew = type == 'scripts' || false;
+
     const disabled = {
       prefs: [],
       scripts: ['previousValue'],
       peeks: ['keyNum'],
       slides: ['screenEdge'],
     };
+
     const labelMaker = entry => {
       if (type == 'peeks') {
         return `${data.prefs.peekKeyPrefix}${entry.keyNum} - ${entry.address}`;
@@ -79,11 +83,27 @@ const init = cfg => {
       }
       return entry.title;
     };
-    const pane = f(el, labels[type], schemas[type], data[type], newData => {
+
+    const onChange = newData => {
       data[type] = newData;
       updateToMain(data);
-    }, allowNew, disabled[type], labelMaker);
-    panes.push({ el, pane });
+    };
+
+    const pane = initPane(
+      el,
+      labels[type],
+      schemas[type],
+      data[type],
+      onChange,
+      allowNew,
+      disabled[type],
+      labelMaker
+    );
+
+    panes.push({
+      el,
+      pane
+    });
   };
 
   ['prefs', 'peeks', 'slides', 'scripts'].forEach(initPane);

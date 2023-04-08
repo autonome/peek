@@ -71,15 +71,20 @@ let _windows = [];
 let _peekWins = {};
 let _slideWins = {};
 
+// main window
 let _win = null;
+// tray
+let _tray = null;
+
 const getMainWindow = () => {
-  if (_win === null || !_win) {
+  if (_win === null || _win.isDestroyed()) {
     _win = createMainWindow();
   }
   return _win;
 };
 
 const createMainWindow = () => {
+  console.log('createMainWindow');
   // Create the browser window.
   const mainWindow = new BrowserWindow({
     width: 800,
@@ -88,6 +93,14 @@ const createMainWindow = () => {
       preload: path.join(__dirname, 'preload.js')
     }
   });
+
+  /*
+  mainWindow.on('close', (e) => {
+    console.log('onClose - just hiding');
+    e.preventDefault();
+    mainWindow.hide();
+  });
+  */
 
   // and load the index.html of the app.
   mainWindow.loadFile('main.html');
@@ -108,20 +121,29 @@ app.on('activate', () => {
 });
 
 const initTray = () => {
-  const tray = new Tray(ICON_PATH);
-  tray.setToolTip(labels.tray.tooltip);
-  tray.on('click', () => {
-    getMainWindow().show();
-  });
-  return tray;
+  if (!_tray || _tray.isDestroyed()) {
+    _tray = new Tray(ICON_PATH);
+    _tray.setToolTip(labels.tray.tooltip);
+    _tray.on('click', () => {
+      getMainWindow().show();
+    });
+  }
+  return _tray;
 };
 
 const execContentScript = (script, cb) => {
   const view = new BrowserView({
     webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
       // isolate content and do not persist it
       partition: Date.now()
     }
+  });
+
+  view.webContents.send('window', {
+    id: 'view',
+    type: 'script',
+    data: script
   });
 
   view.webContents.loadURL(script.address);
@@ -147,7 +169,7 @@ const execContentScript = (script, cb) => {
 let _intervals = [];
 
 const initScripts = scripts => {
-  console.log('initScripts', scripts);
+  //console.log('initScripts', scripts);
 
   // blow it all away for now
   // someday make it right proper just cancel/update changed and add new
@@ -175,6 +197,8 @@ const initScripts = scripts => {
           }
 
           // notification
+          // add to schema and support per script
+          /*
           const title = `Peek :: Script :: ${script.title}`;
           const body = [
             `Script result changed for ${script.title}:`,
@@ -183,6 +207,7 @@ const initScripts = scripts => {
           ].join('\n');
 
           new Notification({ title, body }).show();
+          */
         }
       });
     }, script.interval);
@@ -190,23 +215,17 @@ const initScripts = scripts => {
 };
 
 const initGlobalShortcuts = prefs => {
+  if (globalShortcut.isRegistered(prefs.globalKeyCmd)) {
+    globalShortcut.unregister(prefs.globalKeyCmd);
+  }
+
   // register global activation shortcut
-  if (!globalShortcut.isRegistered(prefs.globalKeyCmd)) {
-    const onGlobalKeyCmd = () => {
-      const win = getMainWindow();
-      if (win) {
-        win.show();
-      }
-      else {
-        console.log('hrm')
-      }
-    };
+  const onGlobalKeyCmd = () => getMainWindow().show();
 
-    const ret = globalShortcut.register(prefs.globalKeyCmd, onGlobalKeyCmd);
+  const ret = globalShortcut.register(prefs.globalKeyCmd, onGlobalKeyCmd);
 
-    if (!ret) {
-      console.error('Unable to register global key command.')
-    }
+  if (!ret) {
+    console.error('Unable to register global key command.')
   }
 };
 
@@ -233,14 +252,15 @@ const showPeek = (peek) => {
       autoHideMenuBar: true,
       titleBarStyle: 'hidden',
       webPreferences: {
-        preload: path.join(__dirname, 'peek-preload.js'),
+        preload: path.join(__dirname, 'preload.js'),
         // isolate content and do not persist it
-        partition: Date.now()
+        //partition: Date.now()
       }
     });
   }
 
   const onGoAway = () => {
+    /*
     if (peek.keepLive) {
       _peekWins[key] = win;
       win.hide();
@@ -248,6 +268,8 @@ const showPeek = (peek) => {
     else {
       win.destroy();
     }
+    */
+    win.destroy();
   }
   win.on('blur', onGoAway);
   win.on('close', onGoAway);
@@ -272,7 +294,13 @@ const showPeek = (peek) => {
   });
   */
 
-  //win.setBounds({ x: 0, y: 0, width, height })
+  win.webContents.send('window', {
+    path: path.join(__dirname),
+    id: win.id,
+    type: 'peek',
+    data: peek
+  });
+
   win.loadURL(peek.address);
 };
 
@@ -306,7 +334,7 @@ const animateSlide = (win, slide) => {
     // created window at x/y taking animation into account
     let pos = winBounds[coord];
 
-    const speedMs = 250;
+    const speedMs = 150;
     const timerInterval = 10;
 
     let tick = 0;
@@ -314,7 +342,7 @@ const animateSlide = (win, slide) => {
 
     const offset = slide[dim] / numTicks;
 
-    console.log('numTicks', numTicks, 'widthChunk', offset);
+    //console.log('numTicks', numTicks, 'widthChunk', offset);
 
     const timer = setInterval(() => {
       tick++;
@@ -337,8 +365,8 @@ const animateSlide = (win, slide) => {
         : winBounds[dim];
 
       const newBounds = {};
-      newBounds[coord] = pos;
-      newBounds[dim] = newDim;
+      newBounds[coord] = parseInt(pos, 10);
+      newBounds[dim] = parseInt(newDim, 10);
 
       // set new bounds
       win.setBounds(newBounds);
@@ -427,8 +455,10 @@ const showSlide = (slide) => {
       skipTaskbar: true,
       autoHideMenuBar: true,
       titleBarStyle: 'hidden',
+      // maybe worth doing instead of animating width
+      //enableLargerThanScreen: true,
       webPreferences: {
-        preload: path.join(__dirname, 'peek-preload.js'),
+        preload: path.join(__dirname, 'preload.js'),
         // isolate content and do not persist it
         partition: Date.now()
       }
@@ -474,6 +504,13 @@ const showSlide = (slide) => {
   });
   */
 
+  win.webContents.send('window', {
+    path: path.join(__dirname),
+    id: win.id,
+    type: 'slide',
+    data: slide
+  });
+
   //win.setBounds({ x: 0, y: 0, width, height })
   win.loadURL(slide.address);
 };
@@ -517,8 +554,15 @@ const initData = data => {
 
 // app load
 const onReady = () => {
+  console.log('onReady');
   // create main app window on app start
   const win = getMainWindow();
+
+  win.webContents.send('window', {
+    path: path.join(__dirname),
+    id: win.id,
+    type: 'main',
+  });
 
   initData(data);
 
@@ -531,7 +575,7 @@ const onReady = () => {
 
   watch(newData => {
     initData(newData);
-    getMainWindow().webContents.send('configchange', {});
+    win.webContents.send('configchange', {});
   });
 };
 
@@ -557,12 +601,14 @@ ipcMain.on('setconfig', (event, newData) => {
 ipcMain.on('esc', (event, title) => {
   console.log('esc');
   const win = getMainWindow();
-  if (win) {
+  //
+  if (!win.isDestroyed()) {
     console.log('esc: killingit');
     win.close();
     win.destroy();
     _win = null;
   }
+  //
   /*
   if (win.isVisible()) {
     console.log('win is visible, hide it');
@@ -576,14 +622,18 @@ ipcMain.on('esc', (event, title) => {
 // explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
   console.log('window-all-closed', process.platform);
-  const win = getMainWindow();
-  if (win) {
+  //
+  if (!_win.isDestroyed()) {
     console.log('wac: killingit');
-    win.close();
-    win.destroy();
+    _win.destroy();
     _win = null;
   }
-  if (process.platform !== 'darwin') {
+  //
+  if (_win.isVisible()) {
+    console.log('win is visible, hide it');
+    //_win.hide();
+  }
+  else if (process.platform !== 'darwin') {
     onQuit();
   }
 });

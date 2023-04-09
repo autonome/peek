@@ -5,9 +5,8 @@ const labels = {
   prefs: {
     paneTitle: 'Preferences',
     globalKeyCmd: 'App activation shortcut',
-    peekKeyPrefix: 'Peek shortcut prefix',
-    slideKeyPrefix: 'Slide shortcut prefix',
   },
+  /*
   peeks: {
     paneTitle: 'Peeks',
     type: 'Peek',
@@ -24,6 +23,7 @@ const labels = {
     addBtn: 'Add',
     delBtn: 'Delete',
   }
+  */
 };
 
 // TODO: capture and internally navigate out of panes
@@ -48,7 +48,8 @@ const init = cfg => {
   console.log('renderer: init');
   console.log('renderer: cfg', cfg);
 
-	let { data, schemas } = cfg;
+	let { prefs, features } = cfg;
+
   const containerEl = document.querySelector('.houseofpane');
 
   // blow away panes if this is an update
@@ -59,54 +60,51 @@ const init = cfg => {
     panes = [];
   }
 
-  // janky but hey it all is soooo
-  const initPane = (type) => {
+  // prefs pane
+  const el = containerEl.querySelector('.prefs');
+  const onChange = newData => {
+    updateToMain({ prefs: newData });
+  };
+
+  const prefsPane = initValuesPane(
+    el,
+    labels.prefs,
+    cfg.prefs.schema,
+    cfg.prefs.data,
+    onChange);
+  panes.push({ el, pane: prefsPane });
+
+  cfg.features.forEach(feature => {
+    const type = feature.labels.featureType;
     const el = containerEl.querySelector('.' + type);
 
-    const initPane = type == 'prefs' ? initValuesPane : initListPane;
+    const allowNew = feature.config.allowNew || false;
+    const disabled = feature.config.disabled || [];
 
-    const allowNew = type == 'scripts' || false;
-
+    /*
     const disabled = {
-      prefs: [],
       scripts: ['previousValue'],
-      peeks: ['keyNum'],
       slides: ['screenEdge'],
     };
-
-    const labelMaker = entry => {
-      if (type == 'peeks') {
-        return `${data.prefs.peekKeyPrefix}${entry.keyNum} - ${entry.address}`;
-      }
-      else if (type == 'slides') {
-        return `${entry.screenEdge} - ${entry.address}`;
-      }
-      return entry.title;
-    };
+    */
 
     const onChange = newData => {
-      data[type] = newData;
-      updateToMain(data);
+      const p = {};
+      p[type] = { items: newData };
+      updateToMain(p);
     };
 
-    const pane = initPane(
+    const pane = initFeaturePane(
       el,
-      labels[type],
-      schemas[type],
-      data[type],
-      onChange,
-      allowNew,
-      disabled[type],
-      labelMaker
+      feature,
+      onChange
     );
 
     panes.push({
       el,
       pane
     });
-  };
-
-  ['prefs', 'peeks', 'slides', 'scripts'].forEach(initPane);
+  });
 };
 
 const fillPaneFromSchema = (pane, labels, schema, data, onChange, disabled) => {
@@ -135,6 +133,7 @@ const fillPaneFromSchema = (pane, labels, schema, data, onChange, disabled) => {
     }
 
 		params[k] = v;
+
     const input = pane.addInput(params, k, opts);
     // TODO: consider inline state management
     input.on('change', ev => {
@@ -179,13 +178,13 @@ const exportPaneData = pane => {
   return val;
 };
 
-const initValuesPane = (container, labels, schema, values, onChange, allowNew, disabled, labelMaker) => {
+const initValuesPane = (container, labels, schema, values, onChange) => {
   const pane = new Tweakpane.Pane({
     container: container,
     title: labels.paneTitle
   });
 
-  fillPaneFromSchema(pane, labels, schema, values, onChange, disabled);
+  fillPaneFromSchema(pane, labels, schema, values, onChange, []);
 
   const update = (ev) => {
     // TODO: this won't work forever
@@ -201,10 +200,12 @@ const initValuesPane = (container, labels, schema, values, onChange, allowNew, d
   return pane;
 };
 
-const initListPane = (container, labels, schema, items, onChange, allowNew, disabled, labelMaker) => {
+const initFeaturePane = (container, feature, onChange) => {
+  const { config, labels, schemas, data } = feature;
+
   const pane = new Tweakpane.Pane({
     container: container,
-    title: labels.paneTitle
+    title: labels.featureDisplay
   });
 
   const update = (all) => {
@@ -216,18 +217,21 @@ const initListPane = (container, labels, schema, items, onChange, allowNew, disa
     onChange(newData);
   };
 
-  items.forEach(entry => {
+  // add prefs
+
+  // add items
+  data.items.forEach(item => {
     const folder = pane.addFolder({
-      title: labelMaker(entry),
+      title: item.title,
       expanded: false
     });
 
-    fillPaneFromSchema(folder, labels, schema, entry, onChange, disabled);
+    fillPaneFromSchema(folder, labels, schemas.item, item, onChange, config.disabled);
 
     // TODO: implement
-    folder.addButton({title: labels.testBtn});
+    //folder.addButton({title: labels.testBtn});
 
-    if (allowNew) {
+    if (config.allowNew) {
       const delBtn = folder.addButton({title: labels.delBtn});
       delBtn.on('click', () => {
         pane.remove(folder);
@@ -236,10 +240,11 @@ const initListPane = (container, labels, schema, items, onChange, allowNew, disa
       });
     }
 
-    folder.on('change', () => update());
+    folder.on('change', () => update(!config.allowNew));
   });
 
-  if (allowNew) {
+  /*
+  if (config.allowNew) {
     // add new item entry
     const folder = pane.addFolder({
       title: labels.newFolder,
@@ -256,6 +261,7 @@ const initListPane = (container, labels, schema, items, onChange, allowNew, disa
       update(true);
     });
   }
+  */
 
   return pane;
 };

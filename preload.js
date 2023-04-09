@@ -13,6 +13,7 @@ ipcRenderer.on('window', (ev, msg) => {
   }
 });
 
+
 // all window types close on escape
 window.addEventListener('keyup', e => {
   if (e.key == 'Escape') {
@@ -20,31 +21,48 @@ window.addEventListener('keyup', e => {
   }
 });
 
-const handleMainWindow = () => {
-  let api = {};
+let api = {};
 
-  api.onConfigChange = callback => {
-    ipcRenderer.on('configchange', (ev, msg) => {
-      callback(msg);
-    });
-  };
+api.onConfigChange = callback => {
+  // noop if not an internal app file
+  const isMain = window.location.protocol == 'file:';
+  if (!isMain) {
+    return;
+  }
 
-  api.getConfig = new Promise((resolve, reject) => {
-    // TODO: race potential
-    ipcRenderer.once('config', (ev, msg) => {
-      resolve(msg);
-    });
-    ipcRenderer.send('getconfig');
+  ipcRenderer.on('configchange', (ev, msg) => {
+    callback(msg);
   });
+};
 
-  api.setConfig = cfg => {
-    //console.log('preload: setConfig', cfg);
-    ipcRenderer.send('setconfig', cfg);
-  };
+api.getConfig = new Promise((resolve, reject) => {
+  // noop if not an internal app file
+  const isMain = window.location.protocol == 'file:';
+  if (!isMain) {
+    return;
+  }
 
-  contextBridge.exposeInMainWorld('app', api);
+  // TODO: race potential
+  ipcRenderer.once('config', (ev, msg) => {
+    resolve(msg);
+  });
+  ipcRenderer.send('getconfig', {isMain});
+});
 
-  window.addEventListener('DOMContentLoaded', () => {
+api.setConfig = cfg => {
+  // noop if not an internal app file
+  const isMain = window.location.protocol == 'file:';
+  if (!isMain) {
+    return;
+  }
+
+  ipcRenderer.send('setconfig', cfg);
+};
+
+contextBridge.exposeInMainWorld('app', api);
+
+const handleMainWindow = () => {
+  window.addEventListener('load', () => {
     const replaceText = (selector, text) => {
       const element = document.getElementById(selector)
       if (element) element.innerText = text

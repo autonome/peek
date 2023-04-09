@@ -14,23 +14,29 @@ const {
   Menu,
   nativeTheme,
   Notification,
-  screen,
   Tray
 } = require('electron');
 
 const path = require('path');
+const preloadPath = path.join(__dirname, 'preload.js');
+
+const Store = require('electron-store');
+
+const features = {
+  peeks: require('./features/peeks/peeks'),
+  slides: require('./features/slides/slides'),
+  scripts: require('./features/scripts/scripts'),
+};
 
 const labels = {
   app: {
+    key: 'peek',
     title: 'Peek'
   },
   tray: {
-    tooltip: 'Click to open Peek'
+    tooltip: 'Click to open'
   }
 };
-
-// load data
-let { data, schemas, set, watch } = require('./defaults');
 
 const ICON_RELATIVE_PATH = 'assets/icons/AppIcon.appiconset/Icon-App-20x20@2x.png';
 const ICON_PATH = path.join(__dirname, ICON_RELATIVE_PATH);
@@ -68,11 +74,10 @@ ipcMain.handle('dark-mode:system', () => {
 });
 
 let _windows = [];
-let _peekWins = {};
-let _slideWins = {};
 
 // main window
 let _win = null;
+
 // tray
 let _tray = null;
 
@@ -84,13 +89,13 @@ const getMainWindow = () => {
 };
 
 const createMainWindow = () => {
-  console.log('createMainWindow');
+  console.log('createMainWindow, preloadPath', preloadPath);
   // Create the browser window.
   const mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js')
+      preload: preloadPath
     }
   });
 
@@ -107,6 +112,20 @@ const createMainWindow = () => {
 
   // Open the DevTools.
   mainWindow.webContents.openDevTools()
+
+  mainWindow.webContents.send('window', {
+    path: path.join(__dirname),
+    id: mainWindow.id,
+    type: 'main',
+  });
+
+  _windows.push(mainWindow);
+  /*
+  mainWindow.on('closed', () => {
+    const idx = _windows.findIndex(mainWindow);
+    //_windows.
+  });
+  */
 
   return mainWindow;
 };
@@ -131,95 +150,74 @@ const initTray = () => {
   return _tray;
 };
 
-const execContentScript = (script, cb) => {
-  const view = new BrowserView({
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      // isolate content and do not persist it
-      partition: Date.now()
-    }
+const getData = () => {
+  let rollup = {
+    prefs: {
+      schema: prefsSchema,
+      data: appStore.get('prefs')
+    },
+    features: []
+  };
+
+  Object.keys(features).forEach(k => {
+    const feature = features[k];
+    rollup.features.push({
+      config: feature.config,
+      labels: feature.labels,
+      schemas: feature.schemas,
+      data: feature.data
+    })
   });
 
-  view.webContents.send('window', {
-    id: 'view',
-    type: 'script',
-    data: script
-  });
+  return rollup;
+};
 
-  view.webContents.loadURL(script.address);
+const updateData = newData => {
+  console.log('updateData', newData);
 
-  const str = `
-    const s = "${script.selector}";
-    const r = document.querySelector(s);
-    const value = r ? r.textContent : null;
-    value;
-  `;
+  if (newData.prefs) {
+    appStore.set('prefs', newData.prefs);
+  }
 
-  view.webContents.on('dom-ready', async () => {
-    try {
-      const r = await view.webContents.executeJavaScript(str);
-      cb(r);
-    } catch(ex) {
-      console.error('cs exec error', ex);
-      cb(null);
+  Object.keys(newData).forEach(k => {
+    if (features[k]) {
+      features[k].onChange(newData[k]);
     }
   });
 };
 
-let _intervals = [];
-
-const initScripts = scripts => {
-  //console.log('initScripts', scripts);
-
-  // blow it all away for now
-  // someday make it right proper just cancel/update changed and add new
-  _intervals.forEach(clearInterval);
-
-  // debounce me somehow so not shooting em all off
-  // at once every time app starts
-  scripts.forEach(script => {
-    setInterval(() => { 
-      //console.log('interval hit', script.title);
-      const r = execContentScript(script, (res) => {
-        //console.log('cs r', res);
-
-        if (script.previousValue != res) {
-          // update stored value
-          const previousValue = script.previousValue;
-          script.previousValue = res;
-          const idx = data.scripts.findIndex(el => el.id == script.id);
-          if (idx >= 0) {
-            data.scripts[idx] = script;
-            set(data);
-          }
-          else {
-            console.log('errrrr, wat');
-          }
-
-          // notification
-          // add to schema and support per script
-          /*
-          const title = `Peek :: Script :: ${script.title}`;
-          const body = [
-            `Script result changed for ${script.title}:`,
-            `- Old: ${previousValue}`,
-            `- New: ${res}`
-          ].join('\n');
-
-          new Notification({ title, body }).show();
-          */
-        }
-      });
-    }, script.interval);
-  });
+const prefsSchema = {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "peek.prefs.schema.json",
+  "title": "Peek - prefs",
+  "description": "Peek user preferences",
+  "type": "object",
+  "properties": {
+    "globalKeyCmd": {
+      "description": "Global OS hotkey to load app",
+      "type": "string",
+      "default": "CommandOrControl+Escape"
+    }
+  },
+  "required": [ "globalKeyCmd" ]
 };
 
-const initGlobalShortcuts = prefs => {
+const initPrefs = store => {
+  const defaults = {
+    globalKeyCmd: 'CommandOrControl+Escape',
+  };
+
+  let prefs = appStore.get('prefs');
+  if (!prefs) {
+    store.set('prefs', defaults);
+    prefs = store.get('prefs');
+  }
+
+  // register global activation shortcut
   if (globalShortcut.isRegistered(prefs.globalKeyCmd)) {
     globalShortcut.unregister(prefs.globalKeyCmd);
   }
 
-  // register global activation shortcut
   const onGlobalKeyCmd = () => getMainWindow().show();
 
   const ret = globalShortcut.register(prefs.globalKeyCmd, onGlobalKeyCmd);
@@ -229,318 +227,50 @@ const initGlobalShortcuts = prefs => {
   }
 };
 
-const showPeek = (peek) => {
-  const height = peek.height || 600;
-  const width = peek.width || 800;
-  
-  let win = null;
+const initFeatures = (features) => {
 
-  const key = 'peek' + peek.keyNum;
+  // TODO: allow features to register
+  // as app level prefs for enable/disable 
 
-  if (_peekWins[key]) {
-    console.log('peek', peek.keyNum, 'using stored window');
-    win = _peekWins[key];
-    win.show();
-  }
-  else {
-    console.log('peek', peek.keyNum, 'creating new window');
-    win = new BrowserWindow({
-      height,
-      width,
-      center: true,
-      skipTaskbar: true,
-      autoHideMenuBar: true,
-      titleBarStyle: 'hidden',
-      webPreferences: {
-        preload: path.join(__dirname, 'preload.js'),
-        // isolate content and do not persist it
-        //partition: Date.now()
-      }
-    });
-  }
+  // inject into features
+  // eventually get to less tight coupling
+  const api = {
+    preloadPath,
+  };
 
-  const onGoAway = () => {
-    /*
-    if (peek.keepLive) {
-      _peekWins[key] = win;
-      win.hide();
-    }
-    else {
-      win.destroy();
-    }
-    */
-    win.destroy();
-  }
-  win.on('blur', onGoAway);
-  win.on('close', onGoAway);
+  const featureContainerPrefix = 'peekFeature';
 
-  /*
-  const str = `
-    window.addEventListener('keyup', e => {
-      if (e.key == 'Escape') {
-        console.log('peek script esc');
-      }
-    });
-    1;
-  `;
+  Object.keys(features).forEach(k => {
+    const feature = features[k];
+    const storeName = `${featureContainerPrefix}${feature.labels.featureType}`;
 
-  win.webContents.on('dom-ready', async () => {
-    try {
-      const r = await win.webContents.executeJavaScript(str);
-      console.log(r);
-    } catch(ex) {
-      console.error('cs exec error', ex);
-    }
-  });
-  */
-
-  win.webContents.send('window', {
-    path: path.join(__dirname),
-    id: win.id,
-    type: 'peek',
-    data: peek
-  });
-
-  win.loadURL(peek.address);
-};
-
-const initPeeks = (cmdPrefix, peeks) => {
-  peeks.forEach((p, i) => {
-    if (globalShortcut.isRegistered(cmdPrefix + `${i}`)) {
-      globalShortcut.unregister(cmdPrefix + `${i}`)
-    }
-
-    const ret = globalShortcut.register(cmdPrefix + `${i}`, () => {
-      showPeek(p);
+    // have to make per feature stores for now, pfftt
+    // maybe fine, better isolation
+    const featureStore = new Store({
+      name: storeName,
+      // TODO: figure out schema approach here
+      //schema: fullSchema,
+      watch: true
     });
 
-    if (!ret) {
-      console.error('Unable to register peek');
-    }
-  });
-};
-
-const animateSlide = (win, slide) => {
-  return new Promise((res, rej) => {
-    const { size, bounds } = screen.getPrimaryDisplay();
-
-    // get x/y field
-    const coord = slide.screenEdge == 'Left' || slide.screenEdge == 'Right' ? 'x' : 'y';
-
-    const dim = coord == 'x' ? 'width' : 'height';
-
-    const winBounds = win.getBounds();
-
-    // created window at x/y taking animation into account
-    let pos = winBounds[coord];
-
-    const speedMs = 150;
-    const timerInterval = 10;
-
-    let tick = 0;
-    const numTicks = parseInt(speedMs / timerInterval);
-
-    const offset = slide[dim] / numTicks;
-
-    //console.log('numTicks', numTicks, 'widthChunk', offset);
-
-    const timer = setInterval(() => {
-      tick++;
-
-      if (tick >= numTicks) {
-        clearInterval(timer);
-        res();
-      }
-
-      const winBounds = win.getBounds();
-
-      if (slide.screenEdge == 'Right' || slide.screenEdge == 'Down') {
-        // new position is current position +/- offset
-        pos = pos - offset;
-      }
-
-      const grownEnough = winBounds[dim] <= slide[dim];
-      const newDim = grownEnough ?
-        winBounds[dim] + offset
-        : winBounds[dim];
-
-      const newBounds = {};
-      newBounds[coord] = parseInt(pos, 10);
-      newBounds[dim] = parseInt(newDim, 10);
-
-      // set new bounds
-      win.setBounds(newBounds);
-
-    }, timerInterval);
-  });
-};
-
-const showSlide = (slide) => {
-  let win = null;
-
-  const key = 'slide' + slide.screenEdge;
-
-  // TODO: fix stored+live windows
-  if (_slideWins[key]) {
-    console.log('slide', slide.screenEdge, 'using stored window');
-    win = _slideWins[key];
-    win.show();
-  }
-  else {
-
-    const { size, bounds } = screen.getPrimaryDisplay();
-
-    let x, y, height, width, center = null;
-
-    switch(slide.screenEdge) {
-      case 'Up':
-        // horizontally center
-        x = (size.width - slide.width) / 2;
-
-        // y starts at screen top and stays there
-        y = 0;
-
-        width = slide.width;
-        height = 1;
-        break;
-      case 'Down':
-        // horizonally center
-        x = (size.width - slide.width) / 2;
-
-        // y ends up at window height from bottom
-        //
-        // eg: y = size.height - slide.height;
-        //
-        // but starts at screen bottom
-        y = size.height;
-
-        width = slide.width;
-        height = 1;
-        break;
-      case 'Left':
-        // x starts and ends at at left screen edge
-        // at left edge
-        x = 0;
-
-        // vertically center
-        y = (size.height - slide.height) / 2;
-
-        width = 1;
-        height = slide.height;
-        break;
-      case 'Right':
-        // x ends at at right screen edge - window size
-        //
-        // eg: x = size.width - slide.width;
-        //
-        // but starts at screen right edge, will animate in 
-        x = size.width;
-
-        // vertically center
-        y = (size.height - slide.height) / 2;
-
-        width = 1;
-        height = slide.height;
-        break;
-      default:
-        center = true;
-        console.log('waddafa');
-    }
-
-    win = new BrowserWindow({
-      height,
-      width,
-      x,
-      y,
-      skipTaskbar: true,
-      autoHideMenuBar: true,
-      titleBarStyle: 'hidden',
-      // maybe worth doing instead of animating width
-      //enableLargerThanScreen: true,
-      webPreferences: {
-        preload: path.join(__dirname, 'preload.js'),
-        // isolate content and do not persist it
-        partition: Date.now()
-      }
+    featureStore.onDidAnyChange(newData => {
+      initData();
+      //win.webContents.send('configchange', {});
     });
 
-    //_slideWins[key] = win;
-  }
-
-  animateSlide(win, slide).then();
-
-  const onGoAway = () => {
-    /*
-    if (slide.keepLive) {
-      _slideWins[key] = win;
-      win.hide();
-    }
-    else {
-      win.destroy();
-    }
-    */
-    win.destroy();
-  }
-  win.on('blur', onGoAway);
-  win.on('close', onGoAway);
-
-  /*
-  const str = `
-    window.addEventListener('keyup', e => {
-      if (e.key == 'Escape') {
-        console.log('peek script esc');
-      }
-    });
-    1;
-  `;
-
-  win.webContents.on('dom-ready', async () => {
-    try {
-      const r = await win.webContents.executeJavaScript(str);
-      console.log(r);
-    } catch(ex) {
-      console.error('cs exec error', ex);
-    }
-  });
-  */
-
-  win.webContents.send('window', {
-    path: path.join(__dirname),
-    id: win.id,
-    type: 'slide',
-    data: slide
-  });
-
-  //win.setBounds({ x: 0, y: 0, width, height })
-  win.loadURL(slide.address);
-};
-
-const initSlides = (cmdPrefix, slides) => {
-  slides.forEach(s => {
-    if (!globalShortcut.isRegistered(cmdPrefix + `${s.screenEdge}`)) {
-      const ret = globalShortcut.register(cmdPrefix + `${s.screenEdge}`, () => {
-        showSlide(s);
-      });
-
-      if (!ret) {
-        console.error('Unable to register slide');
-      }
-    }
+    feature.init(api, featureStore);
   });
 };
 
 // initialized all bits which need updating if the data changes
 // can be called repeatedly to refresh on changes
-const initData = data => {
-  // initialize prefs
-  const prefs = data.prefs;
-  initGlobalShortcuts(prefs);
+const initData = () => {
+  // initialize app prefs
+  initPrefs(appStore);
 
-  // initialize peeks
-  if (data.peeks.length > 0) {
-    initPeeks(prefs.peekKeyPrefix, data.peeks);
-  }
+  initFeatures(features);
 
+  /*
   // initialize slides
   if (data.slides.length > 0) {
     initSlides(prefs.slideKeyPrefix, data.slides);
@@ -550,21 +280,25 @@ const initData = data => {
   if (data.scripts.length > 0) {
     initScripts(data.scripts);
   }
+  */
 };
+
+const appStore = new Store({
+  name: labels.app.key,
+  // TODO: re-enable schemas
+  //schema: fullSchema,
+  watch: true
+});
+
+// DEBUG
+appStore.clear();
 
 // app load
 const onReady = () => {
   console.log('onReady');
+
   // create main app window on app start
   const win = getMainWindow();
-
-  win.webContents.send('window', {
-    path: path.join(__dirname),
-    id: win.id,
-    type: 'main',
-  });
-
-  initData(data);
 
   // keep app out of dock and tab switcher
   if (app.dock) {
@@ -573,8 +307,10 @@ const onReady = () => {
 
   initTray();
 
-  watch(newData => {
-    initData(newData);
+  initData();
+
+  appStore.onDidAnyChange(newData => {
+    initData();
     win.webContents.send('configchange', {});
   });
 };
@@ -582,11 +318,8 @@ const onReady = () => {
 app.whenReady().then(onReady);
 
 // when renderer is ready, send over user data
-ipcMain.on('getconfig', () => {
-  getMainWindow().webContents.send('config', {
-		data,
-		schemas
-  });
+ipcMain.on('getconfig', (ev, data) => {
+  getMainWindow().webContents.send('config', getData())
 });
 
 // listen for updates
@@ -594,19 +327,21 @@ ipcMain.on('setconfig', (event, newData) => {
   // TODO: if any shortcuts changed, unregister the old ones
 
   // write to datastore
-  set(newData);
+  updateData(newData);
 });
 
 // ipc ESC handler
 ipcMain.on('esc', (event, title) => {
   console.log('esc');
-  const win = getMainWindow();
+
+  const fwin = BrowserWindow.getFocusedWindow();
+
   //
-  if (!win.isDestroyed()) {
+  if (!fwin.isDestroyed()) {
     console.log('esc: killingit');
-    win.close();
-    win.destroy();
-    _win = null;
+    fwin.close();
+    //win.destroy();
+    //_win = null;
   }
   //
   /*
@@ -628,12 +363,14 @@ app.on('window-all-closed', () => {
     _win.destroy();
     _win = null;
   }
-  //
+  /*
   if (_win.isVisible()) {
     console.log('win is visible, hide it');
     //_win.hide();
   }
-  else if (process.platform !== 'darwin') {
+  */
+  
+  if (process.platform !== 'darwin') {
     onQuit();
   }
 });

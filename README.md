@@ -2,7 +2,8 @@
 
 Please meet Peek, a web user agent application designed for using the web where, when and how you want it.
 
-** WARNING**
+** WARNING: THIS IS VACATIONWARE **
+
 * Peek is not a web browser! Yet! And likely never will be a browser as you would expect from browsers to date. There are no tabs, and no windows in the tabbed-browser-like sense of them. If that's what you're looking for, there are a few decent browsers for you to choose from.
 * Peek is not safe for general use yet! It is a crude proof of concept I whipped up while on vacation. While I have thoughts on security model and user interface, I have not written it up into a proper security model yet.
 
@@ -38,7 +39,21 @@ Some thoughts driving the design of Peek:
 * Windows and tabs should have died a long time ago, a mixed metaphor constraining the ability of the web to grow/thrive/change and meet user needs
 * Security user interface must be a clear articulation of risks and trade-offs, and users should own the decisions
 
-# Architecture / Implementation
+## Design
+
+* Escape IZUI
+  * IZUI: inverse zooming user interface
+  * ZUIs navigate by starting from a known root and user navigates by zooming ever further in
+  * Escape starts anywhere, and instead of navigating by zooming in, all interfaces can zoom out to reset
+  * allows unbounded and diverse entry points with predictable behavior
+  * consistent path to familiar ground
+
+Escape navigation model
+  * navigation base can start at any level in stack
+  * forward navigations are added on top of stack
+  * backwards navigations walk the stack in reverse 
+
+## Architecture / Implementation
 
 Peek is designed to be modular and configurable around the idea that parts of it can run in different environments.
 
@@ -47,7 +62,7 @@ For example:
 * I'd like to have a decentralized compute option for running your scripts outside of your clients and syncing the data
 * Want cloud storage for all config and data, esp infinite history, so can do fun things with it
 
-## Desktop App
+### Desktop App
 
 Proof of concept is Electron. By far the best option today for cross-platform desktop apps which need a web rendering engine. There's really nothing else remotely suited (yet).
 
@@ -59,30 +74,55 @@ TODO
 
 ### Usage
 
-* `cmd/ctl+Escape` or launch app to open settings
-* Configure Peeks/Slides/Scripts in settings
-* `Opt+0-9` to open Peeks
-* `Opt+←→↑↓` to open Slides
+* Settings
+  * In app, `cmd/ctl+r,` or launch app to open settings, or click tray
+  * Configure Peeks/Slides/Scripts in settings
+* Peeks
+  * `Opt+0-9` to open Peeks
+* Slides
+  * `Opt+←→↑↓` to open Slides
 
-## Mobile
+### Mobile
 
-TBD
+* Quick access to Script output and manual runs, as widgets (or output from cloud runners?)
+* Peeks still totes useful here - on mobile is more like "quick dial" features
 
-## Cloud
+### Cloud
 
 * Going full crypto payments for distributed compute on this one.
 
 ## Roadmap
 
 Next
-* Modularize feature types, eyeing the extensibility model
+* ✅ Modularize feature types, eyeing the extensibility model
+* Settings Cleanup
+  * ✅ move settings window to features/settings
+    * why no settings
+  * make features enable/disable-able
+  * move feature list and enablement to storage
+  * re-enable label previews, eg "Peek {key} - {address}"
+* App cleanup
+  * ✅ main window vs settings
+  * ✅ change settings shortcut from global+esc to app+comma
+* Default features cleanup
+  * enable/disable individual peeks/slides
+* Window lifecycle
+  * modularize window open/close/hide/show across all windows
+  * hide/show window vs create fresh
+* Web content
+  * isolate web loading code, have features load content that way instead of raw BrowserWindow
 * Basic command bar to open pages
 * Basic history store
 
 After that
-* Extension model
+* Extension model?
 * Ubiquity-like
 * Panorama-like
+* Tray
+* Scratchpad
+* Identity
+* Contacts
+* Collaboration
 
 Further
 * Implement the Firefox "awesomebar" scoring and search algorithm so that Peek *learns* you

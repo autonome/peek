@@ -1,15 +1,13 @@
-// peeks/peek.js
+// input/input.js
 (async () => {
 
-console.log('peeks/peeks');
+console.log('input/input');
 
 const labels = {
-  featureType: 'peeks',
-  featureDisplay: 'Peeks',
-  itemType: 'peek',
-  itemDisplay: 'Peek',
+  featureType: 'input',
+  featureDisplay: 'Input',
   prefs: {
-    keyPrefix: 'Peek shortcut prefix',
+    shortcutKey: 'Input shortcut',
   }
 };
 
@@ -25,25 +23,25 @@ let _data = {};
 
 const prefsSchema = {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "peek.peeks.prefs.schema.json",
-  "title": "Peeks preferences",
-  "description": "Peeks user preferences",
+  "$id": "peek.input.prefs.schema.json",
+  "title": "Input preferences",
+  "description": "Peek app Input user preferences",
   "type": "object",
   "properties": {
-    "shortcutKeyPrefix": {
-      "description": "Global OS hotkey prefix to trigger peeks - will be followed by 0-9",
+    "shortcutKey": {
+      "description": "Global OS hotkey to open input",
       "type": "string",
-      "default": "Option+"
+      "default": "Option+Space"
     },
   },
-  "required": [ "shortcutKeyPrefix"]
+  "required": [ "shortcutKey"]
 };
 
 const itemSchema = {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "peek.peeks.peek.schema.json",
-  "title": "Peek - page peek",
-  "description": "Peek page peek",
+  "$id": "peek.input.entry.schema.json",
+  "title": "Peek - input entry",
+  "description": "Peek input entry",
   "type": "object",
   "properties": {
     "keyNum": {
@@ -95,7 +93,7 @@ const itemSchema = {
 
 const listSchema = {
   type: 'array',
-  items: { "$ref": "#/$defs/peek" }
+  items: { "$ref": "#/$defs/entry" }
 };
 
 // TODO: schemaize 0-9 constraints for peeks
@@ -107,27 +105,16 @@ const schemas = {
 
 const _defaults = {
   prefs: {
-    shortcutKeyPrefix: 'Option+'
+    shortcutKey: 'Option+Space'
   },
-  items: Array.from(Array(10)),
 };
-
-for (var i = 0; i != 10; i++) {
-  _defaults.items[i] = {
-    keyNum: i,
-    title: `Peek key ${i}`,
-    address: 'https://example.com/',
-    persistState: false,
-    keepLive: false,
-    allowSound: false,
-    height: 600,
-    width: 800,
-  };
-}
 
 let _windows = {};
 
-const executeItem = (api, item) => {
+const openInputWindow = (api, item) => {
+  // TODO: implement me
+  return;
+
   const height = item.height || 600;
   const width = item.width || 800;
   
@@ -185,31 +172,22 @@ const initStore = (store, data) => {
   if (!sp) {
     store.set('prefs', data.prefs);
   }
-
-  const items = store.get('items');
-  if (!items) {
-    store.set('items', data.items);
-  }
 };
 
-const initItems = (api, prefs, items) => {
-  const cmdPrefix = prefs.shortcutKeyPrefix;
+const initShortcut = (api, prefs) => {
+  const shortcut = prefs.shortcutKey;
 
-  items.forEach(item => {
-    const shortcut = `${cmdPrefix}${item.keyNum}`;
+  if (globalShortcut.isRegistered(shortcut)) {
+    globalShortcut.unregister(shortcut);
+  }
 
-    if (globalShortcut.isRegistered(shortcut)) {
-      globalShortcut.unregister(shortcut);
-    }
-
-    const ret = globalShortcut.register(shortcut, () => {
-      executeItem(api, item);
-    });
-
-    if (!ret) {
-      console.error('Unable to register shortcut', shortcut);
-    }
+  const ret = globalShortcut.register(shortcut, () => {
+    openInputWindow(api);
   });
+
+  if (!ret) {
+    console.error('Unable to register shortcut', shortcut);
+  }
 };
 
 const init = (api, store) => {
@@ -218,15 +196,13 @@ const init = (api, store) => {
 
   initStore(_store, _defaults);
 
+
   _data = {
     get prefs() { return _store.get('prefs'); },
-    get items() { return _store.get('items'); },
+    //get items() { return _store.get('items'); },
   };
 
-  // initialize peeks
-  if (_data.items.length > 0) {
-    initItems(api, _data.prefs, _data.items);
-  }
+  initShortcut(api, _data.prefs);
 };
 
 const onChange = (changed, old) => {
@@ -235,6 +211,7 @@ const onChange = (changed, old) => {
   // TODO only update store if changed
   // and re-init
   if (changed.prefs) {
+    console.log('input: updating prefs', changed.prefs);
     _store.set('prefs', changed.prefs);
   }
 
@@ -258,7 +235,6 @@ module.exports = {
   schemas,
   data: {
     get prefs() { return _store.get('prefs'); },
-    get items() { return _store.get('items'); },
   },
   onChange
 };

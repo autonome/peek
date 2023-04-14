@@ -25,8 +25,8 @@ let _store = null;
 const prefsSchema = {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "peek.scripts.prefs.schema.json",
-  "title": "Peek - Scripts prefs",
-  "description": "Peek app Scripts prefs",
+  "title": "Scripts preferences",
+  "description": "Scripts user preferences",
   "type": "object",
   "properties": {
   },
@@ -112,6 +112,7 @@ const _defaults = {
   prefs: {
   },
   items: [
+    /*
     {
       id: 'peek:script:localhost:test',
       title: 'localhost test',
@@ -123,6 +124,7 @@ const _defaults = {
       storehistory: false,
       notifyOnChange: false
     },
+    */
   ]
 };
 

@@ -26,8 +26,8 @@ let _store = null;
 const prefsSchema = {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "peek.slides.prefs.schema.json",
-  "title": "Peek - Slides prefs",
-  "description": "Peek app Slides prefs",
+  "title": "Slides prefs",
+  "description": "Peek app Slides user preferences",
   "type": "object",
   "properties": {
     "shortcutKeyPrefix": {

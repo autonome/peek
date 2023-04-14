@@ -3,6 +3,8 @@
 
 console.log('main');
 
+const DEBUG = process.env.DEBUG;
+
 // Modules to control application life and create native browser window
 const {
   electron,
@@ -19,28 +21,9 @@ const {
 
 const path = require('path');
 const preloadPath = path.join(__dirname, 'preload.js');
-
 const Store = require('electron-store');
 
-const features = {
-  peeks: require('./features/peeks/peeks'),
-  slides: require('./features/slides/slides'),
-  scripts: require('./features/scripts/scripts'),
-};
-
-const labels = {
-  app: {
-    key: 'peek',
-    title: 'Peek'
-  },
-  tray: {
-    tooltip: 'Click to open'
-  }
-};
-
-const ICON_RELATIVE_PATH = 'assets/icons/AppIcon.appiconset/Icon-App-20x20@2x.png';
-const ICON_PATH = path.join(__dirname, ICON_RELATIVE_PATH);
-
+// ***** Developer / Error handling / Etc *****
 const isDev = require('electron-is-dev');
 
 if (isDev) {
@@ -59,6 +42,8 @@ if (isDev) {
 const unhandled = require('electron-unhandled');
 unhandled();
 
+// ***** System / OS / Theme / Etc *****
+
 // system dark mode handling
 ipcMain.handle('dark-mode:toggle', () => {
   if (nativeTheme.shouldUseDarkColors) {
@@ -73,71 +58,49 @@ ipcMain.handle('dark-mode:system', () => {
   nativeTheme.themeSource = 'system';
 });
 
+// ***** App / Strings / Etc *****
+
+const features = {
+  settings: require('./features/settings/settings'),
+  input: require('./features/input/input'),
+  peeks: require('./features/peeks/peeks'),
+  slides: require('./features/slides/slides'),
+  scripts: require('./features/scripts/scripts'),
+};
+
+const labels = {
+  app: {
+    key: 'peek',
+    title: 'Peek'
+  },
+  tray: {
+    tooltip: 'Click to open'
+  }
+};
+
+// ***** Caches *****
+
+// vestigial?
 let _windows = [];
 
 // main window
 let _win = null;
 
-// tray
-let _tray = null;
-
-const getMainWindow = () => {
-  if (_win === null || _win.isDestroyed()) {
-    _win = createMainWindow();
-  }
-  return _win;
-};
-
-const createMainWindow = () => {
-  console.log('createMainWindow, preloadPath', preloadPath);
-  // Create the browser window.
-  const mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
-    webPreferences: {
-      preload: preloadPath
-    }
-  });
-
-  /*
-  mainWindow.on('close', (e) => {
-    console.log('onClose - just hiding');
-    e.preventDefault();
-    mainWindow.hide();
-  });
-  */
-
-  // and load the index.html of the app.
-  mainWindow.loadFile('main.html');
-
-  // Open the DevTools.
-  mainWindow.webContents.openDevTools()
-
-  mainWindow.webContents.send('window', {
-    path: path.join(__dirname),
-    id: mainWindow.id,
-    type: 'main',
-  });
-
-  _windows.push(mainWindow);
-  /*
-  mainWindow.on('closed', () => {
-    const idx = _windows.findIndex(mainWindow);
-    //_windows.
-  });
-  */
-
-  return mainWindow;
-};
-
-// 
+// TODO: make this open settings?
 app.on('activate', () => {
   // On macOS it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
   if (BrowserWindow.getAllWindows().length === 0) {
-    getMainWindow().show();
+    //getMainWindow().show();
   }
 });
+
+// ***** Tray *****
+
+const ICON_RELATIVE_PATH = 'assets/icons/AppIcon.appiconset/Icon-App-20x20@2x.png';
+const ICON_PATH = path.join(__dirname, ICON_RELATIVE_PATH);
+
+let _tray = null;
 
 const initTray = () => {
   if (!_tray || _tray.isDestroyed()) {
@@ -150,17 +113,18 @@ const initTray = () => {
   return _tray;
 };
 
+// ***** Data *****
+
 const getData = () => {
   let rollup = {
-    prefs: {
-      schema: prefsSchema,
-      data: appStore.get('prefs')
-    },
     features: []
   };
 
   Object.keys(features).forEach(k => {
     const feature = features[k];
+
+    //console.log('feature', feature);
+
     rollup.features.push({
       config: feature.config,
       labels: feature.labels,
@@ -175,60 +139,19 @@ const getData = () => {
 const updateData = newData => {
   console.log('updateData', newData);
 
-  if (newData.prefs) {
-    appStore.set('prefs', newData.prefs);
-  }
-
   Object.keys(newData).forEach(k => {
+    console.log('updateData: key exists?', k);
     if (features[k]) {
+      console.log('updateData: yes, updating with', newData[k]);
       features[k].onChange(newData[k]);
     }
   });
 };
 
-const prefsSchema = {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "peek.prefs.schema.json",
-  "title": "Peek - prefs",
-  "description": "Peek user preferences",
-  "type": "object",
-  "properties": {
-    "globalKeyCmd": {
-      "description": "Global OS hotkey to load app",
-      "type": "string",
-      "default": "CommandOrControl+Escape"
-    }
-  },
-  "required": [ "globalKeyCmd" ]
-};
-
-const initPrefs = store => {
-  const defaults = {
-    globalKeyCmd: 'CommandOrControl+Escape',
-  };
-
-  let prefs = appStore.get('prefs');
-  if (!prefs) {
-    store.set('prefs', defaults);
-    prefs = store.get('prefs');
-  }
-
-  // register global activation shortcut
-  if (globalShortcut.isRegistered(prefs.globalKeyCmd)) {
-    globalShortcut.unregister(prefs.globalKeyCmd);
-  }
-
-  const onGlobalKeyCmd = () => getMainWindow().show();
-
-  const ret = globalShortcut.register(prefs.globalKeyCmd, onGlobalKeyCmd);
-
-  if (!ret) {
-    console.error('Unable to register global key command.')
-  }
-};
-
-const initFeatures = (features) => {
-
+// initialized all bits which need updating if the data changes
+// can be called repeatedly to refresh on changes
+const initFeatures = () => {
+  console.log('initFeatures');
   // TODO: allow features to register
   // as app level prefs for enable/disable 
 
@@ -238,11 +161,16 @@ const initFeatures = (features) => {
     preloadPath,
   };
 
-  const featureContainerPrefix = 'peekFeature';
+  const datastorePrefix = 'peekFeature';
 
   Object.keys(features).forEach(k => {
+    console.log('main:initFeatures()', k);
     const feature = features[k];
-    const storeName = `${featureContainerPrefix}${feature.labels.featureType}`;
+
+    if (!feature.labels) {
+      console.error('feature?', feature)
+    }
+    const storeName = `${datastorePrefix}${feature.labels.featureType}`;
 
     // have to make per feature stores for now, pfftt
     // maybe fine, better isolation
@@ -253,52 +181,20 @@ const initFeatures = (features) => {
       watch: true
     });
 
-    featureStore.onDidAnyChange(newData => {
-      initData();
-      //win.webContents.send('configchange', {});
-    });
+    if (DEBUG) {
+      //console.log('main: clearing datastore', k)
+      featureStore.clear();
+    }
 
     feature.init(api, featureStore);
+
+    featureStore.onDidAnyChange(initFeatures);
   });
 };
-
-// initialized all bits which need updating if the data changes
-// can be called repeatedly to refresh on changes
-const initData = () => {
-  // initialize app prefs
-  initPrefs(appStore);
-
-  initFeatures(features);
-
-  /*
-  // initialize slides
-  if (data.slides.length > 0) {
-    initSlides(prefs.slideKeyPrefix, data.slides);
-  }
-
-  // initialize scripts
-  if (data.scripts.length > 0) {
-    initScripts(data.scripts);
-  }
-  */
-};
-
-const appStore = new Store({
-  name: labels.app.key,
-  // TODO: re-enable schemas
-  //schema: fullSchema,
-  watch: true
-});
-
-// DEBUG
-appStore.clear();
 
 // app load
 const onReady = () => {
   console.log('onReady');
-
-  // create main app window on app start
-  const win = getMainWindow();
 
   // keep app out of dock and tab switcher
   if (app.dock) {
@@ -307,19 +203,22 @@ const onReady = () => {
 
   initTray();
 
-  initData();
+  initFeatures(features);
 
-  appStore.onDidAnyChange(newData => {
-    initData();
-    win.webContents.send('configchange', {});
-  });
+  // open settings on startup for now
+  if (BrowserWindow.getAllWindows().length === 0) {
+    features.settings.open();
+  }
+
 };
 
 app.whenReady().then(onReady);
 
 // when renderer is ready, send over user data
 ipcMain.on('getconfig', (ev, data) => {
-  getMainWindow().webContents.send('config', getData())
+  console.log('main: getconfig')
+  //ev.sender.hostWebContents.send('config', getData())
+  ev.reply('config', getData())
 });
 
 // listen for updates
@@ -357,12 +256,13 @@ ipcMain.on('esc', (event, title) => {
 // explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
   console.log('window-all-closed', process.platform);
-  //
+  /*
   if (!_win.isDestroyed()) {
     console.log('wac: killingit');
     _win.destroy();
     _win = null;
   }
+  */
   /*
   if (_win.isVisible()) {
     console.log('win is visible, hide it');

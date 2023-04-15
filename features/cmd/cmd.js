@@ -1,13 +1,13 @@
-// input/input.js
+// cmd/cmd.js
 (async () => {
 
-console.log('input/input');
+console.log('cmd/cmd');
 
 const labels = {
-  featureType: 'input',
-  featureDisplay: 'Input',
+  featureType: 'cmd',
+  featureDisplay: 'Cmd',
   prefs: {
-    shortcutKey: 'Input shortcut',
+    shortcutKey: 'Cmd shortcut',
   }
 };
 
@@ -23,13 +23,13 @@ let _data = {};
 
 const prefsSchema = {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "peek.input.prefs.schema.json",
-  "title": "Input preferences",
-  "description": "Peek app Input user preferences",
+  "$id": "peek.cmd.prefs.schema.json",
+  "title": "Cmd preferences",
+  "description": "Peek app Cmd user preferences",
   "type": "object",
   "properties": {
     "shortcutKey": {
-      "description": "Global OS hotkey to open input",
+      "description": "Global OS hotkey to open command panel",
       "type": "string",
       "default": "Option+Space"
     },
@@ -37,11 +37,12 @@ const prefsSchema = {
   "required": [ "shortcutKey"]
 };
 
+/*
 const itemSchema = {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "peek.input.entry.schema.json",
-  "title": "Peek - input entry",
-  "description": "Peek input entry",
+  "$id": "peek.cmd.entry.schema.json",
+  "title": "Peek - command entry",
+  "description": "Peek command entry",
   "type": "object",
   "properties": {
     "keyNum": {
@@ -95,12 +96,13 @@ const listSchema = {
   type: 'array',
   items: { "$ref": "#/$defs/entry" }
 };
+*/
 
 // TODO: schemaize 0-9 constraints for peeks
 const schemas = {
   prefs: prefsSchema,
-  item: itemSchema,
-  items: listSchema
+  //item: itemSchema,
+  //items: listSchema
 };
 
 const _defaults = {
@@ -111,24 +113,32 @@ const _defaults = {
 
 let _windows = {};
 
-const openInputWindow = (api, item) => {
-  // TODO: implement me
+const openInputWindow = (api) => {
+  const params = {
+    type: labels.featureType,
+    file: 'features/cmd/panel.html',
+    height: 50,
+    width: 600
+  };
+
+  _api.openWebWindow(params);
+  
   return;
 
-  const height = item.height || 600;
-  const width = item.width || 800;
+  const height = 50;
+  const width = 600;
   
   let win = null;
 
-  const windowKey = labels.featureType + item.keyNum;
+  const windowKey = labels.featureType;
 
   if (_windows[windowKey]) {
-    console.log(labels.featureType, item.keyNum, 'using stored window');
+    console.log(labels.featureType, 'using stored window');
     win = _windows[windowKey];
     win.show();
   }
   else {
-    console.log(labels.featureType, item.keyNum, 'creating new window');
+    console.log(labels.featureType, 'creating new window');
 
     win = new BrowserWindow({
       height,
@@ -162,9 +172,12 @@ const openInputWindow = (api, item) => {
   win.on('blur', onGoAway);
   win.on('close', onGoAway);
 
-  win.webContents.send('window', { type: labels.featureType, id: win.id, data: item });
+  win.webContents.send('window', { type: labels.featureType, id: win.id});
 
-  win.loadURL(item.address);
+  //win.webContents.openDevTools();
+
+  win.loadFile('features/cmd/panel.html');
+  console.log('loaded');
 };
 
 const initStore = (store, data) => {
@@ -211,12 +224,19 @@ const onChange = (changed, old) => {
   // TODO only update store if changed
   // and re-init
   if (changed.prefs) {
-    console.log('input: updating prefs', changed.prefs);
+    console.log('cmd: updating prefs', changed.prefs);
     _store.set('prefs', changed.prefs);
   }
 
   if (changed.items) {
     _store.set('items', changed.items);
+  }
+};
+
+const onMessage = msg => {
+  console.log('cmd:onMessage', msg)
+  if (msg.command == 'openWebWindow') {
+    _api.openWebWindow(msg);
   }
 };
 
@@ -236,7 +256,8 @@ module.exports = {
   data: {
     get prefs() { return _store.get('prefs'); },
   },
-  onChange
+  onChange,
+  onMessage: onMessage
 };
 
 

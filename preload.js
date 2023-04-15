@@ -59,6 +59,16 @@ api.setConfig = cfg => {
   ipcRenderer.send('setconfig', cfg);
 };
 
+api.sendMessage = msg => {
+  // noop if not an internal app file
+  const isMain = window.location.protocol == 'file:';
+  if (!isMain) {
+    return;
+  }
+
+  ipcRenderer.send('sendmessage', msg);
+};
+
 contextBridge.exposeInMainWorld('app', api);
 
 const handleMainWindow = () => {

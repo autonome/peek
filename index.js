@@ -62,7 +62,7 @@ ipcMain.handle('dark-mode:system', () => {
 
 const features = {
   settings: require('./features/settings/settings'),
-  input: require('./features/input/input'),
+  cmd: require('./features/cmd/cmd'),
   peeks: require('./features/peeks/peeks'),
   slides: require('./features/slides/slides'),
   scripts: require('./features/scripts/scripts'),
@@ -107,7 +107,7 @@ const initTray = () => {
     _tray = new Tray(ICON_PATH);
     _tray.setToolTip(labels.tray.tooltip);
     _tray.on('click', () => {
-      getMainWindow().show();
+      features.settings.open();
     });
   }
   return _tray;
@@ -159,6 +159,7 @@ const initFeatures = () => {
   // eventually get to less tight coupling
   const api = {
     preloadPath,
+    openWebWindow
   };
 
   const datastorePrefix = 'peekFeature';
@@ -209,7 +210,6 @@ const onReady = () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     features.settings.open();
   }
-
 };
 
 app.whenReady().then(onReady);
@@ -227,6 +227,32 @@ ipcMain.on('setconfig', (event, newData) => {
 
   // write to datastore
   updateData(newData);
+});
+
+// generic dispatch - messages only from trusted code (💀)
+ipcMain.on('sendmessage', (event, msg) => {
+  console.log('sendmsg', msg);
+
+  if (!msg.hasOwnProperty('feature')) {
+    console.error('sendMessage', 'no feature property in message');
+    return;
+  }
+
+  const fkey = msg.feature;
+  
+  if (Object.keys(features).findIndex(k => k==fkey) == -1) {
+    console.error('sendMessage', 'no matching feature');
+    return;
+  }
+
+  const feature = features[fkey];
+
+  if (!feature.hasOwnProperty('onMessage')) {
+    console.error('sendMessage', 'feature has no message handler for', fkey);
+    return;
+  }
+
+  feature.onMessage(msg.data);
 });
 
 // ipc ESC handler
@@ -250,6 +276,50 @@ ipcMain.on('esc', (event, title) => {
   }
   */
 });
+
+
+const openWebWindow = (params) => {
+  console.log('creating new web window', params);
+
+  const height = params.height || 600;
+  const width = params.width || 800;
+
+  const win = new BrowserWindow({
+    height,
+    width,
+    center: true,
+    skipTaskbar: true,
+    autoHideMenuBar: true,
+    titleBarStyle: 'hidden',
+    webPreferences: {
+      preload: preloadPath,
+      // isolate content and do not persist it
+      partition: Date.now()
+    }
+  });
+
+  const onGoAway = () => {
+    win.destroy();
+  }
+  win.on('blur', onGoAway);
+  win.on('close', onGoAway);
+
+  //win.webContents.send('window', { type: labels.featureType, id: win.id});
+
+  if (params.debug) {
+    win.webContents.openDevTools();
+  }
+
+  if (params.address) {
+    win.loadURL(params.address);
+  }
+  else if (params.file) {
+    win.loadFile('features/cmd/panel.html');
+  }
+  else {
+    console.error('openWindow: neither address nor file!');
+  }
+};
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits

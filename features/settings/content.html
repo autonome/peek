@@ -1,0 +1,30 @@
+<!--index.html-->
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self';">
+    <title>peek</title>
+    <link rel="stylesheet" href="content.css">
+  </head>
+  <body>
+    <div>
+      <h1>peek</h1>
+    </div>
+
+    <div class="houseofpane">
+    </div>
+
+    <div>
+      Node.js <span id="node-version"></span><br>
+      Chromium <span id="chrome-version"></span><br>
+      Electron <span id="electron-version"></span><br>
+    </div>
+
+    <script type=module src="./../../node_modules/tweakpane/dist/tweakpane.js"></script>
+    <script type=module src="./content.js"></script>
+
+  </body>
+</html>

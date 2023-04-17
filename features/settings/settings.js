@@ -65,6 +65,17 @@ let _windows = {};
 const openSettingsWindow = (api, prefs) => {
   const height = prefs.height || 600;
   const width = prefs.width || 800;
+
+  const params = {
+    type: labels.featureType,
+    file: 'features/settings/content.html',
+    height,
+    width
+  };
+
+  _api.openWebWindow(params);
+
+  return;
   
   let win = null;
 

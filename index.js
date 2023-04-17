@@ -314,7 +314,7 @@ const openWebWindow = (params) => {
     win.loadURL(params.address);
   }
   else if (params.file) {
-    win.loadFile('features/cmd/panel.html');
+    win.loadFile(params.file);
   }
   else {
     console.error('openWindow: neither address nor file!');

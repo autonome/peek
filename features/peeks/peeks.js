@@ -130,6 +130,17 @@ let _windows = {};
 const executeItem = (api, item) => {
   const height = item.height || 600;
   const width = item.width || 800;
+
+  const params = {
+    type: labels.featureType,
+    address: item.address,
+    height,
+    width
+  };
+
+  _api.openWebWindow(params);
+
+  return;
   
   let win = null;
 

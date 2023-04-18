@@ -34,19 +34,11 @@ const init = cfg => {
     panes = [];
   }
 
-  let rowContainer = document.createElement('div');
-
   cfg.features.forEach((feature, i) => {
-    // new row
-    if (i % 2 == 0) {
-      rowContainer = document.createElement('div');
-      container.appendChild(rowContainer);
-    }
-
     const type = feature.labels.featureType;
 
     const paneContainer = document.createElement('div');
-    rowContainer.appendChild(paneContainer);
+    container.appendChild(paneContainer);
 
     const allowNew = feature.config.allowNew || false;
     const disabled = feature.config.disabled || [];

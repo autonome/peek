@@ -20,9 +20,8 @@ h1 {
 }
 
 .houseofpane {
-  display: flex;
-  flex-wrap: wrap;
   justify-content: space-between;
+  columns: 2;
 }
 
 /* tweakpanes */

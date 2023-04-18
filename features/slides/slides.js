@@ -267,26 +267,6 @@ const executeItem = (api, item) => {
   win.on('blur', onGoAway);
   win.on('close', onGoAway);
 
-  /*
-  const str = `
-    window.addEventListener('keyup', e => {
-      if (e.key == 'Escape') {
-        console.log('peek script esc');
-      }
-    });
-    1;
-  `;
-
-  win.webContents.on('dom-ready', async () => {
-    try {
-      const r = await win.webContents.executeJavaScript(str);
-      console.log(r);
-    } catch(ex) {
-      console.error('cs exec error', ex);
-    }
-  });
-  */
-
   win.webContents.send('window', { type: labels.featureType, id: win.id, data: item });
 
   win.loadURL(item.address);

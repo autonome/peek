@@ -114,70 +114,17 @@ const _defaults = {
 let _windows = {};
 
 const openInputWindow = (api) => {
+  const height = 50;
+  const width = 600;
+
   const params = {
     type: labels.featureType,
     file: 'features/cmd/panel.html',
-    height: 50,
-    width: 600
+    height,
+    width
   };
 
-  _api.openWebWindow(params);
-  
-  return;
-
-  const height = 50;
-  const width = 600;
-  
-  let win = null;
-
-  const windowKey = labels.featureType;
-
-  if (_windows[windowKey]) {
-    console.log(labels.featureType, 'using stored window');
-    win = _windows[windowKey];
-    win.show();
-  }
-  else {
-    console.log(labels.featureType, 'creating new window');
-
-    win = new BrowserWindow({
-      height,
-      width,
-      center: true,
-      skipTaskbar: true,
-      autoHideMenuBar: true,
-      titleBarStyle: 'hidden',
-      webPreferences: {
-        preload: api.preloadPath,
-        // isolate content and do not persist it
-        partition: Date.now()
-      }
-    });
-
-    //_windows[windowKey] = win;
-  }
-
-  const onGoAway = () => {
-    /*
-    if (item.keepLive) {
-      _windows[windowKey] = win;
-      win.hide();
-    }
-    else {
-      win.destroy();
-    }
-    */
-    win.destroy();
-  }
-  win.on('blur', onGoAway);
-  win.on('close', onGoAway);
-
-  win.webContents.send('window', { type: labels.featureType, id: win.id});
-
-  //win.webContents.openDevTools();
-
-  win.loadFile('features/cmd/panel.html');
-  console.log('loaded');
+  _api.openWindow(params);
 };
 
 const initStore = (store, data) => {

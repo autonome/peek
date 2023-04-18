@@ -73,67 +73,7 @@ const openSettingsWindow = (api, prefs) => {
     width
   };
 
-  _api.openWebWindow(params);
-
-  return;
-  
-  let win = null;
-
-  const windowKey = labels.featureType;
-
-  if (_windows[windowKey]) {
-    console.log(labels.featureType, 'using stored window');
-    win = _windows[windowKey];
-    win.show();
-  }
-  else {
-    console.log(labels.featureType, 'creating new window');
-
-    win = new BrowserWindow({
-      height,
-      width,
-      center: true,
-      skipTaskbar: true,
-      autoHideMenuBar: true,
-      titleBarStyle: 'hidden',
-      webPreferences: {
-        preload: api.preloadPath,
-        // isolate content and do not persist it
-        partition: Date.now()
-      }
-    });
-
-    //_windows[windowKey] = win;
-  }
-
-  win.webContents.openDevTools();
-
-  /*
-  win.on('close', (e) => {
-    console.log('onClose - just hiding');
-    e.preventDefault();
-    win.hide();
-  });
-  */
-
-  const onGoAway = () => {
-    /*
-    if (item.keepLive) {
-      _windows[windowKey] = win;
-      win.hide();
-    }
-    else {
-      win.destroy();
-    }
-    */
-    win.destroy();
-  }
-  win.on('blur', onGoAway);
-  win.on('close', onGoAway);
-
-  win.webContents.send('window', { type: labels.featureType, id: win.id, data: prefs });
-
-  win.loadFile('features/settings/content.html');
+  _api.openWindow(params);
 };
 
 const initStore = (store, data) => {

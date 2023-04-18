@@ -159,7 +159,7 @@ const initFeatures = () => {
   // eventually get to less tight coupling
   const api = {
     preloadPath,
-    openWebWindow
+    openWindow
   };
 
   const datastorePrefix = 'peekFeature';
@@ -278,15 +278,17 @@ ipcMain.on('esc', (event, title) => {
 });
 
 
-const openWebWindow = (params) => {
-  console.log('creating new web window', params);
+const openWindow = (params) => {
+  console.log('creating new window', params);
 
   const height = params.height || 600;
   const width = params.width || 800;
+  const show = params.hasOwnProperty('show') ? params.show : true;
 
   const win = new BrowserWindow({
     height,
     width,
+    show,
     center: true,
     skipTaskbar: true,
     autoHideMenuBar: true,
@@ -298,6 +300,7 @@ const openWebWindow = (params) => {
     }
   });
 
+  // TODO: make configurable
   const onGoAway = () => {
     win.destroy();
   }
@@ -318,6 +321,26 @@ const openWebWindow = (params) => {
   }
   else {
     console.error('openWindow: neither address nor file!');
+  }
+
+  if (params.script) {
+    const script = params.script;
+    const domEvent = script.domEvent || 'dom-ready';
+
+    win.webContents.on(domEvent, async () => {
+      try {
+        const r = await win.webContents.executeJavaScript(script.script);
+        if (script.callback) {
+          script.callback(r);
+        }
+      } catch(ex) {
+        console.error('cs exec error', ex);
+        script.callback(null);
+      }
+      if (script.closeOnCompletion) {
+        win.destroy();
+      }
+    });
   }
 };
 

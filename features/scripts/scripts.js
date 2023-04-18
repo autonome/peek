@@ -112,7 +112,6 @@ const _defaults = {
   prefs: {
   },
   items: [
-    /*
     {
       id: 'peek:script:localhost:test',
       title: 'localhost test',
@@ -124,29 +123,11 @@ const _defaults = {
       storehistory: false,
       notifyOnChange: false
     },
-    */
   ]
 };
 
-let _windows = {};
-
 const executeItem = (api, script, cb) => {
-  const view = new BrowserWindow({
-    show: false,
-    webPreferences: {
-      preload: api.preloadPath,
-      // isolate content and do not persist it
-      partition: Date.now()
-    }
-  });
-
-  view.webContents.send('window', {
-    id: 'view',
-    type: 'script',
-    data: script
-  });
-
-  view.webContents.loadURL(script.address);
+  console.log('script.executeItem')
 
   const str = `
     const s = "${script.selector}";
@@ -155,16 +136,24 @@ const executeItem = (api, script, cb) => {
     value;
   `;
 
-  view.webContents.on('dom-ready', async () => {
-    try {
-      const r = await view.webContents.executeJavaScript(str);
-      cb(r);
-    } catch(ex) {
-      console.error('cs exec error', ex);
-      cb(null);
+  const callback = (result) => {
+    console.log('lcb', result);
+    cb(result);
+  };
+
+  const params = {
+    type: labels.featureType,
+    address: script.address,
+    show: false,
+    script: {
+      script: str,
+      domEvent: 'dom-ready',
+      closeOnCompletion: true,
+      callback
     }
-    view.destroy();
-  });
+  };
+
+  _api.openWindow(params);
 };
 
 const initStore = (store, data) => {
@@ -190,15 +179,15 @@ const initItems = (api, prefs, items) => {
   // at once every time app starts
   items.forEach(item => {
     const interval = setInterval(() => { 
-      //console.log('interval hit', item.title);
       const r = executeItem(api, item, (res) => {
-        //console.log('cs r', res);
 
         if (item.previousValue != res) {
 
+          // TODO: figure this out - it blows away all timers, which isn't great
+          //
           // update stored value
-          item.previousValue = res;
-          updateItem(item);
+          //item.previousValue = res;
+          //updateItem(item);
 
           // notification
           // add to schema and support per script
@@ -220,6 +209,8 @@ const initItems = (api, prefs, items) => {
 };
 
 const init = (api, store) => {
+  console.log('scripts: init')
+
   _store = store;
   _api = api;
 
@@ -230,7 +221,7 @@ const init = (api, store) => {
     get items() { return _store.get('items'); },
   };
 
-  // initialize peeks
+  // initialize scripts
   if (_data.items.length > 0) {
     initItems(api, _data.prefs, _data.items);
   }

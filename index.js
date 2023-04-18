@@ -63,8 +63,8 @@ ipcMain.handle('dark-mode:system', () => {
 const features = {
   settings: require('./features/settings/settings'),
   cmd: require('./features/cmd/cmd'),
-  peeks: require('./features/peeks/peeks'),
   slides: require('./features/slides/slides'),
+  peeks: require('./features/peeks/peeks'),
   scripts: require('./features/scripts/scripts'),
 };
 
@@ -82,9 +82,6 @@ const labels = {
 
 // vestigial?
 let _windows = [];
-
-// main window
-let _win = null;
 
 // TODO: make this open settings?
 app.on('activate', () => {
@@ -261,20 +258,9 @@ ipcMain.on('esc', (event, title) => {
 
   const fwin = BrowserWindow.getFocusedWindow();
 
-  //
   if (!fwin.isDestroyed()) {
-    console.log('esc: killingit');
     fwin.close();
-    //win.destroy();
-    //_win = null;
   }
-  //
-  /*
-  if (win.isVisible()) {
-    console.log('win is visible, hide it');
-    win.hide();
-  }
-  */
 });
 
 
@@ -349,20 +335,6 @@ const openWindow = (params) => {
 // explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
   console.log('window-all-closed', process.platform);
-  /*
-  if (!_win.isDestroyed()) {
-    console.log('wac: killingit');
-    _win.destroy();
-    _win = null;
-  }
-  */
-  /*
-  if (_win.isVisible()) {
-    console.log('win is visible, hide it');
-    //_win.hide();
-  }
-  */
-  
   if (process.platform !== 'darwin') {
     onQuit();
   }

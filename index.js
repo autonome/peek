@@ -66,6 +66,7 @@ const features = {
   slides: require('./features/slides/slides'),
   peeks: require('./features/peeks/peeks'),
   scripts: require('./features/scripts/scripts'),
+  groups: require('./features/groups/groups'),
 };
 
 const labels = {

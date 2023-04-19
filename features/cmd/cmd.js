@@ -111,8 +111,6 @@ const _defaults = {
   },
 };
 
-let _windows = {};
-
 const openInputWindow = (api) => {
   const height = 50;
   const width = 600;
@@ -182,8 +180,8 @@ const onChange = (changed, old) => {
 
 const onMessage = msg => {
   console.log('cmd:onMessage', msg)
-  if (msg.command == 'openWebWindow') {
-    _api.openWebWindow(msg);
+  if (msg.command == 'openWindow') {
+    _api.openWindow(msg);
   }
 };
 

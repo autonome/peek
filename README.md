@@ -97,22 +97,25 @@ Next
 * ✅ Modularize feature types, eyeing the extensibility model
 * Settings Cleanup
   * ✅ move settings window to features/settings
-    * why no settings
-  * make features enable/disable-able
-  * move feature list and enablement to storage
-  * re-enable label previews, eg "Peek {key} - {address}"
 * App cleanup
   * ✅ main window vs settings
   * ✅ change settings shortcut from global+esc to app+comma
-* Default features cleanup
-  * enable/disable individual peeks/slides
+* Features cleanup
+  * make features enable/disable-able
+  * enable/disable individual frozen items - slides, peeks
+  * enable/disable individual non-frozen items - scripts
+  * re-enable label previews, eg "Peek {key} - {address}"
 * Window lifecycle
-  * modularize window open/close/hide/show across all windows
+  * ✅modularize window open/close + hidden/visible
+  * ✅update settings, peeks, slides, scripts
   * hide/show window vs create fresh
-* Web content
+  * modularize window close/hide/show across all windows
+  * update slides / animation
   * isolate web loading code, have features load content that way instead of raw BrowserWindow
-* Basic command bar to open pages
+* ✅ Basic command bar to open pages
 * Basic history store
+* move feature list and enablement to storage
+* configurable default feature to open on app open
 
 After that
 * Extension model?

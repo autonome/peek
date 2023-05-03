@@ -156,6 +156,7 @@ const initFeatures = () => {
   // inject into features
   // eventually get to less tight coupling
   const api = {
+    debug: DEBUG,
     preloadPath,
     openWindow
   };
@@ -258,15 +259,37 @@ ipcMain.on('esc', (event, title) => {
   console.log('esc');
 
   const fwin = BrowserWindow.getFocusedWindow();
-
-  if (!fwin.isDestroyed()) {
+  const entry = windowCache.byId(fwin.id);
+  if (entry) {
+    BrowserWindow.fromId(entry.id).hide();
+  }
+  else if (!fwin.isDestroyed()) {
     fwin.close();
   }
 });
 
+const windowCache = {
+  cache: [],
+  add: entry => windowCache.cache.push(entry),
+  byId: id => windowCache.cache.find(w => w.id == id),
+  byKey: key => windowCache.cache.find(w => w.key == key)
+};
 
 const openWindow = (params) => {
-  console.log('creating new window', params);
+  if (params.persistKey) {
+    console.log('openWindow(): key', params.persistKey)
+    const entry = windowCache.byKey(params.persistKey);
+    if (entry != undefined) {
+      const win = BrowserWindow.fromId(entry.id);
+      if (win) {
+        console.log('openWindow(): opening persistent window for', params.persistKey)
+        win.show();
+        return;
+      }
+    }
+  }
+
+  console.log('openWindow(): creating new window', params);
 
   const height = params.height || 600;
   const width = params.width || 800;
@@ -287,9 +310,22 @@ const openWindow = (params) => {
     }
   });
 
+  // if persisting window, cache caller's key and window id
+  if (params.persistKey) {
+    windowCache.add({
+      id: win.id,
+      key: params.persistKey
+    });
+  }
+
   // TODO: make configurable
   const onGoAway = () => {
-    win.destroy();
+    if (params.persistKey) {
+      win.hide();
+    }
+    else {
+      win.destroy();
+    }
   }
   win.on('blur', onGoAway);
   win.on('close', onGoAway);
@@ -343,8 +379,11 @@ app.on('window-all-closed', () => {
 
 const onQuit = () => {
   console.log('onquit');
+
   // Unregister all shortcuts on app close
   globalShortcut.unregisterAll();
+
+  // Close all persisent windows
 
   app.quit();
 };

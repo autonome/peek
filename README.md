@@ -9,13 +9,31 @@ Please meet Peek, a web user agent application designed for using the web where,
 
 <img width="969" alt="CleanShot 2023-04-03 at 18 50 22@2x" src="https://user-images.githubusercontent.com/50103/229501558-7084d66e-962a-4c0f-a10e-11787ef3ce68.png">
 
+## Design
+
+Many user tasks on the web are either transient, chained or persistent, data oriented, or some mix of those. The document-oriented web does not meet those needs. Major browser vendors can't meet those needs well, for many reasons.
+
+* transient
+* chained
+* persistent
+* data oriented
+
+About this space:
+* Embrace the app-ness aspect of the web platform, less about the document-ness
+* Javascript is ok here
+* Decouple html+js+css from http+dns+ssl - not entirely, but that trust+security model is not a required starting point
+
 ## Features
 
-You can use Peek in three ways, with more coming:
+You can use Peek in a few ways, with more coming:
 
 * Peeks - Keyboard activated modal chromeless web pages
 * Slides - Keyboard or gesture activated modal chromeless web pages which slide in from any screen edges
 * Scripts - Scripts periodically executed against a web page in the background which extract data and notify on changes
+
+In progress:
+* Commands
+* Groups
 
 ### Peeks
 
@@ -93,29 +111,46 @@ TODO
 
 ## Roadmap
 
-Next
+Core moduluarization
 * ✅ Modularize feature types, eyeing the extensibility model
-* Settings Cleanup
-  * ✅ move settings window to features/settings
-* App cleanup
-  * ✅ main window vs settings
-  * ✅ change settings shortcut from global+esc to app+comma
-* Features cleanup
-  * make features enable/disable-able
-  * enable/disable individual frozen items - slides, peeks
-  * enable/disable individual non-frozen items - scripts
-  * re-enable label previews, eg "Peek {key} - {address}"
-* Window lifecycle
-  * ✅modularize window open/close + hidden/visible
-  * ✅update settings, peeks, slides, scripts
-  * hide/show window vs create fresh
-  * modularize window close/hide/show across all windows
-  * update slides / animation
-  * isolate web loading code, have features load content that way instead of raw BrowserWindow
-* ✅ Basic command bar to open pages
-* Basic history store
+* ✅ move settings window to features/settings
+
+App cleanup
+* ✅ main window vs settings
+* ✅ change settings shortcut from global+esc to opt+comma
+
+Window lifecycle
+* ✅modularize window open/close + hidden/visible
+* ✅update settings, peeks, slides, scripts
+* hide/show window vs create fresh
+* modularize window close/hide/show across all windows
+* move animation to main, and update slides impl to use it
+* window settings persistence
+
+Core/Basic
+* ✅ basic command bar to open pages
+* schema migration
+* basic history storage
+* app updates
+* don't blow away and re-init everything on any change
+* fix setting layout wrapping issue
+* enable/disable individual slides, peeks
+* enable/disable individual scripts
+
+-> mvp
+
+-------
+
+Features cleanup
+* enable/disable whole features
 * move feature list and enablement to storage
-* configurable default feature to open on app open
+* re-enable label previews, eg "Peek {key} - {address}"
+* configurable default feature to load on app open
+
+Web Platform
+* need a web loader that's not full BrowserWindow?
+* sandboxing
+* blocklist
 
 After that
 * Extension model?
@@ -158,9 +193,44 @@ Misc
 
 ## History
 
+In working on Firefox and related things at Mozilla from 2006 - 2019, there were a few specific initiatives which best aligned with my needs as a user on the web:
+
+* The Awesomebar: infinite history + personalized local search index
+* Ubiquity: Natural language commands + chaining
+* Jetpack: The Mozilla Labs version - web-platfrom-centric extensibility
+* Panorama: née TabCandy, web pages as groups instead of tabs in windows
+
+A few others which were in the right direction but didn't achieve their optimal form:
+
+* Greasemonkey
+* Microsummaries
+* Contacts extension
+
+The first version of the Peek application has some bits of each of these, and the original Peek browser extension.
+
+### Peek browser extension
+
 Peek was a browser extension that let you quickly peek at your favorite web pages without breaking your flow - loading pages mapped to keyboard shortcuts into a modal window with no controls, closable via the `Escape` key.
 
-However, as browser extension APIs become increasingly limited, it was not possible to create a decent user experience and I abandoned it. You can access the extension in this repo [in the extension directory](/autonome/peek/extension/).
+However, as browser extension APIs became increasingly limited, it was not possible to create a decent user experience and I abandoned it. You can access the extension in this repo [in the extension directory](/autonome/peek/extension/).
 
 The only way to create the ideal user experience for a web user agent that *Does What I Want* is to make it a browser-ish application, and that's what Peek is now.
 
+
+
+## Testcase: Authoring Flows
+
+* author web content
+* pull in bits from the web
+* share preview for feedback
+* publish (or at least get output)
+
+writing the recap of the web track at ipfs thing 2023
+
+- make a new markdown doc
+- sections titled for each video title
+- each video's embode code in each section
+- navigate around the document for review and updates
+- need to easily preview rendered content
+- share preview link
+- publish somewhere

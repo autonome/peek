@@ -1,30 +1,29 @@
 /*
 
-  browser.sessions.setTabValue(currentTabId, key, value);
-  await browser.sessions.getTabValue(currentTabId, key);
+groups
+* there's always a default group
 
-  init groups
-  * there's always a default group (no group property on the tab)
-  * otherwise get group property from the tab
+managing storage
+* scaling to lots of pages/groups
+* collect all on startup
+* manage cache
+* what can change?
+  * new page in group
+  * page changes between groups
+  * page closed
+  * undo close page to a group that no longer exists (use current group)
 
-  managing storage
-  * scaling to lots of tabs/groups
-  * collect all on startup
-  * manage cache
-  * what can change?
-    * new tab in group
-    * tab changes groups
-    * tab closed (no action necessary)
-    * undo close tab to a group that no longer exists (use current group)
-
-  relevant tab events
-    * new
-      * set to current group
-    * activate
-    * close
+relevant page events
+  * new page
+    * add to current group
+  * activate (and switch active group)
+  * close page
 
 */
 
+(async () => {
+
+// TODO: make extensible
 const VIEW_GROUPS = 1;
 const VIEW_TABS = 2;
 
@@ -52,20 +51,29 @@ var currentView = null;
 
 var config = null;
 
-// Kick out the jams
-document.addEventListener('DOMContentLoaded', function() {
+const init = () => {
   // Initialize storage - this loads groups, everything else
-  loadStorage();
+  initStorage();
+
+  // Data loaded, start building UI
+  populateUI();
 
   // New group click handler
   document.querySelector('.newgroup').addEventListener('click', function() {
     newGroup();
   });
-});
 
-function loadStorage() {
+  // Listen for things that'll change state
+  initEventListeners();
 
+  // Populate groups with their pages
+  showCards();
+};
+
+const initStorage = () => {
   let data = localStorage.getItem(EXT_DATA_CONFIG_KEY);
+
+  console.log('initStorage', data);
 
   // Not first run!
   if (data && data.config) {
@@ -80,37 +88,22 @@ function loadStorage() {
     config.groups = {};
 
     // Create default group
-    var id = newGroup(DEFAULT_GROUP_TITLE);
+    const id = newGroup(DEFAULT_GROUP_TITLE);
 
     // Storage default group id as last active group
     config.lastGroupId = id;
 
-    //
-    updateStorage();
+    // save on first run
+    updateStorage(EXT_DATA_CONFIG_KEY, config);
   }
 
-  // Pull data from each tab about which group they belong to
-  //initializeGroupData().then(function() {
-    // Data loaded, start building UI
-    populateUI();
-  //});
+  return config;
 }
 
 // Save changes to config to persistent storage
 // TODO: Temporary hack. Replace with proper evented solution.
-function updateStorage() {
-  localStorage.setItem(EXT_DATA_CONFIG_KEY, config);
-}
-
-// On DOM
-function populateUI() {
-  // Populate groups with their tabs
-  //initializeGroupData().then(function() {
-    showCards();
-  //});
-
-  // Listen for things that'll change state
-  initEventListeners();
+function updateStorage(key, data) {
+  localStorage.setItem(key, data);
 }
 
 function initEventListeners() {
@@ -132,19 +125,17 @@ function initEventListeners() {
   */
 }
 
-function addCardToGroup(tabId, groupId) {
-  var index = config.groups[groupId].tabs.indexOf(tabId);
+function addCardToGroup(pageId, groupId) {
+  const index = config.groups[groupId].pages.indexOf(pageId);
   if (index == -1) {
-    config.groups[groupId].tabs.push(tabId);
-    browser.sessions.setCardValue(tabId, TAB_DATA_GROUP_KEY, groupId);
+    config.groups[groupId].pages.push(pageId);
   }
 }
 
-function removeCardFromGroup(tabId, groupId) {
-  var index = config.groups[groupId].tabs.indexOf(tabId);
+function removeCardFromGroup(pageId, groupId) {
+  var index = config.groups[groupId].tabs.indexOf(pageId);
   if (index > -1) {
     config.groups[groupId].tabs.splice(index, 1);
-    browser.sessions.remove(tab.id, TAB_DATA_GROUP_KEY);
   }
 }
 
@@ -241,24 +232,19 @@ function showGroups() {
 function showCards() {
   var group = getGroupById(config.lastGroupId);
   clearCards();
-  /*
-  browser.tabs.query({currentWindow: true}).then(function(tabs) {
-    tabs.forEach(tab => {
-      if (group.tabs.indexOf(tab.id) == -1) {
-        return;
-      }
-      var card = addCard();
-      card.querySelector('h1').innerText = tab.title;
-      card.dataset.id = tab.id;
-      card.addEventListener('click', e => {
-        var tabId = parseInt(card.dataset.id);
-        browser.tabs.update(tabId, { active: true });
-      });
+
+  group.pages.forEach(page => {
+    var card = addCard();
+    card.querySelector('h1').innerText = page.title;
+    card.dataset.id = page.id;
+    card.addEventListener('click', e => {
+      var pageId = parseInt(card.dataset.id);
+      browser.pages.update(pageId, { active: true });
     });
   });
-  */
-  currentView = VIEW_TABS;
-  document.querySelector('.controls').classList.add('tabsview');
+
+  currentView = VIEW_PAGES;
+  document.querySelector('.controls').classList.add('pagesview');
   document.querySelector('.controls').classList.remove('groupsview');
 }
 
@@ -280,3 +266,9 @@ function addCard() {
 
   return card;
 }
+
+// Kick out the jams
+document.addEventListener('DOMContentLoaded', init);
+
+
+})();

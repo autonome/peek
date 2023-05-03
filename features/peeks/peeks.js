@@ -135,7 +135,8 @@ const executeItem = (api, item) => {
     type: labels.featureType,
     address: item.address,
     height,
-    width
+    width,
+    persistKey: item.keepLive ? 'peek:' + item.keyNum : undefined
   };
 
   _api.openWindow(params);

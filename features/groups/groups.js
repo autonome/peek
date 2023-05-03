@@ -1,15 +1,13 @@
-// peeks/peek.js
+// groups/groups.js
 (async () => {
 
-console.log('peeks/peeks');
+console.log('groups/groups');
 
 const labels = {
-  featureType: 'peeks',
-  featureDisplay: 'Peeks',
-  itemType: 'peek',
-  itemDisplay: 'Peek',
+  featureType: 'groups',
+  featureDisplay: 'Groups',
   prefs: {
-    keyPrefix: 'Peek shortcut prefix',
+    shortcutKey: 'Groups shortcut',
   }
 };
 
@@ -25,25 +23,26 @@ let _data = {};
 
 const prefsSchema = {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "peek.peeks.prefs.schema.json",
-  "title": "Peeks preferences",
-  "description": "Peeks user preferences",
+  "$id": "peek.groups.prefs.schema.json",
+  "title": "Groups preferences",
+  "description": "Peek app Groups user preferences",
   "type": "object",
   "properties": {
-    "shortcutKeyPrefix": {
-      "description": "Global OS hotkey prefix to trigger peeks - will be followed by 0-9",
+    "shortcutKey": {
+      "description": "Global OS hotkey to open command panel",
       "type": "string",
-      "default": "Option+"
+      "default": "Option+Space"
     },
   },
-  "required": [ "shortcutKeyPrefix"]
+  "required": [ "shortcutKey"]
 };
 
+/*
 const itemSchema = {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "peek.peeks.peek.schema.json",
-  "title": "Peek - page peek",
-  "description": "Peek page peek",
+  "$id": "peek.groups.entry.schema.json",
+  "title": "Peek - command entry",
+  "description": "Peek command entry",
   "type": "object",
   "properties": {
     "keyNum": {
@@ -95,48 +94,31 @@ const itemSchema = {
 
 const listSchema = {
   type: 'array',
-  items: { "$ref": "#/$defs/peek" }
+  items: { "$ref": "#/$defs/entry" }
 };
+*/
 
-// TODO: schemaize 0-9 constraints for peeks
 const schemas = {
   prefs: prefsSchema,
-  item: itemSchema,
-  items: listSchema
+  //item: itemSchema,
+  //items: listSchema
 };
 
 const _defaults = {
   prefs: {
-    shortcutKeyPrefix: 'Option+'
+    shortcutKey: 'Option+g'
   },
-  items: Array.from(Array(10)),
 };
 
-for (var i = 0; i != 10; i++) {
-  _defaults.items[i] = {
-    keyNum: i,
-    title: `Peek key ${i}`,
-    address: 'https://example.com/',
-    persistState: false,
-    keepLive: false,
-    allowSound: false,
-    height: 600,
-    width: 800,
-  };
-}
-
-let _windows = {};
-
-const executeItem = (api, item) => {
-  const height = item.height || 600;
-  const width = item.width || 800;
+const openGroupsWindow = (api) => {
+  const height = 600;
+  const width = 800;
 
   const params = {
     type: labels.featureType,
-    address: item.address,
+    file: 'features/groups/home.html',
     height,
-    width,
-    persistKey: item.keepLive ? 'peek:' + item.keyNum : undefined
+    width
   };
 
   _api.openWindow(params);
@@ -147,31 +129,22 @@ const initStore = (store, data) => {
   if (!sp) {
     store.set('prefs', data.prefs);
   }
-
-  const items = store.get('items');
-  if (!items) {
-    store.set('items', data.items);
-  }
 };
 
-const initItems = (api, prefs, items) => {
-  const cmdPrefix = prefs.shortcutKeyPrefix;
+const initShortcut = (api, prefs) => {
+  const shortcut = prefs.shortcutKey;
 
-  items.forEach(item => {
-    const shortcut = `${cmdPrefix}${item.keyNum}`;
+  if (globalShortcut.isRegistered(shortcut)) {
+    globalShortcut.unregister(shortcut);
+  }
 
-    if (globalShortcut.isRegistered(shortcut)) {
-      globalShortcut.unregister(shortcut);
-    }
-
-    const ret = globalShortcut.register(shortcut, () => {
-      executeItem(api, item);
-    });
-
-    if (!ret) {
-      console.error('Unable to register shortcut', shortcut);
-    }
+  const ret = globalShortcut.register(shortcut, () => {
+    openGroupsWindow(api);
   });
+
+  if (!ret) {
+    console.error('Unable to register shortcut', shortcut);
+  }
 };
 
 const init = (api, store) => {
@@ -180,15 +153,13 @@ const init = (api, store) => {
 
   initStore(_store, _defaults);
 
+
   _data = {
     get prefs() { return _store.get('prefs'); },
-    get items() { return _store.get('items'); },
+    //get items() { return _store.get('items'); },
   };
 
-  // initialize peeks
-  if (_data.items.length > 0) {
-    initItems(api, _data.prefs, _data.items);
-  }
+  initShortcut(api, _data.prefs);
 };
 
 const onChange = (changed, old) => {
@@ -197,11 +168,19 @@ const onChange = (changed, old) => {
   // TODO only update store if changed
   // and re-init
   if (changed.prefs) {
+    console.log('groups: updating prefs', changed.prefs);
     _store.set('prefs', changed.prefs);
   }
 
   if (changed.items) {
     _store.set('items', changed.items);
+  }
+};
+
+const onMessage = msg => {
+  console.log('groups:onMessage', msg)
+  if (msg.command == 'openWindow') {
+    _api.openWindow(msg);
   }
 };
 
@@ -220,9 +199,9 @@ module.exports = {
   schemas,
   data: {
     get prefs() { return _store.get('prefs'); },
-    get items() { return _store.get('items'); },
   },
-  onChange
+  onChange,
+  onMessage: onMessage
 };
 
 

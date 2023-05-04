@@ -120,32 +120,37 @@ App cleanup
 * ✅ change settings shortcut from global+esc to opt+comma
 
 Window lifecycle
-* ✅modularize window open/close + hidden/visible
-* ✅update settings, peeks, slides, scripts
-* hide/show window vs create fresh
-* modularize window close/hide/show across all windows
-* move animation to main, and update slides impl to use it
-* window settings persistence
+* ✅ modularize window open/close + hidden/visible
+* ✅ update settings, peeks, slides, scripts
+* ✅ hide/show window vs create fresh
+* ✅ update slides impl to use openWindow (x, y)
+* add support for private properties
+* figure out distinction for feature window explicit config vs settings window silent config
+* add window position persistence where it makes sense (settings, groups, cmd)
+* add window size persistence where it makes sense (slides, peeks)
+* add window open animation (to/from coords, time) to openWindow
+* update slides impl to use animation again
 
 Core/Basic
 * ✅ basic command bar to open pages
+* fix setting layout wrapping issue
+* don't blow away and re-init everything on any change
 * schema migration
 * basic history storage
+* app action metadata
 * app updates
-* don't blow away and re-init everything on any change
-* fix setting layout wrapping issue
 * enable/disable individual slides, peeks
 * enable/disable individual scripts
-
--> mvp
-
--------
 
 Features cleanup
 * enable/disable whole features
 * move feature list and enablement to storage
+* configurable default feature to load on app open (or none)
 * re-enable label previews, eg "Peek {key} - {address}"
-* configurable default feature to load on app open
+
+-> mvp (minimum viable preview)
+
+-------
 
 Web Platform
 * need a web loader that's not full BrowserWindow?
@@ -166,6 +171,11 @@ Further
 * Implement the Firefox "awesomebar" scoring and search algorithm so that Peek *learns* you
 * Extension model designed for web user agent user interface experimentation
 * Infinite lossless personal encrypted archive of web history
+
+## Contribution
+
+* in proto stage
+* all dragons, no promises
 
 ## Development
 

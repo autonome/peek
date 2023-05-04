@@ -125,18 +125,21 @@ for (var i = 0; i != 10; i++) {
   };
 }
 
-let _windows = {};
-
 const executeItem = (api, item) => {
   const height = item.height || 600;
   const width = item.width || 800;
 
   const params = {
-    type: labels.featureType,
+    // browserwindow
     address: item.address,
     height,
     width,
-    persistKey: item.keepLive ? 'peek:' + item.keyNum : undefined
+
+    // peek
+    type: labels.featureType,
+    windowKey: `${labels.featureType}:${item.keyNum}`,
+    keepLive: item.keepLive || false,
+    persistData: item.persistData || false
   };
 
   _api.openWindow(params);

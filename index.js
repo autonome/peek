@@ -276,13 +276,12 @@ const windowCache = {
 };
 
 const openWindow = (params) => {
-  if (params.persistKey) {
-    console.log('openWindow(): key', params.persistKey)
-    const entry = windowCache.byKey(params.persistKey);
+  if (params.keepLive == true) {
+    const entry = windowCache.byKey(params.windowKey);
     if (entry != undefined) {
       const win = BrowserWindow.fromId(entry.id);
       if (win) {
-        console.log('openWindow(): opening persistent window for', params.persistKey)
+        console.log('openWindow(): opening persistent window for', params.windowKey)
         win.show();
         return;
       }
@@ -295,7 +294,16 @@ const openWindow = (params) => {
   const width = params.width || 800;
   const show = params.hasOwnProperty('show') ? params.show : true;
 
-  const win = new BrowserWindow({
+  let webPreferences = {
+    preload: preloadPath,
+  };
+
+  if (!params.persistData) {
+    // TODO: hack. this just isolates.
+    webPreferences.partition = Date.now()
+  }
+
+  let winPreferences = {
     height,
     width,
     show,
@@ -303,24 +311,28 @@ const openWindow = (params) => {
     skipTaskbar: true,
     autoHideMenuBar: true,
     titleBarStyle: 'hidden',
-    webPreferences: {
-      preload: preloadPath,
-      // isolate content and do not persist it
-      partition: Date.now()
+    webPreferences
+  };
+
+  ['x', 'y'].forEach( k => {
+    if (params.hasOwnProperty(k)) {
+      winPreferences[k] = params[k];
     }
   });
 
-  // if persisting window, cache caller's key and window id
-  if (params.persistKey) {
+  const win = new BrowserWindow(winPreferences);
+
+  // if persisting window, cache the caller's key and window id
+  if (params.keepLive == true) {
     windowCache.add({
       id: win.id,
-      key: params.persistKey
+      key: params.windowKey
     });
   }
 
   // TODO: make configurable
   const onGoAway = () => {
-    if (params.persistKey) {
+    if (params.keepLive) {
       win.hide();
     }
     else {

@@ -160,116 +160,88 @@ const _defaults = {
 let _windows = {};
 
 const executeItem = (api, item) => {
-  let win = null;
+  let height = item.height || 600;
+  let width = item.width || 800;
 
-  const windowKey = labels.featureType + item.screenEdge;
+  const { size, bounds } = screen.getPrimaryDisplay();
 
-  // TODO: fix stored+live windows
-  if (_windows[windowKey]) {
-    console.log(labels.featureType, slide.screenEdge, 'using stored window');
-    win = _windows[windowKey];
-    win.show();
-  }
-  else {
-    const { size, bounds } = screen.getPrimaryDisplay();
+  let x, y, center = null;
 
-    let x, y, height, width, center = null;
+  switch(item.screenEdge) {
+    case 'Up':
+      // horizontally center
+      x = (size.width - item.width) / 2;
 
-    switch(item.screenEdge) {
-      case 'Up':
-        // horizontally center
-        x = (size.width - item.width) / 2;
+      // y starts at screen top and stays there
+      y = 0;
 
-        // y starts at screen top and stays there
-        y = 0;
+      width = item.width;
+      //height = 1;
+      break;
+    case 'Down':
+      // horizonally center
+      x = (size.width - item.width) / 2;
 
-        width = item.width;
-        height = 1;
-        break;
-      case 'Down':
-        // horizonally center
-        x = (size.width - item.width) / 2;
+      // y ends up at window height from bottom
+      //
+      // eg: y = size.height - item.height;
+      //
+      // but starts at screen bottom
+      y = size.height;
 
-        // y ends up at window height from bottom
-        //
-        // eg: y = size.height - item.height;
-        //
-        // but starts at screen bottom
-        y = size.height;
+      width = item.width;
+      //height = 1;
+      break;
+    case 'Left':
+      // x starts and ends at at left screen edge
+      // at left edge
+      x = 0;
 
-        width = item.width;
-        height = 1;
-        break;
-      case 'Left':
-        // x starts and ends at at left screen edge
-        // at left edge
-        x = 0;
+      // vertically center
+      y = (size.height - item.height) / 2;
 
-        // vertically center
-        y = (size.height - item.height) / 2;
+      //width = 1;
+      height = item.height;
+      break;
+    case 'Right':
+      // x ends at at right screen edge - window size
+      //
+      // eg: x = size.width - item.width;
+      //
+      // but starts at screen right edge, will animate in 
+      x = size.width;
 
-        width = 1;
-        height = item.height;
-        break;
-      case 'Right':
-        // x ends at at right screen edge - window size
-        //
-        // eg: x = size.width - item.width;
-        //
-        // but starts at screen right edge, will animate in 
-        x = size.width;
+      // vertically center
+      y = (size.height - item.height) / 2;
 
-        // vertically center
-        y = (size.height - item.height) / 2;
-
-        width = 1;
-        height = item.height;
-        break;
-      default:
-        center = true;
-        console.log('waddafa');
-    }
-
-    win = new BrowserWindow({
-      height,
-      width,
-      x,
-      y,
-      skipTaskbar: true,
-      autoHideMenuBar: true,
-      titleBarStyle: 'hidden',
-      // maybe worth doing instead of animating width
-      //enableLargerThanScreen: true,
-      webPreferences: {
-        preload: api.preloadPath,
-        // isolate content and do not persist it
-        partition: Date.now()
-      }
-    });
-
-    //_windows[windowKey] = win;
+      //width = 1;
+      height = item.height;
+      break;
+    default:
+      center = true;
+      console.log('waddafa');
   }
 
-  animateSlide(win, item).then();
+  //animateSlide(win, item).then();
 
-  const onGoAway = () => {
-    /*
-    if (item.keepLive) {
-      _windows[key] = win;
-      win.hide();
-    }
-    else {
-      win.destroy();
-    }
-    */
-    win.destroy();
-  }
-  win.on('blur', onGoAway);
-  win.on('close', onGoAway);
+  const params = {
+    // browserwindow
+    address: item.address,
+    height,
+    width,
 
-  win.webContents.send('window', { type: labels.featureType, id: win.id, data: item });
+    // peek
+    type: labels.featureType,
+    windowKey: `${labels.featureType}:${item.screenEdge}`,
+    keepLive: item.keepLive || false,
+    persistData: item.persistData || false,
 
-  win.loadURL(item.address);
+    // slide
+    x,
+    y,
+  };
+
+  api.openWindow(params);
 };
 
 const initStore = (store, data) => {

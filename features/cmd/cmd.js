@@ -12,7 +12,6 @@ const labels = {
 };
 
 const {
-  BrowserWindow,
   globalShortcut,
 } = require('electron');
 

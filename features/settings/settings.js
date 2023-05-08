@@ -60,8 +60,6 @@ const _defaults = {
   },
 };
 
-let _windows = {};
-
 const openSettingsWindow = (api, prefs) => {
   const height = prefs.height || 600;
   const width = prefs.width || 800;

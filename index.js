@@ -81,9 +81,6 @@ const labels = {
 
 // ***** Caches *****
 
-// vestigial?
-let _windows = [];
-
 // TODO: make this open settings?
 app.on('activate', () => {
   // On macOS it's common to re-create a window in the app when the

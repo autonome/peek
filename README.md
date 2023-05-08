@@ -131,16 +131,39 @@ Window lifecycle
 * add window open animation (to/from coords, time) to openWindow
 * update slides impl to use animation again
 
+Minimal Electron + Maximal Web
+* tl;dr: move features to all web code, with a couple special apis
+* make globalShortcut an api like openWindow
+* how to load/address features
+  * feature urls
+  * eg peek://settings(/index.html)
+    * maybe fine to file urls for now?
+    * would have to migrate storage etc later
+  * hidden window calling preload web api
+* create core app
+  * core settings
+  * registers other features
+  * stores central app action history
+* move all features to web implementation
+  * move all code from the electron file to the web app
+  * per-feature settings storage & ui
+  * feature api to open settings window?
+  * move to web implemented globalShortcut
+  * move to web implemented openWindow
+* history
+  * implement pubsub api
+  * push navigations out through pubsub
+  * add history storage to cmd
+* how can other features query history?
+  * feature level rpc?
+
 Core/Basic
 * ✅ basic command bar to open pages
-* fix setting layout wrapping issue
-* don't blow away and re-init everything on any change
-* schema migration
-* basic history storage
-* app action metadata
-* app updates
+* ✅ fix setting layout wrapping issue
+* log app action metadata, push out through pubsub
 * enable/disable individual slides, peeks
 * enable/disable individual scripts
+* store content script data
 
 Features cleanup
 * enable/disable whole features
@@ -148,9 +171,19 @@ Features cleanup
 * configurable default feature to load on app open (or none)
 * re-enable label previews, eg "Peek {key} - {address}"
 
+Deployment
+* app updates
+* profiles?
+  * per build prob fine for now
+  * switcher
+
+
 -> mvp (minimum viable preview)
 
 -------
+
+Window layout
+* try with settings maybe?
 
 Web Platform
 * need a web loader that's not full BrowserWindow?
@@ -158,6 +191,7 @@ Web Platform
 * blocklist
 
 After that
+* schema migration
 * Extension model?
 * Ubiquity-like
 * Panorama-like

@@ -29,4 +29,5 @@ h1 {
   min-width: 380px;
   max-width: 380px;
   margin-bottom: 10px;
+  break-inside: avoid-column;
 }

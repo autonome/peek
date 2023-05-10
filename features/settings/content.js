@@ -1,64 +1,40 @@
 console.log('settings/content');
 
-// TODO: capture and internally navigate out of panes
-window.addEventListener('keyup', e => {
-  //console.log('renderer', 'onkeyup', e);
-  if (e.key == 'Escape') {
-    //ipcRenderer.send('esc', '');
-  }
-});
-
-// send changes back to main process
-// it will notify us when saved
-// and we'll reload entirely 😐
-const updateToMain = data => {
-  console.log('renderer: updating to main', data);
-  window.app.setConfig(data);
-};
-
-let panes = [];
-
-const init = cfg => {
+const init = () => {
   console.log('settings: init');
-
-	let { prefs, features } = cfg;
 
   const container = document.querySelector('.houseofpane');
 
-  // blow away panes if this is an update
-  if (panes.length > 0) {
-    panes.forEach(p => {
-      p.pane.dispose();
-    });
-    panes = [];
-  }
+  const type = labels.featureType;
 
-  cfg.features.forEach((feature, i) => {
-    const type = feature.labels.featureType;
+  const paneContainer = document.createElement('div');
+  container.appendChild(paneContainer);
 
-    const paneContainer = document.createElement('div');
-    container.appendChild(paneContainer);
+  const allowNew = ui.allowNew || false;
+  const disabled = ui.disabled || [];
 
-    const allowNew = feature.config.allowNew || false;
-    const disabled = feature.config.disabled || [];
+  const onChange = newData => {
+    console.log('onChange', newData.prefs);
+    localStorage.setItem('prefs', JSON.stringify(newData.prefs));
+    console.log('stored', JSON.parse(localStorage.getItem('prefs')));
+  };
 
-    const onChange = newData => {
-      const p = {};
-      p[type] = newData;
-      updateToMain(p);
-    };
+  const prefs = JSON.parse(localStorage.getItem('prefs'));
+  console.log('prefs', prefs)
 
-    const pane = initFeaturePane(
-      paneContainer,
-      feature,
-      onChange
-    );
+  const feature = {
+    config: ui,
+    labels,
+    schemas,
+    prefs
+  };
 
-    panes.push({
-      paneContainer,
-      pane
-    });
-  });
+  const pane = initFeaturePane(
+    paneContainer,
+    feature,
+    onChange
+  );
+  console.log('created pane');
 };
 
 const fillPaneFromSchema = (pane, labels, schema, data, onChange, disabled) => {
@@ -151,7 +127,7 @@ const initFeaturePane = (container, feature, onChange) => {
     }; 
 
     // TODO: make this right, ugh
-    if (data.prefs) {
+    if (prefs) {
       updated.prefs = paneData.shift(); 
     }
 
@@ -169,7 +145,7 @@ const initFeaturePane = (container, feature, onChange) => {
   };
 
   // prefs pane
-  if (data.prefs) {
+  if (prefs) {
     
     const prefsFolder = pane.addFolder({
       title: schemas.prefs.title,
@@ -181,11 +157,11 @@ const initFeaturePane = (container, feature, onChange) => {
       update(!config.allowNew);
     };
 
-    fillPaneFromSchema(prefsFolder, labels, schemas.prefs, data.prefs, onPrefChange, []);
+    fillPaneFromSchema(prefsFolder, labels, schemas.prefs, prefs, onPrefChange, []);
   }
 
   // add items
-  if (data.hasOwnProperty('items')) {
+  if (data && data.hasOwnProperty('items')) {
     data.items.forEach(item => {
       const folder = pane.addFolder({
         title: item.title,
@@ -233,12 +209,4 @@ const initFeaturePane = (container, feature, onChange) => {
   return pane;
 };
 
-// listen for data changes
-window.app.onConfigChange(() => {
-  console.log('onconfigchange');
-  window.app.getConfig.then(init);
-});
-
-// initialization: get data and load ui
-window.app.getConfig.then(init);
-
+window.addEventListener('load', init);

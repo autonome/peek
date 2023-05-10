@@ -9,19 +9,18 @@ const DEBUG = process.env.DEBUG;
 const {
   electron,
   app,
-  BrowserView,
   BrowserWindow,
   globalShortcut,
   ipcMain,
   Menu,
   nativeTheme,
-  Notification,
   Tray
 } = require('electron');
 
 const path = require('path');
 const preloadPath = path.join(__dirname, 'preload.js');
-const Store = require('electron-store');
+
+const webCoreAddress = 'features/core/background.html';
 
 // ***** Developer / Error handling / Etc *****
 const isDev = require('electron-is-dev');
@@ -42,7 +41,19 @@ if (isDev) {
 const unhandled = require('electron-unhandled');
 unhandled();
 
-// ***** System / OS / Theme / Etc *****
+// ***** Features / Strings *****
+
+const labels = {
+  app: {
+    key: 'peek',
+    title: 'Peek'
+  },
+  tray: {
+    tooltip: 'Click to open'
+  }
+};
+
+// ***** System / OS / Theme *****
 
 // system dark mode handling
 ipcMain.handle('dark-mode:toggle', () => {
@@ -58,30 +69,7 @@ ipcMain.handle('dark-mode:system', () => {
   nativeTheme.themeSource = 'system';
 });
 
-// ***** App / Strings / Etc *****
-
-const features = {
-  settings: require('./features/settings/settings'),
-  cmd: require('./features/cmd/cmd'),
-  slides: require('./features/slides/slides'),
-  peeks: require('./features/peeks/peeks'),
-  scripts: require('./features/scripts/scripts'),
-  groups: require('./features/groups/groups'),
-};
-
-const labels = {
-  app: {
-    key: 'peek',
-    title: 'Peek'
-  },
-  tray: {
-    tooltip: 'Click to open'
-  }
-};
-
-// ***** Caches *****
-
-// TODO: make this open settings?
+// TODO: when does this actually hit on each OS?
 app.on('activate', () => {
   // On macOS it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
@@ -102,10 +90,21 @@ const initTray = () => {
     _tray = new Tray(ICON_PATH);
     _tray.setToolTip(labels.tray.tooltip);
     _tray.on('click', () => {
-      features.settings.open();
+      //features.settings.open();
     });
   }
   return _tray;
+};
+
+// ***** Caches *****
+
+let _windows = new Set();
+
+const windowCache = {
+  cache: [],
+  add: entry => windowCache.cache.push(entry),
+  byId: id => windowCache.cache.find(w => w.id == id),
+  byKey: key => windowCache.cache.find(w => w.key == key)
 };
 
 // ***** Data *****
@@ -179,7 +178,7 @@ const initFeatures = () => {
     });
 
     if (DEBUG) {
-      //console.log('main: clearing datastore', k)
+      console.log('main: clearing datastore', k)
       featureStore.clear();
     }
 
@@ -189,7 +188,7 @@ const initFeatures = () => {
   });
 };
 
-// app load
+// Electron app load
 const onReady = () => {
   console.log('onReady');
 
@@ -198,61 +197,60 @@ const onReady = () => {
     app.dock.hide();
   }
 
+  // initialize system tray
+  // mostly just useful to know if the app is running or not
   initTray();
 
-  initFeatures(features);
+  //initFeatures(features);
 
+  openWindow({
+    file: webCoreAddress,
+    show: false,
+    debug: DEBUG
+  })
+
+  /*
   // open settings on startup for now
   if (BrowserWindow.getAllWindows().length === 0) {
     features.settings.open();
   }
+  */
+
+  registerShortcut('Option+q', onQuit);
 };
 
 app.whenReady().then(onReady);
 
-// when renderer is ready, send over user data
-ipcMain.on('getconfig', (ev, data) => {
-  console.log('main: getconfig')
-  //ev.sender.hostWebContents.send('config', getData())
-  ev.reply('config', getData())
+// ***** API *****
+
+ipcMain.on('registershortcut', (ev, msg) => {
+  registerShortcut(msg.shortcut, () => {
+    console.log('shorcut executed', msg.shortcut, msg.replyTopic)
+    ev.reply(msg.replyTopic, {});
+  });
 });
 
-// listen for updates
-ipcMain.on('setconfig', (event, newData) => {
-  // TODO: if any shortcuts changed, unregister the old ones
+ipcMain.on('unregistershortcut', (ev, msg) => {
+  if (globalShortcut.isRegistered(msg.shortcut)) {
+    globalShortcut.unregister(msg.shortcut);
+  }
+});
 
-  // write to datastore
-  updateData(newData);
+ipcMain.on('openwindow', (ev, msg) => {
+  openWindow(msg.params, output => {
+    if (msg.replyTopic) {
+      ev.reply(msg.replyTopic, { output });
+    }
+  });
 });
 
 // generic dispatch - messages only from trusted code (💀)
-ipcMain.on('sendmessage', (event, msg) => {
+ipcMain.on('sendmessage', (ev, msg) => {
   console.log('sendmsg', msg);
-
-  if (!msg.hasOwnProperty('feature')) {
-    console.error('sendMessage', 'no feature property in message');
-    return;
-  }
-
-  const fkey = msg.feature;
-  
-  if (Object.keys(features).findIndex(k => k==fkey) == -1) {
-    console.error('sendMessage', 'no matching feature');
-    return;
-  }
-
-  const feature = features[fkey];
-
-  if (!feature.hasOwnProperty('onMessage')) {
-    console.error('sendMessage', 'feature has no message handler for', fkey);
-    return;
-  }
-
-  feature.onMessage(msg.data);
 });
 
 // ipc ESC handler
-ipcMain.on('esc', (event, title) => {
+ipcMain.on('esc', (ev, title) => {
   console.log('esc');
 
   const fwin = BrowserWindow.getFocusedWindow();
@@ -265,13 +263,28 @@ ipcMain.on('esc', (event, title) => {
   }
 });
 
-const windowCache = {
-  cache: [],
-  add: entry => windowCache.cache.push(entry),
-  byId: id => windowCache.cache.find(w => w.id == id),
-  byKey: key => windowCache.cache.find(w => w.key == key)
+ipcMain.on('console', (ev, msg) => {
+  console.log('renderer:', msg);
+});
+
+// ***** Helpers *****
+
+const registerShortcut = (shortcut, callback) => {
+  console.log('registerShortcut', shortcut)
+
+  if (globalShortcut.isRegistered(shortcut)) {
+    globalShortcut.unregister(shortcut);
+  }
+
+  const ret = globalShortcut.register(shortcut, callback);
+
+  if (!ret) {
+    console.error('Unable to register shortcut', shortcut);
+    return new Error("Failed in some way", { cause: err });
+  }
 };
 
+// window opener
 const openWindow = (params) => {
   if (params.keepLive == true) {
     const entry = windowCache.byKey(params.windowKey);
@@ -317,7 +330,7 @@ const openWindow = (params) => {
     }
   });
 
-  const win = new BrowserWindow(winPreferences);
+  let win = new BrowserWindow(winPreferences);
 
   // if persisting window, cache the caller's key and window id
   if (params.keepLive == true) {
@@ -339,7 +352,10 @@ const openWindow = (params) => {
   win.on('blur', onGoAway);
   win.on('close', onGoAway);
 
-  //win.webContents.send('window', { type: labels.featureType, id: win.id});
+  win.on('closed', () => {
+    _windows.delete(win);
+    win = null;
+  });
 
   if (params.debug) {
     win.webContents.openDevTools();
@@ -354,6 +370,9 @@ const openWindow = (params) => {
   else {
     console.error('openWindow: neither address nor file!');
   }
+
+  //win.webContents.send('window', { type: labels.featureType, id: win.id});
+  broadcastToWindows('window', { type: labels.featureType, id: win.id});
 
   if (params.script) {
     const script = params.script;
@@ -376,6 +395,13 @@ const openWindow = (params) => {
   }
 };
 
+// send message to all windows
+const broadcastToWindows = (topic, msg) => {
+  _windows.forEach(win => {
+    win.webContents.send(topic, msg);
+  });
+};
+
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
@@ -386,13 +412,9 @@ app.on('window-all-closed', () => {
   }
 });
 
+
 const onQuit = () => {
-  console.log('onquit');
-
-  // Unregister all shortcuts on app close
-  globalShortcut.unregisterAll();
-
-  // Close all persisent windows
+  // Close all persisent windows?
 
   app.quit();
 };

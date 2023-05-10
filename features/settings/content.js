@@ -1,4 +1,4 @@
-console.log('renderer');
+console.log('settings/content');
 
 // TODO: capture and internally navigate out of panes
 window.addEventListener('keyup', e => {
@@ -19,8 +19,7 @@ const updateToMain = data => {
 let panes = [];
 
 const init = cfg => {
-  console.log('renderer: init');
-  //console.log('renderer: cfg', cfg);
+  console.log('settings: init');
 
 	let { prefs, features } = cfg;
 

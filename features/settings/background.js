@@ -3,6 +3,14 @@
 
 console.log('settings/settings');
 
+//const debug = window.location.search.indexOf('debug') > 0;
+const debug = 1;
+
+if (debug) {
+  console.log('clearing storage')
+  localStorage.clear();
+}
+
 const labels = {
   featureType: 'settings',
   featureDisplay: 'Settings',
@@ -10,13 +18,6 @@ const labels = {
     shortcutKey: 'Settings shortcut',
   }
 };
-
-const {
-  BrowserWindow,
-  globalShortcut,
-} = require('electron');
-
-const path = require('path');
 
 let _store = null;
 let _data = {};
@@ -65,50 +66,43 @@ const openSettingsWindow = (api, prefs) => {
   const width = prefs.width || 800;
 
   const params = {
+    debug,
     type: labels.featureType,
     file: 'features/settings/content.html',
     height,
     width
   };
 
-  _api.openWindow(params);
+  api.openWindow(params);
 };
 
 const initStore = (store, data) => {
-  const sp = store.get('prefs');
+  const sp = store.getItem('prefs');
   if (!sp) {
-    store.set('prefs', data.prefs);
+    store.setItem('prefs', JSON.stringify(data.prefs));
   }
 };
 
 const initShortcut = (api, prefs) => {
   const shortcut = prefs.shortcutKey;
-
-  if (globalShortcut.isRegistered(shortcut)) {
-    globalShortcut.unregister(shortcut);
-  }
-
-  const ret = globalShortcut.register(shortcut, () => {
+  api.shortcuts.register(shortcut, () => {
     openSettingsWindow(api, prefs);
   });
-
-  if (!ret) {
-    console.error('Unable to register shortcut', shortcut);
-  }
 };
 
 const init = (api, store) => {
   console.log('settings: init');
 
   _store = store;
-  _api = api;
 
   initStore(_store, _defaults);
 
   _data = {
-    get prefs() { return _store.get('prefs'); },
-    //get items() { return _store.get('items'); },
+    get prefs() { return JSON.parse(_store.getItem('prefs')); },
+    get items() { return JSON.parse(_store.getItem('items')); }
   };
+
+  console.log('data', _data);
 
   initShortcut(api, _data.prefs);
 };
@@ -119,11 +113,11 @@ const onChange = (changed, old) => {
   // TODO only update store if changed
   // and re-init
   if (changed.prefs) {
-    _store.set('prefs', changed.prefs);
+    _store.setItem('prefs', JSON.stringify(changed.prefs));
   }
 
   if (changed.items) {
-    _store.set('items', changed.items);
+    _store.setItem('items', JSON.stringif(changed.items));
   }
 };
 
@@ -139,6 +133,7 @@ const open = () => {
   openSettingsWindow(_api, _data.prefs);
 };
 
+/*
 module.exports = {
   init: init,
   config,
@@ -152,5 +147,10 @@ module.exports = {
   open,
   onChange
 };
+*/
+
+window.addEventListener('load', () => {
+  init(window.app, localStorage);
+});
 
 })();

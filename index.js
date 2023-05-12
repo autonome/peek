@@ -3,6 +3,7 @@
 
 console.log('main');
 
+
 const DEBUG = process.env.DEBUG;
 
 // Modules to control application life and create native browser window

@@ -1,169 +1,34 @@
 // slides/slides.js
-(async () => {
+//(async () => {
 
-console.log('slides/slides');
-
-const labels = {
-  featureType: 'slides',
-  featureDisplay: 'Slides',
-  itemType: 'slide',
-  itemDisplay: 'Slide',
-  prefs: {
-    keyPrefix: 'Slide shortcut prefix',
-  }
+const log = (...args) => {
+  console.log(labels.featureType, window.app.shortcuts);
+  window.app.log(labels.featureType, args.join(', '));
 };
 
-const {
-  BrowserWindow,
-  globalShortcut,
-  screen,
-} = require('electron');
+//log('slides/background');
 
-const path = require('path');
+//import { labels, schemas, ui, defaults } from './config.js';
 
-let _store = null;
+//const debug = window.location.search.indexOf('debug') > 0;
+const debug = 1;
 
-const prefsSchema = {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "peek.slides.prefs.schema.json",
-  "title": "Slides prefs",
-  "description": "Peek app Slides user preferences",
-  "type": "object",
-  "properties": {
-    "shortcutKeyPrefix": {
-      "description": "Global OS hotkey prefix to trigger slides - will be followed by up/down/left/right arrows",
-      "type": "string",
-      "default": "Option+"
-    },
-  },
-  "required": [ "shortcutKeyPrefix"]
-};
+if (debug) {
+  log('clearing storage')
+  localStorage.clear();
+}
 
-const itemSchema = {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "peek.slides.slide.schema.json",
-  "title": "Peek - page slide",
-  "description": "Peek page slide",
-  "type": "object",
-  "properties": {
-    "screenEdge": {
-      "description": "Edge of screen or arrow key to open this slide, up/down/left/right",
-      "type": "string",
-      "oneOf": [
-        { "format": "Up" },
-        { "format": "Down" },
-        { "format": "Left" },
-        { "format": "Right" }
-      ],
-      "default": "Right"
-    },
-    "title": {
-      "description": "Name of the slide - user defined label",
-      "type": "string",
-      "default": "New Slide"
-    },
-    "address": {
-      "description": "URL to load",
-      "type": "string",
-      "default": "https://example.com"
-    },
-    "persistState": {
-      "description": "Whether to persist local state or load page into empty container - defaults to false",
-      "type": "boolean",
-      "default": false
-    },
-    "keepLive": {
-      "description": "Whether to keep page alive in background or load fresh when triggered - defaults to false",
-      "type": "boolean",
-      "default": false
-    },
-    "allowSound": {
-      "description": "Whether to allow the page to emit sound or not (eg for background music player slides - defaults to false",
-      "type": "boolean",
-      "default": false
-    },
-    "height": {
-      "description": "User-defined height of slide page",
-      "type": "integer",
-      "default": 600
-    },
-    "width": {
-      "description": "User-defined width of slide page",
-      "type": "integer",
-      "default": 800
-    },
-  },
-  "required": [ "screenEdge", "title", "address", "persistState", "keepLive", "allowSound",
-                "height", "width" ]
-};
+const _store = localStorage;
+const _api = window.app;
 
-const listSchema = {
-  type: 'array',
-  items: { "$ref": "#/$defs/slide" }
-};
-
-// TODO: schemaize 0-9 constraints for peeks
-const schemas = {
-  prefs: prefsSchema,
-  item: itemSchema,
-  items: listSchema
-};
-
-const _defaults = {
-  prefs: {
-    shortcutKeyPrefix: 'Option+'
-  },
-  items: [
-    {
-      screenEdge: 'Up',
-      title: 'Slide from top',
-      address: 'http://localhost/',
-      persistState: false,
-      keepLive: false,
-      allowSound: false,
-      height: 600,
-      width: 800,
-    },
-    {
-      screenEdge: 'Down',
-      title: 'Slide from bottom',
-      address: 'http://localhost/',
-      persistState: false,
-      keepLive: false,
-      allowSound: false,
-      height: 600,
-      width: 800,
-    },
-    {
-      screenEdge: 'Left',
-      title: 'Slide from left',
-      address: 'http://localhost/',
-      persistState: false,
-      keepLive: false,
-      allowSound: false,
-      height: 600,
-      width: 800,
-    },
-    {
-      screenEdge: 'Right',
-      title: 'Slide from right',
-      address: 'http://localhost/',
-      persistState: false,
-      keepLive: false,
-      allowSound: false,
-      height: 600,
-      width: 800,
-    },
-  ]
-};
-
-let _windows = {};
-
-const executeItem = (api, item) => {
+const executeItem = (item) => {
   let height = item.height || 600;
   let width = item.width || 800;
 
-  const { size, bounds } = screen.getPrimaryDisplay();
+  const size = {
+    height: window.screen.height,
+    width: window.screen.width
+  };
 
   let x, y, center = null;
 
@@ -222,6 +87,8 @@ const executeItem = (api, item) => {
       console.log('waddafa');
   }
 
+  log(item.screenEdge, x, y);
+
   //animateSlide(win, item).then();
 
   const params = {
@@ -231,7 +98,7 @@ const executeItem = (api, item) => {
     width,
 
     // peek
-    type: labels.featureType,
+    feature: labels.featureType,
     windowKey: `${labels.featureType}:${item.screenEdge}`,
     keepLive: item.keepLive || false,
     persistData: item.persistData || false,
@@ -241,92 +108,65 @@ const executeItem = (api, item) => {
     y,
   };
 
-  api.openWindow(params);
+  _api.openWindow(params);
 };
 
-const initStore = (store, data) => {
-  const sp = store.get('prefs');
+const initStore = (data) => {
+  const sp = _store.getItem('prefs');
   if (!sp) {
-    store.set('prefs', data.prefs);
+    _store.setItem('prefs', JSON.stringify(data.prefs));
   }
 
-  const items = store.get('items');
+  const items = _store.getItem('items');
   if (!items) {
-    store.set('items', data.items);
+    _store.setItem('items', JSON.stringify(data.items));
   }
 };
 
-const initItems = (api, prefs, items) => {
+const initItems = (prefs, items) => {
+  log('initItems');
   const cmdPrefix = prefs.shortcutKeyPrefix;
 
   items.forEach(item => {
     const shortcut = `${cmdPrefix}${item.screenEdge}`;
 
-    if (globalShortcut.isRegistered(shortcut)) {
-      globalShortcut.unregister(shortcut);
-    }
-
-    const ret = globalShortcut.register(shortcut, () => {
-      executeItem(api, item);
+    _api.shortcuts.register(shortcut, () => {
+      executeItem(item);
     });
-
-    if (!ret) {
-      console.error('Unable to register shortcut', shortcut);
-    }
   });
 };
 
-const init = (api, store) => {
-  _store = store;
-  _api = api;
+const init = () => {
+  log('init');
 
-  initStore(_store, _defaults);
+  initStore(defaults);
 
-  _data = {
-    get prefs() { return _store.get('prefs'); },
-    get items() { return _store.get('items'); },
-  };
+  const prefs = () => JSON.parse(_store.getItem('prefs'));
+  const items = () => JSON.parse(_store.getItem('items'));
 
-  // initialize peeks
-  if (_data.items.length > 0) {
-    initItems(api, _data.prefs, _data.items);
+  // initialize slides
+  if (items().length > 0) {
+    initItems(prefs(), items());
   }
 };
 
 const onChange = (changed, old) => {
-  console.log(labels.featureType, 'onChange', changed);
+  log('onChange', changed);
 
   // TODO only update store if changed
   // and re-init
   if (changed.prefs) {
-    _store.set('prefs', changed.prefs);
+    _store.setItem('prefs', JSON.stringify(changed.prefs));
   }
 
   if (changed.items) {
-    _store.set('items', changed.items);
+    _store.setItem('items', JSON.stringif(changed.items));
   }
 };
 
-// ui config
-const config = {
-  // allow user to create new items
-  allowNew: false,
-  // fields that are view only
-  disabled: ['screenEdge'],
-};
+window.addEventListener('load', init);
 
-module.exports = {
-  init: init,
-  config,
-  labels,
-  schemas,
-  data: {
-    get prefs() { return _store.get('prefs'); },
-    get items() { return _store.get('items'); },
-  },
-  onChange
-};
-
+/*
 const animateSlide = (win, slide) => {
   return new Promise((res, rej) => {
     const { size, bounds } = screen.getPrimaryDisplay();
@@ -381,5 +221,6 @@ const animateSlide = (win, slide) => {
     }, timerInterval);
   });
 };
+*/
 
-})();
+//})();

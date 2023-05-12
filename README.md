@@ -135,6 +135,7 @@ Minimal Electron + Maximal Web
 * tl;dr: move features to all web code, with a couple special apis
 * make globalShortcut an api like openWindow
 * how to load/address features
+  * manifests for feature metadata
   * feature urls
   * eg peek://settings(/index.html)
     * maybe fine to file urls for now?

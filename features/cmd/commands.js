@@ -60,10 +60,26 @@ const sourceOpenURL = () => {
   addCommand({
     name: cmdName,
     execute: msg => {
+
       console.log(cmdName, 'msg', msg);
+
       const parts = msg.typed.split(' ');
       parts.shift();
+
       const address = parts.shift();
+
+      const height = 600;
+      const width = 800;
+
+      const params = {
+        feature: labels.featureType,
+        address,
+        height,
+        width
+      };
+
+      window.app.openWindow(params);
+
       return {
         command: 'openWebWindow',
         address

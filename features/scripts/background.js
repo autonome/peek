@@ -1,134 +1,30 @@
-// scripts/scripts.js
-(async () => {
+// scripts/background.js
+//(async () => {
 
-console.log('scripts/scripts');
-
-const labels = {
-  featureType: 'scripts',
-  featureDisplay: 'Scripts',
-  itemType: 'script',
-  itemDisplay: 'Script',
-  prefs: {
-  }
+const log = (...args) => {
+  console.log(labels.featureType, window.app.shortcuts);
+  window.app.log(labels.featureType, args.join(', '));
 };
 
-const {
-  BrowserWindow,
-  globalShortcut,
-  screen,
-} = require('electron');
+log('scripts/background');
 
-const path = require('path');
+//import { labels, schemas, ui, defaults } from './config.js';
 
-let _store = null;
+//const debug = window.location.search.indexOf('debug') > 0;
+const debug = 1;
 
-const prefsSchema = {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "peek.scripts.prefs.schema.json",
-  "title": "Scripts preferences",
-  "description": "Scripts user preferences",
-  "type": "object",
-  "properties": {
-  },
-  "required": []
-};
+if (debug) {
+  log('clearing storage')
+  localStorage.clear();
+}
 
-const itemSchema = {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "peek.scripts.script.schema.json",
-  "title": "Peek - script",
-  "description": "Peek background script",
-  "type": "object",
-  "properties": {
-    "id": {
-      "description": "The unique identifier for a script",
-      "type": "string",
-      "default": "peek:script:REPLACEME"
-    },
-    "title": {
-      "description": "Name of the script - user defined",
-      "type": "string",
-      "default": "New Script"
-    },
-    "version": {
-      "description": "Version number of the script",
-      "type": "string",
-      "default": "1.0.0"
-    },
-    "address": {
-      "description": "URL to execute script against",
-      "type": "string",
-      "default": "https://example.com"
-    },
-    "selector": {
-      "description": "CSS Selector for the script",
-      "type": "string",
-      "default": "body > h1"
-    },
-    "property": {
-      "description": "Which element property to return - currently 'textContent' is the only supported value",
-      "type": "string",
-      "default": "textContent"
-    },
-    "interval": {
-      "description": "How often to execute the script, in milliseconds - defaults to five minutes",
-      "type": "integer",
-      "default": 300000,
-      "minimum": 0
-    },
-    "storeHistory": {
-      "description": "Whether to store historic values - defaults to false",
-      "type": "boolean",
-      "default": false
-    },
-    "notifyOnChange": {
-      "description": "Whether to notify using local OS notifications when script value changes",
-      "type": "boolean",
-      "default": true
-    },
-    "previousValue": {
-      "description": "The most recently fetched result of script exection",
-      "type": "string",
-      "default": "",
-    },
-  },
-  "required": [ "id", "title", "address", "version", "selector", "property",
-                "interval", "notifyOnChange", "storeHistory" ]
-};
+const _store = localStorage;
+const _api = window.app;
 
-const listSchema = {
-  type: 'array',
-  items: { "$ref": "#/$defs/script" }
-};
+let _intervals = [];
 
-// TODO: schemaize 0-9 constraints for peeks
-const schemas = {
-  prefs: prefsSchema,
-  item: itemSchema,
-  items: listSchema
-};
-
-const _defaults = {
-  prefs: {
-  },
-  items: [
-    {
-      id: 'peek:script:localhost:test',
-      title: 'localhost test',
-      address: 'http://localhost/',
-      version: '1',
-      selector: 'body > h1',
-      property: 'textContent',
-      interval: 300000,
-      storehistory: false,
-      notifyOnChange: false
-    },
-  ]
-};
-
-const executeItem = (api, script, cb) => {
-  console.log('script.executeItem')
-
+const executeItem = (script, cb) => {
+  // limited script
   const str = `
     const s = "${script.selector}";
     const r = document.querySelector(s);
@@ -136,41 +32,33 @@ const executeItem = (api, script, cb) => {
     value;
   `;
 
-  const callback = (result) => {
-    console.log('lcb', result);
-    cb(result);
-  };
-
   const params = {
-    type: labels.featureType,
+    feature: labels.featureType,
     address: script.address,
     show: false,
     script: {
       script: str,
       domEvent: 'dom-ready',
       closeOnCompletion: true,
-      callback
     }
   };
 
-  _api.openWindow(params);
+  _api.openWindow(params, cb);
 };
 
-const initStore = (store, data) => {
-  const sp = store.get('prefs');
+const initStore = (data) => {
+  const sp = _store.getItem('prefs');
   if (!sp) {
-    store.set('prefs', data.prefs);
+    _store.setItem('prefs', JSON.stringify(data.prefs));
   }
 
-  const items = store.get('items');
+  const items = _store.getItem('items');
   if (!items) {
-    store.set('items', data.items);
+    _store.setItem('items', JSON.stringify(data.items));
   }
 };
 
-let _intervals = [];
-
-const initItems = (api, prefs, items) => {
+const initItems = (prefs, items) => {
   // blow it all away for now
   // someday make it right proper just cancel/update changed and add new
   _intervals.forEach(clearInterval);
@@ -179,10 +67,14 @@ const initItems = (api, prefs, items) => {
   // at once every time app starts
   items.forEach(item => {
     const interval = setInterval(() => { 
-      const r = executeItem(api, item, (res) => {
+      const r = executeItem(item, res => {
+
+				//log('script result for', item.title, JSON.stringify(res));
+				//log('script prev val', item.previousValue);
 
         if (item.previousValue != res) {
 
+					log('result changed!', item.title, item.previousValue, res);
           // TODO: figure this out - it blows away all timers, which isn't great
           //
           // update stored value
@@ -208,25 +100,6 @@ const initItems = (api, prefs, items) => {
   });
 };
 
-const init = (api, store) => {
-  console.log('scripts: init')
-
-  _store = store;
-  _api = api;
-
-  initStore(_store, _defaults);
-
-  _data = {
-    get prefs() { return _store.get('prefs'); },
-    get items() { return _store.get('items'); },
-  };
-
-  // initialize scripts
-  if (_data.items.length > 0) {
-    initItems(api, _data.prefs, _data.items);
-  }
-};
-
 const updateItem = (item) => {
   let items = _store.get('items');
   const idx = items.findIndex(el => el.id == item.id);
@@ -234,39 +107,34 @@ const updateItem = (item) => {
   _store.set('items', items);
 };
 
+const init = () => {
+  log('init');
+
+  initStore(defaults);
+
+  const prefs = () => JSON.parse(_store.getItem('prefs'));
+  const items = () => JSON.parse(_store.getItem('items'));
+
+  // initialize slides
+  if (items().length > 0) {
+    initItems(prefs(), items());
+  }
+};
+
 const onChange = (changed, old) => {
-  console.log(labels.featureType, 'onChange', changed);
+  log('onChange', changed);
 
   // TODO only update store if changed
   // and re-init
   if (changed.prefs) {
-    _store.set('prefs', changed.prefs);
+    _store.setItem('prefs', JSON.stringify(changed.prefs));
   }
 
   if (changed.items) {
-    _store.set('items', changed.items);
+    _store.setItem('items', JSON.stringif(changed.items));
   }
 };
 
-// ui config
-const config = {
-  // allow user to create new items
-  allowNew: false,
-  // fields that are view only
-  disabled: ['screenEdge'],
-};
+window.addEventListener('load', init);
 
-module.exports = {
-  init: init,
-  config,
-  labels,
-  schemas,
-  data: {
-    get prefs() { return _store.get('prefs'); },
-    get items() { return _store.get('items'); },
-  },
-  onChange
-};
-
-
-})();
+//})();

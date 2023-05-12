@@ -210,7 +210,7 @@ const registerShortcut = (shortcut, callback) => {
 };
 
 // window opener
-const openWindow = (params) => {
+const openWindow = (params, callback) => {
   console.log('openWindow', params);
 
   // if no source identifier, barf
@@ -323,6 +323,8 @@ const openWindow = (params) => {
   //win.webContents.send('window', { type: labels.featureType, id: win.id});
   //broadcastToWindows('window', { type: labels.featureType, id: win.id});
 
+	// TODO: fix func-level callback handling and resp obj
+
   if (params.script) {
     const script = params.script;
     const domEvent = script.domEvent || 'dom-ready';
@@ -330,12 +332,13 @@ const openWindow = (params) => {
     win.webContents.on(domEvent, async () => {
       try {
         const r = await win.webContents.executeJavaScript(script.script);
-        if (script.callback) {
-          script.callback(r);
+        if (callback) {
+          callback({
+						scriptOutput: r
+					});
         }
       } catch(ex) {
         console.error('cs exec error', ex);
-        script.callback(null);
       }
       if (script.closeOnCompletion) {
         win.destroy();

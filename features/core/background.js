@@ -8,8 +8,8 @@ log('core/background');
 const features = [
   //'features/cmd/background.html',
   //'features/groups/background.html',
-  'features/peeks/background.html',
-  //'features/scripts/background.html',
+  //'features/peeks/background.html',
+  'features/scripts/background.html',
   //'features/settings/background.html',
   //'features/slides/background.html'
 ];

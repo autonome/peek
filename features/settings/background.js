@@ -1,7 +1,11 @@
 // settings/background.js
 (async () => {
 
-console.log('settings/background');
+const log = (...args) => {
+  window.app.log(labels.featureType, args.join(', '));
+};
+
+log('settings/background');
 
 //import { labels, schemas, ui, defaults } from './config.js';
 
@@ -9,8 +13,8 @@ console.log('settings/background');
 const debug = 1;
 
 if (debug) {
-  console.log('clearing storage')
-  //localStorage.clear();
+  log('clearing storage')
+  localStorage.clear();
 }
 
 const _store = localStorage;
@@ -22,7 +26,7 @@ const openSettingsWindow = (prefs) => {
 
   const params = {
     debug,
-    type: labels.featureType,
+    feature: labels.featureType,
     file: 'features/settings/content.html',
     height,
     width
@@ -34,13 +38,12 @@ const openSettingsWindow = (prefs) => {
 const initStore = (data) => {
   const sp = _store.getItem('prefs');
   if (!sp) {
-    console.log('first run, initing datastore')
+    log('first run, initing datastore')
     _store.setItem('prefs', JSON.stringify(data.prefs));
   }
 };
 
 const initShortcut = (shortcut) => {
-  console.log('is', prefs());
   _api.shortcuts.register(shortcut, () => {
     openSettingsWindow(prefs());
   });
@@ -49,7 +52,7 @@ const initShortcut = (shortcut) => {
 const prefs = () => JSON.parse(_store.getItem('prefs'));
 
 const init = () => {
-  console.log('settings: init');
+  log('settings: init');
 
   initStore(defaults);
 
@@ -57,7 +60,7 @@ const init = () => {
 };
 
 const onChange = (changed, old) => {
-  console.log(labels.featureType, 'onChange', changed);
+  log(labels.featureType, 'onChange', changed);
 
   // TODO only update store if changed
   // and re-init

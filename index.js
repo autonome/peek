@@ -98,7 +98,7 @@ const initTray = () => {
 
 // ***** Caches *****
 
-let _windows = new Set();
+const _windows = new Set();
 
 const windowCache = {
   cache: [],
@@ -106,6 +106,8 @@ const windowCache = {
   byId: id => windowCache.cache.find(w => w.id == id),
   byKey: key => windowCache.cache.find(w => w.key == key)
 };
+
+const _shortcuts = {};
 
 // Electron app load
 const onReady = () => {
@@ -120,11 +122,11 @@ const onReady = () => {
   // mostly just useful to know if the app is running or not
   initTray();
 
-  //initFeatures(features);
-
+  // init web core
   openWindow({
+    feature: 'Core',
     file: webCoreAddress,
-    show: false,
+    show: true,
     debug: DEBUG
   })
 
@@ -143,8 +145,9 @@ app.whenReady().then(onReady);
 // ***** API *****
 
 ipcMain.on('registershortcut', (ev, msg) => {
+  //_shortcuts[msg.shortcut] = msg.replyTopic;
   registerShortcut(msg.shortcut, () => {
-    console.log('shorcut executed', msg.shortcut, msg.replyTopic)
+    console.log('on(registershortcut): shorcut executed', msg.shortcut, msg.replyTopic)
     ev.reply(msg.replyTopic, {});
   });
 });
@@ -183,7 +186,7 @@ ipcMain.on('esc', (ev, title) => {
 });
 
 ipcMain.on('console', (ev, msg) => {
-  console.log('renderer:', msg);
+  console.log('r:', msg.source, msg.text);
 });
 
 // ***** Helpers *****
@@ -195,7 +198,10 @@ const registerShortcut = (shortcut, callback) => {
     globalShortcut.unregister(shortcut);
   }
 
-  const ret = globalShortcut.register(shortcut, callback);
+  const ret = globalShortcut.register(shortcut, () => {
+    console.log('shortcut executed', shortcut);
+    callback();
+  });
 
   if (!ret) {
     console.error('Unable to register shortcut', shortcut);
@@ -205,27 +211,46 @@ const registerShortcut = (shortcut, callback) => {
 
 // window opener
 const openWindow = (params) => {
+  console.log('openWindow', params);
+
+  // if no source identifier, barf
+  if (!params.hasOwnProperty('feature') || params.feature == undefined) {
+    throw new Error('openWindow: no identifying source for openWindow request!');
+  }
+
+  // TODO: need to figure out a better approach
+  const show = params.hasOwnProperty('show') ? params.show : true;
+
+  // cache key
+  // TODO: need to figure out a better approach
+  const key = params.feature + (params.address || params.file);
+
   if (params.keepLive == true) {
-    const entry = windowCache.byKey(params.windowKey);
+    const entry = windowCache.byKey(key);
     if (entry != undefined) {
       const win = BrowserWindow.fromId(entry.id);
       if (win) {
-        console.log('openWindow(): opening persistent window for', params.windowKey)
-        win.show();
+        console.log('openWindow: opening persistent window for', key)
+        if (show) {
+          win.show();
+        }
         return;
       }
     }
   }
 
-  console.log('openWindow(): creating new window', params);
+  console.log('openWindow(): creating new window');
 
   const height = params.height || 600;
   const width = params.width || 800;
-  const show = params.hasOwnProperty('show') ? params.show : true;
 
-  let webPreferences = {
-    preload: preloadPath,
-  };
+  let webPreferences = {};
+
+  if (params.file) {
+    console.log('FILE', params.file);
+    params.address = `file://${path.join(__dirname)}/${params.file}`;
+    webPreferences.preload = preloadPath;
+  }
 
   if (!params.persistData) {
     // TODO: hack. this just isolates.
@@ -236,7 +261,6 @@ const openWindow = (params) => {
     height,
     width,
     show,
-    center: true,
     skipTaskbar: true,
     autoHideMenuBar: true,
     titleBarStyle: 'hidden',
@@ -249,22 +273,30 @@ const openWindow = (params) => {
     }
   });
 
+  if (winPreferences.x == undefined && winPreferences.y == undefined) {
+    winPreferences.center = true;
+  }
+
+  console.log('final params', winPreferences.x, winPreferences.y);
+
   let win = new BrowserWindow(winPreferences);
 
   // if persisting window, cache the caller's key and window id
   if (params.keepLive == true) {
     windowCache.add({
       id: win.id,
-      key: params.windowKey
+      key: key
     });
   }
 
   // TODO: make configurable
   const onGoAway = () => {
     if (params.keepLive) {
+      //console.log('win.onGoAway(): hiding ', params.address);
       win.hide();
     }
     else {
+      //console.log('win.onGoAway(): destroying ', params.address);
       win.destroy();
     }
   }
@@ -272,6 +304,7 @@ const openWindow = (params) => {
   win.on('close', onGoAway);
 
   win.on('closed', () => {
+    //console.log('win.on(closed): deleting ', key, ' for ', params.address);
     _windows.delete(win);
     win = null;
   });
@@ -283,15 +316,12 @@ const openWindow = (params) => {
   if (params.address) {
     win.loadURL(params.address);
   }
-  else if (params.file) {
-    win.loadFile(params.file);
-  }
   else {
     console.error('openWindow: neither address nor file!');
   }
 
   //win.webContents.send('window', { type: labels.featureType, id: win.id});
-  broadcastToWindows('window', { type: labels.featureType, id: win.id});
+  //broadcastToWindows('window', { type: labels.featureType, id: win.id});
 
   if (params.script) {
     const script = params.script;
@@ -331,8 +361,8 @@ app.on('window-all-closed', () => {
   }
 });
 
-
 const onQuit = () => {
+  console.log('onQuit');
   // Close all persisent windows?
 
   app.quit();

@@ -39,6 +39,13 @@ TODO: Commands
 
 (async () => {
 
+const log = (...args) => {
+  window.app.log(labels.featureType, args.join(', '));
+};
+
+log('cmd/panel');
+
+
 let state = {
   commands: [], // array of command names
   matches: [], // array of commands matching the typed text
@@ -106,12 +113,11 @@ async function css(el, props) {
 
 async function execute(name, typed) {
   if (state.commands[name]) {
+    log('executing cmd', name, typed);
+
     // execute command
     const msg = state.commands[name].execute({typed});
-    window.app.sendMessage({
-      feature: 'cmd',
-      data: msg
-    });
+
     // close cmd popup
     // NOTE: this kills command execution
     // hrghhh, gotta turn execution completion promise

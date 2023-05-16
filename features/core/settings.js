@@ -1,7 +1,16 @@
-console.log('settings/content');
+const DEBUG = 0;
+
+const log = (...args) => {
+  if (!DEBUG) {
+    return;
+  }
+  const str = args.join(', ');
+  console.log(str);
+  window.app.log(labels.featureType, args.map(JSON.stringify).join(', '));
+};
 
 const init = () => {
-  console.log('settings: init');
+  log('settings: init');
 
   const container = document.querySelector('.houseofpane');
 
@@ -14,19 +23,32 @@ const init = () => {
   const disabled = ui.disabled || [];
 
   const onChange = newData => {
-    console.log('onChange', newData.prefs);
-    localStorage.setItem('prefs', JSON.stringify(newData.prefs));
-    console.log('stored', JSON.parse(localStorage.getItem('prefs')));
+    log('onChange', JSON.stringify(newData));
+    if (newData.prefs) {
+      const key = 'prefs';
+      localStorage.setItem(key, JSON.stringify(newData[key]));
+      log('stored', key, JSON.parse(localStorage.getItem(key)));
+    }
+    
+    if (newData.items) {
+      const key = 'items';
+      localStorage.setItem(key, JSON.stringify(newData[key]));
+      log('stored', key, JSON.parse(localStorage.getItem(key)));
+    }
   };
 
   const prefs = JSON.parse(localStorage.getItem('prefs'));
-  console.log('prefs', prefs)
+  const items = JSON.parse(localStorage.getItem('items'));
+
+  log('prefs', prefs)
+  log('items', items)
 
   const feature = {
     config: ui,
     labels,
     schemas,
-    prefs
+    prefs,
+    items
   };
 
   const pane = initFeaturePane(
@@ -34,7 +56,8 @@ const init = () => {
     feature,
     onChange
   );
-  console.log('created pane');
+
+  log('created pane');
 };
 
 const fillPaneFromSchema = (pane, labels, schema, data, onChange, disabled) => {
@@ -69,7 +92,7 @@ const fillPaneFromSchema = (pane, labels, schema, data, onChange, disabled) => {
     // TODO: consider inline state management
     input.on('change', ev => {
       // TODO: validate against schema
-      console.log('inline field change', k, ev)
+      log('inline field change', k, ev)
       data[k] = ev.value;
       onChange(data)
     });
@@ -80,7 +103,7 @@ const fillPaneFromSchema = (pane, labels, schema, data, onChange, disabled) => {
 // https://github.com/cocopon/tweakpane/issues/431
 const exportPaneData = pane => {
   const children = pane.rackApi_.children.filter(p => p.children);
-  const val = pane.rackApi_.children.filter(p => p.children).map(paneChild => {
+  const val = children.map(paneChild => {
     return paneChild.children.reduce((obj, field) => {
       const k = field.label;
       if (!k) {
@@ -100,7 +123,7 @@ const exportPaneData = pane => {
       }
 
       // TODO: drop fields not supported for now
-      if (v) {
+      if (v != undefined) {
         obj[k] = v;
       }
 
@@ -111,7 +134,7 @@ const exportPaneData = pane => {
 };
 
 const initFeaturePane = (container, feature, onChange) => {
-  const { config, labels, prefs, schemas, data } = feature;
+  const { config, labels, schemas, prefs, items } = feature;
 
   const pane = new Tweakpane.Pane({
     container: container,
@@ -121,7 +144,7 @@ const initFeaturePane = (container, feature, onChange) => {
   const update = (all) => {
     const paneData = exportPaneData(pane);
 
-    console.log('folder level update for', labels.featureDisplay, paneData);
+    log('folder level update for', labels.featureDisplay, paneData);
 
     let updated = {
     }; 
@@ -146,14 +169,13 @@ const initFeaturePane = (container, feature, onChange) => {
 
   // prefs pane
   if (prefs) {
-    
     const prefsFolder = pane.addFolder({
       title: schemas.prefs.title,
       expanded: true
     });
     
     const onPrefChange = changed => {
-      console.log('initFeaturePane::onPrefChange', changed)
+      log('initFeaturePane::onPrefChange', changed)
       update(!config.allowNew);
     };
 
@@ -161,8 +183,9 @@ const initFeaturePane = (container, feature, onChange) => {
   }
 
   // add items
-  if (data && data.hasOwnProperty('items')) {
-    data.items.forEach(item => {
+  if (items) {
+    log('adding items panes');
+    items.forEach(item => {
       const folder = pane.addFolder({
         title: item.title,
         expanded: false

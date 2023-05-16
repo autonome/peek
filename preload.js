@@ -33,7 +33,7 @@ let api = {};
 
 api.shortcuts = {
   register: (shortcut, cb) => {
-    //log(source, 'registering ' + shortcut + ' for ' + window.location)
+    log(src, 'registering ' + shortcut + ' for ' + window.location)
 
     const replyTopic = `${shortcut}${window.location}`;
 
@@ -42,7 +42,7 @@ api.shortcuts = {
       replyTopic
     });
 
-    ipcRenderer.on(replyTopic, () => {
+    ipcRenderer.on(replyTopic, (ev, msg) => {
       log(src, 'shortcut execution reply');
       cb();
     });
@@ -58,13 +58,19 @@ api.shortcuts = {
 api.openWindow = (params, callback) => {
   log(src, ['openwindow', JSON.stringify(params), 'for', window.location].join(', '));
   // TODO: won't work for features that open multiple windows
-  const replyTopic = params.feature;
+  const replyTopic = `${params.feature}${params.address}`;
+
   ipcRenderer.send('openwindow', {
     params,
     replyTopic
   });
+
   if (callback) {
-    ipcRenderer.on(replyTopic, params.callback);
+    ipcRenderer.once(replyTopic, (ev, msg) => {
+      log(src, 'resp from main');
+      log(src, msg);
+      callback(msg);
+    });
   }
 };
 

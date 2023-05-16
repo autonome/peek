@@ -33,7 +33,7 @@ let api = {};
 
 api.shortcuts = {
   register: (shortcut, cb) => {
-    //log(source, 'registering ' + shortcut + ' for ' + window.location)
+    log(src, 'registering ' + shortcut + ' for ' + window.location)
 
     const replyTopic = `${shortcut}${window.location}`;
 

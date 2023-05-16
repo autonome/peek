@@ -148,7 +148,7 @@ app.whenReady().then(onReady);
 ipcMain.on('registershortcut', (ev, msg) => {
   //_shortcuts[msg.shortcut] = msg.replyTopic;
   registerShortcut(msg.shortcut, () => {
-    console.log('on(registershortcut): shorcut executed', msg.shortcut, msg.replyTopic)
+    console.log('on(registershortcut): shortcut executed', msg.shortcut, msg.replyTopic)
     ev.reply(msg.replyTopic, {});
   });
 });

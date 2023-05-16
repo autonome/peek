@@ -3,6 +3,7 @@
 
 console.log('main');
 
+
 const DEBUG = process.env.DEBUG;
 
 // Modules to control application life and create native browser window
@@ -147,7 +148,7 @@ app.whenReady().then(onReady);
 ipcMain.on('registershortcut', (ev, msg) => {
   //_shortcuts[msg.shortcut] = msg.replyTopic;
   registerShortcut(msg.shortcut, () => {
-    console.log('on(registershortcut): shorcut executed', msg.shortcut, msg.replyTopic)
+    console.log('on(registershortcut): shortcut executed', msg.shortcut, msg.replyTopic)
     ev.reply(msg.replyTopic, {});
   });
 });
@@ -210,7 +211,7 @@ const registerShortcut = (shortcut, callback) => {
 };
 
 // window opener
-const openWindow = (params) => {
+const openWindow = (params, callback) => {
   console.log('openWindow', params);
 
   // if no source identifier, barf
@@ -323,6 +324,8 @@ const openWindow = (params) => {
   //win.webContents.send('window', { type: labels.featureType, id: win.id});
   //broadcastToWindows('window', { type: labels.featureType, id: win.id});
 
+	// TODO: fix func-level callback handling and resp obj
+
   if (params.script) {
     const script = params.script;
     const domEvent = script.domEvent || 'dom-ready';
@@ -330,12 +333,13 @@ const openWindow = (params) => {
     win.webContents.on(domEvent, async () => {
       try {
         const r = await win.webContents.executeJavaScript(script.script);
-        if (script.callback) {
-          script.callback(r);
+        if (callback) {
+          callback({
+						scriptOutput: r
+					});
         }
       } catch(ex) {
         console.error('cs exec error', ex);
-        script.callback(null);
       }
       if (script.closeOnCompletion) {
         win.destroy();

@@ -1,121 +1,31 @@
-// groups/groups.js
-(async () => {
+// slides/slides.js
 
-console.log('groups/groups');
-
-const labels = {
-  featureType: 'groups',
-  featureDisplay: 'Groups',
-  prefs: {
-    shortcutKey: 'Groups shortcut',
-  }
+const log = (...args) => {
+  console.log(labels.featureType, window.app.shortcuts);
+  window.app.log(labels.featureType, args.join(', '));
 };
 
-const {
-  BrowserWindow,
-  globalShortcut,
-} = require('electron');
+log('peeks/background');
 
-const path = require('path');
+//import { labels, schemas, ui, defaults } from './config.js';
 
-let _store = null;
-let _data = {};
+//const debug = window.location.search.indexOf('debug') > 0;
+const debug = 1;
 
-const prefsSchema = {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "peek.groups.prefs.schema.json",
-  "title": "Groups preferences",
-  "description": "Peek app Groups user preferences",
-  "type": "object",
-  "properties": {
-    "shortcutKey": {
-      "description": "Global OS hotkey to open command panel",
-      "type": "string",
-      "default": "Option+Space"
-    },
-  },
-  "required": [ "shortcutKey"]
-};
+if (debug) {
+  log('clearing storage')
+  localStorage.clear();
+}
 
-/*
-const itemSchema = {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "peek.groups.entry.schema.json",
-  "title": "Peek - command entry",
-  "description": "Peek command entry",
-  "type": "object",
-  "properties": {
-    "keyNum": {
-      "description": "Number on keyboard to open this peek, 0-9",
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 9,
-      "default": 0
-    },
-    "title": {
-      "description": "Name of the peek - user defined label",
-      "type": "string",
-      "default": "New Peek"
-    },
-    "address": {
-      "description": "URL to load",
-      "type": "string",
-      "default": "https://example.com"
-    },
-    "persistState": {
-      "description": "Whether to persist local state or load page into empty container - defaults to false",
-      "type": "boolean",
-      "default": false
-    },
-    "keepLive": {
-      "description": "Whether to keep page alive in background or load fresh when triggered - defaults to false",
-      "type": "boolean",
-      "default": false
-    },
-    "allowSound": {
-      "description": "Whether to allow the page to emit sound or not (eg for background music player peeks - defaults to false",
-      "type": "boolean",
-      "default": false
-    },
-    "height": {
-      "description": "User-defined height of peek page",
-      "type": "integer",
-      "default": 600
-    },
-    "width": {
-      "description": "User-defined width of peek page",
-      "type": "integer",
-      "default": 800
-    },
-  },
-  "required": [ "keyNum", "title", "address", "persistState", "keepLive", "allowSound",
-                "height", "width" ]
-};
+const _store = localStorage;
+const _api = window.app;
 
-const listSchema = {
-  type: 'array',
-  items: { "$ref": "#/$defs/entry" }
-};
-*/
-
-const schemas = {
-  prefs: prefsSchema,
-  //item: itemSchema,
-  //items: listSchema
-};
-
-const _defaults = {
-  prefs: {
-    shortcutKey: 'Option+g'
-  },
-};
-
-const openGroupsWindow = (api) => {
+const openGroupsWindow = () => {
   const height = 600;
   const width = 800;
 
   const params = {
-    type: labels.featureType,
+    feature: labels.featureType,
     file: 'features/groups/home.html',
     height,
     width
@@ -124,85 +34,69 @@ const openGroupsWindow = (api) => {
   _api.openWindow(params);
 };
 
-const initStore = (store, data) => {
-  const sp = store.get('prefs');
-  if (!sp) {
-    store.set('prefs', data.prefs);
-  }
-};
-
-const initShortcut = (api, prefs) => {
-  const shortcut = prefs.shortcutKey;
-
-  if (globalShortcut.isRegistered(shortcut)) {
-    globalShortcut.unregister(shortcut);
-  }
-
-  const ret = globalShortcut.register(shortcut, () => {
-    openGroupsWindow(api);
+const initShortcut = shortcut => {
+  _api.shortcuts.register(shortcut, () => {
+    openGroupsWindow();
   });
-
-  if (!ret) {
-    console.error('Unable to register shortcut', shortcut);
-  }
 };
 
-const init = (api, store) => {
-  _store = store;
-  _api = api;
+const initStore = data => {
+  const sp = _store.getItem('prefs');
+  if (!sp) {
+    _store.setItem('prefs', JSON.stringify(data.prefs));
+  }
 
-  initStore(_store, _defaults);
+  /*
+  const items = _store.getItem('items');
+  if (!items) {
+    _store.setItem('items', JSON.stringify(data.items));
+  }
+  */
+};
 
+const initItems = (prefs, items) => {
+  const cmdPrefix = prefs.shortcutKeyPrefix;
 
-  _data = {
-    get prefs() { return _store.get('prefs'); },
-    //get items() { return _store.get('items'); },
-  };
+  items.forEach(item => {
+    const shortcut = `${cmdPrefix}${item.keyNum}`;
 
-  initShortcut(api, _data.prefs);
+    _api.shortcuts.register(shortcut, () => {
+      executeItem(item);
+    });
+  });
+};
+
+const init = () => {
+  log('init');
+
+  initStore(defaults);
+
+  const prefs = () => JSON.parse(_store.getItem('prefs'));
+
+  initShortcut(prefs().shortcutKey);
+
+  /*
+  const items = () => JSON.parse(_store.getItem('items'));
+
+  // initialize slides
+  if (items().length > 0) {
+    initItems(prefs(), items());
+  }
+  */
 };
 
 const onChange = (changed, old) => {
-  console.log(labels.featureType, 'onChange', changed);
+  log('onChange', changed);
 
   // TODO only update store if changed
   // and re-init
   if (changed.prefs) {
-    console.log('groups: updating prefs', changed.prefs);
-    _store.set('prefs', changed.prefs);
+    _store.setItem('prefs', JSON.stringify(changed.prefs));
   }
 
   if (changed.items) {
-    _store.set('items', changed.items);
+    _store.setItem('items', JSON.stringif(changed.items));
   }
 };
 
-const onMessage = msg => {
-  console.log('groups:onMessage', msg)
-  if (msg.command == 'openWindow') {
-    _api.openWindow(msg);
-  }
-};
-
-// ui config
-const config = {
-  // allow user to create new items
-  allowNew: false,
-  // fields that are view only
-  disabled: ['keyNum'],
-};
-
-module.exports = {
-  init: init,
-  config,
-  labels,
-  schemas,
-  data: {
-    get prefs() { return _store.get('prefs'); },
-  },
-  onChange,
-  onMessage: onMessage
-};
-
-
-})();
+window.addEventListener('load', init);

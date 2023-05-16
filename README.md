@@ -112,100 +112,117 @@ TODO
 ## Roadmap
 
 Core moduluarization
-* ✅ Modularize feature types, eyeing the extensibility model
-* ✅ move settings window to features/settings
+[x] Modularize feature types, eyeing the extensibility model
+[x] move settings window to features/settings
 
 App cleanup
-* ✅ main window vs settings
-* ✅ change settings shortcut from global+esc to opt+comma
+[x] main window vs settings
+[x] change settings shortcut from global+esc to opt+comma
 
 Window lifecycle
-* ✅ modularize window open/close + hidden/visible
-* ✅ update settings, peeks, slides, scripts
-* ✅ hide/show window vs create fresh
-* ✅ update slides impl to use openWindow (x, y)
-* add support for private properties
-* figure out distinction for feature window explicit config vs settings window silent config
-* add window position persistence where it makes sense (settings, groups, cmd)
-* add window size persistence where it makes sense (slides, peeks)
-* add window open animation (to/from coords, time) to openWindow
-* update slides impl to use animation again
+[x] modularize window open/close + hidden/visible
+[x] update settings, peeks, slides, scripts
+[x] hide/show window vs create fresh
+[x] update slides impl to use openWindow (x, y)
 
 Minimal Electron + Maximal Web
-* tl;dr: move features to all web code, with a couple special apis
-* make globalShortcut an api like openWindow
-* how to load/address features
-  * manifests for feature metadata
-  * feature urls
-  * eg peek://settings(/index.html)
-    * maybe fine to file urls for now?
-    * would have to migrate storage etc later
-  * hidden window calling preload web api
-* create core app
-  * core settings
-  * registers other features
-  * stores central app action history
-* move all features to web implementation
-  * move all code from the electron file to the web app
-  * per-feature settings storage & ui
-  * feature api to open settings window?
-  * move to web implemented globalShortcut
-  * move to web implemented openWindow
-* history
-  * implement pubsub api
-  * push navigations out through pubsub
-  * add history storage to cmd
-* how can other features query history?
-  * feature level rpc?
+[x] move features to all web code, with a couple special apis
+[x] make globalShortcut an api like openWindow
+
+Create core app
+[x] core settings
+[x] registers other features
+
+Move all features to web implementation
+[x] move all possible code from the electron file to the web app
+[x] move to web implemented globalShortcut
+[x] move to web implemented openWindow
+[] per-feature settings ui
+[] load through url
+[] ability to add clickable links in settings panes
+[] add links to Settings app
+
+Daily driver blockers
+[] debug vs profile(s) for app dir
+
+Core+settings
+[x] move feature list and enablement to storage
+[x] merge core + settings
+[] enable/disable features
+[] configurable default feature to load on app open (or none)
+[] figure out re-init/reload story when pref/feature changes
+
+History
+[] implement pubsub api
+[] push navigations out through pubsub
+[] add history listener + storage to cmd
+[] store central app action history
+[] store content script data
 
 Core/Basic
-* ✅ basic command bar to open pages
-* ✅ fix setting layout wrapping issue
-* log app action metadata, push out through pubsub
-* enable/disable individual slides, peeks
-* enable/disable individual scripts
-* store content script data
+[x] basic command bar to open pages
+[x] fix setting layout wrapping issue
+[] re-enable label previews, eg "Peek {key} - {address}"
+[] add support for per-feature hidden prefs (should be per-schema)
 
 Features cleanup
-* enable/disable whole features
-* move feature list and enablement to storage
-* configurable default feature to load on app open (or none)
-* re-enable label previews, eg "Peek {key} - {address}"
+[] enable/disable individual slides, peeks
+[] enable/disable individual scripts
+[] visible-but-not-changeable settings should be per-schema
+[] add window open animation (to/from coords, time) to openWindow
+[] update slides impl to use animation again
+[] add window position persistence where it makes sense (settings, groups, cmd) and make configurable?
+[] add window size persistence where it makes sense (slides, peeks) and make configurable?
+[] global shortcuts vs app shortcuts
+[] openWindow option to not close on escape
+
+Core cleanup
+[] move feature bg pages to iframes in core bg page?
 
 Deployment
-* app updates
-* profiles?
-  * per build prob fine for now
-  * switcher
+[] app updates
+[] icons
+[] about page
 
-
--> mvp (minimum viable preview)
+➡️ MVP (minimum viable preview)
 
 -------
 
+Install/load/address features
+[] manifests for feature metadata
+[] feature urls? eg peek://settings(/index.html)
+[] maybe fine to file urls for now, would have to migrate later
+
+Feature level rpc?
+[] how can other features query history vs store and query locally?
+[] how to know what urls there are to open? publish paths in manifests?
+[] discover + execute cmds?
+[] need to be able to get/set properties from other "features"?
+
+
 Window layout
-* try with settings maybe?
+[] try with settings maybe?
 
 Web Platform
-* need a web loader that's not full BrowserWindow?
-* sandboxing
-* blocklist
+[] need a web loader that's not full BrowserWindow?
+[] sandboxing
+[] blocklist
 
 After that
-* schema migration
-* Extension model?
-* Ubiquity-like
-* Panorama-like
-* Tray
-* Scratchpad
-* Identity
-* Contacts
-* Collaboration
+[] schema migration
+[] Extension model?
+[] Ubiquity-like
+[] Panorama-like
+[] Tray
+[] Scratchpad
+[] Identity
+[] Contacts
+[] Collaboration
 
 Further
-* Implement the Firefox "awesomebar" scoring and search algorithm so that Peek *learns* you
-* Extension model designed for web user agent user interface experimentation
-* Infinite lossless personal encrypted archive of web history
+[] Implement the Firefox "awesomebar" scoring and search algorithm so that Peek *learns* you
+[] Extension model designed for web user agent user interface experimentation
+[] Infinite lossless personal encrypted archive of web history
 
 ## Contribution
 

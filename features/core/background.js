@@ -57,7 +57,6 @@ const initStore = (data) => {
 
 const initShortcut = (shortcut) => {
   _api.shortcuts.register(shortcut, () => {
-    console.log('settings shortcut executed')
     openSettingsWindow(prefs());
   });
 };
@@ -65,19 +64,19 @@ const initShortcut = (shortcut) => {
 const prefs = () => JSON.parse(_store.getItem('prefs'));
 const items = () => JSON.parse(_store.getItem('items'));
 
-const initFeature = feature => {
-  if (!feature.enabled) {
+const initFeature = f => {
+  if (!f.enabled) {
     return;
   }
 
-  log('initializing feature ' + feature);
+  log('initializing feature ' + f);
 
   const params = {
-    feature,
+    feature: f.title,
     debug,
-    file: feature.address,
+    file: f.address,
     keepLive: true,
-    show: true
+    show: false
   };
 
   window.app.openWindow(params);
@@ -98,20 +97,24 @@ const initIframeFeature = file => {
   });
 };
 
-const onChange = (changed, old) => {
-  log(labels.featureType, 'onChange', changed);
+const odiff = (a, b) => Object.entries(b).reduce((c, [k, v]) => Object.assign(c, a[k] ? {} : { [k]: v }), {});
 
-  // TODO only update store if changed
-  if (changed.prefs) {
-    _store.setItem('prefs', JSON.stringify(changed.prefs));
-  }
-
-  if (changed.items) {
-    _store.setItem('items', JSON.stringif(changed.items));
-  }
-
-  // re-init
+const onStorageChange = (e) => {
+  console.log(e);
+  //log('oSC', e.key, JSON.stringify(odiff(e.oldValue, e.newValue)));
+  /*
+	e.key;
+	e.oldValue;
+	e.newValue;
+	e.url;
+	JSON.stringify(
+    e.storageArea
+  );
+  */
+  items().forEach(initFeature);
 };
+
+window.addEventListener('storage', onStorageChange);
 
 const init = () => {
   log('settings: init');

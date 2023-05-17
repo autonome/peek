@@ -3,7 +3,6 @@
 
 console.log('main');
 
-
 const DEBUG = process.env.DEBUG;
 
 // Modules to control application life and create native browser window
@@ -18,10 +17,56 @@ const {
   Tray
 } = require('electron');
 
+const fs = require('fs');
 const path = require('path');
+
+// script loaded into every app window
 const preloadPath = path.join(__dirname, 'preload.js');
 
+// app hidden window to load
+// core application logic is here
 const webCoreAddress = 'features/core/background.html';
+
+const p = process.env.PROFILE;
+console.log('env prof?', p, p != undefined, typeof p, p.length)
+const profileIsLegit = p => p != undefined && typeof p == 'string' && p.length > 0;
+
+const PROFILE =
+  profileIsLegit(process.env.PROFILE)
+  ? process.env.PROFILE
+  : (DEBUG ? 'debug' : 'default');
+
+console.log('PROFILE', PROFILE);
+
+// Profile dirs are subdir of userData dir
+// ..................................... ↓ we set this per profile
+//
+// {home} / {appData} / {userData} / {profileDir}
+//
+// Chromium's data in a subfolder of profile folder
+//
+// ................................................. ↓ we set this per profile
+//
+// {home} / {appData} / {userData} / {profileDir} / {sessionData}
+
+
+// specify various app data paths and make if not exist
+const defaultUserDataPath = app.getPath('userData');
+const profileDataPath = path.join(defaultUserDataPath, PROFILE); 
+const sessionDataPath = path.join(profileDataPath, 'chromium'); 
+
+console.log('udp', defaultUserDataPath);
+console.log('pdp', profileDataPath);
+console.log('sdp', sessionDataPath);
+
+// create filesystem
+if (!fs.existsSync(sessionDataPath)){
+  fs.mkdirSync(sessionDataPath, { recursive: true });
+}
+
+// configure Electron with these paths
+app.setPath('userData', profileDataPath);
+app.setPath('sessionData', sessionDataPath);
 
 // ***** Developer / Error handling / Etc *****
 const isDev = require('electron-is-dev');
@@ -128,6 +173,7 @@ const onReady = () => {
     feature: 'Core',
     file: webCoreAddress,
     show: true,
+    keepLive: true,
     debug: DEBUG
   })
 

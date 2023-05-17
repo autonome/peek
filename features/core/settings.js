@@ -4,9 +4,10 @@ const log = (...args) => {
   if (!DEBUG) {
     return;
   }
+  //const str = args.map(JSON.stringify).join(', ');
   const str = args.join(', ');
   console.log(str);
-  window.app.log(labels.featureType, args.map(JSON.stringify).join(', '));
+  window.app.log(labels.featureType, str);
 };
 
 const init = () => {
@@ -24,6 +25,7 @@ const init = () => {
 
   const onChange = newData => {
     log('onChange', JSON.stringify(newData));
+
     if (newData.prefs) {
       const key = 'prefs';
       localStorage.setItem(key, JSON.stringify(newData[key]));
@@ -62,6 +64,7 @@ const init = () => {
 
 const fillPaneFromSchema = (pane, labels, schema, data, onChange, disabled) => {
 	const props = schema.properties;
+
   Object.keys(props).forEach(k => {
     // schema for property
     const s = props[k];
@@ -146,8 +149,7 @@ const initFeaturePane = (container, feature, onChange) => {
 
     log('folder level update for', labels.featureDisplay, paneData);
 
-    let updated = {
-    }; 
+    let updated = {}; 
 
     // TODO: make this right, ugh
     if (prefs) {

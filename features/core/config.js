@@ -90,6 +90,8 @@ const defaults = {
     shortcutKey: 'Option+,',
     height: 600,
     width: 800,
+    openDefaultFeature: 'Settings',
+    showTrayIcon: true,
   },
   items: [
     { title: 'Cmd',
@@ -105,7 +107,7 @@ const defaults = {
     { title: 'Peeks',
       address: 'features/peeks/background.html',
       settingsAddress: 'features/peeks/settings.html',
-      enabled: false
+      enabled: true
     },
     { title: 'Scripts',
       address: 'features/scripts/background.html',
@@ -115,7 +117,7 @@ const defaults = {
     { title: 'Slides',
       address: 'features/slides/background.html',
       settingsAddress: 'features/slides/settings.html',
-      enabled: false
+      enabled: true
     },
   ]
 };

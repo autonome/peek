@@ -148,9 +148,10 @@ Daily driver blockers
 Core+settings
 [x] move feature list and enablement to storage
 [x] merge core + settings
-[] enable/disable features
+[x] enable/disable features
 [] configurable default feature to load on app open (or none)
 [] figure out re-init/reload story when pref/feature changes
+[] figure out feature unload/reload (unreg shortcuts, close windows, etc)
 
 History
 [] implement pubsub api

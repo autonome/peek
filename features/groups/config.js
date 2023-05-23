@@ -1,3 +1,4 @@
+const id = 'features/groups';
 
 const labels = {
   featureType: 'groups',
@@ -104,3 +105,10 @@ const ui = {
   disabled: ['keyNum'],
 };
 
+export {
+  id,
+  labels,
+  schemas,
+  ui,
+  defaults
+};

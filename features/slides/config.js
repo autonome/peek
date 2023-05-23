@@ -1,3 +1,4 @@
+const id = 'features/slides';
 
 const labels = {
   featureType: 'slides',
@@ -148,4 +149,12 @@ const defaults = {
       width: 800,
     },
   ]
+};
+
+export {
+  id,
+  labels,
+  schemas,
+  ui,
+  defaults
 };

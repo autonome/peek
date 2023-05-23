@@ -1,4 +1,4 @@
-const source = 'core/background';
+const id = 'features/core';
 
 const labels = {
   featureType: 'settings',
@@ -32,8 +32,18 @@ const prefsSchema = {
       "type": "integer",
       "default": 800
     },
+    "startupFeature": {
+      "description": "Feature to load at app startup",
+      "type": "string",
+      "default": "Settings"
+    },
+    "enableTrayIcon": {
+      "description": "Whether to show app icon in system tray",
+      "type": "boolean",
+      "default": true
+    },
   },
-  "required": [ "shortcutKey" ]
+  "required": [ "shortcutKey", "startupFeature", "enableTrayIcon" ]
 };
 
 const itemSchema = {
@@ -66,10 +76,9 @@ const itemSchema = {
 
 const listSchema = {
   type: 'array',
-  items: { "$ref": "#/$defs/feature" }
+  features: { "$ref": "#/$defs/feature" }
 };
 
-// TODO: schemaize 0-9 constraints for peeks
 const schemas = {
   prefs: prefsSchema,
   item: itemSchema,
@@ -77,11 +86,24 @@ const schemas = {
 };
 
 // ui config for tweakpane filling
+// TODO: this needs to be per section
+// or integrated some other way entirely, kind of a mess
+// 
+// gotta think about much more complex objects
+// and also multiple types of items/lists
 const ui = {
   // allow user to create new items
   allowNew: false,
+
   // fields that are view only
   disabled: ['title', 'address', 'settingsAddress'],
+
+  // fields to make links
+  linkify: [
+    { field: 'settingsAddress',
+      title: 'Settings'
+    }
+  ],
 };
 
 // defaults for user-modifiable preferences or data
@@ -90,8 +112,8 @@ const defaults = {
     shortcutKey: 'Option+,',
     height: 600,
     width: 800,
-    openDefaultFeature: 'Settings',
-    showTrayIcon: true,
+    startupFeature: 'Settings',
+    enableTrayIcon: true
   },
   items: [
     { title: 'Cmd',
@@ -107,7 +129,7 @@ const defaults = {
     { title: 'Peeks',
       address: 'features/peeks/background.html',
       settingsAddress: 'features/peeks/settings.html',
-      enabled: true
+      enabled: false
     },
     { title: 'Scripts',
       address: 'features/scripts/background.html',
@@ -117,16 +139,15 @@ const defaults = {
     { title: 'Slides',
       address: 'features/slides/background.html',
       settingsAddress: 'features/slides/settings.html',
-      enabled: true
-    },
+      enabled: false
+    }
   ]
 };
 
-/*
 export {
+  id,
   labels,
   schemas,
   ui,
   defaults
 };
-*/

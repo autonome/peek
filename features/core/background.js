@@ -1,31 +1,19 @@
-const log = (...args) => {
-  //console.log.apply(null, [source].concat(args));
-  window.app.log(labels.featureType, args.join(', '));
-};
+import { id, labels, schemas, ui, defaults } from './config.js';
+import { log as l, openStore } from "../utils.js";
 
-log('loading');
+const log = function(...args) { l(id, args); };
 
-const features = [
-  //'features/cmd/background.html',
-  //'features/groups/background.html',
-  //'features/peeks/background.html',
-  //'features/scripts/background.html',
-  //'features/settings/background.html',
-  //'features/slides/background.html'
-];
+log('background');
 
-//import { labels, schemas, ui, defaults } from './config.js';
+const debug = window.app.debug;
 
-//const debug = window.location.search.indexOf('debug') > 0;
-const debug = 1;
-
-if (debug) {
-  log('clearing storage')
-  localStorage.clear();
-}
-
-const _store = localStorage;
+const _store = openStore(id, defaults);
 const _api = window.app;
+
+const storageKeys = {
+  PREFS: 'prefs',
+  FEATURES: 'items',
+};
 
 const openSettingsWindow = (prefs) => {
   const height = prefs.height || 600;
@@ -42,27 +30,11 @@ const openSettingsWindow = (prefs) => {
   _api.openWindow(params);
 };
 
-const initStore = (data) => {
-  const sp = _store.getItem('prefs');
-  if (!sp) {
-    log('first run, initing datastore')
-    _store.setItem('prefs', JSON.stringify(data.prefs));
-  }
-
-  const items = _store.getItem('items');
-  if (!items) {
-    _store.setItem('items', JSON.stringify(data.items));
-  }
-};
-
-const initShortcut = (shortcut) => {
-  _api.shortcuts.register(shortcut, () => {
-    openSettingsWindow(prefs());
+const initShortcut = (prefs) => {
+  _api.shortcuts.register(prefs.shortcutKey, () => {
+    openSettingsWindow(prefs);
   });
 };
-
-const prefs = () => JSON.parse(_store.getItem('prefs'));
-const items = () => JSON.parse(_store.getItem('items'));
 
 const initFeature = f => {
   if (!f.enabled) {
@@ -76,7 +48,7 @@ const initFeature = f => {
     debug,
     file: f.address,
     keepLive: true,
-    show: false
+    show: debug
   };
 
   window.app.openWindow(params);
@@ -100,31 +72,55 @@ const initIframeFeature = file => {
 const odiff = (a, b) => Object.entries(b).reduce((c, [k, v]) => Object.assign(c, a[k] ? {} : { [k]: v }), {});
 
 const onStorageChange = (e) => {
-  console.log(e);
-  //log('oSC', e.key, JSON.stringify(odiff(e.oldValue, e.newValue)));
-  /*
-	e.key;
-	e.oldValue;
-	e.newValue;
-	e.url;
-	JSON.stringify(
-    e.storageArea
-  );
-  */
-  items().forEach(initFeature);
+  const old = JSON.parse(e.oldValue);
+  const now = JSON.parse(e.newValue);
+
+  const featureKey = `${id}+${storageKeys.FEATURES}`;
+  //log('onStorageChane', e.key, featureKey)
+  if (e.key == featureKey) {
+    //log('STORAGE CHANGE', e.key, old[0].enabled, now[0].enabled);
+    items().forEach((feat, i) => {
+      log(feat.title, i, feat.enabled, old[i].enabled, now[i].enabled);
+      // disabled, so unload
+      if (old[i].enabled == true && now[i].enabled == false) {
+        // TODO
+        log('TODO: add unloading of features', feat)
+      }
+      // enabled, so load
+      else if (old[i].enabled == false && now[i].enabled == true) {
+        initFeature(feat);
+      }
+    });
+  }
+	//JSON.stringify(e.storageArea);
 };
 
 window.addEventListener('storage', onStorageChange);
 
+const prefs = () => _store.get(storageKeys.PREFS);
+const items = () => _store.get(storageKeys.FEATURES);
+
 const init = () => {
-  log('settings: init');
+  log('init');
 
-  initStore(defaults);
-
-  initShortcut(prefs().shortcutKey);
+  initShortcut(prefs());
 
   items().forEach(initFeature);
   //features.forEach(initIframeFeature);
+  
+  const startupFeatureTitle = prefs().startupFeature;
+
+  const startupFeature = items().find(f => f.title = startupFeatureTitle);
+
+  /*
+  const msg = {
+    feature: id,
+    topic: 'init',
+    'prefs': prefs()
+  };
+
+  window.app.sendMessage(msg);
+  */
 };
 
 window.addEventListener('load', init);

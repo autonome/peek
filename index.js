@@ -4,6 +4,11 @@
 console.log('main');
 
 const DEBUG = process.env.DEBUG;
+const DEBUG_LEVELS = {
+  BASIC: 1,
+  FIRSTRUN: 2
+};
+const DEBUG_LEVEL = DEBUG_LEVELS.BASIC;
 
 // Modules to control application life and create native browser window
 const {
@@ -28,7 +33,7 @@ const preloadPath = path.join(__dirname, 'preload.js');
 const webCoreAddress = 'features/core/background.html';
 
 const p = process.env.PROFILE;
-console.log('env prof?', p, p != undefined, typeof p, p.length)
+console.log('env prof?', p, p != undefined, typeof p)
 const profileIsLegit = p => p != undefined && typeof p == 'string' && p.length > 0;
 
 const PROFILE =
@@ -160,12 +165,13 @@ const onReady = () => {
   console.log('onReady');
 
   // keep app out of dock and tab switcher
-  if (app.dock) {
+  if (app.dock && !DEBUG) {
     app.dock.hide();
   }
 
   // initialize system tray
-  // mostly just useful to know if the app is running or not
+  // at this point, mostly just useful to know if the app is running or not
+  // TODO: get settings from core, and toggle
   initTray();
 
   // init web core
@@ -174,6 +180,7 @@ const onReady = () => {
     file: webCoreAddress,
     show: true,
     keepLive: true,
+    keepVisible: true,
     debug: DEBUG
   })
 
@@ -215,12 +222,17 @@ ipcMain.on('openwindow', (ev, msg) => {
 
 // generic dispatch - messages only from trusted code (💀)
 ipcMain.on('sendmessage', (ev, msg) => {
-  console.log('sendmsg', msg);
+  console.log('SENDMSG', msg);
+  /*
+  if (msg.replyTopic) {
+    ev.reply(msg.replyTopic, { output });
+  }
+  */
 });
 
 // ipc ESC handler
 ipcMain.on('esc', (ev, title) => {
-  console.log('esc');
+  console.log('ESC');
 
   const fwin = BrowserWindow.getFocusedWindow();
   const entry = windowCache.byId(fwin.id);
@@ -267,6 +279,9 @@ const openWindow = (params, callback) => {
 
   // TODO: need to figure out a better approach
   const show = params.hasOwnProperty('show') ? params.show : true;
+
+  // keep visible
+  const keepVisible = params.hasOwnProperty('keepVisible') ? params.keepVisible : false;
 
   // cache key
   // TODO: need to figure out a better approach
@@ -332,22 +347,33 @@ const openWindow = (params, callback) => {
   if (params.keepLive == true) {
     windowCache.add({
       id: win.id,
-      key: key
+      key,
+      params
     });
   }
 
   // TODO: make configurable
   const onGoAway = () => {
     if (params.keepLive) {
-      //console.log('win.onGoAway(): hiding ', params.address);
-      win.hide();
+      if (params.keepVisible == false) {
+        console.log('win.onGoAway(): hiding ', params.address);
+        win.hide();
+      }
     }
     else {
       //console.log('win.onGoAway(): destroying ', params.address);
       win.destroy();
     }
   }
-  win.on('blur', onGoAway);
+
+  // don't do this in debug mode, devtools steals focus
+  // and closes everything 😐
+  // TODO: fix
+  // TODO: should be configurable behavior
+  if (!DEBUG) {
+    win.on('blur', onGoAway);
+  }
+  
   win.on('close', onGoAway);
 
   win.on('closed', () => {
@@ -356,8 +382,10 @@ const openWindow = (params, callback) => {
     win = null;
   });
 
+  console.log('OW: DEBUG', params.debug)
   if (params.debug) {
-    win.webContents.openDevTools();
+    // TODO: why not working for core background page?
+    win.webContents.openDevTools({ mode: 'detach' });
   }
 
   if (params.address) {

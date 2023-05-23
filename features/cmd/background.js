@@ -1,24 +1,20 @@
 // cmd/background.js
-(async () => {
 
-const log = (...args) => {
-  window.app.log(labels.featureType, args.join(', '));
+import { id, labels, schemas, ui, defaults } from './config.js';
+import { log as l, openStore } from "../utils.js";
+
+const log = function(...args) { l(id, args); };
+
+log('background');
+
+const debug = window.app.debug;
+const store = openStore(id, defaults);
+const api = window.app;
+
+const storageKeys = {
+  PREFS: 'prefs',
+  ITEMS: 'items',
 };
-
-log('cmd/background');
-
-//import { labels, schemas, ui, defaults } from './config.js';
-
-//const debug = window.location.search.indexOf('debug') > 0;
-const debug = 1;
-
-if (debug) {
-  log('clearing storage')
-  localStorage.clear();
-}
-
-const _store = localStorage;
-const _api = window.app;
 
 const openInputWindow = prefs => {
   const height = prefs.height || 50;
@@ -32,45 +28,21 @@ const openInputWindow = prefs => {
     width
   };
 
-  _api.openWindow(params);
+  api.openWindow(params);
 };
 
-const initStore = (data) => {
-  const sp = _store.getItem('prefs');
-  if (!sp) {
-    _store.setItem('prefs', JSON.stringify(data.prefs));
-  }
-};
-
-const initShortcut = (shortcut) => {
-  _api.shortcuts.register(shortcut, () => {
-    openInputWindow(prefs());
+const initShortcut = (prefs) => {
+  api.shortcuts.register(prefs.shortcutKey, () => {
+    openInputWindow(prefs);
   });
 };
 
-const prefs = () => JSON.parse(_store.getItem('prefs'));
-
 const init = () => {
-  initStore(defaults);
+  log('init');
 
-  initShortcut(prefs().shortcutKey);
+  const prefs = () => store.get(storageKeys.PREFS);
+
+  initShortcut(prefs());
 };
-
-const onChange = (changed, old) => {
-  log('onChange', changed);
-
-  // TODO only update store if changed
-  // and re-init
-  if (changed.prefs) {
-    _store.setItem('prefs', JSON.stringify(changed.prefs));
-  }
-
-  if (changed.items) {
-    _store.setItem('items', JSON.stringif(changed.items));
-  }
-};
-
 
 window.addEventListener('load', init);
-
-})();

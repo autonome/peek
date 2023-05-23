@@ -137,21 +137,22 @@ Move all features to web implementation
 [x] move all possible code from the electron file to the web app
 [x] move to web implemented globalShortcut
 [x] move to web implemented openWindow
-[] per-feature settings ui
-[] load through url
 [] ability to add clickable links in settings panes
+[] per-feature settings ui
 [] add links to Settings app
 
 Daily driver blockers
-[] debug vs profile(s) for app dir
+[x] debug vs profile(s) for app dir
 
 Core+settings
 [x] move feature list and enablement to storage
 [x] merge core + settings
 [x] enable/disable features
-[] configurable default feature to load on app open (or none)
+[] configurable default feature to load on app open (default to settings)
 [] figure out re-init/reload story when pref/feature changes
 [] figure out feature unload/reload (unreg shortcuts, close windows, etc)
+[] wire up tray icon to pref
+[] tray click opens settings
 
 History
 [] implement pubsub api
@@ -159,6 +160,8 @@ History
 [] add history listener + storage to cmd
 [] store central app action history
 [] store content script data
+
+[] add to izui stack (and ix w/ history?)
 
 Core/Basic
 [x] basic command bar to open pages
@@ -200,9 +203,9 @@ Feature level rpc?
 [] discover + execute cmds?
 [] need to be able to get/set properties from other "features"?
 
-
 Window layout
 [] try with settings maybe?
+[] tile/untile
 
 Web Platform
 [] need a web loader that's not full BrowserWindow?

@@ -1,14 +1,17 @@
-const DEBUG = 0;
+import { id, labels, schemas, ui, defaults } from './config.js';
+import { log as l, openStore } from "../utils.js";
 
-const log = (...args) => {
-  if (!DEBUG) {
-    return;
-  }
-  //const str = args.map(JSON.stringify).join(', ');
-  const str = args.join(', ');
-  console.log(str);
-  window.app.log(labels.featureType, str);
+const log = function(...args) { l(id, args); };
+const DEBUG = window.app.debug;
+
+log('loading', id);
+
+const storageKeys = {
+  PREFS: 'prefs',
+  FEATURES: 'items',
 };
+
+const store = openStore(id);
 
 const init = () => {
   log('settings: init');
@@ -28,19 +31,25 @@ const init = () => {
 
     if (newData.prefs) {
       const key = 'prefs';
-      localStorage.setItem(key, JSON.stringify(newData[key]));
-      log('stored', key, JSON.parse(localStorage.getItem(key)));
+      store.set(storageKeys.PREFS, newData[key]);
+      log('stored', key, store.get(storageKeys.PREFS));
     }
     
     if (newData.items) {
       const key = 'items';
-      localStorage.setItem(key, JSON.stringify(newData[key]));
-      log('stored', key, JSON.parse(localStorage.getItem(key)));
+      store.set(storageKeys.FEATURES, newData[key]);
+      log('stored', key, store.get(storageKeys.FEATURES));
     }
   };
 
-  const prefs = JSON.parse(localStorage.getItem('prefs'));
-  const items = JSON.parse(localStorage.getItem('items'));
+  for (let i = 0; i < localStorage.length; i++) {
+    log('KEY', localStorage.key(i));
+    //console.log(localStorage.getItem(localStorage.key(i)));
+  }
+
+
+  const prefs = store.get(storageKeys.PREFS);
+  const items = store.get(storageKeys.FEATURES);
 
   log('prefs', prefs)
   log('items', items)
@@ -95,7 +104,7 @@ const fillPaneFromSchema = (pane, labels, schema, data, onChange, disabled) => {
     // TODO: consider inline state management
     input.on('change', ev => {
       // TODO: validate against schema
-      log('inline field change', k, ev)
+      log('inline field change', k, ev.value)
       data[k] = ev.value;
       onChange(data)
     });
@@ -147,7 +156,7 @@ const initFeaturePane = (container, feature, onChange) => {
   const update = (all) => {
     const paneData = exportPaneData(pane);
 
-    log('folder level update for', labels.featureDisplay, paneData);
+    log('folder level update for', labels.featureDisplay);
 
     let updated = {}; 
 

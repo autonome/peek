@@ -1,3 +1,5 @@
+const id = 'features/cmd';
+
 const labels = {
   featureType: 'cmd',
   featureDisplay: 'Cmd',
@@ -103,12 +105,11 @@ const ui = {
   disabled: [],
 };
 
-/*
 export {
+  id,
   labels,
   schemas,
   ui,
   defaults
 };
-*/
 

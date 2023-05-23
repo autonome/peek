@@ -1,21 +1,20 @@
 <!DOCTYPE html>
 <html>
-<head>
-  <title>cmd</title>
-  <meta charset="utf-8">
-  <meta name="description" content="">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-  body {
-    margin: 0;
-    padding: 0;
-  }
-  </style>
-</head>
-<body>
-  <script src="./config.js"></script>
-  <script src="./panel.js"></script>
-  <script src="./commands.js"></script>
-</body>
-</html>
-
+  <head>
+    <title>peek:cmd:panel</title>
+    <meta charset="utf-8">
+    <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self';">
+    <meta name="description" content="">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+    </style>
+    <link rel="stylesheet" href="panel.css">
+  </head>
+  <body>
+    <script type=module src="../utils.js"></script>
+    <script type=module src="./config.js"></script>
+    <script type=module src="./panel.js"></script>
+    <script type=module src="./commands.js"></script>
+  </body>
+  </html>

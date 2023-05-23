@@ -1,25 +1,24 @@
-(async () => {
+import { id, labels, schemas, ui, defaults } from './config.js';
+import { log as l, openStore } from "../utils.js";
 
-const DEBUG = 1;
-const TEST = 0;
+const log = function(...args) { l(id, args); };
 
-dbg('POPUP INIT');
+log('background');
 
-if (TEST === 1) {
-  let title = '+pin';
-  let url = "javascript:q=location.href;if(document.getSelection){d=document.getSelection();}else{d='';};p=document.title;void(open('https://pinboard.in/add?showtags=yes&url='+encodeURIComponent(q)+'&description='+encodeURIComponent(d)+'&title='+encodeURIComponent(p),'Pinboard','toolbar=no,scrollbars=yes,width=750,height=700'));"
-  let r = await browser.bookmarks.search({ title })
-  if (r.length == 0) {
-    let bm = await browser.bookmarks.create({ title, url })
-  }
-}
+const debug = window.app.debug;
+const store = openStore(id);
+const api = window.app;
 
+const storageKeys = {
+  PREFS: 'prefs',
+  ITEMS: 'items',
+};
 
 let commands = {};
 
 function onCommandsUpdated () {
   window.dispatchEvent(new CustomEvent('cmd-update-commands', { detail: commands }));
-  dbg('main sending updated commands out', Object.keys(commands))
+  log('main sending updated commands out', Object.keys(commands))
 }
 
 window.addEventListener('DOMContentLoaded', initializeCommandSources);
@@ -41,7 +40,7 @@ function addCommand(command) {
 }
 
 function initializeCommandSources() {
-  dbg('initializeCommandSources');
+  log('initializeCommandSources');
 
   sourceOpenURL();
   //sourceBookmarklets();
@@ -282,12 +281,6 @@ async function sourceNote() {
 await sourceNote()
 */
 
-function dbg(...args) {
-  if (DEBUG == 1) {
-    console.log(...args)
-  }
-}
-
 function notify(title, content) {
   browser.notifications.create({
     "type": "basic",
@@ -296,5 +289,3 @@ function notify(title, content) {
     "message": content
   });
 }
-
-})();

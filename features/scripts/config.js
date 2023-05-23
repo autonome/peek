@@ -1,3 +1,5 @@
+const id = 'features/scripts';
+
 const labels = {
   featureType: 'scripts',
   featureDisplay: 'Scripts',
@@ -117,4 +119,12 @@ const ui = {
   allowNew: false,
   // fields that are view only
   disabled: ['screenEdge'],
+};
+
+export {
+  id,
+  labels,
+  schemas,
+  ui,
+  defaults
 };

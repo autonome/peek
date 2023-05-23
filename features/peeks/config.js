@@ -1,3 +1,4 @@
+const id = 'features/peeks';
 
 const labels = {
   featureType: 'peeks',
@@ -119,3 +120,10 @@ const ui = {
   disabled: ['keyNum'],
 };
 
+export {
+  id,
+  labels,
+  schemas,
+  ui,
+  defaults
+};

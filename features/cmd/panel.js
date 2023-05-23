@@ -1,3 +1,4 @@
+// cmd/panel.js
 /*
  
 TODO: NOW
@@ -37,14 +38,21 @@ TODO: Commands
 
 */
 
-(async () => {
+import { id, labels, schemas, ui, defaults } from './config.js';
+import { log as l, openStore } from "../utils.js";
 
-const log = (...args) => {
-  window.app.log(labels.featureType, args.join(', '));
+const log = function(...args) { l(id, args); };
+
+log('background');
+
+const debug = window.app.debug;
+const store = openStore(id);
+const api = window.app;
+
+const storageKeys = {
+  PREFS: 'prefs',
+  ITEMS: 'items',
 };
-
-log('cmd/panel');
-
 
 let state = {
   commands: [], // array of command names
@@ -413,5 +421,3 @@ function generateUnderlined(typed, match) {
   }
   return str;
 }
-
-})();

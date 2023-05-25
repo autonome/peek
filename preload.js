@@ -10,6 +10,7 @@ const DEBUG_LEVELS = {
   BASIC: 1,
   FIRST_RUN: 2
 };
+
 const DEBUG_LEVEL = DEBUG_LEVELS.BASIC;
 //const DEBUG_LEVEL = DEBUG_LEVELS.FIRST_RUN;
 
@@ -77,8 +78,9 @@ api.debug = DEBUG;
 api.debugLevels = DEBUG_LEVELS;
 api.debugLevel = DEBUG_LEVEL;
 
-api.sendMessage = (msg, callback) => {
-  log(src, 'sendMessage', 'asdfa', msg)
+api.publish = (topic, msg) => {
+  //log(src, 'publish', topic)
+
   // noop if not an internal app file
   // TODO: hmmm
   const isMain = window.location.protocol == 'file:';
@@ -86,26 +88,36 @@ api.sendMessage = (msg, callback) => {
     return;
   }
 
-  log(src, 'sendMessage', 'sending')
+  ipcRenderer.send('publish', {
+    topic,
+    data: msg,
+  });
+};
+
+api.subscribe = (topic, callback) => {
+  //log(src, 'subscribe', topic)
+
+  // noop if not an internal app file
+  // TODO: hmmm
+  const isMain = window.location.protocol == 'file:';
+
+  if (!isMain) {
+    // TODO: error
+    return;
+  }
 
   const replyTopic = `${Date.now()}`;
 
-  ipcRenderer.send('sendmessage', {
-    msg,
+  ipcRenderer.send('subscribe', {
+    topic,
     replyTopic
   });
 
-  log(src, 'sendMessage', 'sent')
-
-  ipcRenderer.once(replyTopic, (ev, msg) => {
-    log(src, 'sendMessage: resp from main');
-    log(src, msg);
+  ipcRenderer.on(replyTopic, (ev, msg) => {
     if (callback) {
       callback(msg);
     }
   });
-
-  log(src, 'sendMessage', 'added once listener')
 };
 
 contextBridge.exposeInMainWorld('app', api);

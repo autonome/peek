@@ -137,9 +137,11 @@ Move all features to web implementation
 [x] move all possible code from the electron file to the web app
 [x] move to web implemented globalShortcut
 [x] move to web implemented openWindow
+[] move settings re-use code to utils lib
 [] ability to add clickable links in settings panes
 [] per-feature settings ui
 [] add links to Settings app
+[] feature metadata in manifest
 
 Daily driver blockers
 [x] debug vs profile(s) for app dir
@@ -148,19 +150,27 @@ Core+settings
 [x] move feature list and enablement to storage
 [x] merge core + settings
 [x] enable/disable features
-[] configurable default feature to load on app open (default to settings)
+[x] configurable default feature to load on app open (default to settings)
+[x] wire up tray icon to pref
+[x] tray click opens default app
+
+Commands/messaging
+[x] implement pubsub api
+[x] way to tell feature to open default ui (if there is one)
+[] way to tell feature to open settings ui (if there is one)
 [] figure out re-init/reload story when pref/feature changes
 [] figure out feature unload/reload (unreg shortcuts, close windows, etc)
-[] wire up tray icon to pref
-[] tray click opens settings
+
+Misc
+[] fix ESC not working in web content
 
 History
-[] implement pubsub api
 [] push navigations out through pubsub
 [] add history listener + storage to cmd
 [] store central app action history
 [] store content script data
 
+[] esc stack: from feature settings back to core settings
 [] add to izui stack (and ix w/ history?)
 
 Core/Basic

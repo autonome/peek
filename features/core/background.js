@@ -69,6 +69,37 @@ const initIframeFeature = file => {
   });
 };
 
+const prefs = () => _store.get(storageKeys.PREFS);
+const items = () => _store.get(storageKeys.FEATURES);
+
+const init = () => {
+  log('init');
+
+  const p = prefs();
+
+  initShortcut(p);
+
+  items().forEach(initFeature);
+  //features.forEach(initIframeFeature);
+  
+  const startupFeatureTitle = p.startupFeature;
+
+  const startupFeature = items().find(f => f.title = startupFeatureTitle);
+
+  window.app.subscribe('open', msg => {
+    if (msg.feature && msg.feature == 'feature/core/settings') {
+      openSettingsWindow(p);
+    }
+  });
+
+  window.app.publish('prefs', {
+    feature: id,
+    prefs: p
+  });
+};
+
+window.addEventListener('load', init);
+
 const odiff = (a, b) => Object.entries(b).reduce((c, [k, v]) => Object.assign(c, a[k] ? {} : { [k]: v }), {});
 
 const onStorageChange = (e) => {
@@ -96,31 +127,3 @@ const onStorageChange = (e) => {
 };
 
 window.addEventListener('storage', onStorageChange);
-
-const prefs = () => _store.get(storageKeys.PREFS);
-const items = () => _store.get(storageKeys.FEATURES);
-
-const init = () => {
-  log('init');
-
-  initShortcut(prefs());
-
-  items().forEach(initFeature);
-  //features.forEach(initIframeFeature);
-  
-  const startupFeatureTitle = prefs().startupFeature;
-
-  const startupFeature = items().find(f => f.title = startupFeatureTitle);
-
-  /*
-  const msg = {
-    feature: id,
-    topic: 'init',
-    'prefs': prefs()
-  };
-
-  window.app.sendMessage(msg);
-  */
-};
-
-window.addEventListener('load', init);

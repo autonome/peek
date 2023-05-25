@@ -1,7 +1,7 @@
 // slides/slides.js
 
 import { id, labels, schemas, ui, defaults } from './config.js';
-import { log as l, openStore, getLocalId } from "../utils.js";
+import { log as l, openStore } from "../utils.js";
 
 const log = function(...args) { l(id, args); };
 
@@ -9,12 +9,12 @@ log('background');
 
 const debug = window.app.debug;
 
-const _store = openStore(id, defaults);
-const _api = window.app;
+const store = openStore(id, defaults);
+const api = window.app;
 
 const storageKeys = {
   PREFS: 'prefs',
-  FEATURES: 'items',
+  ITEMS: 'items',
 };
 
 const executeItem = (item) => {
@@ -104,7 +104,7 @@ const executeItem = (item) => {
     y,
   };
 
-  _api.openWindow(params);
+  api.openWindow(params);
 };
 
 const initItems = (prefs, items) => {
@@ -114,7 +114,7 @@ const initItems = (prefs, items) => {
   items.forEach(item => {
     const shortcut = `${cmdPrefix}${item.screenEdge}`;
 
-    _api.shortcuts.register(shortcut, () => {
+    api.shortcuts.register(shortcut, () => {
       executeItem(item);
     });
   });
@@ -123,8 +123,8 @@ const initItems = (prefs, items) => {
 const init = () => {
   log('init');
 
-  const prefs = () => _store.get(storageKeys.PREFS));
-  const items = () => _store.get(storageKeys.ITEMS));
+  const prefs = () => store.get(storageKeys.PREFS);
+  const items = () => store.get(storageKeys.ITEMS);
 
   // initialize slides
   if (items().length > 0) {
@@ -190,5 +190,3 @@ const animateSlide = (win, slide) => {
   });
 };
 */
-
-//})();

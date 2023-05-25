@@ -37,13 +37,18 @@ const prefsSchema = {
       "type": "string",
       "default": "Settings"
     },
-    "enableTrayIcon": {
+    "showTrayIcon": {
       "description": "Whether to show app icon in system tray",
       "type": "boolean",
       "default": true
     },
+    "showInDockAndSwitcher": {
+      "description": "Whether to hide or show app in OS dock and app switcher",
+      "type": "boolean",
+      "default": false
+    },
   },
-  "required": [ "shortcutKey", "startupFeature", "enableTrayIcon" ]
+  "required": [ "shortcutKey", "startupFeature", "enableTrayIcon", "showInDockAndSwitcher" ]
 };
 
 const itemSchema = {
@@ -61,17 +66,17 @@ const itemSchema = {
       "description": "URL to load",
       "type": "string"
     },
-    "settingsAddress": {
-      "description": "URL to load feature settings",
-      "type": "string"
-    },
     "enabled": {
       "description": "Whether the feature is enabled or not - defaults to true",
       "type": "boolean",
       "default": true
     },
+    "settingsAddress": {
+      "description": "URL to load feature settings",
+      "type": "string"
+    },
   },
-  "required": [ "title", "address", "settingsAddress", "enabled" ]
+  "required": [ "title", "address", "enabled", "settingsAddress" ]
 };
 
 const listSchema = {
@@ -112,34 +117,35 @@ const defaults = {
     shortcutKey: 'Option+,',
     height: 600,
     width: 800,
-    startupFeature: 'Settings',
-    enableTrayIcon: true
+    startupFeature: 'feature/core/settings',
+    showTrayIcon: true,
+    showInTrayAndSwitcher: true
   },
   items: [
     { title: 'Cmd',
       address: 'features/cmd/background.html',
+      enabled: false,
       settingsAddress: 'features/cmd/settings.html',
-      enabled: false
     },
     { title: 'Groups',
       address: 'features/groups/background.html',
+      enabled: false,
       settingsAddress: 'features/groups/settings.html',
-      enabled: false
     },
     { title: 'Peeks',
       address: 'features/peeks/background.html',
+      enabled: false,
       settingsAddress: 'features/peeks/settings.html',
-      enabled: false
     },
     { title: 'Scripts',
       address: 'features/scripts/background.html',
+      enabled: false,
       settingsAddress: 'features/scripts/settings.html',
-      enabled: false
     },
     { title: 'Slides',
       address: 'features/slides/background.html',
+      enabled: false,
       settingsAddress: 'features/slides/settings.html',
-      enabled: false
     }
   ]
 };

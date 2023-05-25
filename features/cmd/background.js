@@ -31,6 +31,21 @@ const openInputWindow = prefs => {
   api.openWindow(params);
 };
 
+const openSettingsWindow = (prefs) => {
+  const height = prefs.height || 600;
+  const width = prefs.width || 800;
+
+  const params = {
+    debug,
+    feature: labels.featureType,
+    file: 'features/core/settings.html',
+    height,
+    width
+  };
+
+  _api.openWindow(params);
+};
+
 const initShortcut = (prefs) => {
   api.shortcuts.register(prefs.shortcutKey, () => {
     openInputWindow(prefs);
@@ -43,6 +58,13 @@ const init = () => {
   const prefs = () => store.get(storageKeys.PREFS);
 
   initShortcut(prefs());
+
+  window.app.subscribe('open', msg => {
+    if (msg.feature && msg.feature == 'feature/cmd/settings') {
+      openSettingsWindow(prefs());
+    }
+  });
+
 };
 
 window.addEventListener('load', init);

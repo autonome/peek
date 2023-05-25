@@ -1,7 +1,7 @@
 // scripts/background.js
 
 import { id, labels, schemas, ui, defaults } from './config.js';
-import { log as l, openStore, getLocalId } from "../utils.js";
+import { log as l, openStore } from "../utils.js";
 
 const log = function(...args) { l(id, args); };
 
@@ -9,12 +9,12 @@ log('background');
 
 const debug = window.app.debug;
 
-const _store = openStore(id, defaults);
-const _api = window.app;
+const store = openStore(id, defaults);
+const api = window.app;
 
 const storageKeys = {
   PREFS: 'prefs',
-  FEATURES: 'items',
+  ITEMS: 'items',
 };
 
 let _intervals = [];
@@ -39,7 +39,7 @@ const executeItem = (script, cb) => {
     }
   };
 
-  _api.openWindow(params, cb);
+  api.openWindow(params, cb);
 };
 
 const initItems = (prefs, items) => {
@@ -85,17 +85,17 @@ const initItems = (prefs, items) => {
 };
 
 const updateItem = (item) => {
-  let items = _store.get('items');
+  let items = store.get('items');
   const idx = items.findIndex(el => el.id == item.id);
   items[idx] = item;
-  _store.set('items', items);
+  store.set('items', items);
 };
 
 const init = () => {
   log('init');
 
-  const prefs = () => JSON.parse(_store.getItem('prefs'));
-  const items = () => JSON.parse(_store.getItem('items'));
+  const prefs = () => store.get(storageKeys.PREFS);
+  const items = () => store.get(storageKeys.ITEMS);
 
   // initialize slides
   if (items().length > 0) {

@@ -75,9 +75,14 @@ const itemSchema = {
       "type": "integer",
       "default": 800
     },
+    "enabled": {
+      "description": "Whether this peek is enabled or not.",
+      "type": "boolean",
+      "default": false
+    },
   },
   "required": [ "keyNum", "title", "address", "persistState", "keepLive", "allowSound",
-                "height", "width" ]
+                "height", "width", "enabled" ]
 };
 
 const listSchema = {
@@ -109,6 +114,7 @@ for (var i = 0; i != 10; i++) {
     allowSound: false,
     height: 600,
     width: 800,
+    enabled: false,
   };
 }
 

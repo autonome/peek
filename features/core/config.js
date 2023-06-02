@@ -73,7 +73,8 @@ const itemSchema = {
     },
     "settingsAddress": {
       "description": "URL to load feature settings",
-      "type": "string"
+      "type": "string",
+      "format": "uri"
     },
   },
   "required": [ "title", "address", "enabled", "settingsAddress" ]
@@ -101,7 +102,7 @@ const ui = {
   allowNew: false,
 
   // fields that are view only
-  disabled: ['title', 'address', 'settingsAddress'],
+  disabled: ['title', 'address' ],
 
   // fields to make links
   linkify: [

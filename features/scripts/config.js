@@ -78,9 +78,14 @@ const itemSchema = {
       "type": "string",
       "default": "",
     },
+    "enabled": {
+      "description": "Whether this script is enabled or not.",
+      "type": "boolean",
+      "default": false
+    },
   },
   "required": [ "id", "title", "address", "version", "selector", "property",
-                "interval", "notifyOnChange", "storeHistory" ]
+                "interval", "notifyOnChange", "storeHistory", "enabled" ]
 };
 
 const listSchema = {
@@ -108,7 +113,8 @@ const defaults = {
       property: 'textContent',
       interval: 300000,
       storehistory: false,
-      notifyOnChange: false
+      notifyOnChange: false,
+      enabled: false,
     },
   ]
 };

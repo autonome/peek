@@ -326,9 +326,19 @@ const openWindow = (params, callback) => {
   // keep visible
   const keepVisible = params.hasOwnProperty('keepVisible') ? params.keepVisible : false;
 
+  if (!params.address && !params.file) {
+    console.error('openWindow: neither address nor file!');
+    return;
+  }
+
   // cache key
+  // window keys can be provided by features.
+  // eg for different slides that have same url, don't want to re-use window.
+  //
+  // otherwise use a simple concat
+  //
   // TODO: need to figure out a better approach
-  const key = params.feature + (params.address || params.file);
+  const key = params.key ? params.key : (params.feature + (params.address || params.file));
 
   if (windowCache.hasKey(key)) {
     console.log('REUSING WINDOW for ', key)
@@ -426,7 +436,6 @@ const openWindow = (params, callback) => {
     win = null;
   });
 
-  console.log('OW: DEBUG', params.debug)
   if (params.debug) {
     // TODO: why not working for core background page?
     win.webContents.openDevTools({ mode: 'detach' });

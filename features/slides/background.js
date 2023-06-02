@@ -112,11 +112,13 @@ const initItems = (prefs, items) => {
   const cmdPrefix = prefs.shortcutKeyPrefix;
 
   items.forEach(item => {
-    const shortcut = `${cmdPrefix}${item.screenEdge}`;
+    if (item.enabled == true) {
+      const shortcut = `${cmdPrefix}${item.screenEdge}`;
 
-    api.shortcuts.register(shortcut, () => {
-      executeItem(item);
-    });
+      api.shortcuts.register(shortcut, () => {
+        executeItem(item);
+      });
+    }
   });
 };
 

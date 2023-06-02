@@ -79,9 +79,14 @@ const itemSchema = {
       "type": "integer",
       "default": 800
     },
+    "enabled": {
+      "description": "Whether this slide is enabled or not.",
+      "type": "boolean",
+      "default": false
+    },
   },
   "required": [ "screenEdge", "title", "address", "persistState", "keepLive", "allowSound",
-                "height", "width" ]
+                "height", "width", "enabled" ]
 };
 
 const listSchema = {
@@ -117,6 +122,7 @@ const defaults = {
       allowSound: false,
       height: 600,
       width: 800,
+      enabled: false,
     },
     {
       screenEdge: 'Down',
@@ -127,6 +133,7 @@ const defaults = {
       allowSound: false,
       height: 600,
       width: 800,
+      enabled: false,
     },
     {
       screenEdge: 'Left',
@@ -137,6 +144,7 @@ const defaults = {
       allowSound: false,
       height: 600,
       width: 800,
+      enabled: false,
     },
     {
       screenEdge: 'Right',
@@ -147,6 +155,7 @@ const defaults = {
       allowSound: false,
       height: 600,
       width: 800,
+      enabled: false,
     },
   ]
 };

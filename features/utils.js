@@ -38,6 +38,7 @@ const openStore = (prefix, defaults) => {
     log(id, 'openStore(): clearing storage')
     store.clear();
   }
+  //store.clear();
 
   // multiple contexts
   const keyify = k => `${prefix}+${k}`;
@@ -91,7 +92,8 @@ const fillPaneFromSchema = (pane, labels, schema, data, onChange, disabled) => {
   Object.keys(props).forEach(k => {
     // TODO: unhack
     if (k == 'settingsAddress') {
-      log('settingsAddress', k, 'v', data[k]);
+      log('sa', data[k], data);
+      //log('settingsAddress', k, 'v', data[k]);
       const btn = pane.addButton({title: k});
 
       btn.on('click', () => {
@@ -99,6 +101,7 @@ const fillPaneFromSchema = (pane, labels, schema, data, onChange, disabled) => {
         const address = data[k];
 
         const params = {
+          debug: window.app.debug,
           feature: labels.featureType,
           file: address,
         };

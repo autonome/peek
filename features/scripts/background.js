@@ -50,37 +50,39 @@ const initItems = (prefs, items) => {
   // debounce me somehow so not shooting em all off
   // at once every time app starts
   items.forEach(item => {
-    const interval = setInterval(() => { 
-      const r = executeItem(item, res => {
+    if (item.enabled == true) {
+      const interval = setInterval(() => { 
+        const r = executeItem(item, res => {
 
-				//log('script result for', item.title, JSON.stringify(res));
-				//log('script prev val', item.previousValue);
+          //log('script result for', item.title, JSON.stringify(res));
+          //log('script prev val', item.previousValue);
 
-        if (item.previousValue != res) {
+          if (item.previousValue != res) {
 
-					log('result changed!', item.title, item.previousValue, res);
-          // TODO: figure this out - it blows away all timers, which isn't great
-          //
-          // update stored value
-          //item.previousValue = res;
-          //updateItem(item);
+            log('result changed!', item.title, item.previousValue, res);
+            // TODO: figure this out - it blows away all timers, which isn't great
+            //
+            // update stored value
+            //item.previousValue = res;
+            //updateItem(item);
 
-          // notification
-          // add to schema and support per script
-          /*
-          const title = `Peek :: Script :: ${item.title}`;
-          const body = [
-            `Script result changed for ${item.title}:`,
-            `- Old: ${previousValue}`,
-            `- New: ${res}`
-          ].join('\n');
+            // notification
+            // add to schema and support per script
+            /*
+            const title = `Peek :: Script :: ${item.title}`;
+            const body = [
+              `Script result changed for ${item.title}:`,
+              `- Old: ${previousValue}`,
+              `- New: ${res}`
+            ].join('\n');
 
-          new Notification({ title, body }).show();
-          */
-        }
-      });
-    }, item.interval);
-    _intervals.push(interval);
+            new Notification({ title, body }).show();
+            */
+          }
+        });
+      }, item.interval);
+      _intervals.push(interval);
+    }
   });
 };
 

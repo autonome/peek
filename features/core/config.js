@@ -13,7 +13,7 @@ const labels = {
 const prefsSchema = {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "peek.prefs.schema.json",
-  "title": "Application and Settings preferences",
+  "title": "Application Settings",
   "description": "Peek user preferences",
   "type": "object",
   "properties": {
@@ -54,8 +54,8 @@ const prefsSchema = {
 const itemSchema = {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "peek.settings.feature.schema.json",
-  "title": "Peek - feature",
-  "description": "Peek modular feature",
+  "title": "Feature",
+  "description": "Application feature",
   "type": "object",
   "properties": {
     "title": {
@@ -71,45 +71,20 @@ const itemSchema = {
       "type": "boolean",
       "default": true
     },
-    "settingsAddress": {
-      "description": "URL to load feature settings",
-      "type": "string",
-      "format": "uri"
-    },
   },
-  "required": [ "title", "address", "enabled", "settingsAddress" ]
+  "required": [ "title", "address", "enabled" ]
 };
 
 const listSchema = {
-  type: 'array',
-  features: { "$ref": "#/$defs/feature" }
+  "title": "Features",
+  "type": 'array',
+  "features": { "$ref": "#/$defs/feature" }
 };
 
 const schemas = {
   prefs: prefsSchema,
   item: itemSchema,
   items: listSchema
-};
-
-// ui config for tweakpane filling
-// TODO: this needs to be per section
-// or integrated some other way entirely, kind of a mess
-// 
-// gotta think about much more complex objects
-// and also multiple types of items/lists
-const ui = {
-  // allow user to create new items
-  allowNew: false,
-
-  // fields that are view only
-  disabled: ['title', 'address' ],
-
-  // fields to make links
-  linkify: [
-    { field: 'settingsAddress',
-      title: 'Settings'
-    }
-  ],
 };
 
 // defaults for user-modifiable preferences or data
@@ -126,7 +101,6 @@ const defaults = {
     { title: 'Cmd',
       address: 'features/cmd/background.html',
       enabled: false,
-      settingsAddress: 'features/cmd/settings.html',
     },
     { title: 'Groups',
       address: 'features/groups/background.html',
@@ -150,6 +124,67 @@ const defaults = {
     }
   ]
 };
+
+// ui config for tweakpane filling
+// TODO: this needs to be per section
+// or integrated some other way entirely, kind of a mess
+// 
+// gotta think about much more complex objects
+// and also multiple types of items/lists
+const ui = {
+  // allow user to create new items
+  allowNew: false,
+
+  // fields that are view only
+  disabled: ['title', 'address' ],
+
+  // fields to make links
+  linkify: [
+    { field: 'settingsAddress',
+      title: 'Settings'
+    }
+  ],
+};
+
+
+/*
+const paneData = {
+  label: labels.featureDisplay,
+  children: [],
+};
+
+settings.sections.push({
+});
+
+{
+  "disabled": false,
+  "expanded": true,
+  "hidden": false,
+  "children": [
+    {
+      "disabled": false,
+      "expanded": true,
+      "hidden": false,
+      "label": "param1",
+      "binding": {
+        "key": "param1",
+        "value": 1
+      },
+      "tag": "foo"
+    },
+    {
+      "disabled": false,
+      "hidden": false,
+      "label": "param2",
+      "binding": {
+        "key": "param2",
+        "value": 2
+      },
+      "tag": "bar"
+    }
+  ],
+}
+*/
 
 export {
   id,

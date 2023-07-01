@@ -60,7 +60,7 @@ const init = () => {
   initShortcut(prefs());
 
   window.app.subscribe('open', msg => {
-    if (msg.feature && msg.feature == 'feature/cmd/settings') {
+    if (msg.feature && msg.feature == `${id}/settings`) {
       openSettingsWindow(prefs());
     }
   });

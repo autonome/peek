@@ -32,8 +32,70 @@ const onChange = newData => {
   }
 };
 
+const paneConfig = {
+	
+  label: labels.featureDisplay,
+
+  children: [
+    {
+      label: schemas.prefs.title,
+
+      // json schema to validate against
+      schema: schemas.prefs,
+
+      // data to populate
+      data: defaults.prefs,
+    },
+
+    {
+      label: schemas.items.title,
+
+      // json schema to validate against
+      schema: schemas.items,
+
+      // data to populate
+      data: defaults.items,
+
+      // allow user to create new entries
+      // adds an "add" button
+      canAdd: true,
+
+      // allow user to delete entries
+      canDelete: true,
+
+      // fields that are view only
+      disabled: [
+        'title', 'address'
+      ],
+
+      // field callbacks: function(pane, data)
+      callbacks: [
+        'settingsAddress',
+      ],
+
+      // non-schema fields to add
+      addlFields: [
+      ],
+    },
+  ]
+};
+
 const init = () => {
+
+  /*
+    pubsub.publish('open', {
+      feature: msg.prefs.startupFeature
+    });
+  */
+
+  /*
+  items.forEach(item => {
+    item.settings = 'button';
+  });
+  */
+
   settingsPane(container, ui, labels, schemas, prefs, items, onChange);
+
 };
 
 window.addEventListener('load', init);

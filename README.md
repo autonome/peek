@@ -139,8 +139,8 @@ Move all features to web implementation
 [x] move to web implemented openWindow
 [] move settings re-use code to utils lib
 [] ability to add clickable links in settings panes
-[] per-feature settings ui
 [] add links to Settings app
+[] per-feature settings ui
 [] feature metadata in manifest
 
 Daily driver blockers

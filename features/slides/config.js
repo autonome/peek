@@ -122,7 +122,7 @@ const defaults = {
       allowSound: false,
       height: 600,
       width: 800,
-      enabled: false,
+      enabled: true,
     },
     {
       screenEdge: 'Down',
@@ -133,7 +133,7 @@ const defaults = {
       allowSound: false,
       height: 600,
       width: 800,
-      enabled: false,
+      enabled: true,
     },
     {
       screenEdge: 'Left',
@@ -144,7 +144,7 @@ const defaults = {
       allowSound: false,
       height: 600,
       width: 800,
-      enabled: false,
+      enabled: true,
     },
     {
       screenEdge: 'Right',
@@ -155,7 +155,7 @@ const defaults = {
       allowSound: false,
       height: 600,
       width: 800,
-      enabled: false,
+      enabled: true,
     },
   ]
 };

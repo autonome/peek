@@ -56,7 +56,7 @@ const init = () => {
   initStorage();
 
   // Data loaded, start building UI
-  populateUI();
+  //populateUI();
 
   // New group click handler
   document.querySelector('.newgroup').addEventListener('click', function() {
@@ -171,6 +171,7 @@ function setLastActiveGroupId(id) {
 }
 
 function initializeGroupData() {
+  /*
   return new Promise(function(resolve, reject) {
     // Clear out old tab ids
     for (let id in config.groups) {
@@ -194,6 +195,7 @@ function initializeGroupData() {
       resolve();
     });
   });
+  */
 }
 
 function newGroup(title) {

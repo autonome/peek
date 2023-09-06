@@ -393,7 +393,7 @@ const openWindow = (params, callback) => {
     winPreferences.center = true;
   }
 
-  console.log('final params', winPreferences.x, winPreferences.y);
+  console.log('final dimension params (x, y, center)', winPreferences.x, winPreferences.y, winPreferences.center);
 
   let win = new BrowserWindow(winPreferences);
 
@@ -408,14 +408,14 @@ const openWindow = (params, callback) => {
 
   // TODO: make configurable
   const onGoAway = () => {
-    if (params.keepLive) {
+    if (params.keepLive == true) {
       if (params.keepVisible == false) {
         console.log('win.onGoAway(): hiding ', params.address);
         win.hide();
       }
     }
     else {
-      //console.log('win.onGoAway(): destroying ', params.address);
+      console.log('win.onGoAway(): destroying ', params.address);
       win.destroy();
     }
   }
@@ -436,10 +436,11 @@ const openWindow = (params, callback) => {
     win = null;
   });
 
-  if (params.debug) {
+  //if (params.debug) {
     // TODO: why not working for core background page?
-    win.webContents.openDevTools({ mode: 'detach' });
-  }
+    //win.webContents.openDevTools({ mode: 'detach' });
+    win.webContents.openDevTools();
+  //}
 
   if (params.address) {
     win.loadURL(params.address);
@@ -447,6 +448,15 @@ const openWindow = (params, callback) => {
   else {
     console.error('openWindow: neither address nor file!');
   }
+
+  /*
+  win.webContents.on('keyup', async () => {
+    console.log('main: keyup')
+  });
+  */
+
+  //const escScript = "window.addEventListener('keyup', e => window.close())";
+  //win.webContents.executeJavaScript(escScript);
 
   //win.webContents.send('window', { type: labels.featureType, id: win.id});
   //broadcastToWindows('window', { type: labels.featureType, id: win.id});

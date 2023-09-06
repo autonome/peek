@@ -85,6 +85,8 @@ const executeItem = (item) => {
 
   log(item.screenEdge, x, y);
 
+  const key = `${item.screenEdge}:${item.address}`;
+
   //animateSlide(win, item).then();
 
   const params = {
@@ -102,6 +104,7 @@ const executeItem = (item) => {
     // slide
     x,
     y,
+    key,
   };
 
   api.openWindow(params);
@@ -112,13 +115,13 @@ const initItems = (prefs, items) => {
   const cmdPrefix = prefs.shortcutKeyPrefix;
 
   items.forEach(item => {
-    if (item.enabled == true) {
+    //if (item.enabled == true) {
       const shortcut = `${cmdPrefix}${item.screenEdge}`;
 
       api.shortcuts.register(shortcut, () => {
         executeItem(item);
       });
-    }
+    //}
   });
 };
 

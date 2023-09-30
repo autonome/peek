@@ -23,7 +23,7 @@ const log = (source, text) => {
 
 // all visible window types close on escape
 window.addEventListener('keyup', e => {
-  log('preload', 'keyup', e.key, window.location)
+  //log('preload', 'keyup', e.key, window.location)
   if (e.key == 'Escape') {
     ipcRenderer.send('esc', '');
   }
@@ -31,7 +31,7 @@ window.addEventListener('keyup', e => {
 
 const addEscListener = () => {
   window.addEventListener('keyup', e => {
-    log('preload', 'keyup', e.key, window.location)
+    //log('preload', 'keyup', e.key, window.location)
     if (e.key == 'Escape') {
       ipcRenderer.send('esc', '');
     }

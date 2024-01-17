@@ -109,6 +109,10 @@ TODO
 
 * Going full crypto payments for distributed compute on this one.
 
+## Daily Papercut Log
+
+- open bandcamp in a window, move over to 2nd display, accidently close it while moving around between other windows
+
 ## Roadmap
 
 Core moduluarization

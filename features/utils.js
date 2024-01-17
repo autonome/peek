@@ -1,3 +1,5 @@
+import {Pane} from './../node_modules/tweakpane/dist/tweakpane.js';
+
 const id = 'features/utils';
 
 const log = (...args) => {
@@ -70,7 +72,7 @@ const settingsPane = (container, config, labels, schemas, prefs, items, onChange
   const allowNew = config.allowNew || false;
   const disabled = config.disabled || [];
 
-  const pane = new Tweakpane.Pane({
+  const pane = new Pane({
     container: paneContainer,
     title: labels.featureDisplay
   });
@@ -213,7 +215,7 @@ const fillPaneFromSchema = (pane, labels, schema, data, onChange, disabled) => {
 
       params[k] = v;
 
-      const input = pane.addInput(params, k, opts);
+      const input = pane.addBinding(params, k, opts);
 
       // TODO: consider inline state management
       input.on('change', ev => {
@@ -281,7 +283,7 @@ const paneGenerator = (pane, labels, schema, data, onChange, disabled) => {
 
       params[k] = v;
 
-      const input = pane.addInput(params, k, opts);
+      const input = pane.addBinding(params, k, opts);
 
       // TODO: consider inline state management
       input.on('change', ev => {
@@ -298,6 +300,8 @@ const paneGenerator = (pane, labels, schema, data, onChange, disabled) => {
 // TODO: fuckfuckfuck
 // https://github.com/cocopon/tweakpane/issues/431
 const exportPaneData = pane => {
+  const val = pane.exportState();
+  /*
   const children = pane.rackApi_.children.filter(p => p.children);
   const val = children.map(paneChild => {
     return paneChild.children.reduce((obj, field) => {
@@ -326,6 +330,7 @@ const exportPaneData = pane => {
       return obj;
     }, {});
   });
+  */
   return val;
 };
 

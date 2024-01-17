@@ -274,16 +274,22 @@ ipcMain.on('subscribe', (ev, msg) => {
 });
 
 // ipc ESC handler
+// close focused window on Escape
 ipcMain.on('esc', (ev, title) => {
-  console.log('ESC');
+  console.log('index.js: ESC');
 
   const fwin = BrowserWindow.getFocusedWindow();
   const entry = windowCache.byId(fwin.id);
+  // focused window is managed by me
+  // so hide it instead of actually closing it
   if (entry) {
     BrowserWindow.fromId(entry.id).hide();
+    console.log('index.js: ESC: hiding focused content window');
   }
+  // focused window is me
   else if (!fwin.isDestroyed()) {
     fwin.close();
+    console.log('index.js: ESC: closing focused window, is not in cache and not destroyed');
   }
 });
 
@@ -398,13 +404,13 @@ const openWindow = (params, callback) => {
   let win = new BrowserWindow(winPreferences);
 
   // if persisting window, cache the caller's key and window id
-  //if (params.keepLive == true) {
+  if (params.keepLive == true) {
     windowCache.add({
       id: win.id,
       key,
       params
     });
-  //}
+  }
 
   // TODO: make configurable
   const onGoAway = () => {
@@ -431,7 +437,7 @@ const openWindow = (params, callback) => {
   win.on('close', onGoAway);
 
   win.on('closed', () => {
-    //console.log('win.on(closed): deleting ', key, ' for ', params.address);
+    console.log('win.on(closed): deleting ', key, ' for ', params.address);
     windowCache.removeByKey(key);
     win = null;
   });

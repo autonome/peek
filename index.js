@@ -4,6 +4,12 @@
 console.log('main');
 
 const DEBUG = process.env.DEBUG;
+const DEBUG_LEVELS = {
+  BASIC: 1,
+  FIRST_RUN: 2
+};
+const DEBUG_LEVEL = DEBUG_LEVELS.BASIC;
+//const DEBUG_LEVEL = DEBUG_LEVELS.FIRST_RUN;
 
 // Modules to control application life and create native browser window
 const {
@@ -28,7 +34,7 @@ const preloadPath = path.join(__dirname, 'preload.js');
 const webCoreAddress = 'features/core/background.html';
 
 const p = process.env.PROFILE;
-console.log('env prof?', p, p != undefined, typeof p, p.length)
+console.log('env prof?', p, p != undefined, typeof p)
 const profileIsLegit = p => p != undefined && typeof p == 'string' && p.length > 0;
 
 const PROFILE =
@@ -124,6 +130,50 @@ app.on('activate', () => {
   }
 });
 
+// ***** Caches *****
+
+const windowCache = {
+  cache: [],
+  add: entry => windowCache.cache.push(entry),
+  byId: id => windowCache.cache.find(w => w.id == id),
+  byKey: key => windowCache.cache.find(w => w.key == key),
+  hasKey: key => windowCache.byKey(key) != undefined,
+  indexOfKey: key => windowCache.cache.findIndex(w => w.key == key),
+  removeByKey: key => windowCache.cache.splice(windowCache.indexOfKey(key), 1)
+};
+
+const _shortcuts = {};
+
+const _prefs = {};
+
+// ***** pubsub *****
+
+const pubsub = (() => {
+
+  const topics = new Map();
+
+  return {
+    publish: (topic, msg) => {
+      if (topics.has(topic)) {
+        topics.get(topic).forEach(subscriber => {
+          subscriber(msg);
+        });
+      }
+    },
+    subscribe: (topic, cb) => {
+      if (!topics.has(topic)) {
+        topics.set(topic, [cb]);
+      }
+      else {
+        const subscribers = topics.get(topic);
+        subscribers.push(cb);
+        topics.set(topic, subscribers);
+      }
+    },
+  };
+
+})();
+
 // ***** Tray *****
 
 const ICON_RELATIVE_PATH = 'assets/icons/AppIcon.appiconset/Icon-App-20x20@2x.png';
@@ -136,37 +186,19 @@ const initTray = () => {
     _tray = new Tray(ICON_PATH);
     _tray.setToolTip(labels.tray.tooltip);
     _tray.on('click', () => {
-      //features.settings.open();
+      pubsub.publish('open', {
+        feature: _prefs['features/core'].startupFeature
+      });
     });
   }
   return _tray;
 };
 
-// ***** Caches *****
-
-const _windows = new Set();
-
-const windowCache = {
-  cache: [],
-  add: entry => windowCache.cache.push(entry),
-  byId: id => windowCache.cache.find(w => w.id == id),
-  byKey: key => windowCache.cache.find(w => w.key == key)
-};
-
-const _shortcuts = {};
+// ***** init *****
 
 // Electron app load
 const onReady = () => {
   console.log('onReady');
-
-  // keep app out of dock and tab switcher
-  if (app.dock) {
-    app.dock.hide();
-  }
-
-  // initialize system tray
-  // mostly just useful to know if the app is running or not
-  initTray();
 
   // init web core
   openWindow({
@@ -174,16 +206,31 @@ const onReady = () => {
     file: webCoreAddress,
     show: true,
     keepLive: true,
+    keepVisible: true,
     debug: DEBUG
   })
 
-  /*
-  // open settings on startup for now
-  if (BrowserWindow.getAllWindows().length === 0) {
-    features.settings.open();
-  }
-  */
+  pubsub.subscribe('prefs', msg => {
+    // cache all prefs
+    _prefs[msg.feature] = msg.prefs;
 
+    // show/hide in dock and tab switcher
+    if (app.dock && (msg.prefs.showInDockAndSwitcher == false || !DEBUG)) {
+      app.dock.hide();
+    }
+   
+    // initialize system tray
+    if (msg.prefs.showTrayIcon == true) {
+      initTray();
+    }
+
+    // open default app
+    pubsub.publish('open', {
+      feature: msg.prefs.startupFeature
+    });
+  });
+
+  // eh, for helpers really
   registerShortcut('Option+q', onQuit);
 };
 
@@ -207,28 +254,44 @@ ipcMain.on('unregistershortcut', (ev, msg) => {
 
 ipcMain.on('openwindow', (ev, msg) => {
   openWindow(msg.params, output => {
-    if (msg.replyTopic) {
-      ev.reply(msg.replyTopic, { output });
-    }
+    ev.reply(msg.replyTopic, output);
   });
 });
 
 // generic dispatch - messages only from trusted code (💀)
-ipcMain.on('sendmessage', (ev, msg) => {
-  console.log('sendmsg', msg);
+ipcMain.on('publish', (ev, msg) => {
+  //console.log('publish', msg);
+
+  pubsub.publish(msg.topic, msg.data);
+});
+
+ipcMain.on('subscribe', (ev, msg) => {
+  //console.log('subscribe', msg);
+
+  pubsub.subscribe(msg.topic, data => {
+    ev.reply(msg.replyTopic, data);
+  });
 });
 
 // ipc ESC handler
+// close focused window on Escape
 ipcMain.on('esc', (ev, title) => {
-  console.log('esc');
+  console.log('index.js: ESC');
+  // XXX remove
+  return;
 
   const fwin = BrowserWindow.getFocusedWindow();
   const entry = windowCache.byId(fwin.id);
+  // focused window is managed by me
+  // so hide it instead of actually closing it
   if (entry) {
     BrowserWindow.fromId(entry.id).hide();
+    console.log('index.js: ESC: hiding focused content window');
   }
+  // focused window is me
   else if (!fwin.isDestroyed()) {
     fwin.close();
+    console.log('index.js: ESC: closing focused window, is not in cache and not destroyed');
   }
 });
 
@@ -268,11 +331,25 @@ const openWindow = (params, callback) => {
   // TODO: need to figure out a better approach
   const show = params.hasOwnProperty('show') ? params.show : true;
 
-  // cache key
-  // TODO: need to figure out a better approach
-  const key = params.feature + (params.address || params.file);
+  // keep visible
+  const keepVisible = params.hasOwnProperty('keepVisible') ? params.keepVisible : false;
 
-  if (params.keepLive == true) {
+  if (!params.address && !params.file) {
+    console.error('openWindow: neither address nor file!');
+    return;
+  }
+
+  // cache key
+  // window keys can be provided by features.
+  // eg for different slides that have same url, don't want to re-use window.
+  //
+  // otherwise use a simple concat
+  //
+  // TODO: need to figure out a better approach
+  const key = params.key ? params.key : (params.feature + (params.address || params.file));
+
+  if (windowCache.hasKey(key)) {
+    console.log('REUSING WINDOW for ', key)
     const entry = windowCache.byKey(key);
     if (entry != undefined) {
       const win = BrowserWindow.fromId(entry.id);
@@ -324,7 +401,7 @@ const openWindow = (params, callback) => {
     winPreferences.center = true;
   }
 
-  console.log('final params', winPreferences.x, winPreferences.y);
+  console.log('final dimension params (x, y, center)', winPreferences.x, winPreferences.y, winPreferences.center);
 
   let win = new BrowserWindow(winPreferences);
 
@@ -332,33 +409,46 @@ const openWindow = (params, callback) => {
   if (params.keepLive == true) {
     windowCache.add({
       id: win.id,
-      key: key
+      key,
+      params
     });
   }
 
   // TODO: make configurable
   const onGoAway = () => {
-    if (params.keepLive) {
-      //console.log('win.onGoAway(): hiding ', params.address);
-      win.hide();
+    if (params.keepLive == true) {
+      if (params.keepVisible == false) {
+        console.log('win.onGoAway(): hiding ', params.address);
+        win.hide();
+      }
     }
     else {
-      //console.log('win.onGoAway(): destroying ', params.address);
+      console.log('win.onGoAway(): destroying ', params.address);
       win.destroy();
     }
   }
-  win.on('blur', onGoAway);
+
+  // don't do this in debug mode, devtools steals focus
+  // and closes everything 😐
+  // TODO: fix
+  // TODO: should be configurable behavior
+  if (!DEBUG) {
+    win.on('blur', onGoAway);
+  }
+  
   win.on('close', onGoAway);
 
   win.on('closed', () => {
-    //console.log('win.on(closed): deleting ', key, ' for ', params.address);
-    _windows.delete(win);
+    console.log('win.on(closed): deleting ', key, ' for ', params.address);
+    windowCache.removeByKey(key);
     win = null;
   });
 
-  if (params.debug) {
+  //if (params.debug) {
+    // TODO: why not working for core background page?
+    //win.webContents.openDevTools({ mode: 'detach' });
     win.webContents.openDevTools();
-  }
+  //}
 
   if (params.address) {
     win.loadURL(params.address);
@@ -366,6 +456,15 @@ const openWindow = (params, callback) => {
   else {
     console.error('openWindow: neither address nor file!');
   }
+
+  /*
+  win.webContents.on('keyup', async () => {
+    console.log('main: keyup')
+  });
+  */
+
+  //const escScript = "window.addEventListener('keyup', e => window.close())";
+  //win.webContents.executeJavaScript(escScript);
 
   //win.webContents.send('window', { type: labels.featureType, id: win.id});
   //broadcastToWindows('window', { type: labels.featureType, id: win.id});
@@ -394,12 +493,14 @@ const openWindow = (params, callback) => {
   }
 };
 
+/*
 // send message to all windows
 const broadcastToWindows = (topic, msg) => {
   _windows.forEach(win => {
     win.webContents.send(topic, msg);
   });
 };
+*/
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits

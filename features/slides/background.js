@@ -1,25 +1,21 @@
 // slides/slides.js
-//(async () => {
 
-const log = (...args) => {
-  console.log(labels.featureType, window.app.shortcuts);
-  window.app.log(labels.featureType, args.join(', '));
+import { id, labels, schemas, ui, defaults } from './config.js';
+import { log as l, openStore } from "../utils.js";
+
+const log = function(...args) { l(id, args); };
+
+log('background');
+
+const debug = window.app.debug;
+
+const store = openStore(id, defaults);
+const api = window.app;
+
+const storageKeys = {
+  PREFS: 'prefs',
+  ITEMS: 'items',
 };
-
-//log('slides/background');
-
-//import { labels, schemas, ui, defaults } from './config.js';
-
-//const debug = window.location.search.indexOf('debug') > 0;
-const debug = 1;
-
-if (debug) {
-  log('clearing storage')
-  localStorage.clear();
-}
-
-const _store = localStorage;
-const _api = window.app;
 
 const executeItem = (item) => {
   let height = item.height || 600;
@@ -89,6 +85,8 @@ const executeItem = (item) => {
 
   log(item.screenEdge, x, y);
 
+  const key = `${item.screenEdge}:${item.address}`;
+
   //animateSlide(win, item).then();
 
   const params = {
@@ -106,21 +104,10 @@ const executeItem = (item) => {
     // slide
     x,
     y,
+    key,
   };
 
-  _api.openWindow(params);
-};
-
-const initStore = (data) => {
-  const sp = _store.getItem('prefs');
-  if (!sp) {
-    _store.setItem('prefs', JSON.stringify(data.prefs));
-  }
-
-  const items = _store.getItem('items');
-  if (!items) {
-    _store.setItem('items', JSON.stringify(data.items));
-  }
+  api.openWindow(params);
 };
 
 const initItems = (prefs, items) => {
@@ -128,39 +115,25 @@ const initItems = (prefs, items) => {
   const cmdPrefix = prefs.shortcutKeyPrefix;
 
   items.forEach(item => {
-    const shortcut = `${cmdPrefix}${item.screenEdge}`;
+    //if (item.enabled == true) {
+      const shortcut = `${cmdPrefix}${item.screenEdge}`;
 
-    _api.shortcuts.register(shortcut, () => {
-      executeItem(item);
-    });
+      api.shortcuts.register(shortcut, () => {
+        executeItem(item);
+      });
+    //}
   });
 };
 
 const init = () => {
   log('init');
 
-  initStore(defaults);
-
-  const prefs = () => JSON.parse(_store.getItem('prefs'));
-  const items = () => JSON.parse(_store.getItem('items'));
+  const prefs = () => store.get(storageKeys.PREFS);
+  const items = () => store.get(storageKeys.ITEMS);
 
   // initialize slides
   if (items().length > 0) {
     initItems(prefs(), items());
-  }
-};
-
-const onChange = (changed, old) => {
-  log('onChange', changed);
-
-  // TODO only update store if changed
-  // and re-init
-  if (changed.prefs) {
-    _store.setItem('prefs', JSON.stringify(changed.prefs));
-  }
-
-  if (changed.items) {
-    _store.setItem('items', JSON.stringif(changed.items));
   }
 };
 
@@ -222,5 +195,3 @@ const animateSlide = (win, slide) => {
   });
 };
 */
-
-//})();

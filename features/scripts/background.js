@@ -1,25 +1,21 @@
 // scripts/background.js
-//(async () => {
 
-const log = (...args) => {
-  console.log(labels.featureType, window.app.shortcuts);
-  window.app.log(labels.featureType, args.join(', '));
+import { id, labels, schemas, ui, defaults } from './config.js';
+import { log as l, openStore } from "../utils.js";
+
+const log = function(...args) { l(id, args); };
+
+log('background');
+
+const debug = window.app.debug;
+
+const store = openStore(id, defaults);
+const api = window.app;
+
+const storageKeys = {
+  PREFS: 'prefs',
+  ITEMS: 'items',
 };
-
-log('scripts/background');
-
-//import { labels, schemas, ui, defaults } from './config.js';
-
-//const debug = window.location.search.indexOf('debug') > 0;
-const debug = 1;
-
-if (debug) {
-  log('clearing storage')
-  localStorage.clear();
-}
-
-const _store = localStorage;
-const _api = window.app;
 
 let _intervals = [];
 
@@ -43,19 +39,7 @@ const executeItem = (script, cb) => {
     }
   };
 
-  _api.openWindow(params, cb);
-};
-
-const initStore = (data) => {
-  const sp = _store.getItem('prefs');
-  if (!sp) {
-    _store.setItem('prefs', JSON.stringify(data.prefs));
-  }
-
-  const items = _store.getItem('items');
-  if (!items) {
-    _store.setItem('items', JSON.stringify(data.items));
-  }
+  api.openWindow(params, cb);
 };
 
 const initItems = (prefs, items) => {
@@ -66,54 +50,54 @@ const initItems = (prefs, items) => {
   // debounce me somehow so not shooting em all off
   // at once every time app starts
   items.forEach(item => {
-    const interval = setInterval(() => { 
-      const r = executeItem(item, res => {
+    if (item.enabled == true) {
+      const interval = setInterval(() => { 
+        const r = executeItem(item, res => {
 
-				//log('script result for', item.title, JSON.stringify(res));
-				//log('script prev val', item.previousValue);
+          //log('script result for', item.title, JSON.stringify(res));
+          //log('script prev val', item.previousValue);
 
-        if (item.previousValue != res) {
+          if (item.previousValue != res) {
 
-					log('result changed!', item.title, item.previousValue, res);
-          // TODO: figure this out - it blows away all timers, which isn't great
-          //
-          // update stored value
-          //item.previousValue = res;
-          //updateItem(item);
+            log('result changed!', item.title, item.previousValue, res);
+            // TODO: figure this out - it blows away all timers, which isn't great
+            //
+            // update stored value
+            //item.previousValue = res;
+            //updateItem(item);
 
-          // notification
-          // add to schema and support per script
-          /*
-          const title = `Peek :: Script :: ${item.title}`;
-          const body = [
-            `Script result changed for ${item.title}:`,
-            `- Old: ${previousValue}`,
-            `- New: ${res}`
-          ].join('\n');
+            // notification
+            // add to schema and support per script
+            /*
+            const title = `Peek :: Script :: ${item.title}`;
+            const body = [
+              `Script result changed for ${item.title}:`,
+              `- Old: ${previousValue}`,
+              `- New: ${res}`
+            ].join('\n');
 
-          new Notification({ title, body }).show();
-          */
-        }
-      });
-    }, item.interval);
-    _intervals.push(interval);
+            new Notification({ title, body }).show();
+            */
+          }
+        });
+      }, item.interval);
+      _intervals.push(interval);
+    }
   });
 };
 
 const updateItem = (item) => {
-  let items = _store.get('items');
+  let items = store.get('items');
   const idx = items.findIndex(el => el.id == item.id);
   items[idx] = item;
-  _store.set('items', items);
+  store.set('items', items);
 };
 
 const init = () => {
   log('init');
 
-  initStore(defaults);
-
-  const prefs = () => JSON.parse(_store.getItem('prefs'));
-  const items = () => JSON.parse(_store.getItem('items'));
+  const prefs = () => store.get(storageKeys.PREFS);
+  const items = () => store.get(storageKeys.ITEMS);
 
   // initialize slides
   if (items().length > 0) {
@@ -121,20 +105,4 @@ const init = () => {
   }
 };
 
-const onChange = (changed, old) => {
-  log('onChange', changed);
-
-  // TODO only update store if changed
-  // and re-init
-  if (changed.prefs) {
-    _store.setItem('prefs', JSON.stringify(changed.prefs));
-  }
-
-  if (changed.items) {
-    _store.setItem('items', JSON.stringif(changed.items));
-  }
-};
-
 window.addEventListener('load', init);
-
-//})();

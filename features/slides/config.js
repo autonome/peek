@@ -1,3 +1,4 @@
+const id = 'features/slides';
 
 const labels = {
   featureType: 'slides',
@@ -78,9 +79,14 @@ const itemSchema = {
       "type": "integer",
       "default": 800
     },
+    "enabled": {
+      "description": "Whether this slide is enabled or not.",
+      "type": "boolean",
+      "default": false
+    },
   },
   "required": [ "screenEdge", "title", "address", "persistState", "keepLive", "allowSound",
-                "height", "width" ]
+                "height", "width", "enabled" ]
 };
 
 const listSchema = {
@@ -116,6 +122,7 @@ const defaults = {
       allowSound: false,
       height: 600,
       width: 800,
+      enabled: true,
     },
     {
       screenEdge: 'Down',
@@ -126,6 +133,7 @@ const defaults = {
       allowSound: false,
       height: 600,
       width: 800,
+      enabled: true,
     },
     {
       screenEdge: 'Left',
@@ -136,6 +144,7 @@ const defaults = {
       allowSound: false,
       height: 600,
       width: 800,
+      enabled: true,
     },
     {
       screenEdge: 'Right',
@@ -146,6 +155,15 @@ const defaults = {
       allowSound: false,
       height: 600,
       width: 800,
+      enabled: true,
     },
   ]
+};
+
+export {
+  id,
+  labels,
+  schemas,
+  ui,
+  defaults
 };

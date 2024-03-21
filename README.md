@@ -35,6 +35,9 @@ In progress:
 * Commands
 * Groups
 
+Thinking about:
+- "native" web apps
+
 ### Peeks
 
 Peeks are keyboard activated modal chromeless web pages mapped to `Opt+0-9` and closed on blur, the `Escape` key or `cmd/ctrl+w`.
@@ -57,7 +60,12 @@ Some thoughts driving the design of Peek:
 * Windows and tabs should have died a long time ago, a mixed metaphor constraining the ability of the web to grow/thrive/change and meet user needs
 * Security user interface must be a clear articulation of risks and trade-offs, and users should own the decisions
 
-## Design
+## User values
+
+- users can move, resize, change to their requirements
+  - eg, browsers restrict minheight of a window, but i should be able make as short as i like
+
+## Design patterns
 
 * Escape IZUI
   * IZUI: inverse zooming user interface
@@ -251,8 +259,15 @@ Further
 
 ```
 yarn install
-yarn start
+yarn debug
 ```
+
+## Mobile
+
+- some of the features don't make sense as-is on mobile
+- but maybe quick access on mobile to slides/peeks would be nice
+- and seeing output of content scripts, or ability to re-run locally on demand
+- needs some sync facility (inevitable anyway)
 
 ## Resources
 

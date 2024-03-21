@@ -277,6 +277,8 @@ ipcMain.on('subscribe', (ev, msg) => {
 // close focused window on Escape
 ipcMain.on('esc', (ev, title) => {
   console.log('index.js: ESC');
+  // XXX remove
+  return;
 
   const fwin = BrowserWindow.getFocusedWindow();
   const entry = windowCache.byId(fwin.id);

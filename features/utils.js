@@ -19,6 +19,7 @@ const openStore = (prefix, defaults) => {
 
   //log(id, 'openStore', prefix, (defaults ? Object.keys(defaults) : ''));
 
+  // Simple localStorage abstraction/wrapper
   const store = {
     set: (k, v) => {
       const key = keyify(k);
@@ -40,6 +41,7 @@ const openStore = (prefix, defaults) => {
     log(id, 'openStore(): clearing storage')
     store.clear();
   }
+
   //store.clear();
 
   // multiple contexts
@@ -81,6 +83,7 @@ const settingsPane = (container, config, labels, schemas, prefs, items, onChange
     const paneData = exportPaneData(pane);
 
     log('folder level update for', labels.featureDisplay);
+    log('pane data', paneData);
 
     let updated = {}; 
 
@@ -108,6 +111,15 @@ const settingsPane = (container, config, labels, schemas, prefs, items, onChange
       title: schemas.prefs.title,
       expanded: true
     });
+
+    /*
+    const btn = pane.addButton({
+      title: 'clickme'
+    });
+    btn.on('click', () => {
+      alert('clickd');
+    });
+    */
     
     const onPrefChange = changed => {
       log('initFeaturePane::onPrefChange', changed)

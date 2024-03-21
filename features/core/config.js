@@ -64,7 +64,8 @@ const itemSchema = {
     },
     "address": {
       "description": "URL to load",
-      "type": "string"
+      "type": "string",
+      "format": "uri"
     },
     "enabled": {
       "description": "Whether the feature is enabled or not - defaults to true",
@@ -100,27 +101,27 @@ const defaults = {
   items: [
     { title: 'Cmd',
       address: 'features/cmd/background.html',
-      enabled: true,
+      enabled: false,
       settingsAddress: 'features/cmd/settings.html',
     },
     { title: 'Groups',
       address: 'features/groups/background.html',
-      enabled: true,
+      enabled: false,
       settingsAddress: 'features/groups/settings.html',
     },
     { title: 'Peeks',
       address: 'features/peeks/background.html',
-      enabled: true,
+      enabled: false,
       settingsAddress: 'features/peeks/settings.html',
     },
     { title: 'Scripts',
       address: 'features/scripts/background.html',
-      enabled: true,
+      enabled: false,
       settingsAddress: 'features/scripts/settings.html',
     },
     { title: 'Slides',
       address: 'features/slides/background.html',
-      enabled: true,
+      enabled: false,
       settingsAddress: 'features/slides/settings.html',
     }
   ]

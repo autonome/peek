@@ -149,11 +149,11 @@ Move all features to web implementation
 - [x] move all possible code from the electron file to the web app
 - [x] move to web implemented globalShortcut
 - [x] move to web implemented openWindow
-- [] move settings re-use code to utils lib
-- [] ability to add clickable links in settings panes
-- [] add links to Settings app
-- [] per-feature settings ui
-- [] feature metadata in manifest
+- [ ] move settings re-use code to utils lib
+- [ ] ability to add clickable links in settings panes
+- [ ] add links to Settings app
+- [ ] per-feature settings ui
+- [ ] feature metadata in manifest
 
 Daily driver blockers
 - [x] debug vs profile(s) for app dir
@@ -169,86 +169,86 @@ Core+settings
 Commands/messaging
 - [x] implement pubsub api
 - [x] way to tell feature to open default ui (if there is one)
-- [] way to tell feature to open settings ui (if there is one)
-- [] figure out re-init/reload story when pref/feature changes
-- [] figure out feature unload/reload (unreg shortcuts, close windows, etc)
+- [ ] way to tell feature to open settings ui (if there is one)
+- [ ] figure out re-init/reload story when pref/feature changes
+- [ ] figure out feature unload/reload (unreg shortcuts, close windows, etc)
 
 Misc
-- [] fix ESC not working in web content
+- [ ] fix ESC not working in web content
 
 History
-- [] push navigations out through pubsub
-- [] add history listener + storage to cmd
-- [] store central app action history
-- [] store content script data
+- [ ] push navigations out through pubsub
+- [ ] add history listener + storage to cmd
+- [ ] store central app action history
+- [ ] store content script data
 
-- [] esc stack: from feature settings back to core settings
-- [] add to izui stack (and ix w/ history?)
+- [ ] esc stack: from feature settings back to core settings
+- [ ] add to izui stack (and ix w/ history?)
 
 Core/Basic
 - [x] basic command bar to open pages
 - [x] fix setting layout wrapping issue
-- [] re-enable label previews, eg "Peek {key} - {address}"
-- [] add support for per-feature hidden prefs (should be per-schema)
+- [ ] re-enable label previews, eg "Peek {key} - {address}"
+- [ ] add support for per-feature hidden prefs (should be per-schema)
 
 Features cleanup
-- [] enable/disable individual slides, peeks
-- [] enable/disable individual scripts
-- [] visible-but-not-changeable settings should be per-schema
-- [] add window open animation (to/from coords, time) to openWindow
-- [] update slides impl to use animation again
-- [] add window position persistence where it makes sense (settings, groups, cmd) and make configurable?
-- [] add window size persistence where it makes sense (slides, peeks) and make configurable?
-- [] global shortcuts vs app shortcuts
-- [] openWindow option to not close on escape
+- [ ] enable/disable individual slides, peeks
+- [ ] enable/disable individual scripts
+- [ ] visible-but-not-changeable settings should be per-schema
+- [ ] add window open animation (to/from coords, time) to openWindow
+- [ ] update slides impl to use animation again
+- [ ] add window position persistence where it makes sense (settings, groups, cmd) and make configurable?
+- [ ] add window size persistence where it makes sense (slides, peeks) and make configurable?
+- [ ] global shortcuts vs app shortcuts
+- [ ] openWindow option to not close on escape
 
 Core cleanup
-- [] move feature bg pages to iframes in core bg page?
+- [ ] move feature bg pages to iframes in core bg page?
 
 Deployment
-- [] app updates
-- [] icons
-- [] about page
+- [ ] app updates
+- [ ] icons
+- [ ] about page
 
 ➡️ MVP (minimum viable preview)
 
 -------
 
 Install/load/address features
-- [] manifests for feature metadata
-- [] feature urls? eg peek://settings(/index.html)
-- [] maybe fine to file urls for now, would have to migrate later
+- [ ] manifests for feature metadata
+- [ ] feature urls? eg peek://settings(/index.html)
+- [ ] maybe fine to file urls for now, would have to migrate later
 
 Feature level rpc?
-- [] how can other features query history vs store and query locally?
-- [] how to know what urls there are to open? publish paths in manifests?
-- [] discover + execute cmds?
-- [] need to be able to get/set properties from other "features"?
+- [ ] how can other features query history vs store and query locally?
+- [ ] how to know what urls there are to open? publish paths in manifests?
+- [ ] discover + execute cmds?
+- [ ] need to be able to get/set properties from other "features"?
 
 Window layout
-- [] try with settings maybe?
-- [] tile/untile
+- [ ] try with settings maybe?
+- [ ] tile/untile
 
 Web Platform
-- [] need a web loader that's not full BrowserWindow?
-- [] sandboxing
-- [] blocklist
+- [ ] need a web loader that's not full BrowserWindow?
+- [ ] sandboxing
+- [ ] blocklist
 
 After that
-- [] schema migration
-- [] Extension model?
-- [] Ubiquity-like
-- [] Panorama-like
-- [] Tray
-- [] Scratchpad
-- [] Identity
-- [] Contacts
-- [] Collaboration
+- [ ] schema migration
+- [ ] Extension model?
+- [ ] Ubiquity-like
+- [ ] Panorama-like
+- [ ] Tray
+- [ ] Scratchpad
+- [ ] Identity
+- [ ] Contacts
+- [ ] Collaboration
 
 Further
-- [] Implement the Firefox "awesomebar" scoring and search algorithm so that Peek *learns* you
-- [] Extension model designed for web user agent user interface experimentation
-- [] Infinite lossless personal encrypted archive of web history
+- [ ] Implement the Firefox "awesomebar" scoring and search algorithm so that Peek *learns* you
+- [ ] Extension model designed for web user agent user interface experimentation
+- [ ] Infinite lossless personal encrypted archive of web history
 
 ## Contribution
 

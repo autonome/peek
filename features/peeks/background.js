@@ -1,25 +1,21 @@
-// slides/slides.js
-//(async () => {
+// peeks/background.js
 
-const log = (...args) => {
-  console.log(labels.featureType, window.app.shortcuts);
-  window.app.log(labels.featureType, args.join(', '));
+import { id, labels, schemas, ui, defaults } from './config.js';
+import { log as l, openStore } from "../utils.js";
+
+const log = function(...args) { l(id, args); };
+
+log('background');
+
+const debug = window.app.debug;
+
+const store = openStore(id, defaults);
+const api = window.app;
+
+const storageKeys = {
+  PREFS: 'prefs',
+  ITEMS: 'items',
 };
-
-log('peeks/background');
-
-//import { labels, schemas, ui, defaults } from './config.js';
-
-//const debug = window.location.search.indexOf('debug') > 0;
-const debug = 1;
-
-if (debug) {
-  log('clearing storage')
-  localStorage.clear();
-}
-
-const _store = localStorage;
-const _api = window.app;
 
 const executeItem = (item) => {
   const height = item.height || 600;
@@ -38,40 +34,28 @@ const executeItem = (item) => {
     persistData: item.persistData || false
   };
 
-  _api.openWindow(params);
-};
-
-const initStore = (data) => {
-  const sp = _store.getItem('prefs');
-  if (!sp) {
-    _store.setItem('prefs', JSON.stringify(data.prefs));
-  }
-
-  const items = _store.getItem('items');
-  if (!items) {
-    _store.setItem('items', JSON.stringify(data.items));
-  }
+  api.openWindow(params);
 };
 
 const initItems = (prefs, items) => {
   const cmdPrefix = prefs.shortcutKeyPrefix;
 
   items.forEach(item => {
-    const shortcut = `${cmdPrefix}${item.keyNum}`;
+    if (item.enabled == true) {
+      const shortcut = `${cmdPrefix}${item.keyNum}`;
 
-    _api.shortcuts.register(shortcut, () => {
-      executeItem(item);
-    });
+      api.shortcuts.register(shortcut, () => {
+        executeItem(item);
+      });
+    }
   });
 };
 
 const init = () => {
   log('init');
 
-  initStore(defaults);
-
-  const prefs = () => JSON.parse(_store.getItem('prefs'));
-  const items = () => JSON.parse(_store.getItem('items'));
+  const prefs = () => store.get(storageKeys.PREFS);
+  const items = () => store.get(storageKeys.ITEMS);
 
   // initialize slides
   if (items().length > 0) {
@@ -79,20 +63,4 @@ const init = () => {
   }
 };
 
-const onChange = (changed, old) => {
-  log('onChange', changed);
-
-  // TODO only update store if changed
-  // and re-init
-  if (changed.prefs) {
-    _store.setItem('prefs', JSON.stringify(changed.prefs));
-  }
-
-  if (changed.items) {
-    _store.setItem('items', JSON.stringif(changed.items));
-  }
-};
-
 window.addEventListener('load', init);
-
-//})();

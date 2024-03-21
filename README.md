@@ -35,6 +35,9 @@ In progress:
 * Commands
 * Groups
 
+Thinking about:
+- "native" web apps
+
 ### Peeks
 
 Peeks are keyboard activated modal chromeless web pages mapped to `Opt+0-9` and closed on blur, the `Escape` key or `cmd/ctrl+w`.
@@ -57,7 +60,12 @@ Some thoughts driving the design of Peek:
 * Windows and tabs should have died a long time ago, a mixed metaphor constraining the ability of the web to grow/thrive/change and meet user needs
 * Security user interface must be a clear articulation of risks and trade-offs, and users should own the decisions
 
-## Design
+## User values
+
+- users can move, resize, change to their requirements
+  - eg, browsers restrict minheight of a window, but i should be able make as short as i like
+
+## Design patterns
 
 * Escape IZUI
   * IZUI: inverse zooming user interface
@@ -109,6 +117,10 @@ TODO
 
 * Going full crypto payments for distributed compute on this one.
 
+## Daily Papercut Log
+
+- open bandcamp in a window, move over to 2nd display, accidently close it while moving around between other windows
+
 ## Roadmap
 
 Core moduluarization
@@ -137,28 +149,41 @@ Move all features to web implementation
 [x] move all possible code from the electron file to the web app
 [x] move to web implemented globalShortcut
 [x] move to web implemented openWindow
-[] per-feature settings ui
-[] load through url
+[] move settings re-use code to utils lib
 [] ability to add clickable links in settings panes
 [] add links to Settings app
+[] per-feature settings ui
+[] feature metadata in manifest
 
 Daily driver blockers
-[] debug vs profile(s) for app dir
+[x] debug vs profile(s) for app dir
 
 Core+settings
 [x] move feature list and enablement to storage
 [x] merge core + settings
 [x] enable/disable features
-[] configurable default feature to load on app open (or none)
+[x] configurable default feature to load on app open (default to settings)
+[x] wire up tray icon to pref
+[x] tray click opens default app
+
+Commands/messaging
+[x] implement pubsub api
+[x] way to tell feature to open default ui (if there is one)
+[] way to tell feature to open settings ui (if there is one)
 [] figure out re-init/reload story when pref/feature changes
 [] figure out feature unload/reload (unreg shortcuts, close windows, etc)
 
+Misc
+[] fix ESC not working in web content
+
 History
-[] implement pubsub api
 [] push navigations out through pubsub
 [] add history listener + storage to cmd
 [] store central app action history
 [] store content script data
+
+[] esc stack: from feature settings back to core settings
+[] add to izui stack (and ix w/ history?)
 
 Core/Basic
 [x] basic command bar to open pages
@@ -200,9 +225,9 @@ Feature level rpc?
 [] discover + execute cmds?
 [] need to be able to get/set properties from other "features"?
 
-
 Window layout
 [] try with settings maybe?
+[] tile/untile
 
 Web Platform
 [] need a web loader that's not full BrowserWindow?
@@ -234,8 +259,15 @@ Further
 
 ```
 yarn install
-yarn start
+yarn debug
 ```
+
+## Mobile
+
+- some of the features don't make sense as-is on mobile
+- but maybe quick access on mobile to slides/peeks would be nice
+- and seeing output of content scripts, or ability to re-run locally on demand
+- needs some sync facility (inevitable anyway)
 
 ## Resources
 

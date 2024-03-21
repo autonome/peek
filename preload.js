@@ -5,6 +5,15 @@ const {
 
 const src = 'preload';
 
+const DEBUG = process.env.DEBUG;
+const DEBUG_LEVELS = {
+  BASIC: 1,
+  FIRST_RUN: 2
+};
+
+const DEBUG_LEVEL = DEBUG_LEVELS.BASIC;
+//const DEBUG_LEVEL = DEBUG_LEVELS.FIRST_RUN;
+
 const log = (source, text) => {
   ipcRenderer.send('console', {
     source,
@@ -12,22 +21,22 @@ const log = (source, text) => {
   });
 };
 
-/*
-ipcRenderer.on('window', (ev, msg) => {
-  console.log('preload: onwindow', msg);
-  const { type, id, data } = msg;
-  if (type == 'main') {
-    handleMainWindow();
-  }
-});
-*/
-
 // all visible window types close on escape
 window.addEventListener('keyup', e => {
+  log('preload', 'keyup', e.key, window.location)
   if (e.key == 'Escape') {
     ipcRenderer.send('esc', '');
   }
 });
+
+const addEscListener = () => {
+  window.addEventListener('keyup', e => {
+    log('preload', 'keyup', e.key, window.location)
+    if (e.key == 'Escape') {
+      ipcRenderer.send('esc', '');
+    }
+  });
+};
 
 let api = {};
 
@@ -75,54 +84,51 @@ api.openWindow = (params, callback) => {
 };
 
 api.log = log;
+api.debug = DEBUG;
+api.debugLevels = DEBUG_LEVELS;
+api.debugLevel = DEBUG_LEVEL;
 
-/*
-api.onConfigChange = callback => {
+api.publish = (topic, msg) => {
+  //log(src, 'publish', topic)
+
   // noop if not an internal app file
+  // TODO: hmmm
   const isMain = window.location.protocol == 'file:';
   if (!isMain) {
     return;
   }
 
-  ipcRenderer.on('configchange', (ev, msg) => {
-    callback(msg);
+  ipcRenderer.send('publish', {
+    topic,
+    data: msg,
   });
 };
 
-api.getConfig = new Promise((resolve, reject) => {
+api.subscribe = (topic, callback) => {
+  //log(src, 'subscribe', topic)
+
   // noop if not an internal app file
+  // TODO: hmmm
   const isMain = window.location.protocol == 'file:';
+
   if (!isMain) {
+    // TODO: error
     return;
   }
 
-  // TODO: race potential
-  ipcRenderer.once('config', (ev, msg) => {
-    resolve(msg);
+  const replyTopic = `${Date.now()}`;
+
+  ipcRenderer.send('subscribe', {
+    topic,
+    replyTopic
   });
-  ipcRenderer.send('getconfig', {isMain});
-});
 
-api.setConfig = cfg => {
-  // noop if not an internal app file
-  const isMain = window.location.protocol == 'file:';
-  if (!isMain) {
-    return;
-  }
-
-  ipcRenderer.send('setconfig', cfg);
+  ipcRenderer.on(replyTopic, (ev, msg) => {
+    if (callback) {
+      callback(msg);
+    }
+  });
 };
-
-api.sendMessage = msg => {
-  // noop if not an internal app file
-  const isMain = window.location.protocol == 'file:';
-  if (!isMain) {
-    return;
-  }
-
-  ipcRenderer.send('sendmessage', msg);
-};
-*/
 
 contextBridge.exposeInMainWorld('app', api);
 

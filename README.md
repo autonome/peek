@@ -117,11 +117,18 @@ TODO
 
 - Going full crypto payments for distributed compute on this one.
 
-## Daily Papercut Log
+## Papercut / use-case log
 
 - open bandcamp in a window, move over to 2nd display, accidently close it while moving around between other windows
+- recent books or recipes from newsletters i subscribe to (but probably didn't read)
+- extract a table from a page periodically, send it somewhere as csv or whatever (chained actions)
+- collect microformats, metadata, events
+- web page w/ some locations as an input to a map (creates overlay) "map this page"
+- be able to see where a book/etc recommendation came from
 
 ## Roadmap
+
+## v0.1 - MVP (minimum viable preview)
 
 Core moduluarization
 - [x] Modularize feature types, eyeing the extensibility model
@@ -155,9 +162,6 @@ Move all features to web implementation
 - [ ] per-feature settings ui
 - [ ] feature metadata in manifest
 
-Daily driver blockers
-- [x] debug vs profile(s) for app dir
-
 Core+settings
 - [x] move feature list and enablement to storage
 - [x] merge core + settings
@@ -176,12 +180,7 @@ Commands/messaging
 Misc
 - [ ] fix ESC not working in web content
 
-History
-- [ ] push navigations out through pubsub
-- [ ] add history listener + storage to cmd
-- [ ] store central app action history
-- [ ] store content script data
-
+Navigation
 - [ ] esc stack: from feature settings back to core settings
 - [ ] add to izui stack (and ix w/ history?)
 
@@ -210,14 +209,21 @@ Deployment
 - [ ] icons
 - [ ] about page
 
-➡️ MVP (minimum viable preview)
+Daily driver blockers
+- [x] debug vs profile(s) for app dir
 
--------
+### v0.2 - extensibility / remember shit
 
 Install/load/address features
 - [ ] manifests for feature metadata
 - [ ] feature urls? eg peek://settings(/index.html)
 - [ ] maybe fine to file urls for now, would have to migrate later
+
+History
+- [ ] push navigations out through pubsub?
+- [ ] add history listener + storage to cmd
+- [ ] store central app action history
+- [ ] store content script data
 
 Feature level rpc?
 - [ ] how can other features query history vs store and query locally?
@@ -324,7 +330,7 @@ writing the recap of the web track at ipfs thing 2023
 
 - make a new markdown doc
 - sections titled for each video title
-- each video's embode code in each section
+- each video's embed code in each section
 - navigate around the document for review and updates
 - need to easily preview rendered content
 - share preview link

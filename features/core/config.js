@@ -20,7 +20,7 @@ const prefsSchema = {
     "shortcutKey": {
       "description": "App keyboard shortcut to load settings",
       "type": "string",
-      "default": "CommandOrControl+,"
+      "default": "CommandOrControl+Shift+,"
     },
     "height": {
       "description": "User-set or -defined height of Settings page",

@@ -312,8 +312,8 @@ const paneGenerator = (pane, labels, schema, data, onChange, disabled) => {
 // TODO: fuckfuckfuck
 // https://github.com/cocopon/tweakpane/issues/431
 const exportPaneData = pane => {
-  const val = pane.exportState();
-  /*
+  //const val = pane.exportState();
+  //
   const children = pane.rackApi_.children.filter(p => p.children);
   const val = children.map(paneChild => {
     return paneChild.children.reduce((obj, field) => {
@@ -342,7 +342,7 @@ const exportPaneData = pane => {
       return obj;
     }, {});
   });
-  */
+  //
   return val;
 };
 

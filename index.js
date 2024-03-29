@@ -40,7 +40,7 @@ const profileIsLegit = p => p != undefined && typeof p == 'string' && p.length >
 const PROFILE =
   profileIsLegit(process.env.PROFILE)
   ? process.env.PROFILE
-  : (DEBUG ? 'debug' : 'default');
+  : (DEBUG == true ? 'debug' : 'default');
 
 console.log('PROFILE', PROFILE);
 
@@ -200,8 +200,16 @@ const initTray = () => {
 const onReady = () => {
   console.log('onReady');
 
+  //https://stackoverflow.com/questions/35916158/how-to-prevent-multiple-instances-in-electron
+  const gotTheLock = app.requestSingleInstanceLock();
+  if (!gotTheLock) {
+    console.error('APP INSTANCE ALREADY RUNNING, QUITTING');
+    app.quit();
+    return;
+  }
+
   // init web core
-  openWindow({
+  const rootWin = openWindow({
     feature: 'Core',
     file: webCoreAddress,
     show: true,
@@ -215,7 +223,7 @@ const onReady = () => {
     _prefs[msg.feature] = msg.prefs;
 
     // show/hide in dock and tab switcher
-    if (app.dock && (msg.prefs.showInDockAndSwitcher == false || !DEBUG)) {
+    if (app.dock && msg.prefs.showInDockAndSwitcher == false) {
       app.dock.hide();
     }
    
@@ -491,6 +499,8 @@ const openWindow = (params, callback) => {
       }
     });
   }
+
+  return win;
 };
 
 /*

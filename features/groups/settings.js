@@ -3,18 +3,22 @@ import { log as l, openStore, addToGUI } from "../utils.js";
 import GUI from './../../node_modules/lil-gui/dist/lil-gui.esm.min.js';
 
 const log = function(...args) { l(id, args); };
-const DEBUG = window.app.debug;
 
-log('loading', id);
+log('background', id);
 
-const store = openStore(id);
+const debug = window.app.debug;
+const clear = false;
+
+const store = openStore(id, defaults, clear /* clear storage */);
+const api = window.app;
+
 const container = document.querySelector('.houseofpane');
 let prefs = store.get(storageKeys.PREFS);
-let features = store.get(storageKeys.FEATURES);
+//let items = store.get(storageKeys.ITEMS);
 
 const persistToStorage = () => {
   store.set(storageKeys.PREFS, prefs);
-  store.set(storageKeys.FEATURES, features);
+  //store.set(storageKeys.ITEMS, items);
 };
 
 const init = () => {
@@ -64,28 +68,31 @@ const init = () => {
     });;
   });
 
-  // Add features
-  features.forEach((feature, i) => {
-    const folder = gui.addFolder(feature.name);
-    addToGUI(folder, 'Description', feature.description).disable();
-    addToGUI(folder, 'Enabled', feature.enabled).onChange(e => {
-      // TODO: validate new value against schema
-      features[i].enabled = e;
+  /*
+  // Add items
+  items.forEach((item, i) => {
+    const folder = gui.addFolder(item.title);
+
+    addToGUI(folder, 'Key mapping', item.keyNum).disable();
+    addToGUI(folder, 'Address to load', item.address).onChange(e => {
+      items[i].address = e;
     });
-    addToGUI(folder, 'Settings', () => {
-      const title = `${feature.name} - Settings`;
-      openSettingsAddress(title, feature.settings_url);
-    }).disable(!feature.enabled);
+    addToGUI(folder, 'Persist state (not supported)', item.persistState).disable();
+    addToGUI(folder, 'Keep live', item.keepLive).onChange(e => {
+      items[i].keepLive = e;
+    });
+    addToGUI(folder, 'Allow sound (not supported)', item.allowSound).disable();
+    addToGUI(folder, 'Window height', item.height).onChange(e => {
+      items[i].height = e;
+    });
+    addToGUI(folder, 'Window width', item.width).onChange(e => {
+      items[i].width = e;
+    });
+    addToGUI(folder, 'Enabled', item.enabled).onChange(e => {
+      items[i].enabled = e;
+    });
   });
+  */
 };
-
-const openSettingsAddress = (title, address) => {
-  const params = {
-    feature: title,
-    file: address,
-  };
-
-  window.app.openWindow(params, () => window.app.log(title, 'settings win opened', address));
-}
 
 window.addEventListener('load', init);

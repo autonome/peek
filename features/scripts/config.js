@@ -117,7 +117,7 @@ const defaults = {
       selector: 'body > h1',
       property: 'textContent',
       interval: 300000,
-      storehistory: false,
+      storeHistory: false,
       notifyOnChange: false,
       enabled: false,
     },

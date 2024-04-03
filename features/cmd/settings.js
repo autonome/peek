@@ -3,18 +3,20 @@ import { log as l, openStore, addToGUI } from "../utils.js";
 import GUI from './../../node_modules/lil-gui/dist/lil-gui.esm.min.js';
 
 const log = function(...args) { l(id, args); };
-const DEBUG = window.app.debug;
 
-log('loading', id);
+log('background', id);
 
-const store = openStore(id);
+const debug = window.app.debug;
+const clear = false;
+
+const store = openStore(id, defaults, clear /* clear storage */);
+const api = window.app;
+
 const container = document.querySelector('.houseofpane');
 let prefs = store.get(storageKeys.PREFS);
-let features = store.get(storageKeys.FEATURES);
 
 const persistToStorage = () => {
   store.set(storageKeys.PREFS, prefs);
-  store.set(storageKeys.FEATURES, features);
 };
 
 const init = () => {
@@ -63,29 +65,6 @@ const init = () => {
       prefs[k] = e;
     });;
   });
-
-  // Add features
-  features.forEach((feature, i) => {
-    const folder = gui.addFolder(feature.name);
-    addToGUI(folder, 'Description', feature.description).disable();
-    addToGUI(folder, 'Enabled', feature.enabled).onChange(e => {
-      // TODO: validate new value against schema
-      features[i].enabled = e;
-    });
-    addToGUI(folder, 'Settings', () => {
-      const title = `${feature.name} - Settings`;
-      openSettingsAddress(title, feature.settings_url);
-    }).disable(!feature.enabled);
-  });
 };
-
-const openSettingsAddress = (title, address) => {
-  const params = {
-    feature: title,
-    file: address,
-  };
-
-  window.app.openWindow(params, () => window.app.log(title, 'settings win opened', address));
-}
 
 window.addEventListener('load', init);

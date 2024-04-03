@@ -355,6 +355,7 @@ const openWindow = (params, callback) => {
   //
   // TODO: need to figure out a better approach
   const key = params.key ? params.key : (params.feature + (params.address || params.file));
+  console.log('openWindow', 'cache key', key);
 
   if (windowCache.hasKey(key)) {
     console.log('REUSING WINDOW for ', key)
@@ -369,6 +370,9 @@ const openWindow = (params, callback) => {
         return;
       }
     }
+  }
+  else {
+    console.log('KEY NOT IN CACHE');
   }
 
   console.log('openWindow(): creating new window');
@@ -414,7 +418,7 @@ const openWindow = (params, callback) => {
   let win = new BrowserWindow(winPreferences);
 
   // if persisting window, cache the caller's key and window id
-  if (params.keepLive == true) {
+  if (params.keepLive == true || DEBUG) {
     windowCache.add({
       id: win.id,
       key,
@@ -426,9 +430,10 @@ const openWindow = (params, callback) => {
   const onGoAway = () => {
     if (params.keepLive == true) {
       if (params.keepVisible == false) {
-        console.log('win.onGoAway(): hiding ', params.address);
+        console.log('main.onGoAway(): hiding ', params.address);
         win.hide();
       }
+      // else keep window alive and visible!
     }
     else {
       console.log('win.onGoAway(): destroying ', params.address);
@@ -436,13 +441,11 @@ const openWindow = (params, callback) => {
     }
   }
 
-  // don't do this in debug mode, devtools steals focus
+  // don't do this in detached debug mode, devtools steals focus
   // and closes everything 😐
   // TODO: fix
   // TODO: should be configurable behavior
-  if (!DEBUG) {
-    win.on('blur', onGoAway);
-  }
+  win.on('blur', onGoAway);
   
   win.on('close', onGoAway);
 

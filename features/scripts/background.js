@@ -1,6 +1,6 @@
 // scripts/background.js
 
-import { id, labels, schemas, ui, defaults } from './config.js';
+import { id, labels, schemas, storageKeys, defaults } from './config.js';
 import { log as l, openStore } from "../utils.js";
 
 const log = function(...args) { l(id, args); };
@@ -8,14 +8,10 @@ const log = function(...args) { l(id, args); };
 log('background', id);
 
 const debug = window.app.debug;
+const clear = false;
 
-const store = openStore(id, defaults);
+const store = openStore(id, defaults, clear /* clear storage */);
 const api = window.app;
-
-const storageKeys = {
-  PREFS: 'prefs',
-  ITEMS: 'items',
-};
 
 let _intervals = [];
 
@@ -43,8 +39,9 @@ const executeItem = (script, cb) => {
 };
 
 const initItems = (prefs, items) => {
-  // blow it all away for now
-  // someday make it right proper just cancel/update changed and add new
+  // blow it all away for now at module start
+  // someday make it right proper
+  // just cancel/update changed and add new
   _intervals.forEach(clearInterval);
 
   // debounce me somehow so not shooting em all off
@@ -54,8 +51,8 @@ const initItems = (prefs, items) => {
       const interval = setInterval(() => { 
         const r = executeItem(item, res => {
 
-          //log('script result for', item.title, JSON.stringify(res));
-          //log('script prev val', item.previousValue);
+          log('script result for', item.title, JSON.stringify(res));
+          log('script prev val', item.previousValue);
 
           if (item.previousValue != res) {
 

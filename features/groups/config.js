@@ -1,4 +1,5 @@
 const id = 'features/groups';
+const guid = '82de735f-a4b7-4fe6-a458-ec29939ae00d';
 
 const labels = {
   featureType: 'groups',

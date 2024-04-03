@@ -1,6 +1,6 @@
 // cmd/background.js
 
-import { id, labels, schemas, ui, defaults } from './config.js';
+import { id, labels, schemas, storageKeys, defaults } from './config.js';
 import { log as l, openStore } from "../utils.js";
 
 const log = function(...args) { l(id, args); };
@@ -8,13 +8,10 @@ const log = function(...args) { l(id, args); };
 log('background', id);
 
 const debug = window.app.debug;
-const store = openStore(id, defaults);
-const api = window.app;
+const clear = false;
 
-const storageKeys = {
-  PREFS: 'prefs',
-  ITEMS: 'items',
-};
+const _store = openStore(id, defaults, clear /* clear storage */);
+const _api = window.app;
 
 const openInputWindow = prefs => {
   const height = prefs.height || 50;

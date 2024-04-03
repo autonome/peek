@@ -1,4 +1,5 @@
 const id = 'features/scripts';
+const guid = '30c25027-d367-4595-b37f-9db3de853c37';
 
 const labels = {
   featureType: 'scripts',

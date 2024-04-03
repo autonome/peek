@@ -67,114 +67,31 @@ const openStore = (prefix, defaults, clear = false) => {
   return store;
 };
 
-/*
-const paneGenerator = (pane, labels, schema, data, onChange, disabled) => {
-	const schemaKeys = Object.keys(schema.properties);
-  const dataKeys = data ? Object.keys(data): [];
-  const keys = shemaKeys.append(dataKeys);
+const addToGUI = (gui, label, value, disabled = false, step = null, max = null) => {
+  const params = {};
+  params[label] = value;
 
-  const inSchema = (data && data.hasOwnProperty(k))
+  const ctr = gui.add(params, label);
 
-  Object.keys(data).forEach(k => {
-    // TODO: unhack
-    if (k == 'settingsAddress') {
-      log('sa', data[k], data);
-      //log('settingsAddress', k, 'v', data[k]);
-      const btn = pane.addButton({title: k});
+  /*
+  if (disabled == true) {
+    ctr.disable();
+  }
 
-      btn.on('click', () => {
-        console.log('settings click!')
-        const address = data[k];
+  if (max != null) {
+    ctr.max(max);
+  }
 
-        const params = {
-          debug: window.app.debug,
-          feature: labels.featureType,
-          file: address,
-        };
+  if (step != null) {
+    ctr.step(step);
+  }
+  */
 
-        window.app.publish('open', {
-          feature: 'feature/cmd/settings'
-        });
-      });
-    }
-    else {
-      // schema for property
-      const s = props[k];
-
-      // value (or default)
-      const v =
-        (data && data.hasOwnProperty(k))
-        ? data[k]
-        : props[k].default;
-
-      const params = {};
-      const opts = {};
-
-      // dedecimalize
-      if (s.type == 'integer') {
-        opts.step = 1;
-      }
-
-      // disabled fields
-      if (disabled.includes(k)) {
-        opts.disabled = true;
-      }
-
-      params[k] = v;
-
-      const input = pane.addBinding(params, k, opts);
-
-      // TODO: consider inline state management
-      input.on('change', ev => {
-        // TODO: validate against schema
-        log('inline field change', k, ev.value)
-        data[k] = ev.value;
-        onChange(data)
-      });
-    }
-  });
-};
-*/
-
-// TODO: fuckfuckfuck
-// https://github.com/cocopon/tweakpane/issues/431
-const exportPaneData = pane => {
-  //const val = pane.exportState();
-  //
-  const children = pane.rackApi_.children.filter(p => p.children);
-  const val = children.map(paneChild => {
-    return paneChild.children.reduce((obj, field) => {
-      const k = field.label;
-      if (!k) {
-        return obj;
-      }
-
-      let v = null;
-
-      const input = field.element.querySelector('.tp-txtv_i')
-      if (input) {
-        v = input.value;
-      }
-
-      const checkbox = field.element.querySelector('.tp-ckbv_i');
-      if (checkbox) {
-        v = checkbox.checked;
-      }
-
-      // TODO: drop fields not supported for now
-      if (v != undefined) {
-        obj[k] = v;
-      }
-
-      return obj;
-    }, {});
-  });
-  //
-  return val;
-};
+  return ctr;
+}
 
 export {
   log,
   openStore,
-  //settingsPane
+  addToGUI
 };

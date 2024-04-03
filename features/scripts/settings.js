@@ -3,18 +3,22 @@ import { log as l, openStore, addToGUI } from "../utils.js";
 import GUI from './../../node_modules/lil-gui/dist/lil-gui.esm.min.js';
 
 const log = function(...args) { l(id, args); };
-const DEBUG = window.app.debug;
 
-log('loading', id);
+log('background', id);
 
-const store = openStore(id);
+const debug = window.app.debug;
+const clear = false;
+
+const store = openStore(id, defaults, clear /* clear storage */);
+const api = window.app;
+
 const container = document.querySelector('.houseofpane');
 let prefs = store.get(storageKeys.PREFS);
-let features = store.get(storageKeys.FEATURES);
+let items = store.get(storageKeys.ITEMS);
 
 const persistToStorage = () => {
   store.set(storageKeys.PREFS, prefs);
-  store.set(storageKeys.FEATURES, features);
+  store.set(storageKeys.ITEMS, items);
 };
 
 const init = () => {
@@ -64,28 +68,38 @@ const init = () => {
     });;
   });
 
-  // Add features
-  features.forEach((feature, i) => {
-    const folder = gui.addFolder(feature.name);
-    addToGUI(folder, 'Description', feature.description).disable();
-    addToGUI(folder, 'Enabled', feature.enabled).onChange(e => {
-      // TODO: validate new value against schema
-      features[i].enabled = e;
+  // Add items
+  items.forEach((item, i) => {
+    const folder = gui.addFolder(item.title);
+
+    addToGUI(folder, 'Id', item.id).onChange(e => {
+      items[i].id = e;
     });
-    addToGUI(folder, 'Settings', () => {
-      const title = `${feature.name} - Settings`;
-      openSettingsAddress(title, feature.settings_url);
-    }).disable(!feature.enabled);
+    addToGUI(folder, 'Script title', item.address).onChange(e => {
+      items[i].title = e;
+    });
+    addToGUI(folder, 'Version', item.version).onChange(e => {
+      items[i].version = e;
+    });
+    addToGUI(folder, 'Address to load', item.address).onChange(e => {
+      items[i].address = e;
+    });
+    addToGUI(folder, 'Selector', item.selector).onChange(e => {
+      items[i].selector = e;
+    });
+    // TODO: make options
+    addToGUI(folder, 'Property', item.property).onChange(e => {
+      items[i].property = e;
+    });
+    addToGUI(folder, 'Interval', item.interval).onChange(e => {
+      items[i].interval = e;
+    });
+    addToGUI(folder, 'Store history (not supported)', item.storeHistory).disable();
+    addToGUI(folder, 'Notify on changed value', item.notifyOnChange).disable();
+    addToGUI(folder, 'Enabled', item.enabled).onChange(e => {
+      items[i].enabled = e;
+    });
   });
 };
-
-const openSettingsAddress = (title, address) => {
-  const params = {
-    feature: title,
-    file: address,
-  };
-
-  window.app.openWindow(params, () => window.app.log(title, 'settings win opened', address));
-}
 
 window.addEventListener('load', init);

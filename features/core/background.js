@@ -37,7 +37,7 @@ const initFeature = f => {
     return;
   }
 
-  log('initializing feature ' + f);
+  console.log('initializing feature ', f);
 
   const params = {
     feature: f.name,
@@ -47,8 +47,12 @@ const initFeature = f => {
     show: debug
   };
 
-  window.app.openWindow(params);
-  //window.app.openWindow(params, () => window.app.log('win opened'));
+  //window.app.openWindow(params);
+  window.app.openWindow(params, r => {
+    console.log(`initFeature(): win opened for ${f.name}`, r)
+  });
+
+  console.log('window opened');
 };
 
 // unused, worth testing more tho

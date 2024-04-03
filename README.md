@@ -156,11 +156,10 @@ Move all features to web implementation
 - [x] move all possible code from the electron file to the web app
 - [x] move to web implemented globalShortcut
 - [x] move to web implemented openWindow
-- [ ] move settings re-use code to utils lib
-- [ ] ability to add clickable links in settings panes
-- [ ] add links to Settings app
-- [ ] per-feature settings ui
-- [ ] feature metadata in manifest
+- [x] move settings re-use code to utils lib
+- [x] ability to add clickable links in settings panes
+- [x] add links to Settings app
+- [x] per-feature settings ui
 
 Core+settings
 - [x] move feature list and enablement to storage
@@ -173,51 +172,62 @@ Core+settings
 Commands/messaging
 - [x] implement pubsub api
 - [x] way to tell feature to open default ui (if there is one)
-- [ ] way to tell feature to open settings ui (if there is one)
+- [x] way tell feature to open its settings ui (if there is one)
 - [ ] figure out re-init/reload story when pref/feature changes
 - [ ] figure out feature unload/reload (unreg shortcuts, close windows, etc)
-
-Misc
-- [ ] fix ESC not working in web content
-
-Navigation
-- [ ] esc stack: from feature settings back to core settings
-- [ ] add to izui stack (and ix w/ history?)
 
 Core/Basic
 - [x] basic command bar to open pages
 - [x] fix setting layout wrapping issue
-- [ ] re-enable label previews, eg "Peek {key} - {address}"
-- [ ] add support for per-feature hidden prefs (should be per-schema)
 
 Features cleanup
-- [ ] enable/disable individual slides, peeks
-- [ ] enable/disable individual scripts
-- [ ] visible-but-not-changeable settings should be per-schema
+- [x] enable/disable individual slides, peeks
+- [x] enable/disable individual scripts
 - [ ] add window open animation (to/from coords, time) to openWindow
 - [ ] update slides impl to use animation again
-- [ ] add window position persistence where it makes sense (settings, groups, cmd) and make configurable?
-- [ ] add window size persistence where it makes sense (slides, peeks) and make configurable?
-- [ ] global shortcuts vs app shortcuts
-- [ ] openWindow option to not close on escape
+- [ ] separate global shortcuts from app shortcuts (eg quit)
+- [ ] openWindow option to not close on escape (perma windows w/ controls)
+- [ ] window resizers
+- [ ] window controls
 
-Core cleanup
-- [ ] move feature bg pages to iframes in core bg page?
+Daily driver blockers
+- [x] debug vs profile(s) for app dir
+- [ ] actually load/unload features when enabled/disabled
+- [ ] actually load/unload peeks when enabled/disabled
+- [ ] actually load/unload slides when enabled/disabled
+- [ ] fix ESC not working right
+- [ ] fix ESC not working in web content
+
+Ship blockers
+- [ ] feature loading from origin not file
+
+Dev niceties
+- [ ] make it so start feature can be unset
+- [ ] figure out single devtools window if possible
+
+Boring magic
+- [ ] window position persistence where it makes sense (settings, groups, cmd) and make configurable?
+- [ ] window size persistence where it makes sense (slides, peeks) and make configurable?
 
 Deployment
 - [ ] app updates
 - [ ] icons
 - [ ] about page
 
-Daily driver blockers
-- [x] debug vs profile(s) for app dir
-
 ### v0.2 - extensibility / remember shit
+
+Navigation
+- [ ] make izui stack manager
+- [ ] esc stack: from feature settings back to core settings
+- [ ] add to izui stack (and ix w/ history?)
 
 Install/load/address features
 - [ ] manifests for feature metadata
 - [ ] feature urls? eg peek://settings(/index.html)
 - [ ] maybe fine to file urls for now, would have to migrate later
+- [ ] feature metadata in manifest
+- [ ] app protocol? pwa? wtf?
+- [ ] move feature bg pages to iframes in core bg page?
 
 History
 - [ ] push navigations out through pubsub?

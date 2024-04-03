@@ -101,12 +101,9 @@ const schemas = {
   items: listSchema
 };
 
-// ui config
-const ui = {
-  // allow user to create new items
-  allowNew: false,
-  // fields that are view only
-  disabled: ['screenEdge'],
+const storageKeys = {
+  PREFS: 'prefs',
+  ITEMS: 'items',
 };
 
 const defaults = {
@@ -128,43 +125,44 @@ const defaults = {
     {
       screenEdge: 'Down',
       title: 'Slide from bottom',
-      address: 'http://localhost/',
+      address: '',
       persistState: false,
       keepLive: false,
       allowSound: false,
       height: 600,
       width: 800,
-      enabled: true,
+      enabled: false,
     },
     {
       screenEdge: 'Left',
       title: 'Slide from left',
-      address: 'http://localhost/',
+      address: '',
       persistState: false,
       keepLive: false,
       allowSound: false,
       height: 600,
       width: 800,
-      enabled: true,
+      enabled: false,
     },
     {
       screenEdge: 'Right',
       title: 'Slide from right',
-      address: 'http://localhost/',
+      address: '',
       persistState: false,
       keepLive: false,
       allowSound: false,
       height: 600,
       width: 800,
-      enabled: true,
+      enabled: false,
     },
   ]
 };
 
 export {
   id,
+  guid,
   labels,
   schemas,
-  ui,
+  storageKeys,
   defaults
 };

@@ -35,9 +35,10 @@ const executeItem = (item) => {
 
 const initItems = (prefs, items) => {
   const cmdPrefix = prefs.shortcutKeyPrefix;
+  console.log('inititems', items);
 
   items.forEach(item => {
-    if (item.enabled == true) {
+    if (item.enabled == true && item.address.length > 0) {
       const shortcut = `${cmdPrefix}${item.keyNum}`;
 
       api.shortcuts.register(shortcut, () => {

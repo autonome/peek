@@ -1,3 +1,4 @@
+const guid = '8aadaae5-2594-4968-aba0-707f0d371cfb';
 const id = 'features/core';
 
 const labels = {
@@ -51,32 +52,45 @@ const prefsSchema = {
   "required": [ "shortcutKey", "startupFeature", "enableTrayIcon", "showInDockAndSwitcher" ]
 };
 
-const itemSchema = {
+const featureSchema = {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "peek.settings.feature.schema.json",
   "title": "Feature",
   "description": "Application feature",
   "type": "object",
   "properties": {
-    "title": {
+    "id": {
+      "description": "Unique id of the feature",
+      "type": "string"
+    },
+    "name": {
       "description": "Name of the feature",
       "type": "string"
     },
-    "address": {
-      "description": "URL to load",
+    "description": {
+      "description": "Description of the feature",
+      "type": "string"
+    },
+    "start_url": {
+      "description": "Address to load the feature",
+      "type": "string",
+      "format": "uri"
+    },
+    "settings_url": {
+      "description": "Address to load the feature's settings",
       "type": "string",
       "format": "uri"
     },
     "enabled": {
-      "description": "Whether the feature is enabled or not - defaults to true",
+      "description": "Whether the feature is enabled or not.",
       "type": "boolean",
       "default": true
     },
   },
-  "required": [ "title", "address", "enabled" ]
+  "required": [ "id", "name", "description", "start_url", "enabled" ]
 };
 
-const listSchema = {
+const featureListSchema = {
   "title": "Features",
   "type": 'array',
   "features": { "$ref": "#/$defs/feature" }
@@ -84,114 +98,68 @@ const listSchema = {
 
 const schemas = {
   prefs: prefsSchema,
-  item: itemSchema,
-  items: listSchema
+  feature: featureSchema,
+  featureList: featureListSchema
+};
+
+const storageKeys = {
+  PREFS: 'prefs',
+  FEATURES: 'features',
 };
 
 // defaults for user-modifiable preferences or data
 const defaults = {
   prefs: {
     shortcutKey: 'Option+,',
-    height: 600,
+    height: 850,
     width: 800,
     startupFeature: 'feature/core/settings',
     showTrayIcon: true,
     showInTrayAndSwitcher: true
   },
-  items: [
-    { title: 'Cmd',
-      address: 'features/cmd/background.html',
+  features: [
+    { id: 'cee1225d-40ac-41e5-a34c-e2edba69d599',
+      name: 'Cmd',
+      description: 'Command bar',
+      start_url: 'features/cmd/background.html',
       enabled: false,
-      settingsAddress: 'features/cmd/settings.html',
+      settings_url: 'features/cmd/settings.html',
     },
-    { title: 'Groups',
-      address: 'features/groups/background.html',
+    { id: '82de735f-a4b7-4fe6-a458-ec29939ae00d',
+      name: 'Groups',
+      description: 'View your web in groups',
+      start_url: 'features/groups/background.html',
       enabled: false,
-      settingsAddress: 'features/groups/settings.html',
+      settings_url: 'features/groups/settings.html',
     },
-    { title: 'Peeks',
-      address: 'features/peeks/background.html',
+    { id: 'ef3bd271-d408-421f-9338-47b615571e43',
+      name: 'Peeks',
+      description: 'Peek at pages in a transient popup using keyboard shortcuts',
+      start_url: 'features/peeks/background.html',
       enabled: false,
-      settingsAddress: 'features/peeks/settings.html',
+      settings_url: 'features/peeks/settings.html',
     },
-    { title: 'Scripts',
-      address: 'features/scripts/background.html',
+    { id: '30c25027-d367-4595-b37f-9db3de853c37',
+      name: 'Scripts',
+      description: 'Create, manage and run content scripts',
+      start_url: 'features/scripts/background.html',
       enabled: false,
-      settingsAddress: 'features/scripts/settings.html',
+      settings_url: 'features/scripts/settings.html',
     },
-    { title: 'Slides',
-      address: 'features/slides/background.html',
+    { id: '434108f3-18a6-437a-b507-2f998f693bb2',
+      name: 'Slides',
+      description: 'Open specific pages as side/top/bottom bars',
+      start_url: 'features/slides/background.html',
       enabled: false,
-      settingsAddress: 'features/slides/settings.html',
+      settings_url: 'features/slides/settings.html',
     }
   ]
 };
-
-// ui config for tweakpane filling
-// TODO: this needs to be per section
-// or integrated some other way entirely, kind of a mess
-// 
-// gotta think about much more complex objects
-// and also multiple types of items/lists
-const ui = {
-  // allow user to create new items
-  allowNew: false,
-
-  // fields that are view only
-  disabled: ['title', 'address' ],
-
-  // fields to make links
-  linkify: [
-    { field: 'settingsAddress',
-      title: 'Settings'
-    }
-  ],
-};
-
-
-/*
-const paneData = {
-  label: labels.featureDisplay,
-  children: [],
-};
-
-settings.sections.push({
-});
-
-{
-  "disabled": false,
-  "expanded": true,
-  "hidden": false,
-  "children": [
-    {
-      "disabled": false,
-      "expanded": true,
-      "hidden": false,
-      "label": "param1",
-      "binding": {
-        "key": "param1",
-        "value": 1
-      },
-      "tag": "foo"
-    },
-    {
-      "disabled": false,
-      "hidden": false,
-      "label": "param2",
-      "binding": {
-        "key": "param2",
-        "value": 2
-      },
-      "tag": "bar"
-    }
-  ],
-}
-*/
 
 export {
   id,
   labels,
   schemas,
-  ui,
+  storageKeys,
   defaults
 };

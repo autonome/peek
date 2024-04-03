@@ -5,7 +5,7 @@ import { log as l, openStore } from "../utils.js";
 
 const log = function(...args) { l(id, args); };
 
-log('background');
+log('background', id);
 
 const debug = window.app.debug;
 const store = openStore(id, defaults);

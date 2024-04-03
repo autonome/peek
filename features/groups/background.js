@@ -7,7 +7,7 @@ const log = function(...args) { l(id, args); };
 
 const debug = window.app.debug;
 
-log('background');
+log('background', id);
 
 const store = openStore(id, defaults);
 const api = window.app;

@@ -29,6 +29,10 @@ const schemas = {
   prefs: prefsSchema,
 };
 
+const storageKeys = {
+  PREFS: 'prefs',
+};
+
 const defaults = {
   prefs: {
     shortcutKey: 'Option+g'
@@ -40,5 +44,6 @@ export {
   guid,
   labels,
   schemas,
+  storageKeys,
   defaults
 };

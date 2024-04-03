@@ -21,6 +21,7 @@
     "electron-squirrel-startup": "1.0.0",
     "electron-store": "8.1.0",
     "electron-unhandled": "4.0.1",
+    "lil-gui": "^0.19.2",
     "tweakpane": "4.0.1"
   },
   "scripts": {

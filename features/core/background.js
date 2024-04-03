@@ -1,19 +1,15 @@
-import { id, labels, schemas, ui, defaults } from './config.js';
+import { id, labels, schemas, storageKeys, defaults } from './config.js';
 import { log as l, openStore } from "../utils.js";
 
 const log = function(...args) { l(id, args); };
 
-log('background');
+log('background', id);
 
 const debug = window.app.debug;
+const clear = false;
 
-const _store = openStore(id, defaults);
+const _store = openStore(id, defaults, clear /* clear storage */);
 const _api = window.app;
-
-const storageKeys = {
-  PREFS: 'prefs',
-  FEATURES: 'items',
-};
 
 const openSettingsWindow = (prefs) => {
   const height = prefs.height || 600;
@@ -44,9 +40,9 @@ const initFeature = f => {
   log('initializing feature ' + f);
 
   const params = {
-    feature: f.title,
+    feature: f.name,
     debug,
-    file: f.address,
+    file: f.start_url,
     keepLive: true,
     show: debug
   };
@@ -55,6 +51,7 @@ const initFeature = f => {
   //window.app.openWindow(params, () => window.app.log('win opened'));
 };
 
+// unused, worth testing more tho
 const initIframeFeature = file => {
   const pathPrefix = 'file:///Users/dietrich/misc/peek/';
   log('initiframe');
@@ -70,28 +67,35 @@ const initIframeFeature = file => {
 };
 
 const prefs = () => _store.get(storageKeys.PREFS);
-const items = () => _store.get(storageKeys.FEATURES);
+const features = () => _store.get(storageKeys.FEATURES);
 
 const init = () => {
   log('init');
 
   const p = prefs();
 
+  console.log('prefs', p);
+
   initShortcut(p);
 
-  items().forEach(initFeature);
+  features().forEach(initFeature);
   //features.forEach(initIframeFeature);
   
   const startupFeatureTitle = p.startupFeature;
 
-  const startupFeature = items().find(f => f.title = startupFeatureTitle);
+  const startupFeature = features().find(f => f.name = startupFeatureTitle);
 
+  // Listen for system- or feature-level requests to open windows.
+  // 
+  // In this case, for opening up global settings
+  // on app start (if configured) and from the tray icon.
   window.app.subscribe('open', msg => {
     if (msg.feature && msg.feature == 'feature/core/settings') {
       openSettingsWindow(p);
     }
   });
 
+  // main process uses these for initi
   window.app.publish('prefs', {
     feature: id,
     prefs: p
@@ -100,6 +104,7 @@ const init = () => {
 
 window.addEventListener('load', init);
 
+/*
 const odiff = (a, b) => Object.entries(b).reduce((c, [k, v]) => Object.assign(c, a[k] ? {} : { [k]: v }), {});
 
 const onStorageChange = (e) => {
@@ -110,7 +115,7 @@ const onStorageChange = (e) => {
   //log('onStorageChane', e.key, featureKey)
   if (e.key == featureKey) {
     //log('STORAGE CHANGE', e.key, old[0].enabled, now[0].enabled);
-    items().forEach((feat, i) => {
+    features().forEach((feat, i) => {
       log(feat.title, i, feat.enabled, old[i].enabled, now[i].enabled);
       // disabled, so unload
       if (old[i].enabled == true && now[i].enabled == false) {
@@ -127,3 +132,4 @@ const onStorageChange = (e) => {
 };
 
 window.addEventListener('storage', onStorageChange);
+*/

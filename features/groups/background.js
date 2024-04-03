@@ -1,21 +1,17 @@
 // groups/background.js
 
-import { id, labels, schemas, ui, defaults } from './config.js';
+import { id, labels, schemas, storageKeys, defaults } from './config.js';
 import { log as l, openStore } from "../utils.js";
 
 const log = function(...args) { l(id, args); };
 
+log('background', id);
+
 const debug = window.app.debug;
+const clear = false;
 
-log('background');
-
-const store = openStore(id, defaults);
+const store = openStore(id, defaults, clear /* clear storage */);
 const api = window.app;
-
-const storageKeys = {
-  PREFS: 'prefs',
-  ITEMS: 'items',
-};
 
 const openGroupsWindow = () => {
   const height = 600;

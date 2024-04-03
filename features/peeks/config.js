@@ -1,4 +1,5 @@
 const id = 'features/peeks';
+const guid = 'ef3bd271-d408-421f-9338-47b615571e43';
 
 const labels = {
   featureType: 'peeks',
@@ -97,6 +98,11 @@ const schemas = {
   items: listSchema
 };
 
+const storageKeys = {
+  PREFS: 'prefs',
+  ITEMS: 'items',
+};
+
 const defaults = {
   prefs: {
     shortcutKeyPrefix: 'Option+'
@@ -105,31 +111,26 @@ const defaults = {
 };
 
 for (var i = 0; i != 10; i++) {
+  const address = i == 0 ? 'https://example.com/' : '';
+  const enabled = i == 0 ? true : false;
   defaults.items[i] = {
     keyNum: i,
     title: `Peek key ${i}`,
-    address: 'https://example.com/',
+    address: address,
     persistState: false,
     keepLive: false,
     allowSound: false,
     height: 600,
     width: 800,
-    enabled: false,
+    enabled: enabled,
   };
 }
 
-// ui config
-const ui = {
-  // allow user to create new items
-  allowNew: false,
-  // fields that are view only
-  disabled: ['keyNum'],
-};
-
 export {
   id,
+  guid,
   labels,
   schemas,
-  ui,
+  storageKeys,
   defaults
 };

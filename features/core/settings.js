@@ -1,5 +1,5 @@
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { log as l, openStore } from "../utils.js";
+import { log as l, openStore, addToGUI } from "../utils.js";
 import GUI from './../../node_modules/lil-gui/dist/lil-gui.esm.min.js';
 
 const log = function(...args) { l(id, args); };
@@ -86,29 +86,6 @@ const openSettingsAddress = (title, address) => {
   };
 
   window.app.openWindow(params, () => window.app.log(title, 'settings win opened', address));
-}
-
-const addToGUI = (gui, label, value, disabled = false, step = null, max = null) => {
-  const params = {};
-  params[label] = value;
-
-  const ctr = gui.add(params, label);
-
-  /*
-  if (disabled == true) {
-    ctr.disable();
-  }
-
-  if (max != null) {
-    ctr.max(max);
-  }
-
-  if (step != null) {
-    ctr.step(step);
-  }
-  */
-
-  return ctr;
 }
 
 window.addEventListener('load', init);

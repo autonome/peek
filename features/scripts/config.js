@@ -94,11 +94,15 @@ const listSchema = {
   items: { "$ref": "#/$defs/script" }
 };
 
-// TODO: schemaize 0-9 constraints for peeks
 const schemas = {
   prefs: prefsSchema,
   item: itemSchema,
   items: listSchema
+};
+
+const storageKeys = {
+  PREFS: 'prefs',
+  ITEMS: 'items',
 };
 
 const defaults = {
@@ -120,18 +124,11 @@ const defaults = {
   ]
 };
 
-// ui config
-const ui = {
-  // allow user to create new items
-  allowNew: false,
-  // fields that are view only
-  disabled: ['screenEdge'],
-};
-
 export {
   id,
+  guid,
   labels,
   schemas,
-  ui,
+  storageKeys,
   defaults
 };

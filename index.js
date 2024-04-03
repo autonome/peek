@@ -61,9 +61,9 @@ const defaultUserDataPath = app.getPath('userData');
 const profileDataPath = path.join(defaultUserDataPath, PROFILE); 
 const sessionDataPath = path.join(profileDataPath, 'chromium'); 
 
-console.log('udp', defaultUserDataPath);
-console.log('pdp', profileDataPath);
-console.log('sdp', sessionDataPath);
+//console.log('udp', defaultUserDataPath);
+//console.log('pdp', profileDataPath);
+//console.log('sdp', sessionDataPath);
 
 // create filesystem
 if (!fs.existsSync(sessionDataPath)){
@@ -85,7 +85,7 @@ if (isDev) {
   });
   /*
   try {
-	  require('electron-reloader')(module);
+    require('electron-reloader')(module);
   } catch {}
   */
 }
@@ -329,7 +329,7 @@ const registerShortcut = (shortcut, callback) => {
 
 // window opener
 const openWindow = (params, callback) => {
-  console.log('openWindow', params);
+  console.log('openWindow', params, callback != null);
 
   // if no source identifier, barf
   if (!params.hasOwnProperty('feature') || params.feature == undefined) {
@@ -480,7 +480,7 @@ const openWindow = (params, callback) => {
   //win.webContents.send('window', { type: labels.featureType, id: win.id});
   //broadcastToWindows('window', { type: labels.featureType, id: win.id});
 
-	// TODO: fix func-level callback handling and resp obj
+  // TODO: fix func-level callback handling and resp obj
 
   if (params.script) {
     const script = params.script;
@@ -491,8 +491,9 @@ const openWindow = (params, callback) => {
         const r = await win.webContents.executeJavaScript(script.script);
         if (callback) {
           callback({
-						scriptOutput: r
-					});
+            key: key,
+            scriptOutput: r
+          });
         }
       } catch(ex) {
         console.error('cs exec error', ex);
@@ -500,6 +501,11 @@ const openWindow = (params, callback) => {
       if (script.closeOnCompletion) {
         win.destroy();
       }
+    });
+  }
+  else if (callback != null) {
+    callback({
+      key: key
     });
   }
 

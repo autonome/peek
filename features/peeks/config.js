@@ -112,6 +112,7 @@ const defaults = {
 
 for (var i = 0; i != 10; i++) {
   const address = i == 0 ? 'https://example.com/' : '';
+  const enabled = i == 0 ? true : false;
   defaults.items[i] = {
     keyNum: i,
     title: `Peek key ${i}`,
@@ -121,7 +122,7 @@ for (var i = 0; i != 10; i++) {
     allowSound: false,
     height: 600,
     width: 800,
-    enabled: false,
+    enabled: enabled,
   };
 }
 

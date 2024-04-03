@@ -157,8 +157,8 @@ const defaults = {
 };
 
 export {
-  guid,
   id,
+  guid,
   labels,
   schemas,
   storageKeys,

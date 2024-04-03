@@ -10,8 +10,8 @@ log('background', id);
 const debug = window.app.debug;
 const clear = false;
 
-const _store = openStore(id, defaults, clear /* clear storage */);
-const _api = window.app;
+const store = openStore(id, defaults, clear /* clear storage */);
+const api = window.app;
 
 const openInputWindow = prefs => {
   const height = prefs.height || 50;

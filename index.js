@@ -154,6 +154,7 @@ const pubsub = (() => {
 
   return {
     publish: (topic, msg) => {
+      console.log('ps.pub', topic, msg);
       if (topics.has(topic)) {
         topics.get(topic).forEach(subscriber => {
           subscriber(msg);
@@ -161,6 +162,7 @@ const pubsub = (() => {
       }
     },
     subscribe: (topic, cb) => {
+      console.log('ps.sub', topic);
       if (!topics.has(topic)) {
         topics.set(topic, [cb]);
       }
@@ -278,15 +280,16 @@ ipcMain.on('closewindow', (ev, msg) => {
 
 // generic dispatch - messages only from trusted code (💀)
 ipcMain.on('publish', (ev, msg) => {
-  //console.log('publish', msg);
+  console.log('ipc:publish', msg);
 
   pubsub.publish(msg.topic, msg.data);
 });
 
 ipcMain.on('subscribe', (ev, msg) => {
-  //console.log('subscribe', msg);
+  console.log('ipc:subscribe', msg);
 
   pubsub.subscribe(msg.topic, data => {
+    console.log('ipc:subscribe:notification', msg);
     ev.reply(msg.replyTopic, data);
   });
 });

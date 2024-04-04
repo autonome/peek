@@ -1,5 +1,4 @@
-const id = 'features/core';
-const guid = '8aadaae5-2594-4968-aba0-707f0d371cfb';
+const id = '8aadaae5-2594-4968-aba0-707f0d371cfb';
 
 const labels = {
   featureType: 'settings',
@@ -158,7 +157,6 @@ const defaults = {
 
 export {
   id,
-  guid,
   labels,
   schemas,
   storageKeys,

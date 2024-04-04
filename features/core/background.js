@@ -11,6 +11,8 @@ const clear = false;
 const store = openStore(id, defaults, clear /* clear storage */);
 const api = window.app;
 
+const winKeyCache = new Map();
+
 const openSettingsWindow = (prefs) => {
   const height = prefs.height || 600;
   const width = prefs.width || 800;
@@ -49,6 +51,7 @@ const initFeature = f => {
 
   window.app.openWindow(params, r => {
     console.log(`initFeature(): win opened for ${f.name}`, r)
+    winKeyCache.set(f.id, r.key);
   });
 
   console.log('window opened');
@@ -56,9 +59,14 @@ const initFeature = f => {
 
 const uninitFeature = f => {
 
-  window.app.openWindow(params, r => {
-    console.log(`initFeature(): win opened for ${f.name}`, r)
-  });
+  const key = winKeyCache(f.id);
+  if (key) {
+    console.log('closing window for', f.name);
+    window.app.closeWindow(key, r => {
+      console.log(`uninitFeature(): win closed for ${f.name}`, r)
+      winKeyCache.delete(f.id);
+    });
+  }
 };
 
 // unused, worth testing more tho
@@ -105,10 +113,25 @@ const init = () => {
     }
   });
 
-  // main process uses these for initi
+  // main process uses these for initialization
   window.app.publish('prefs', {
     feature: id,
     prefs: p
+  });
+
+  // feature enable/disable
+  window.app.subscribe('core:feature:toggle', msg => {
+    console.log('feature toggle', msg)
+
+    const f = features().find(f => f.id = msg.featureGUID);
+    if (f) {
+      if (f.enabled == true && msg.enabled == false) {
+        uninitFeature(f);
+      }
+      else if (f.enabled == false && msg.enabled == true) {
+        initFeature(f);
+      }
+    }
   });
 };
 

@@ -173,22 +173,22 @@ Commands/messaging
 - [x] implement pubsub api
 - [x] way to tell feature to open default ui (if there is one)
 - [x] way tell feature to open its settings ui (if there is one)
-- [ ] figure out re-init/reload story when pref/feature changes
+
+Feature un/install and reloads
 - [ ] figure out feature unload/reload (unreg shortcuts, close windows, etc)
+- [ ] figure out re-init/reload story when pref/feature change is saved
+    - can leave to the apps? eg document.reload()? likely not for OS level stuff
+    - could do a storage change listener, but all kinds of reasons why you *wouldn't* do full reload...
+    - preload could register window + thing (eg kb listner) and listen for feature-disable events
+- [ ] language: feature or app?
 
 Core/Basic
 - [x] basic command bar to open pages
 - [x] fix setting layout wrapping issue
 
-Features cleanup
-- [x] enable/disable individual slides, peeks
-- [x] enable/disable individual scripts
-- [ ] add window open animation (to/from coords, time) to openWindow
-- [ ] update slides impl to use animation again
-- [ ] separate global shortcuts from app shortcuts (eg quit)
-- [ ] openWindow option to not close on escape (perma windows w/ controls)
-- [ ] window resizers
-- [ ] window controls
+Core blockers
+- [ ] built-in feature loading from origin not file
+- [ ] combine settings and background in built-in features
 
 Daily driver blockers
 - [x] debug vs profile(s) for app dir
@@ -197,17 +197,30 @@ Daily driver blockers
 - [ ] actually load/unload slides when enabled/disabled
 - [ ] fix ESC not working right
 - [ ] fix ESC not working in web content
+- [ ] make it so start feature can be unset
 
-Ship blockers
-- [ ] feature loading from origin not file
+Focus vs not focused app mode
+- [ ] openWindow option to not close on escape (perma windows w/ controls)
+- [ ] app focus detection in shortcuts
+- [ ] separate global shortcuts from app shortcuts (eg quit)
+- [ ] all-window show/hide when doing global shortcuts while app unfocused
+
+Features cleanup
+- [x] enable/disable individual slides, peeks
+- [x] enable/disable individual scripts
 
 Dev niceties
-- [ ] make it so start feature can be unset
 - [ ] figure out single devtools window if possible
 
-Boring magic
+Window controls/persistence/etc (after perma window)
 - [ ] window position persistence where it makes sense (settings, groups, cmd) and make configurable?
 - [ ] window size persistence where it makes sense (slides, peeks) and make configurable?
+- [ ] window controls
+- [ ] window resizers
+
+Window animations
+- [ ] add window open animation (to/from coords, time) to openWindow
+- [ ] update slides impl to use animation again
 
 Deployment
 - [ ] app updates
@@ -217,16 +230,17 @@ Deployment
 ### v0.2 - extensibility / remember shit
 
 Navigation
-- [ ] make izui stack manager
+- [ ] make izui stack manager (part of window mgr?)
 - [ ] esc stack: from feature settings back to core settings
 - [ ] add to izui stack (and ix w/ history?)
 
 Install/load/address features
+- [ ] pull from manifest (load/install via manifest with special key?)
 - [ ] manifests for feature metadata
 - [ ] feature urls? eg peek://settings(/index.html)
 - [ ] maybe fine to file urls for now, would have to migrate later
 - [ ] feature metadata in manifest
-- [ ] app protocol? pwa? wtf?
+- [ ] app protocol? webextension? pwa? wtf?
 - [ ] move feature bg pages to iframes in core bg page?
 
 History

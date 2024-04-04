@@ -65,7 +65,8 @@ api.shortcuts = {
 };
 
 api.openWindow = (params, callback) => {
-  log(src, ['openwindow', JSON.stringify(params), 'for', window.location].join(', '));
+  log(src, ['api.openwindow', JSON.stringify(params), 'for', window.location].join(', '));
+
   // TODO: won't work for features that open multiple windows
   const replyTopic = `${params.feature}${params.address}`;
 
@@ -74,13 +75,30 @@ api.openWindow = (params, callback) => {
     replyTopic
   });
 
-  if (callback) {
-    ipcRenderer.once(replyTopic, (ev, msg) => {
-      log(src, 'resp from main');
-      log(src, msg);
+  ipcRenderer.once(replyTopic, (ev, msg) => {
+    log(src, 'api.openwindow', 'resp from main', msg);
+    if (callback) {
       callback(msg);
-    });
-  }
+    }
+  });
+};
+
+api.closeWindow = (key, callback) => {
+  log(src, ['api.closewindow', key, 'for', window.location].join(', '));
+
+  const replyTopic = Date.now();
+
+  ipcRenderer.send('closewindow', {
+    params: { key },
+    replyTopic
+  });
+
+  ipcRenderer.once(replyTopic, (ev, msg) => {
+    log(src, 'api.closewindow', 'resp from main', msg);
+    if (callback) {
+      callback(msg);
+    }
+  });
 };
 
 api.log = log;

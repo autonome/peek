@@ -8,8 +8,8 @@ log('background', id);
 const debug = window.app.debug;
 const clear = false;
 
-const _store = openStore(id, defaults, clear /* clear storage */);
-const _api = window.app;
+const store = openStore(id, defaults, clear /* clear storage */);
+const api = window.app;
 
 const openSettingsWindow = (prefs) => {
   const height = prefs.height || 600;
@@ -23,11 +23,11 @@ const openSettingsWindow = (prefs) => {
     width
   };
 
-  _api.openWindow(params);
+  api.openWindow(params);
 };
 
 const initShortcut = (prefs) => {
-  _api.shortcuts.register(prefs.shortcutKey, () => {
+  api.shortcuts.register(prefs.shortcutKey, () => {
     openSettingsWindow(prefs);
   });
 };
@@ -47,12 +47,18 @@ const initFeature = f => {
     show: debug
   };
 
-  //window.app.openWindow(params);
   window.app.openWindow(params, r => {
     console.log(`initFeature(): win opened for ${f.name}`, r)
   });
 
   console.log('window opened');
+};
+
+const uninitFeature = f => {
+
+  window.app.openWindow(params, r => {
+    console.log(`initFeature(): win opened for ${f.name}`, r)
+  });
 };
 
 // unused, worth testing more tho
@@ -70,8 +76,8 @@ const initIframeFeature = file => {
   });
 };
 
-const prefs = () => _store.get(storageKeys.PREFS);
-const features = () => _store.get(storageKeys.FEATURES);
+const prefs = () => store.get(storageKeys.PREFS);
+const features = () => store.get(storageKeys.FEATURES);
 
 const init = () => {
   log('init');

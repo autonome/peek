@@ -262,7 +262,17 @@ ipcMain.on('unregistershortcut', (ev, msg) => {
 
 ipcMain.on('openwindow', (ev, msg) => {
   openWindow(msg.params, output => {
-    ev.reply(msg.replyTopic, output);
+    if (msg && msg.replyTopic) {
+      ev.reply(msg.replyTopic, output);
+    }
+  });
+});
+
+ipcMain.on('closewindow', (ev, msg) => {
+  closeWindow(msg.params, output => {
+    if (msg && msg.replyTopic) {
+      ev.reply(msg.replyTopic, output);
+    }
   });
 });
 
@@ -367,6 +377,18 @@ const openWindow = (params, callback) => {
         if (show) {
           win.show();
         }
+        else {
+          // asking to open an already cached window
+          // eg background app processes that weren't cleaned up maybe?
+        }
+
+        if (callback != null) {
+          callback({
+            cache: true,
+            key: key
+          });
+        }
+
         return;
       }
     }
@@ -510,6 +532,23 @@ const openWindow = (params, callback) => {
   }
 
   return win;
+};
+
+// window closer
+const closeWindow = (params, callback) => {
+  console.log('closeWindow', params, callback != null);
+
+  if (windowCache.hasKey(params.key)) {
+    const win = windowCache.byKey(params.key);
+    win.destroy();
+  }
+  else {
+    // wtf
+  }
+
+  if (callback != null) {
+    callback();
+  }
 };
 
 /*

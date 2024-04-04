@@ -1,9 +1,7 @@
-const id = 'features/cmd';
-const guid = 'cee1225d-40ac-41e5-a34c-e2edba69d599';
+const id = 'cee1225d-40ac-41e5-a34c-e2edba69d599';
 
 const labels = {
-  featureType: 'cmd',
-  featureDisplay: 'Cmd',
+  name: 'Cmd',
   prefs: {
     shortcutKey: 'Cmd shortcut',
   }
@@ -41,7 +39,6 @@ const defaults = {
 
 export {
   id,
-  guid,
   labels,
   schemas,
   storageKeys,

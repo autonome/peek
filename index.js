@@ -61,9 +61,9 @@ const defaultUserDataPath = app.getPath('userData');
 const profileDataPath = path.join(defaultUserDataPath, PROFILE); 
 const sessionDataPath = path.join(profileDataPath, 'chromium'); 
 
-console.log('udp', defaultUserDataPath);
-console.log('pdp', profileDataPath);
-console.log('sdp', sessionDataPath);
+//console.log('udp', defaultUserDataPath);
+//console.log('pdp', profileDataPath);
+//console.log('sdp', sessionDataPath);
 
 // create filesystem
 if (!fs.existsSync(sessionDataPath)){
@@ -85,7 +85,7 @@ if (isDev) {
   });
   /*
   try {
-	  require('electron-reloader')(module);
+    require('electron-reloader')(module);
   } catch {}
   */
 }
@@ -154,6 +154,7 @@ const pubsub = (() => {
 
   return {
     publish: (topic, msg) => {
+      console.log('ps.pub', topic, msg);
       if (topics.has(topic)) {
         topics.get(topic).forEach(subscriber => {
           subscriber(msg);
@@ -161,6 +162,7 @@ const pubsub = (() => {
       }
     },
     subscribe: (topic, cb) => {
+      console.log('ps.sub', topic);
       if (!topics.has(topic)) {
         topics.set(topic, [cb]);
       }
@@ -262,21 +264,32 @@ ipcMain.on('unregistershortcut', (ev, msg) => {
 
 ipcMain.on('openwindow', (ev, msg) => {
   openWindow(msg.params, output => {
-    ev.reply(msg.replyTopic, output);
+    if (msg && msg.replyTopic) {
+      ev.reply(msg.replyTopic, output);
+    }
+  });
+});
+
+ipcMain.on('closewindow', (ev, msg) => {
+  closeWindow(msg.params, output => {
+    if (msg && msg.replyTopic) {
+      ev.reply(msg.replyTopic, output);
+    }
   });
 });
 
 // generic dispatch - messages only from trusted code (💀)
 ipcMain.on('publish', (ev, msg) => {
-  //console.log('publish', msg);
+  console.log('ipc:publish', msg);
 
   pubsub.publish(msg.topic, msg.data);
 });
 
 ipcMain.on('subscribe', (ev, msg) => {
-  //console.log('subscribe', msg);
+  console.log('ipc:subscribe', msg);
 
   pubsub.subscribe(msg.topic, data => {
+    console.log('ipc:subscribe:notification', msg);
     ev.reply(msg.replyTopic, data);
   });
 });
@@ -329,7 +342,7 @@ const registerShortcut = (shortcut, callback) => {
 
 // window opener
 const openWindow = (params, callback) => {
-  console.log('openWindow', params);
+  console.log('openWindow', params, callback != null);
 
   // if no source identifier, barf
   if (!params.hasOwnProperty('feature') || params.feature == undefined) {
@@ -367,6 +380,18 @@ const openWindow = (params, callback) => {
         if (show) {
           win.show();
         }
+        else {
+          // asking to open an already cached window
+          // eg background app processes that weren't cleaned up maybe?
+        }
+
+        if (callback != null) {
+          callback({
+            cache: true,
+            key: key
+          });
+        }
+
         return;
       }
     }
@@ -480,7 +505,7 @@ const openWindow = (params, callback) => {
   //win.webContents.send('window', { type: labels.featureType, id: win.id});
   //broadcastToWindows('window', { type: labels.featureType, id: win.id});
 
-	// TODO: fix func-level callback handling and resp obj
+  // TODO: fix func-level callback handling and resp obj
 
   if (params.script) {
     const script = params.script;
@@ -491,8 +516,9 @@ const openWindow = (params, callback) => {
         const r = await win.webContents.executeJavaScript(script.script);
         if (callback) {
           callback({
-						scriptOutput: r
-					});
+            key: key,
+            scriptOutput: r
+          });
         }
       } catch(ex) {
         console.error('cs exec error', ex);
@@ -502,8 +528,30 @@ const openWindow = (params, callback) => {
       }
     });
   }
+  else if (callback != null) {
+    callback({
+      key: key
+    });
+  }
 
   return win;
+};
+
+// window closer
+const closeWindow = (params, callback) => {
+  console.log('closeWindow', params, callback != null);
+
+  if (windowCache.hasKey(params.key)) {
+    const winData = windowCache.byKey(params.key);
+    BrowserWindow.fromId(winData.id).close();
+  }
+  else {
+    // wtf
+  }
+
+  if (callback != null) {
+    callback();
+  }
 };
 
 /*

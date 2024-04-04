@@ -1,9 +1,7 @@
-const id = 'features/groups';
-const guid = '82de735f-a4b7-4fe6-a458-ec29939ae00d';
+const id = '82de735f-a4b7-4fe6-a458-ec29939ae00d';
 
 const labels = {
-  featureType: 'groups',
-  featureDisplay: 'Groups',
+  name: 'Groups',
   prefs: {
     shortcutKey: 'Groups shortcut',
   }
@@ -41,7 +39,6 @@ const defaults = {
 
 export {
   id,
-  guid,
   labels,
   schemas,
   storageKeys,

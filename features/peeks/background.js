@@ -24,8 +24,8 @@ const executeItem = (item) => {
     width,
 
     // peek
-    feature: labels.featureType,
-    windowKey: `${labels.featureType}:${item.keyNum}`,
+    feature: labels.name,
+    windowKey: `${labels.name}:${item.keyNum}`,
     keepLive: item.keepLive || false,
     persistData: item.persistData || false
   };

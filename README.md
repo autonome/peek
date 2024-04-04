@@ -169,20 +169,6 @@ Core+settings
 - [x] wire up tray icon to pref
 - [x] tray click opens default app
 
-Commands/messaging
-- [x] implement pubsub api
-- [x] way to tell feature to open default ui (if there is one)
-- [x] way tell feature to open its settings ui (if there is one)
-
-Feature un/install and reloads
-- [ ] figure out feature unload/reload (unreg shortcuts, close windows, etc)
-- [ ] figure out re-init/reload story when pref/feature change is saved
-    - can leave to the apps? eg document.reload()? likely not for OS level stuff
-    - could do a storage change listener, but all kinds of reasons why you *wouldn't* do full reload...
-    - preload could register window + thing (eg kb listner) and listen for feature-disable events
-    - ok so basically do at api level
-- [ ] language: call them feature or apps? other?
-
 Core/Basic
 - [x] basic command bar to open pages
 - [x] fix setting layout wrapping issue
@@ -190,6 +176,23 @@ Core/Basic
 Core blockers
 - [ ] built-in feature loading from origin not file
 - [ ] combine settings and background in built-in features?
+
+Commands/messaging
+- [x] implement pubsub api
+- [x] way to tell feature to open default ui (if there is one)
+- [x] way tell feature to open its settings ui (if there is one)
+
+Feature un/install and reloads
+- [ ] feature unload/reload - init/uninit whole feature and window
+- [ ] unreg shortcuts
+- [ ] close other windows, not just background (track all feature wins? hierarchy? window manager?)
+- [ ] figure out re-init/reload story when pref/feature change is saved
+    - can leave to the apps? eg document.reload()? likely not for OS level stuff
+    - could do a storage change listener, but all kinds of reasons why you *wouldn't* do full reload...
+    - preload could register window + thing (eg kb listener) and listen for feature-disable events
+    - ok so basically do at api level
+- [ ] language: call them feature or apps? other?
+- [ ] core settings re-render on feature toggle
 
 Daily driver blockers
 - [x] debug vs profile(s) for app dir
@@ -209,6 +212,10 @@ Focus vs not focused app mode
 Features cleanup
 - [x] enable/disable individual slides, peeks
 - [x] enable/disable individual scripts
+
+Internal cleanup
+- [ ] fix label names, match to pwa manifest
+- [ ] put in log labels
 
 Dev niceties
 - [ ] figure out single devtools window if possible

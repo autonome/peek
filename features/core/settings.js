@@ -25,7 +25,7 @@ const init = () => {
   const gui = new GUI({
     touchStyles: false,
     container: container,
-    title: labels.featureDisplay
+    title: labels.name
   });
 
   // anytime anything changes, persist to storage
@@ -66,7 +66,7 @@ const init = () => {
       // TODO: validate new value against schema
       features[i].enabled = e;
       window.app.publish('core:feature:toggle', {
-        featureGUID: feature.id,
+        featureId: feature.id,
         enabled: e
       });
     });

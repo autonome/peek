@@ -1,10 +1,7 @@
 const id = '30c25027-d367-4595-b37f-9db3de853c37';
 
 const labels = {
-  featureType: 'scripts',
-  featureDisplay: 'Scripts',
-  itemType: 'script',
-  itemDisplay: 'Script',
+  name: 'Scripts',
   prefs: {
   }
 };

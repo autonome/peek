@@ -542,8 +542,8 @@ const closeWindow = (params, callback) => {
   console.log('closeWindow', params, callback != null);
 
   if (windowCache.hasKey(params.key)) {
-    const win = windowCache.byKey(params.key);
-    win.destroy();
+    const winData = windowCache.byKey(params.key);
+    BrowserWindow.fromId(winData.id).close();
   }
   else {
     // wtf

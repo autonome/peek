@@ -33,7 +33,7 @@ const init = () => {
   const gui = new GUI({
     touchStyles: false,
     container: container,
-    title: labels.featureDisplay
+    title: labels.name
   });
 
   // anytime anything changes, persist to storage

@@ -25,7 +25,7 @@ const executeItem = (script, cb) => {
   `;
 
   const params = {
-    feature: labels.featureType,
+    feature: labels.name,
     address: script.address,
     show: false,
     script: {

@@ -19,7 +19,7 @@ const openSettingsWindow = (prefs) => {
 
   const params = {
     debug,
-    feature: labels.featureType,
+    feature: labels.name,
     file: 'features/core/settings.html',
     height,
     width
@@ -59,7 +59,7 @@ const initFeature = f => {
 
 const uninitFeature = f => {
 
-  const key = winKeyCache(f.id);
+  const key = winKeyCache.get(f.id);
   if (key) {
     console.log('closing window for', f.name);
     window.app.closeWindow(key, r => {
@@ -123,14 +123,20 @@ const init = () => {
   window.app.subscribe('core:feature:toggle', msg => {
     console.log('feature toggle', msg)
 
-    const f = features().find(f => f.id = msg.featureGUID);
+    const f = features().find(f => f.id = msg.featureId);
     if (f) {
-      if (f.enabled == true && msg.enabled == false) {
+      console.log('feature toggle', f);
+      if (msg.enabled == false) {
+        console.log('disabling', f.name);
         uninitFeature(f);
       }
-      else if (f.enabled == false && msg.enabled == true) {
+      else if (msg.enabled == true) {
+        console.log('enabling', f.name);
         initFeature(f);
       }
+    }
+    else {
+      console.log('feature toggle - no feature found for', f.name);
     }
   });
 };

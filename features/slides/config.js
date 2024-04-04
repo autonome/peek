@@ -1,10 +1,7 @@
 const id = '434108f3-18a6-437a-b507-2f998f693bb2';
 
 const labels = {
-  featureType: 'slides',
-  featureDisplay: 'Slides',
-  itemType: 'slide',
-  itemDisplay: 'Slide',
+  name: 'Slides',
   prefs: {
     keyPrefix: 'Slide shortcut prefix',
   }

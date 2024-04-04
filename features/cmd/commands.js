@@ -71,7 +71,7 @@ const sourceOpenURL = () => {
       const width = 800;
 
       const params = {
-        feature: labels.featureType,
+        feature: labels.name,
         address,
         height,
         width

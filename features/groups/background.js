@@ -18,7 +18,7 @@ const openGroupsWindow = () => {
   const width = 800;
 
   const params = {
-    feature: labels.featureType,
+    feature: labels.name,
     file: 'features/groups/home.html',
     height,
     width

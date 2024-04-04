@@ -19,7 +19,7 @@ const openInputWindow = prefs => {
 
   const params = {
     debug,
-    feature: labels.featureType,
+    feature: labels.name,
     file: 'features/cmd/panel.html',
     height,
     width
@@ -34,7 +34,7 @@ const openSettingsWindow = (prefs) => {
 
   const params = {
     debug,
-    feature: labels.featureType,
+    feature: labels.name,
     file: 'features/core/settings.html',
     height,
     width

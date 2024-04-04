@@ -92,8 +92,8 @@ const executeItem = (item) => {
     width,
 
     // peek
-    feature: labels.featureType,
-    windowKey: `${labels.featureType}:${item.screenEdge}`,
+    feature: labels.name,
+    windowKey: `${labels.name}:${item.screenEdge}`,
     keepLive: item.keepLive || false,
     persistData: item.persistData || false,
 

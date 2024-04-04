@@ -1,10 +1,7 @@
 const id = 'ef3bd271-d408-421f-9338-47b615571e43';
 
 const labels = {
-  featureType: 'peeks',
-  featureDisplay: 'Peeks',
-  itemType: 'peek',
-  itemDisplay: 'Peek',
+  name: 'Peeks',
   prefs: {
     keyPrefix: 'Peek shortcut prefix',
   }

@@ -1,5 +1,4 @@
-const id = 'features/peeks';
-const guid = 'ef3bd271-d408-421f-9338-47b615571e43';
+const id = 'ef3bd271-d408-421f-9338-47b615571e43';
 
 const labels = {
   featureType: 'peeks',
@@ -128,7 +127,6 @@ for (var i = 0; i != 10; i++) {
 
 export {
   id,
-  guid,
   labels,
   schemas,
   storageKeys,

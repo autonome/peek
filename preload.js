@@ -86,7 +86,7 @@ api.openWindow = (params, callback) => {
 api.closeWindow = (key, callback) => {
   log(src, ['api.closewindow', key, 'for', window.location].join(', '));
 
-  const replyTopic = Date.now();
+  const replyTopic = `${key}${Math.random().toString(16).slice(2)}`;
 
   ipcRenderer.send('closewindow', {
     params: { key },
@@ -134,7 +134,7 @@ api.subscribe = (topic, callback) => {
     return;
   }
 
-  const replyTopic = `${Date.now()}`;
+  const replyTopic = `${topic}${Math.random().toString(16).slice(2)}`;
 
   ipcRenderer.send('subscribe', {
     topic,

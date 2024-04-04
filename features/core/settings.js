@@ -19,12 +19,6 @@ const persistToStorage = () => {
 
 const init = () => {
 
-  /*
-    pubsub.publish('open', {
-      feature: msg.prefs.startupFeature
-    });
-  */
-
   // Initialize settings UI
   const container = document.querySelector('.houseofpane');
 
@@ -71,6 +65,10 @@ const init = () => {
     addToGUI(folder, 'Enabled', feature.enabled).onChange(e => {
       // TODO: validate new value against schema
       features[i].enabled = e;
+      window.app.publish('core:feature:toggle', {
+        featureGUID: feature.id,
+        enabled: e
+      });
     });
     addToGUI(folder, 'Settings', () => {
       const title = `${feature.name} - Settings`;

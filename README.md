@@ -180,7 +180,8 @@ Feature un/install and reloads
     - can leave to the apps? eg document.reload()? likely not for OS level stuff
     - could do a storage change listener, but all kinds of reasons why you *wouldn't* do full reload...
     - preload could register window + thing (eg kb listner) and listen for feature-disable events
-- [ ] language: feature or app?
+    - ok so basically do at api level
+- [ ] language: call them feature or apps? other?
 
 Core/Basic
 - [x] basic command bar to open pages
@@ -188,13 +189,13 @@ Core/Basic
 
 Core blockers
 - [ ] built-in feature loading from origin not file
-- [ ] combine settings and background in built-in features
+- [ ] combine settings and background in built-in features?
 
 Daily driver blockers
 - [x] debug vs profile(s) for app dir
-- [ ] actually load/unload features when enabled/disabled
 - [ ] actually load/unload peeks when enabled/disabled
 - [ ] actually load/unload slides when enabled/disabled
+- [ ] actually load/unload scripts when enabled/disabled
 - [ ] fix ESC not working right
 - [ ] fix ESC not working in web content
 - [ ] make it so start feature can be unset

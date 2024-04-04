@@ -8,8 +8,10 @@ log('background', id);
 const debug = window.app.debug;
 const clear = false;
 
-const _store = openStore(id, defaults, clear /* clear storage */);
-const _api = window.app;
+const store = openStore(id, defaults, clear /* clear storage */);
+const api = window.app;
+
+const winKeyCache = new Map();
 
 const openSettingsWindow = (prefs) => {
   const height = prefs.height || 600;
@@ -17,17 +19,17 @@ const openSettingsWindow = (prefs) => {
 
   const params = {
     debug,
-    feature: labels.featureType,
+    feature: labels.name,
     file: 'features/core/settings.html',
     height,
     width
   };
 
-  _api.openWindow(params);
+  api.openWindow(params);
 };
 
 const initShortcut = (prefs) => {
-  _api.shortcuts.register(prefs.shortcutKey, () => {
+  api.shortcuts.register(prefs.shortcutKey, () => {
     openSettingsWindow(prefs);
   });
 };
@@ -37,7 +39,7 @@ const initFeature = f => {
     return;
   }
 
-  log('initializing feature ' + f);
+  console.log('initializing feature ', f);
 
   const params = {
     feature: f.name,
@@ -47,8 +49,24 @@ const initFeature = f => {
     show: debug
   };
 
-  window.app.openWindow(params);
-  //window.app.openWindow(params, () => window.app.log('win opened'));
+  window.app.openWindow(params, r => {
+    console.log(`initFeature(): win opened for ${f.name}`, r)
+    winKeyCache.set(f.id, r.key);
+  });
+
+  console.log('window opened');
+};
+
+const uninitFeature = f => {
+
+  const key = winKeyCache.get(f.id);
+  if (key) {
+    console.log('closing window for', f.name);
+    window.app.closeWindow(key, r => {
+      console.log(`uninitFeature(): win closed for ${f.name}`, r)
+      winKeyCache.delete(f.id);
+    });
+  }
 };
 
 // unused, worth testing more tho
@@ -66,8 +84,8 @@ const initIframeFeature = file => {
   });
 };
 
-const prefs = () => _store.get(storageKeys.PREFS);
-const features = () => _store.get(storageKeys.FEATURES);
+const prefs = () => store.get(storageKeys.PREFS);
+const features = () => store.get(storageKeys.FEATURES);
 
 const init = () => {
   log('init');
@@ -95,10 +113,31 @@ const init = () => {
     }
   });
 
-  // main process uses these for initi
+  // main process uses these for initialization
   window.app.publish('prefs', {
     feature: id,
     prefs: p
+  });
+
+  // feature enable/disable
+  window.app.subscribe('core:feature:toggle', msg => {
+    console.log('feature toggle', msg)
+
+    const f = features().find(f => f.id = msg.featureId);
+    if (f) {
+      console.log('feature toggle', f);
+      if (msg.enabled == false) {
+        console.log('disabling', f.name);
+        uninitFeature(f);
+      }
+      else if (msg.enabled == true) {
+        console.log('enabling', f.name);
+        initFeature(f);
+      }
+    }
+    else {
+      console.log('feature toggle - no feature found for', f.name);
+    }
   });
 };
 

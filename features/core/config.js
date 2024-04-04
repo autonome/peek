@@ -1,11 +1,7 @@
-const id = 'features/core';
-const guid = '8aadaae5-2594-4968-aba0-707f0d371cfb';
+const id = '8aadaae5-2594-4968-aba0-707f0d371cfb';
 
 const labels = {
-  featureType: 'settings',
-  featureDisplay: 'Settings',
-  itemType: 'feature',
-  itemDisplay: 'Feature',
+  name: 'Settings',
   prefs: {
     shortcutKey: 'Settings shortcut',
   }
@@ -158,7 +154,6 @@ const defaults = {
 
 export {
   id,
-  guid,
   labels,
   schemas,
   storageKeys,

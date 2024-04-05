@@ -183,8 +183,12 @@ Commands/messaging
 - [x] way tell feature to open its settings ui (if there is one)
 
 Feature un/install and reloads
-- [ ] feature unload/reload - init/uninit whole feature and window
-- [ ] unreg shortcuts
+- [x] feature unload/reload - init/uninit whole feature and window
+- [ ] unreg shortcuts on unload
+    - send pubsub msgs on shortcut reg/unreg
+    - with feature id
+    - in core/bg, listen for regs and map to feature
+    - then on feature uninstall, unreg
 - [ ] close other windows, not just background (track all feature wins? hierarchy? window manager?)
 - [ ] figure out re-init/reload story when pref/feature change is saved
     - can leave to the apps? eg document.reload()? likely not for OS level stuff

@@ -1,7 +1,7 @@
 import { id, labels, schemas, ui, defaults } from './config.js';
 import { log as l, openStore } from "../utils.js";
 
-const log = function(...args) { l(id, args); };
+const log = function(...args) { l(labels.name, args); };
 
 log('background');
 

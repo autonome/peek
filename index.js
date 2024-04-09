@@ -345,6 +345,7 @@ const openWindow = (params, callback) => {
   console.log('openWindow', params, callback != null);
 
   // if no source identifier, barf
+  // TODO: test the protocol
   if (!params.hasOwnProperty('feature') || params.feature == undefined) {
     throw new Error('openWindow: no identifying source for openWindow request!');
   }

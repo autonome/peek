@@ -125,6 +125,7 @@ TODO
 - collect microformats, metadata, events
 - web page w/ some locations as an input to a map (creates overlay) "map this page"
 - be able to see where a book/etc recommendation came from
+- save a tweet, with URL / image / relevant text, but not whole page webrecorder style
 
 ## Roadmap
 
@@ -243,6 +244,11 @@ Window controls/persistence/etc (after perma window)
 Window animations
 - [ ] add window open animation (to/from coords, time) to openWindow
 - [ ] update slides impl to use animation again
+
+Window transparency
+- [ ] add support to api
+- [ ] update core settings to use it
+- [ ] update app settings to use it
 
 Deployment
 - [ ] app updates

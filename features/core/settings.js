@@ -80,7 +80,7 @@ const init = () => {
 const openSettingsAddress = (title, address) => {
   const params = {
     feature: title,
-    file: address,
+    address,
   };
 
   window.app.openWindow(params, () => window.app.log(title, 'settings win opened', address));

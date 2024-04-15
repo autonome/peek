@@ -1,9 +1,9 @@
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
 import { log as l, openStore } from "../utils.js";
 
-const log = function(...args) { l(id, args); };
+const log = function(...args) { l(labels.name, args); };
 
-log('background', id);
+log('background', labels.name);
 
 const debug = window.app.debug;
 const clear = false;
@@ -20,7 +20,7 @@ const openSettingsWindow = (prefs) => {
   const params = {
     debug,
     feature: labels.name,
-    file: 'features/core/settings.html',
+    address: 'peek://core/settings.html',
     height,
     width
   };
@@ -44,7 +44,7 @@ const initFeature = f => {
   const params = {
     feature: f.name,
     debug,
-    file: f.start_url,
+    address: f.start_url,
     keepLive: true,
     show: debug
   };

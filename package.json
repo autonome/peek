@@ -5,6 +5,10 @@
   "main": "index.js",
   "author": "dietrich ayala",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/autonome/peek"
+  },
   "devDependencies": {
     "@electron-forge/cli": "7.2.0",
     "@electron-forge/maker-deb": "7.2.0",
@@ -22,7 +26,7 @@
     "electron-store": "8.1.0",
     "electron-unhandled": "4.0.1",
     "lil-gui": "^0.19.2",
-    "tweakpane": "4.0.1"
+    "update-electron-app": "^3.0.0"
   },
   "scripts": {
     "start": "electron-forge start",

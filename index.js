@@ -20,18 +20,24 @@ const {
   ipcMain,
   Menu,
   nativeTheme,
+  net,
+  protocol,
   Tray
 } = require('electron');
 
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
+const { pathToFileURL } = require('url');
 
 // script loaded into every app window
 const preloadPath = path.join(__dirname, 'preload.js');
 
+const APP_SCHEME = 'peek';
+const APP_CORE_PATH = 'features';
+
 // app hidden window to load
 // core application logic is here
-const webCoreAddress = 'features/core/background.html';
+const webCoreAddress = 'peek://core/background.html';
 
 const p = process.env.PROFILE;
 console.log('env prof?', p, p != undefined, typeof p)
@@ -196,6 +202,59 @@ const initTray = () => {
   return _tray;
 };
 
+// ***** protocol handling
+
+protocol.registerSchemesAsPrivileged([{
+  scheme: APP_SCHEME,
+  privileges: {
+    standard: true,
+    secure: true,
+    supportFetchAPI: true,
+    bypassCSP: true,
+    corsEnabled: true,
+    allowServiceWorkers: false
+  }
+}]);
+
+const initAppProtocol = () => {
+  protocol.handle(APP_SCHEME, (req) => {
+    const { host, pathname } = new URL(req.url);
+
+    // TODO: nope
+    if (pathname === '/') {
+      pathname = 'background.html';
+    }
+
+    // TODO: unhack all this
+    const isNode = pathname.indexOf('node_modules') > -1;
+
+    const hackedPath = isNode ? pathname.replace(/^\//, '')
+      : path.join(APP_CORE_PATH, host, pathname.replace(/^\//,''));
+
+    const pathToServe = path.resolve(__dirname, hackedPath);
+
+    const relativePath = path.relative(__dirname, pathToServe);
+
+    // NB, this checks for paths that escape the bundle, e.g.
+    // app://bundle/../../secret_file.txt
+    const isSafe = relativePath && !relativePath.startsWith('..')
+      && !path.isAbsolute(relativePath);
+
+    // ugh
+    if (!isNode && !isSafe) {
+      console.log('NOTSAFE');
+      return new Response('bad', {
+        status: 400,
+        headers: { 'content-type': 'text/html' }
+      })
+    }
+
+    const finalPath = pathToFileURL(pathToServe).toString();
+
+    return net.fetch(finalPath);
+  });
+}
+
 // ***** init *****
 
 // Electron app load
@@ -210,10 +269,13 @@ const onReady = () => {
     return;
   }
 
+  // handle peek://
+  initAppProtocol();
+
   // init web core
   const rootWin = openWindow({
     feature: 'Core',
-    file: webCoreAddress,
+    address: webCoreAddress,
     show: true,
     keepLive: true,
     keepVisible: true,
@@ -356,8 +418,9 @@ const openWindow = (params, callback) => {
   // keep visible
   const keepVisible = params.hasOwnProperty('keepVisible') ? params.keepVisible : false;
 
-  if (!params.address && !params.file) {
-    console.error('openWindow: neither address nor file!');
+  // validate address
+  if (!params.hasOwnProperty('address') || params.address.length <= 0) {
+    console.error('openWindow: no address or is empty!');
     return;
   }
 
@@ -408,9 +471,14 @@ const openWindow = (params, callback) => {
 
   let webPreferences = {};
 
-  if (params.file) {
-    console.log('FILE', params.file);
-    params.address = `file://${path.join(__dirname)}/${params.file}`;
+  const url = new URL(params.address);
+
+  if (url.protocol == APP_SCHEME + ':') {
+    console.log('APP ADDRESS', params.address);
+
+    //params.address = `file://${path.join(__dirname)}/${params.file}`;
+
+    // add preload
     webPreferences.preload = preloadPath;
   }
 

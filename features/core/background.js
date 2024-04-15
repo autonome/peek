@@ -20,7 +20,7 @@ const openSettingsWindow = (prefs) => {
   const params = {
     debug,
     feature: labels.name,
-    file: 'features/core/settings.html',
+    address: 'peek://core/settings.html',
     height,
     width
   };
@@ -44,7 +44,7 @@ const initFeature = f => {
   const params = {
     feature: f.name,
     debug,
-    file: f.start_url,
+    address: f.start_url,
     keepLive: true,
     show: debug
   };

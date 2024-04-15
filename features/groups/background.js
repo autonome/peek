@@ -3,9 +3,9 @@
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
 import { log as l, openStore } from "../utils.js";
 
-const log = function(...args) { l(id, args); };
+const log = function(...args) { l(labels.name, args); };
 
-log('background', id);
+log('background', labels.name);
 
 const debug = window.app.debug;
 const clear = false;

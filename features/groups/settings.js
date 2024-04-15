@@ -2,9 +2,9 @@ import { id, labels, schemas, storageKeys, defaults } from './config.js';
 import { log as l, openStore, addToGUI } from "../utils.js";
 import GUI from './../../node_modules/lil-gui/dist/lil-gui.esm.min.js';
 
-const log = function(...args) { l(id, args); };
+const log = function(...args) { l(labels.name, args); };
 
-log('background', id);
+log('loading', labels.name, 'settings');
 
 const debug = window.app.debug;
 const clear = false;
@@ -22,13 +22,6 @@ const persistToStorage = () => {
 };
 
 const init = () => {
-
-  /*
-    pubsub.publish('open', {
-      feature: msg.prefs.startupFeature
-    });
-  */
-
   // Initialize settings UI
   const container = document.querySelector('.houseofpane');
 

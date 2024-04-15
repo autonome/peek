@@ -125,6 +125,7 @@ TODO
 - collect microformats, metadata, events
 - web page w/ some locations as an input to a map (creates overlay) "map this page"
 - be able to see where a book/etc recommendation came from
+- save a tweet, with URL / image / relevant text, but not whole page webrecorder style
 
 ## Roadmap
 
@@ -182,9 +183,22 @@ Commands/messaging
 - [x] way to tell feature to open default ui (if there is one)
 - [x] way tell feature to open its settings ui (if there is one)
 
+Install/load/address features
+- [ ] app protocol? webextension? pwa? wtf?
+- [ ] pull from manifest (load/install via manifest with special key?)
+- [ ] manifests for feature metadata
+- [ ] feature urls? eg peek://settings(/index.html)
+- [ ] feature metadata in manifest
+- [ ] move feature bg pages to iframes in core bg page?
+
 Feature un/install and reloads
-- [ ] feature unload/reload - init/uninit whole feature and window
-- [ ] unreg shortcuts
+- [x] feature unload/reload - init/uninit whole feature and window
+- [ ] all api calls have feature id accessible by preload (via manifest?)
+- [ ] unreg shortcuts on unload
+    - confirm sucessful reg
+    - send pubsub msgs on shortcut reg/unreg with feature id
+    - in core/bg, listen for regs and map to feature
+    - then on feature uninstall, unreg
 - [ ] close other windows, not just background (track all feature wins? hierarchy? window manager?)
 - [ ] figure out re-init/reload story when pref/feature change is saved
     - can leave to the apps? eg document.reload()? likely not for OS level stuff
@@ -214,8 +228,9 @@ Features cleanup
 - [x] enable/disable individual scripts
 
 Internal cleanup
-- [ ] fix label names, match to pwa manifest
-- [ ] put in log labels
+- [x] s/guid/id/
+- [x] fix label names, match to pwa manifest
+- [x] put readable log labels back in
 
 Dev niceties
 - [ ] figure out single devtools window if possible
@@ -230,6 +245,11 @@ Window animations
 - [ ] add window open animation (to/from coords, time) to openWindow
 - [ ] update slides impl to use animation again
 
+Window transparency
+- [ ] add support to api
+- [ ] update core settings to use it
+- [ ] update app settings to use it
+
 Deployment
 - [ ] app updates
 - [ ] icons
@@ -241,15 +261,6 @@ Navigation
 - [ ] make izui stack manager (part of window mgr?)
 - [ ] esc stack: from feature settings back to core settings
 - [ ] add to izui stack (and ix w/ history?)
-
-Install/load/address features
-- [ ] pull from manifest (load/install via manifest with special key?)
-- [ ] manifests for feature metadata
-- [ ] feature urls? eg peek://settings(/index.html)
-- [ ] maybe fine to file urls for now, would have to migrate later
-- [ ] feature metadata in manifest
-- [ ] app protocol? webextension? pwa? wtf?
-- [ ] move feature bg pages to iframes in core bg page?
 
 History
 - [ ] push navigations out through pubsub?

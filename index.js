@@ -402,6 +402,25 @@ const registerShortcut = (shortcut, callback) => {
   }
 };
 
+const unregisterShortcut = (shortcut, callback) => {
+  console.log('unregisterShortcut', shortcut)
+
+  if (!globalShortcut.isRegistered(shortcut)) {
+    console.error('Unable to register shortcut', shortcut);
+    return new Error("Failed in some way", { cause: err });
+  }
+
+  const ret = globalShortcut.unregister(shortcut, () => {
+    console.log('shortcut executed', shortcut);
+    callback();
+  });
+
+  if (!ret) {
+    console.error('Unable to unregister shortcut', shortcut);
+    return new Error("Failed in some way", { cause: err });
+  }
+};
+
 // window opener
 const openWindow = (params, callback) => {
   console.log('openWindow', params, callback != null);
@@ -424,14 +443,24 @@ const openWindow = (params, callback) => {
     return;
   }
 
-  // cache key
+  // need to make an address scheme that has opaque host
+  // AND origin - which isn't a thing really:
+  // https://github.com/whatwg/url/issues/690
+  // for now, hack out the "host".
+  const url = new URL(params.address);
+  const isPrivileged = url.protocol.startsWith(APP_SCHEME + ':');
+
+  // generate window cache key
+  //
   // window keys can be provided by features.
-  // eg for different slides that have same url, don't want to re-use window.
+  //
+  // this gives apps ability to have singleton windows vs copies
   //
   // otherwise use a simple concat
   //
   // TODO: need to figure out a better approach
-  const key = params.key ? params.key : (params.feature + (params.address || params.file));
+  const key = params.key ? params.key : (params.feature + params.address);
+
   console.log('openWindow', 'cache key', key);
 
   if (windowCache.hasKey(key)) {
@@ -471,18 +500,15 @@ const openWindow = (params, callback) => {
 
   let webPreferences = {};
 
-  const url = new URL(params.address);
-
-  if (url.protocol == APP_SCHEME + ':') {
+  // privileged app addresses get special powers
+  if (isPrivileged) {
     console.log('APP ADDRESS', params.address);
-
-    //params.address = `file://${path.join(__dirname)}/${params.file}`;
 
     // add preload
     webPreferences.preload = preloadPath;
   }
 
-  if (!params.persistData) {
+  if (!params.persistState) {
     // TODO: hack. this just isolates.
     webPreferences.partition = Date.now()
   }
@@ -509,7 +535,7 @@ const openWindow = (params, callback) => {
 
   console.log('final dimension params (x, y, center)', winPreferences.x, winPreferences.y, winPreferences.center);
 
-  let win = new BrowserWindow(winPreferences);
+  const win = new BrowserWindow(winPreferences);
 
   // if persisting window, cache the caller's key and window id
   if (params.keepLive == true || DEBUG) {

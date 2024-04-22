@@ -127,6 +127,10 @@ TODO
 - be able to see where a book/etc recommendation came from
 - save a tweet, with URL / image / relevant text, but not whole page webrecorder style
 
+Content scripts
+- extract+log shazams
+- extract+log spotify playlist
+
 ## Roadmap
 
 ## v0.1 - MVP (minimum viable preview)
@@ -174,54 +178,10 @@ Core/Basic
 - [x] basic command bar to open pages
 - [x] fix setting layout wrapping issue
 
-Core blockers
-- [ ] built-in feature loading from origin not file
-- [ ] combine settings and background in built-in features?
-
 Commands/messaging
 - [x] implement pubsub api
 - [x] way to tell feature to open default ui (if there is one)
 - [x] way tell feature to open its settings ui (if there is one)
-
-Install/load/address features
-- [ ] app protocol? webextension? pwa? wtf?
-- [ ] pull from manifest (load/install via manifest with special key?)
-- [ ] manifests for feature metadata
-- [ ] feature urls? eg peek://settings(/index.html)
-- [ ] feature metadata in manifest
-- [ ] move feature bg pages to iframes in core bg page?
-
-Feature un/install and reloads
-- [x] feature unload/reload - init/uninit whole feature and window
-- [ ] all api calls have feature id accessible by preload (via manifest?)
-- [ ] unreg shortcuts on unload
-    - confirm sucessful reg
-    - send pubsub msgs on shortcut reg/unreg with feature id
-    - in core/bg, listen for regs and map to feature
-    - then on feature uninstall, unreg
-- [ ] close other windows, not just background (track all feature wins? hierarchy? window manager?)
-- [ ] figure out re-init/reload story when pref/feature change is saved
-    - can leave to the apps? eg document.reload()? likely not for OS level stuff
-    - could do a storage change listener, but all kinds of reasons why you *wouldn't* do full reload...
-    - preload could register window + thing (eg kb listener) and listen for feature-disable events
-    - ok so basically do at api level
-- [ ] language: call them feature or apps? other?
-- [ ] core settings re-render on feature toggle
-
-Daily driver blockers
-- [x] debug vs profile(s) for app dir
-- [ ] actually load/unload peeks when enabled/disabled
-- [ ] actually load/unload slides when enabled/disabled
-- [ ] actually load/unload scripts when enabled/disabled
-- [ ] fix ESC not working right
-- [ ] fix ESC not working in web content
-- [ ] make it so start feature can be unset
-
-Focus vs not focused app mode
-- [ ] openWindow option to not close on escape (perma windows w/ controls)
-- [ ] app focus detection in shortcuts
-- [ ] separate global shortcuts from app shortcuts (eg quit)
-- [ ] all-window show/hide when doing global shortcuts while app unfocused
 
 Features cleanup
 - [x] enable/disable individual slides, peeks
@@ -232,18 +192,45 @@ Internal cleanup
 - [x] fix label names, match to pwa manifest
 - [x] put readable log labels back in
 
-Dev niceties
-- [ ] figure out single devtools window if possible
+## Preview release blockers
 
-Window controls/persistence/etc (after perma window)
-- [ ] window position persistence where it makes sense (settings, groups, cmd) and make configurable?
-- [ ] window size persistence where it makes sense (slides, peeks) and make configurable?
-- [ ] window controls
-- [ ] window resizers
 
-Window animations
-- [ ] add window open animation (to/from coords, time) to openWindow
-- [ ] update slides impl to use animation again
+Windows/system
+- [ ] cache key can be address path now?
+- [ ] unregister all shortcuts at shutdown
+
+Feature un/install and reloads
+- [x] feature unload/reload - init/uninit whole feature and window
+- [ ] all api calls have feature id accessible by preload (via manifest?)
+- [ ] close other windows of feature, not just background window
+    - track windows in origin groups?
+
+Figure out re-init/reload story when pref/feature change is saved
+- eg: extension lifecycle events and sw lifecycle events
+- can leave to the apps? eg document.reload()? likely not for OS level stuff
+- could do a storage change listener, but all kinds of reasons why you *wouldn't* do full reload...
+- preload could register window + thing (eg kb listener) and listen for feature-disable events
+- ok so basically do at api level
+
+Shortcut lifecycle
+- [ ] main process should handle multiple registrations
+- [ ] send feature id/origin w/ each registration
+- [ ] unreg shortcuts on unload
+- confirm sucessful registration
+- send pubsub msgs on shortcut reg/unreg with feature id
+- in core/bg, listen for regs and map to feature
+- then on feature uninstall, unreg
+
+Settings
+- [ ] core settings re-render on feature toggle
+
+Daily driver blockers
+- [x] debug vs profile(s) for app dir
+- [ ] actually load/unload peeks when enabled/disabled
+- [ ] actually load/unload slides when enabled/disabled
+- [ ] actually load/unload scripts when enabled/disabled
+- [ ] fix ESC not working right
+- [ ] fix ESC not working in web content
 
 Window transparency
 - [ ] add support to api
@@ -257,10 +244,52 @@ Deployment
 
 ### v0.2 - extensibility / remember shit
 
+App mgmt
+- [ ] uniform policy for feature id creation (lean on web/extensions)
+- [ ] collisions
+
+App dev
+- [ ] app model - web? extension? P/IWA? other?
+- [ ] shared libs, eg utils
+- [ ] language: call them feature or apps? other?
+
+Focus vs not focused app mode
+- [ ] openWindow option to not close on escape (perma windows w/ controls)
+- [ ] app focus detection in shortcuts
+- [ ] separate global shortcuts from app shortcuts (eg quit)
+- [ ] all-window show/hide when doing global shortcuts while app unfocused
+
+Dev niceties
+- [ ] figure out single devtools window if possible
+
+Install/load/address features
+- [x] built-in feature loading from origin not file
+- [x] app protocol? webextension? pwa? wtf?
+- [ ] combine settings and background in built-in features?
+    - eg, features can have default ui + bg services?
+- [ ] pull from manifest (load/install via manifest with special key?)
+- [ ] manifests for feature metadata
+- [ ] feature urls? eg peek://settings(/index.html)
+- [ ] feature metadata in manifest
+- [ ] move feature bg pages to iframes in core bg page?
+
+Settings
+- [ ] make it so start feature can be unset (eh)
+
 Navigation
 - [ ] make izui stack manager (part of window mgr?)
 - [ ] esc stack: from feature settings back to core settings
 - [ ] add to izui stack (and ix w/ history?)
+
+Window animations
+- [ ] add window open animation (to/from coords, time) to openWindow
+- [ ] update slides impl to use animation again
+
+Window controls/persistence/etc (after perma window)
+- [ ] window position persistence where it makes sense (settings, groups, cmd) and make configurable?
+- [ ] window size persistence where it makes sense (slides, peeks) and make configurable?
+- [ ] window controls
+- [ ] window resizers
 
 History
 - [ ] push navigations out through pubsub?

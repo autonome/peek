@@ -1,5 +1,5 @@
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { log as l, openStore } from "../utils.js";
+import { log as l, openStore } from "./utils.js";
 
 const log = function(...args) { l(labels.name, args); };
 

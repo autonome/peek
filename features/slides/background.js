@@ -95,7 +95,7 @@ const executeItem = (item) => {
     feature: labels.name,
     windowKey: `${labels.name}:${item.screenEdge}`,
     keepLive: item.keepLive || false,
-    persistData: item.persistData || false,
+    persistState: item.persistState || false
 
     // slide
     x,

@@ -5,7 +5,7 @@ const {
 
 const src = 'preload';
 
-const DEBUG = process.env.DEBUG;
+const DEBUG = process.env.DEBUG || false;
 const DEBUG_LEVELS = {
   BASIC: 1,
   FIRST_RUN: 2
@@ -13,6 +13,12 @@ const DEBUG_LEVELS = {
 
 const DEBUG_LEVEL = DEBUG_LEVELS.BASIC;
 //const DEBUG_LEVEL = DEBUG_LEVELS.FIRST_RUN;
+
+const APP_SCHEME = 'peek';
+const APP_PROTOCOL = `${APP_SCHEME}:`;
+
+const isApp = window.location.protocol == APP_PROTOCOL;
+const sourceAddress = window.location.toString();
 
 const log = (source, text) => {
   ipcRenderer.send('console', {
@@ -40,6 +46,11 @@ const addEscListener = () => {
 
 let api = {};
 
+api.log = log;
+api.debug = DEBUG;
+api.debugLevels = DEBUG_LEVELS;
+api.debugLevel = DEBUG_LEVEL;
+
 api.shortcuts = {
   register: (shortcut, cb) => {
     log(src, 'registering ' + shortcut + ' for ' + window.location)
@@ -47,6 +58,7 @@ api.shortcuts = {
     const replyTopic = `${shortcut}${window.location}`;
 
     ipcRenderer.send('registershortcut', {
+      source: sourceAddress,
       shortcut,
       replyTopic
     });
@@ -59,6 +71,7 @@ api.shortcuts = {
   unregister: shortcut => {
     console.log('unregistering', shortcut, 'for', window.location)
     ipcRenderer.send('registershortcut', {
+      source: sourceAddress,
       shortcut
     });
   }
@@ -69,6 +82,9 @@ api.openWindow = (params, callback) => {
 
   // TODO: won't work for features that open multiple windows
   const replyTopic = `${params.feature}${params.address}`;
+
+  // add source address to params
+  params.source = sourceAddress;
 
   ipcRenderer.send('openwindow', {
     params,
@@ -88,8 +104,13 @@ api.closeWindow = (key, callback) => {
 
   const replyTopic = `${key}${Math.random().toString(16).slice(2)}`;
 
+  const params = {
+    source: sourceAddress,
+    key
+  };
+
   ipcRenderer.send('closewindow', {
-    params: { key },
+    params,
     replyTopic
   });
 
@@ -101,22 +122,14 @@ api.closeWindow = (key, callback) => {
   });
 };
 
-api.log = log;
-api.debug = DEBUG;
-api.debugLevels = DEBUG_LEVELS;
-api.debugLevel = DEBUG_LEVEL;
-
 api.publish = (topic, msg) => {
-  //log(src, 'publish', topic)
-
   // noop if not an internal app file
-  // TODO: hmmm
-  const isMain = window.location.protocol == 'file:';
-  if (!isMain) {
+  if (!isApp) {
     return;
   }
 
   ipcRenderer.send('publish', {
+    source: sourceAddress,
     topic,
     data: msg,
   });
@@ -126,10 +139,7 @@ api.subscribe = (topic, callback) => {
   //log(src, 'subscribe', topic)
 
   // noop if not an internal app file
-  // TODO: hmmm
-  const isMain = window.location.protocol == 'file:';
-
-  if (!isMain) {
+  if (!isApp) {
     // TODO: error
     return;
   }
@@ -137,6 +147,7 @@ api.subscribe = (topic, callback) => {
   const replyTopic = `${topic}${Math.random().toString(16).slice(2)}`;
 
   ipcRenderer.send('subscribe', {
+    source: sourceAddress,
     topic,
     replyTopic
   });

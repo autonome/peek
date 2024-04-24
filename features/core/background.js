@@ -6,7 +6,7 @@ const log = function(...args) { l(labels.name, args); };
 log('background', labels.name);
 
 const debug = window.app.debug;
-const clear = false;
+const clear = true;
 
 const store = openStore(id, defaults, clear /* clear storage */);
 const api = window.app;
@@ -15,12 +15,12 @@ const winKeyCache = new Map();
 
 const openSettingsWindow = (prefs) => {
   const height = prefs.height || 600;
-  const width = prefs.width || 800;
+  const width = prefs.width || 380;
 
   const params = {
     debug,
-    feature: labels.name,
     address: 'peek://core/settings.html',
+    transparent: true,
     height,
     width
   };
@@ -42,7 +42,6 @@ const initFeature = f => {
   console.log('initializing feature ', f);
 
   const params = {
-    feature: f.name,
     debug,
     address: f.start_url,
     keepLive: true,
@@ -115,7 +114,7 @@ const init = () => {
 
   // main process uses these for initialization
   window.app.publish('prefs', {
-    feature: id,
+    id: id,
     prefs: p
   });
 

@@ -119,6 +119,11 @@ TODO
 
 ## Papercut / use-case log
 
+core
+- open a web page on top/bottom/left/right
+- keep web pages persistent in the background
+- quickly open a web page modally, and close it
+
 - open bandcamp in a window, move over to 2nd display, accidently close it while moving around between other windows
 - recent books or recipes from newsletters i subscribe to (but probably didn't read)
 - extract a table from a page periodically, send it somewhere as csv or whatever (chained actions)
@@ -131,9 +136,19 @@ Content scripts
 - extract+log shazams
 - extract+log spotify playlist
 
+Workflow deconstructing a "why" task flavour of bookmarking
+- save https://www.criterionchannel.com/hong-kong-in-new-york
+- extract the movies
+- get reference metadata for each (?!)
+- add to "to watch list", with pointer back to source url
+
 ## Roadmap
 
-## v0.1 - MVP (minimum viable preview)
+## v0.1 - MVPOC
+
+minimum viable proof of concept.
+
+question: would i use this?
 
 Core moduluarization
 - [x] Modularize feature types, eyeing the extensibility model
@@ -192,18 +207,24 @@ Internal cleanup
 - [x] fix label names, match to pwa manifest
 - [x] put readable log labels back in
 
-## Preview release blockers
+## v0.2 - MVCP (minimum viable concept preview)
 
+minimum viable concept preview.
+
+question: would others use this?
 
 Windows/system
+- [ ] app showing in dock even tho disabled
+- [ ] app not showing in tray, even tho enabled
 - [ ] cache key can be address path now?
-- [ ] unregister all shortcuts at shutdown
+- [ ] all api calls
 
-Feature un/install and reloads
+Feature lifecycle (un/install and reloads)
 - [x] feature unload/reload - init/uninit whole feature and window
 - [ ] all api calls have feature id accessible by preload (via manifest?)
 - [ ] close other windows of feature, not just background window
     - track windows in origin groups?
+- [ ] unregister all shortcuts at shutdown
 
 Figure out re-init/reload story when pref/feature change is saved
 - eg: extension lifecycle events and sw lifecycle events
@@ -221,8 +242,19 @@ Shortcut lifecycle
 - in core/bg, listen for regs and map to feature
 - then on feature uninstall, unreg
 
+Peeks/Slides
+- [ ] only register shortcut and create window if a URL is configured
+- [ ] ensure unreg/closure on unconfigure
+- [ ] ensure unreg/closure on feature enable/disable
+
+Cmd
+- [ ] fix it
+
 Settings
-- [ ] core settings re-render on feature toggle
+- [x] fix window size
+- [x] transparency
+- [ ] core settings re-render on feature toggle?
+- [ ] default position (size to screen)
 
 Daily driver blockers
 - [x] debug vs profile(s) for app dir
@@ -233,14 +265,17 @@ Daily driver blockers
 - [ ] fix ESC not working in web content
 
 Window transparency
-- [ ] add support to api
-- [ ] update core settings to use it
-- [ ] update app settings to use it
+- [x] add support to api
 
 Deployment
 - [ ] app updates
 - [ ] icons
 - [ ] about page
+
+Demo scenario
+- [ ] Peeks: translate, calendar, ai chat, currency conversion, everytimezone, tldraw
+- [ ] Slides: soundcloud, crypto prices, notepad, todo list
+- [ ] Scripts: eth price, weather change
 
 ### v0.2 - extensibility / remember shit
 

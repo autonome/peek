@@ -1,17 +1,5 @@
 // main.js
-(async () => {
 
-console.log('main');
-
-const DEBUG = process.env.DEBUG;
-const DEBUG_LEVELS = {
-  BASIC: 1,
-  FIRST_RUN: 2
-};
-const DEBUG_LEVEL = DEBUG_LEVELS.BASIC;
-//const DEBUG_LEVEL = DEBUG_LEVELS.FIRST_RUN;
-
-// Modules to control application life and create native browser window
 const {
   electron,
   app,
@@ -29,15 +17,38 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('url');
 
+(async () => {
+
+console.log('main');
+
+const DEBUG = process.env.DEBUG || false;
+const DEBUG_LEVELS = {
+  BASIC: 1,
+  FIRST_RUN: 2
+};
+const DEBUG_LEVEL = DEBUG_LEVELS.BASIC;
+//const DEBUG_LEVEL = DEBUG_LEVELS.FIRST_RUN;
+
 // script loaded into every app window
 const preloadPath = path.join(__dirname, 'preload.js');
 
 const APP_SCHEME = 'peek';
+const APP_PROTOCOL = `${APP_SCHEME}:`;
 const APP_CORE_PATH = 'features';
+
+const APP_DEF_WIDTH = 1024;
+const APP_DEF_HEIGHT = 768;
 
 // app hidden window to load
 // core application logic is here
 const webCoreAddress = 'peek://core/background.html';
+
+const strings = {
+  shortcuts: {
+    errorAlreadyRegistered: 'Shortcut already registered',
+    errorRegistrationFailed: 'Shortcut registration failed'
+  }
+};
 
 const p = process.env.PROFILE;
 console.log('env prof?', p, p != undefined, typeof p)
@@ -160,7 +171,7 @@ const pubsub = (() => {
 
   return {
     publish: (topic, msg) => {
-      console.log('ps.pub', topic, msg);
+      console.log('ps.pub', topic);
       if (topics.has(topic)) {
         topics.get(topic).forEach(subscriber => {
           subscriber(msg);
@@ -195,7 +206,7 @@ const initTray = () => {
     _tray.setToolTip(labels.tray.tooltip);
     _tray.on('click', () => {
       pubsub.publish('open', {
-        feature: _prefs['features/core'].startupFeature
+        address: _prefs[webCoreAddress].startupFeature
       });
     });
   }
@@ -272,35 +283,37 @@ const onReady = () => {
   // handle peek://
   initAppProtocol();
 
-  // init web core
-  const rootWin = openWindow({
-    feature: 'Core',
-    address: webCoreAddress,
-    show: true,
-    keepLive: true,
-    keepVisible: true,
-    debug: DEBUG
-  })
-
   pubsub.subscribe('prefs', msg => {
     // cache all prefs
-    _prefs[msg.feature] = msg.prefs;
+    _prefs[msg.source] = msg.prefs;
 
     // show/hide in dock and tab switcher
-    if (app.dock && msg.prefs.showInDockAndSwitcher == false) {
+    if (app.dock && !msg.prefs.showInDockAndSwitcher) {
+      console.log('hiding dock');
       app.dock.hide();
     }
    
     // initialize system tray
     if (msg.prefs.showTrayIcon == true) {
+      console.log('showing tray');
       initTray();
     }
 
     // open default app
     pubsub.publish('open', {
-      feature: msg.prefs.startupFeature
+      address: msg.prefs.startupFeature
     });
   });
+
+  // init web core
+  const coreWin = openWindow({
+    source: this,
+    address: webCoreAddress,
+    show: DEBUG,
+    keepLive: true,
+    keepVisible: true,
+    debug: DEBUG
+  })
 
   // eh, for helpers really
   registerShortcut('Option+q', onQuit);
@@ -360,8 +373,6 @@ ipcMain.on('subscribe', (ev, msg) => {
 // close focused window on Escape
 ipcMain.on('esc', (ev, title) => {
   console.log('index.js: ESC');
-  // XXX remove
-  return;
 
   const fwin = BrowserWindow.getFocusedWindow();
   const entry = windowCache.byId(fwin.id);
@@ -388,7 +399,9 @@ const registerShortcut = (shortcut, callback) => {
   console.log('registerShortcut', shortcut)
 
   if (globalShortcut.isRegistered(shortcut)) {
-    globalShortcut.unregister(shortcut);
+    console.error(strings.shortcuts.errorAlreadyRegistered, shortcut);
+    //globalShortcut.unregister(shortcut);
+    return new Error(strings.shortcuts.errorAlreadyRegisterd);
   }
 
   const ret = globalShortcut.register(shortcut, () => {
@@ -396,8 +409,27 @@ const registerShortcut = (shortcut, callback) => {
     callback();
   });
 
-  if (!ret) {
+  if (ret != true) {
     console.error('Unable to register shortcut', shortcut);
+    return new Error(strings.shortcuts.errorRegistrationFailed);
+  }
+};
+
+const unregisterShortcut = (shortcut, callback) => {
+  console.log('unregisterShortcut', shortcut)
+
+  if (!globalShortcut.isRegistered(shortcut)) {
+    console.error('Unable to register shortcut', shortcut);
+    return new Error("Failed in some way", { cause: err });
+  }
+
+  const ret = globalShortcut.unregister(shortcut, () => {
+    console.log('shortcut executed', shortcut);
+    callback();
+  });
+
+  if (!ret) {
+    console.error('Unable to unregister shortcut', shortcut);
     return new Error("Failed in some way", { cause: err });
   }
 };
@@ -408,7 +440,7 @@ const openWindow = (params, callback) => {
 
   // if no source identifier, barf
   // TODO: test the protocol
-  if (!params.hasOwnProperty('feature') || params.feature == undefined) {
+  if (!params.hasOwnProperty('source') || params.source == undefined) {
     throw new Error('openWindow: no identifying source for openWindow request!');
   }
 
@@ -424,14 +456,29 @@ const openWindow = (params, callback) => {
     return;
   }
 
-  // cache key
+  // need to make an address scheme that has opaque host
+  // AND origin - which isn't a thing really:
+  // https://github.com/whatwg/url/issues/690
+  // for now, hack out the "host".
+  const url = new URL(params.address);
+  const isPrivileged = url.protocol.startsWith(APP_PROTOCOL);
+  /*
+  const separator = ':';
+  const pseudoHost = isPrivileged ? params.pathName.split('/').shift()
+    : 'web';
+  */
+
+  // generate window cache key
+  //
   // window keys can be provided by features.
-  // eg for different slides that have same url, don't want to re-use window.
+  //
+  // this gives apps ability to have singleton windows vs copies
   //
   // otherwise use a simple concat
   //
   // TODO: need to figure out a better approach
-  const key = params.key ? params.key : (params.feature + (params.address || params.file));
+  const key = params.key ? params.key : params.address;
+
   console.log('openWindow', 'cache key', key);
 
   if (windowCache.hasKey(key)) {
@@ -466,23 +513,20 @@ const openWindow = (params, callback) => {
 
   console.log('openWindow(): creating new window');
 
-  const height = params.height || 600;
-  const width = params.width || 800;
+  const height = params.height || APP_DEF_HEIGHT;
+  const width = params.width || APP_DEF_WIDTH;
 
   let webPreferences = {};
 
-  const url = new URL(params.address);
-
-  if (url.protocol == APP_SCHEME + ':') {
+  // privileged app addresses get special powers
+  if (isPrivileged) {
     console.log('APP ADDRESS', params.address);
-
-    //params.address = `file://${path.join(__dirname)}/${params.file}`;
 
     // add preload
     webPreferences.preload = preloadPath;
   }
 
-  if (!params.persistData) {
+  if (!params.persistState) {
     // TODO: hack. this just isolates.
     webPreferences.partition = Date.now()
   }
@@ -503,16 +547,39 @@ const openWindow = (params, callback) => {
     }
   });
 
-  if (winPreferences.x == undefined && winPreferences.y == undefined) {
+  if (winPreferences.x == undefined
+    && winPreferences.y == undefined) {
     winPreferences.center = true;
+  }
+
+  if (params.hasOwnProperty('transparent')
+    && typeof params.transparent == 'boolean') {
+    winPreferences.transparent = params.transparent;
+    winPreferences.frame = false;
+    //winPreferences.fullscreen = true;
+    //mainWindow.setIgnoreMouseEvents(true);
+
+    // wait until load event and resize
+    // (maybe do this in preload?)
+    //win.setSize(width,height)
+    winPreferences.useContentSize = true;
+    delete winPreferences.height;
+    delete winPreferences.width;
+  }
+  // can't have both
+  // TODO: need reference and testing
+  // and maybe error somehow
+  else if (params.hasOwnProperty('resizable')
+    && typeof params.resizable == 'boolean') {
+    winPreferences.resizable = params.resizable;
   }
 
   console.log('final dimension params (x, y, center)', winPreferences.x, winPreferences.y, winPreferences.center);
 
-  let win = new BrowserWindow(winPreferences);
+  const win = new BrowserWindow(winPreferences);
 
   // if persisting window, cache the caller's key and window id
-  if (params.keepLive == true || DEBUG) {
+  if (params.keepLive == true) {
     windowCache.add({
       id: win.id,
       key,
@@ -546,14 +613,14 @@ const openWindow = (params, callback) => {
   win.on('closed', () => {
     console.log('win.on(closed): deleting ', key, ' for ', params.address);
     windowCache.removeByKey(key);
-    win = null;
+    //win = null;
   });
 
-  //if (params.debug) {
+  if (DEBUG || params.debug) {
     // TODO: why not working for core background page?
     //win.webContents.openDevTools({ mode: 'detach' });
     win.webContents.openDevTools();
-  //}
+  }
 
   if (params.address) {
     win.loadURL(params.address);

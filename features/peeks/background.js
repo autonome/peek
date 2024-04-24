@@ -27,7 +27,7 @@ const executeItem = (item) => {
     feature: labels.name,
     windowKey: `${labels.name}:${item.keyNum}`,
     keepLive: item.keepLive || false,
-    persistData: item.persistData || false
+    persistState: item.persistState || false
   };
 
   api.openWindow(params);

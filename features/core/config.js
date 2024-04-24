@@ -1,7 +1,7 @@
 const id = '8aadaae5-2594-4968-aba0-707f0d371cfb';
 
 const labels = {
-  name: 'Settings',
+  name: 'Peek → Settings',
   prefs: {
     shortcutKey: 'Settings shortcut',
   }
@@ -10,7 +10,7 @@ const labels = {
 const prefsSchema = {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "peek.prefs.schema.json",
-  "title": "Application Settings",
+  "title": "Global Settings",
   "description": "Peek user preferences",
   "type": "object",
   "properties": {
@@ -108,10 +108,10 @@ const defaults = {
   prefs: {
     shortcutKey: 'Option+,',
     height: 850,
-    width: 800,
+    width: 380,
     startupFeature: 'peek://core/settings',
     showTrayIcon: true,
-    showInTrayAndSwitcher: true
+    showInTrayAndSwitcher: false
   },
   features: [
     { id: 'cee1225d-40ac-41e5-a34c-e2edba69d599',

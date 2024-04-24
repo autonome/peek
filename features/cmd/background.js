@@ -20,7 +20,8 @@ const openInputWindow = prefs => {
   const params = {
     debug,
     feature: labels.name,
-    file: 'features/cmd/panel.html',
+    address: 'peek://cmd/panel.html',
+    //transparent: true,
     height,
     width
   };

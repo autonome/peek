@@ -214,14 +214,16 @@ minimum viable concept preview.
 question: would others use this?
 
 Windows/system
-- [ ] app showing in dock even tho disabled
-- [ ] app not showing in tray, even tho enabled
-- [ ] cache key can be address path now?
-- [ ] all api calls
+- [x] app showing in dock even tho disabled
+- [x] app not showing in tray, even tho enabled
+- [x] all api calls get source attached
+- [ ] window cache s/custom/map/
+- [ ] window cache all windows not just persistent
+- [ ] window cache - evaluate key approach (use-case: apps need to identify windows they open)
 
 Feature lifecycle (un/install and reloads)
 - [x] feature unload/reload - init/uninit whole feature and window
-- [ ] all api calls have feature id accessible by preload (via manifest?)
+- [x] all api calls have address accessible by preload
 - [ ] close other windows of feature, not just background window
     - track windows in origin groups?
 - [ ] unregister all shortcuts at shutdown
@@ -263,6 +265,7 @@ Daily driver blockers
 - [ ] actually load/unload scripts when enabled/disabled
 - [ ] fix ESC not working right
 - [ ] fix ESC not working in web content
+- [ ] fix ESC not working right over lil-gui
 
 Window transparency
 - [x] add support to api

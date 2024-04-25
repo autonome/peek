@@ -44,6 +44,22 @@ const APP_DEF_HEIGHT = 768;
 const webCoreAddress = 'peek://core/background.html';
 
 const strings = {
+  defaults: {
+    quitShortcut: 'Option+q'
+  },
+  msgs: {
+    registerShortcut: 'registershortcut',
+    unregisterShortcut: 'unregistershortcut',
+    publish: 'publish',
+    subscribe: 'subscribe',
+    openWindow: 'openwindow',
+    closeWindow: 'closewindow',
+    escape: 'esc',
+    console: 'console',
+  },
+  topics: {
+    prefs: 'prefs'
+  },
   shortcuts: {
     errorAlreadyRegistered: 'Shortcut already registered',
     errorRegistrationFailed: 'Shortcut registration failed'
@@ -149,15 +165,29 @@ app.on('activate', () => {
 
 // ***** Caches *****
 
-const windowCache = {
-  cache: [],
-  add: entry => windowCache.cache.push(entry),
-  byId: id => windowCache.cache.find(w => w.id == id),
-  byKey: key => windowCache.cache.find(w => w.key == key),
-  hasKey: key => windowCache.byKey(key) != undefined,
-  indexOfKey: key => windowCache.cache.findIndex(w => w.key == key),
-  removeByKey: key => windowCache.cache.splice(windowCache.indexOfKey(key), 1)
+const windows = new Map();
+
+const windowByKey = k => {
+  let ret = null;
+  windows.forEach((w, id) => {
+    if (w.key == k) {
+      ret = id;
+    }
+  });
+  return ret;
 };
+
+/*
+const windows = {
+  cache: [],
+  add: entry => windows.cache.push(entry),
+  byId: id => windows.cache.find(w => w.id == id),
+  byKey: key => windows.cache.find(w => w.key == key),
+  hasKey: key => windows.byKey(key) != undefined,
+  indexOfKey: key => windows.cache.findIndex(w => w.key == key),
+  removeByKey: key => windows.cache.splice(windows.indexOfKey(key), 1)
+};
+*/
 
 const _shortcuts = {};
 
@@ -283,7 +313,7 @@ const onReady = () => {
   // handle peek://
   initAppProtocol();
 
-  pubsub.subscribe('prefs', msg => {
+  pubsub.subscribe(strings.topics.prefs, msg => {
     // cache all prefs
     _prefs[msg.source] = msg.prefs;
 
@@ -307,7 +337,7 @@ const onReady = () => {
 
   // init web core
   const coreWin = openWindow({
-    source: this,
+    source: this, // um, wat
     address: webCoreAddress,
     show: DEBUG,
     keepLive: true,
@@ -316,14 +346,14 @@ const onReady = () => {
   })
 
   // eh, for helpers really
-  registerShortcut('Option+q', onQuit);
+  registerShortcut(strings.defaults.quitShortcuts, onQuit);
 };
 
 app.whenReady().then(onReady);
 
 // ***** API *****
 
-ipcMain.on('registershortcut', (ev, msg) => {
+ipcMain.on(strings.msgs.registerShortcut, (ev, msg) => {
   //_shortcuts[msg.shortcut] = msg.replyTopic;
   registerShortcut(msg.shortcut, () => {
     console.log('on(registershortcut): shortcut executed', msg.shortcut, msg.replyTopic)
@@ -331,13 +361,13 @@ ipcMain.on('registershortcut', (ev, msg) => {
   });
 });
 
-ipcMain.on('unregistershortcut', (ev, msg) => {
+ipcMain.on(strings.msgs.unregisterShortcut, (ev, msg) => {
   if (globalShortcut.isRegistered(msg.shortcut)) {
     globalShortcut.unregister(msg.shortcut);
   }
 });
 
-ipcMain.on('openwindow', (ev, msg) => {
+ipcMain.on(strings.msgs.openWindow, (ev, msg) => {
   openWindow(msg.params, output => {
     if (msg && msg.replyTopic) {
       ev.reply(msg.replyTopic, output);
@@ -345,7 +375,7 @@ ipcMain.on('openwindow', (ev, msg) => {
   });
 });
 
-ipcMain.on('closewindow', (ev, msg) => {
+ipcMain.on(strings.msgs.closeWindow, (ev, msg) => {
   closeWindow(msg.params, output => {
     if (msg && msg.replyTopic) {
       ev.reply(msg.replyTopic, output);
@@ -354,13 +384,13 @@ ipcMain.on('closewindow', (ev, msg) => {
 });
 
 // generic dispatch - messages only from trusted code (💀)
-ipcMain.on('publish', (ev, msg) => {
+ipcMain.on(strings.msgs.publish, (ev, msg) => {
   console.log('ipc:publish', msg);
 
   pubsub.publish(msg.topic, msg.data);
 });
 
-ipcMain.on('subscribe', (ev, msg) => {
+ipcMain.on(strings.msgs.subscribe, (ev, msg) => {
   console.log('ipc:subscribe', msg);
 
   pubsub.subscribe(msg.topic, data => {
@@ -371,11 +401,11 @@ ipcMain.on('subscribe', (ev, msg) => {
 
 // ipc ESC handler
 // close focused window on Escape
-ipcMain.on('esc', (ev, title) => {
+ipcMain.on(strings.msgs.escape, (ev, title) => {
   console.log('index.js: ESC');
 
   const fwin = BrowserWindow.getFocusedWindow();
-  const entry = windowCache.byId(fwin.id);
+  const entry = windows.get(fwin.id);
   // focused window is managed by me
   // so hide it instead of actually closing it
   if (entry) {
@@ -389,7 +419,7 @@ ipcMain.on('esc', (ev, title) => {
   }
 });
 
-ipcMain.on('console', (ev, msg) => {
+ipcMain.on(strings.msgs.console, (ev, msg) => {
   console.log('r:', msg.source, msg.text);
 });
 
@@ -481,9 +511,11 @@ const openWindow = (params, callback) => {
 
   console.log('openWindow', 'cache key', key);
 
-  if (windowCache.hasKey(key)) {
+  const id = windowByKey(key);
+
+  if (id != null) {
     console.log('REUSING WINDOW for ', key)
-    const entry = windowCache.byKey(key);
+    const entry = windows.get(id);
     if (entry != undefined) {
       const win = BrowserWindow.fromId(entry.id);
       if (win) {
@@ -580,7 +612,7 @@ const openWindow = (params, callback) => {
 
   // if persisting window, cache the caller's key and window id
   if (params.keepLive == true) {
-    windowCache.add({
+    windows.set(win.id, {
       id: win.id,
       key,
       params
@@ -612,7 +644,7 @@ const openWindow = (params, callback) => {
 
   win.on('closed', () => {
     console.log('win.on(closed): deleting ', key, ' for ', params.address);
-    windowCache.removeByKey(key);
+    windows.delete(win.id);
     //win = null;
   });
 
@@ -677,16 +709,15 @@ const openWindow = (params, callback) => {
 const closeWindow = (params, callback) => {
   console.log('closeWindow', params, callback != null);
 
-  if (windowCache.hasKey(params.key)) {
-    const winData = windowCache.byKey(params.key);
-    BrowserWindow.fromId(winData.id).close();
-  }
-  else {
-    // wtf
+  let retval = false;
+  const id = windowByKey(params.key);
+  if (id != null) {
+    BrowserWindow.fromId(id).close();
+    retval = true;
   }
 
   if (callback != null) {
-    callback();
+    callback(retval);
   }
 };
 

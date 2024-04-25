@@ -67,17 +67,17 @@ Some thoughts driving the design of Peek:
 
 ## Design patterns
 
-- Escape IZUI
-  * IZUI: inverse zooming user interface
-  * ZUIs navigate by starting from a known root and user navigates by zooming ever further in
-  * Escape starts anywhere, and instead of navigating by zooming in, all interfaces can zoom out to reset
-  * allows unbounded and diverse entry points with predictable behavior
-  * consistent path to familiar ground
+Escape IZUI
+* IZUI: inverse zooming user interface
+* ZUIs navigate by starting from a known root and user navigates by zooming ever further in
+* Escape starts anywhere, and instead of navigating by zooming in, all interfaces can zoom out to reset
+* allows unbounded and diverse entry points with predictable behavior
+* consistent path to familiar ground
 
 Escape navigation model
-  * navigation base can start at any level in stack
-  * forward navigations are added on top of stack
-  * backwards navigations walk the stack in reverse 
+* navigation base can start at any level in stack
+* forward navigations are added on top of stack
+* backwards navigations walk the stack in reverse 
 
 ## Architecture / Implementation
 
@@ -217,7 +217,7 @@ Windows/system
 - [x] app showing in dock even tho disabled
 - [x] app not showing in tray, even tho enabled
 - [x] all api calls get source attached
-- [ ] window cache s/custom/map/
+- [x] window cache s/custom/map/
 - [ ] window cache all windows not just persistent
 - [ ] window cache - evaluate key approach (use-case: apps need to identify windows they open)
 

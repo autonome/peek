@@ -470,7 +470,8 @@ const openWindow = (params, callback) => {
 
   // if no source identifier, barf
   // TODO: test the protocol
-  if (!params.hasOwnProperty('source') || params.source == undefined) {
+  if (!params.hasOwnProperty('source') ||
+    params.source == undefined) {
     throw new Error('openWindow: no identifying source for openWindow request!');
   }
 
@@ -516,27 +517,17 @@ const openWindow = (params, callback) => {
   if (id != null) {
     console.log('REUSING WINDOW for ', key)
     const entry = windows.get(id);
-    if (entry != undefined) {
-      const win = BrowserWindow.fromId(entry.id);
-      if (win) {
-        console.log('openWindow: opening persistent window for', key)
-        if (show) {
-          win.show();
-        }
-        else {
-          // asking to open an already cached window
-          // eg background app processes that weren't cleaned up maybe?
-        }
+    const win = BrowserWindow.fromId(entry.id);
+    console.log('openWindow: opening persistent window for', key)
+    if (show) {
+      win.show();
+    }
 
-        if (callback != null) {
-          callback({
-            cache: true,
-            key: key
-          });
-        }
-
-        return;
-      }
+    if (callback != null) {
+      callback({
+        cache: true,
+        key: key
+      });
     }
   }
   else {
@@ -606,18 +597,14 @@ const openWindow = (params, callback) => {
     winPreferences.resizable = params.resizable;
   }
 
-  console.log('final dimension params (x, y, center)', winPreferences.x, winPreferences.y, winPreferences.center);
-
   const win = new BrowserWindow(winPreferences);
 
-  // if persisting window, cache the caller's key and window id
-  if (params.keepLive == true) {
-    windows.set(win.id, {
-      id: win.id,
-      key,
-      params
-    });
-  }
+  // add to cache
+  windows.set(win.id, {
+    id: win.id,
+    key,
+    params
+  });
 
   // TODO: make configurable
   const onGoAway = () => {

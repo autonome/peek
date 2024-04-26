@@ -6,12 +6,14 @@ const log = function(...args) { l(labels.name, args); };
 log('background', labels.name);
 
 const debug = window.app.debug;
-const clear = true;
+const clear = false;
 
 const store = openStore(id, defaults, clear /* clear storage */);
 const api = window.app;
 
 const winKeyCache = new Map();
+
+const settingsAddress = 'peek://core/settings.html';
 
 const openSettingsWindow = (prefs) => {
   const height = prefs.height || 600;
@@ -19,7 +21,8 @@ const openSettingsWindow = (prefs) => {
 
   const params = {
     debug,
-    address: 'peek://core/settings.html',
+    address: settingsAddress,
+    key: settingsAddress,
     transparent: true,
     height,
     width

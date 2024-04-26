@@ -24,8 +24,8 @@ const openSettingsWindow = (prefs) => {
     address: settingsAddress,
     key: settingsAddress,
     transparent: true,
-    height,
-    width
+    //height,
+    //width
   };
 
   api.openWindow(params);

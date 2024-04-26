@@ -508,19 +508,24 @@ const openWindow = (params, callback) => {
 
   let retval = {
     key,
+    fromCache: false
   };
+
+  let win = null;
 
   // Reuse existing window if exists for key
   const id = windowByKey(key);
   if (id != null) {
     console.log('REUSING WINDOW for ', key, 'show?', show)
+
     const entry = windows.get(id);
-    const win = BrowserWindow.fromId(entry.id);
+
+    win = BrowserWindow.fromId(entry.id);
     if (show) {
       win.show();
     }
 
-    retval.cache = true;
+    retval.fromCache = true;
   }
   // Open new window
   else {
@@ -545,50 +550,53 @@ const openWindow = (params, callback) => {
       webPreferences.partition = Date.now()
     }
 
-    let winPreferences = {
+    let winPrefs = {
       height,
       width,
       show,
-      skipTaskbar: true,
-      autoHideMenuBar: true,
-      titleBarStyle: 'hidden',
+      skipTaskbar: true, // TODO
+      autoHideMenuBar: true, // TODO
+      titleBarStyle: 'hidden', // TODO
       webPreferences
     };
 
     ['x', 'y'].forEach( k => {
       if (params.hasOwnProperty(k)) {
-        winPreferences[k] = params[k];
+        winPrefs[k] = params[k];
       }
     });
 
-    if (winPreferences.x == undefined
-      && winPreferences.y == undefined) {
-      winPreferences.center = true;
+    if (winPrefs.x == undefined
+      && winPrefs.y == undefined) {
+      winPrefs.center = true;
     }
 
     if (params.hasOwnProperty('transparent')
-      && typeof params.transparent == 'boolean') {
-      winPreferences.transparent = params.transparent;
-      winPreferences.frame = false;
-      //winPreferences.fullscreen = true;
+      && typeof params.transparent == 'boolean'
+      && params.transparent == true) {
+      winPrefs.transparent = params.transparent;
+      winPrefs.frame = false;
+      //winPrefs.fullscreen = true;
       //mainWindow.setIgnoreMouseEvents(true);
 
       // wait until load event and resize
       // (maybe do this in preload?)
       //win.setSize(width,height)
-      winPreferences.useContentSize = true;
-      delete winPreferences.height;
-      delete winPreferences.width;
+      winPrefs.useContentSize = true;
+      //delete winPrefs.height;
+      //delete winPrefs.width;
     }
-    // can't have both
+    // can't have both transparent and resizable
     // TODO: need reference and testing
     // and maybe error somehow
     else if (params.hasOwnProperty('resizable')
       && typeof params.resizable == 'boolean') {
-      winPreferences.resizable = params.resizable;
+      winPrefs.resizable = params.resizable;
     }
 
-    const win = new BrowserWindow(winPreferences);
+    console.log('Opening window with:', winPrefs);
+
+    win = new BrowserWindow(winPrefs);
 
     // add to cache
     windows.set(win.id, {

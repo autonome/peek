@@ -219,7 +219,8 @@ Windows/system
 - [x] all api calls get source attached
 - [x] window cache s/custom/map/
 - [x] window cache all windows not just persistent
-- [ ] window cache - evaluate key approach (use-case: apps need to identify windows they open)
+- [x] window cache - evaluate key approach (use-case: apps need to identify windows they open)
+- [ ] keys are for copies not singletons, eg settings should never have a key and shouldn't have copies
 
 Feature lifecycle (un/install and reloads)
 - [x] feature unload/reload - init/uninit whole feature and window

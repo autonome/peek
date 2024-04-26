@@ -177,18 +177,6 @@ const windowByKey = k => {
   return ret;
 };
 
-/*
-const windows = {
-  cache: [],
-  add: entry => windows.cache.push(entry),
-  byId: id => windows.cache.find(w => w.id == id),
-  byKey: key => windows.cache.find(w => w.key == key),
-  hasKey: key => windows.byKey(key) != undefined,
-  indexOfKey: key => windows.cache.findIndex(w => w.key == key),
-  removeByKey: key => windows.cache.splice(windows.indexOfKey(key), 1)
-};
-*/
-
 const _shortcuts = {};
 
 const _prefs = {};
@@ -346,7 +334,7 @@ const onReady = () => {
   })
 
   // eh, for helpers really
-  registerShortcut(strings.defaults.quitShortcuts, onQuit);
+  registerShortcut(strings.defaults.quitShortcut, onQuit);
 };
 
 app.whenReady().then(onReady);
@@ -403,6 +391,11 @@ ipcMain.on(strings.msgs.subscribe, (ev, msg) => {
 // close focused window on Escape
 ipcMain.on(strings.msgs.escape, (ev, title) => {
   console.log('index.js: ESC');
+
+  // in debug mode, manually close windows
+  if (DEBUG) {
+    return;
+  }
 
   const fwin = BrowserWindow.getFocusedWindow();
   const entry = windows.get(fwin.id);
@@ -474,6 +467,7 @@ const openWindow = (params, callback) => {
     params.source == undefined) {
     throw new Error('openWindow: no identifying source for openWindow request!');
   }
+  const source = params.source;
 
   // TODO: need to figure out a better approach
   const show = params.hasOwnProperty('show') ? params.show : true;
@@ -482,7 +476,7 @@ const openWindow = (params, callback) => {
   const keepVisible = params.hasOwnProperty('keepVisible') ? params.keepVisible : false;
 
   // validate address
-  if (!params.hasOwnProperty('address') || params.address.length <= 0) {
+  if (!params.hasOwnProperty('address') || params.address.length == 0) {
     console.error('openWindow: no address or is empty!');
     return;
   }
@@ -512,140 +506,142 @@ const openWindow = (params, callback) => {
 
   console.log('openWindow', 'cache key', key);
 
-  const id = windowByKey(key);
+  let retval = {
+    key,
+  };
 
+  // Reuse existing window if exists for key
+  const id = windowByKey(key);
   if (id != null) {
-    console.log('REUSING WINDOW for ', key)
+    console.log('REUSING WINDOW for ', key, 'show?', show)
     const entry = windows.get(id);
     const win = BrowserWindow.fromId(entry.id);
-    console.log('openWindow: opening persistent window for', key)
     if (show) {
       win.show();
     }
 
-    if (callback != null) {
-      callback({
-        cache: true,
-        key: key
-      });
-    }
+    retval.cache = true;
   }
+  // Open new window
   else {
     console.log('KEY NOT IN CACHE');
-  }
+    console.log('openWindow(): creating new window');
 
-  console.log('openWindow(): creating new window');
+    const height = params.height || APP_DEF_HEIGHT;
+    const width = params.width || APP_DEF_WIDTH;
 
-  const height = params.height || APP_DEF_HEIGHT;
-  const width = params.width || APP_DEF_WIDTH;
+    let webPreferences = {};
 
-  let webPreferences = {};
+    // privileged app addresses get special powers
+    if (isPrivileged) {
+      console.log('APP ADDRESS', params.address);
 
-  // privileged app addresses get special powers
-  if (isPrivileged) {
-    console.log('APP ADDRESS', params.address);
-
-    // add preload
-    webPreferences.preload = preloadPath;
-  }
-
-  if (!params.persistState) {
-    // TODO: hack. this just isolates.
-    webPreferences.partition = Date.now()
-  }
-
-  let winPreferences = {
-    height,
-    width,
-    show,
-    skipTaskbar: true,
-    autoHideMenuBar: true,
-    titleBarStyle: 'hidden',
-    webPreferences
-  };
-
-  ['x', 'y'].forEach( k => {
-    if (params.hasOwnProperty(k)) {
-      winPreferences[k] = params[k];
+      // add preload
+      webPreferences.preload = preloadPath;
     }
-  });
 
-  if (winPreferences.x == undefined
-    && winPreferences.y == undefined) {
-    winPreferences.center = true;
-  }
+    if (!params.persistState) {
+      // TODO: hack. this just isolates.
+      webPreferences.partition = Date.now()
+    }
 
-  if (params.hasOwnProperty('transparent')
-    && typeof params.transparent == 'boolean') {
-    winPreferences.transparent = params.transparent;
-    winPreferences.frame = false;
-    //winPreferences.fullscreen = true;
-    //mainWindow.setIgnoreMouseEvents(true);
+    let winPreferences = {
+      height,
+      width,
+      show,
+      skipTaskbar: true,
+      autoHideMenuBar: true,
+      titleBarStyle: 'hidden',
+      webPreferences
+    };
 
-    // wait until load event and resize
-    // (maybe do this in preload?)
-    //win.setSize(width,height)
-    winPreferences.useContentSize = true;
-    delete winPreferences.height;
-    delete winPreferences.width;
-  }
-  // can't have both
-  // TODO: need reference and testing
-  // and maybe error somehow
-  else if (params.hasOwnProperty('resizable')
-    && typeof params.resizable == 'boolean') {
-    winPreferences.resizable = params.resizable;
-  }
-
-  const win = new BrowserWindow(winPreferences);
-
-  // add to cache
-  windows.set(win.id, {
-    id: win.id,
-    key,
-    params
-  });
-
-  // TODO: make configurable
-  const onGoAway = () => {
-    if (params.keepLive == true) {
-      if (params.keepVisible == false) {
-        console.log('main.onGoAway(): hiding ', params.address);
-        win.hide();
+    ['x', 'y'].forEach( k => {
+      if (params.hasOwnProperty(k)) {
+        winPreferences[k] = params[k];
       }
-      // else keep window alive and visible!
+    });
+
+    if (winPreferences.x == undefined
+      && winPreferences.y == undefined) {
+      winPreferences.center = true;
+    }
+
+    if (params.hasOwnProperty('transparent')
+      && typeof params.transparent == 'boolean') {
+      winPreferences.transparent = params.transparent;
+      winPreferences.frame = false;
+      //winPreferences.fullscreen = true;
+      //mainWindow.setIgnoreMouseEvents(true);
+
+      // wait until load event and resize
+      // (maybe do this in preload?)
+      //win.setSize(width,height)
+      winPreferences.useContentSize = true;
+      delete winPreferences.height;
+      delete winPreferences.width;
+    }
+    // can't have both
+    // TODO: need reference and testing
+    // and maybe error somehow
+    else if (params.hasOwnProperty('resizable')
+      && typeof params.resizable == 'boolean') {
+      winPreferences.resizable = params.resizable;
+    }
+
+    const win = new BrowserWindow(winPreferences);
+
+    // add to cache
+    windows.set(win.id, {
+      id: win.id,
+      source,
+      key,
+      params
+    });
+
+    // TODO: make configurable
+    const onGoAway = () => {
+      console.log('ONGOAWAY');
+      if (params.keepLive == true) {
+        if (params.keepVisible == false) {
+          console.log('main.onGoAway(): hiding ', params.address);
+          win.hide();
+        }
+        // else keep window alive and visible!
+      }
+      else {
+        console.log('win.onGoAway(): destroying ', params.address);
+        win.destroy();
+      }
+    }
+
+    // don't do this in detached debug mode, devtools steals focus
+    // and closes everything 😐
+    // TODO: fix
+    // TODO: should be configurable behavior
+    if (!DEBUG) {
+      win.on('blur', onGoAway);
+    }
+    
+    win.on('close', onGoAway);
+
+    win.on('closed', () => {
+      console.log('win.on(closed): deleting ', key, ' for ', params.address);
+      windows.delete(win.id);
+      //win = null;
+    });
+
+    if (DEBUG || params.debug) {
+      // TODO: why not working for core background page?
+      //win.webContents.openDevTools({ mode: 'detach' });
+      win.webContents.openDevTools();
+    }
+
+    if (params.address) {
+      win.loadURL(params.address);
     }
     else {
-      console.log('win.onGoAway(): destroying ', params.address);
-      win.destroy();
+      console.error('openWindow: neither address nor file!');
     }
-  }
-
-  // don't do this in detached debug mode, devtools steals focus
-  // and closes everything 😐
-  // TODO: fix
-  // TODO: should be configurable behavior
-  win.on('blur', onGoAway);
-  
-  win.on('close', onGoAway);
-
-  win.on('closed', () => {
-    console.log('win.on(closed): deleting ', key, ' for ', params.address);
-    windows.delete(win.id);
-    //win = null;
-  });
-
-  if (DEBUG || params.debug) {
-    // TODO: why not working for core background page?
-    //win.webContents.openDevTools({ mode: 'detach' });
-    win.webContents.openDevTools();
-  }
-
-  if (params.address) {
-    win.loadURL(params.address);
-  }
-  else {
-    console.error('openWindow: neither address nor file!');
   }
 
   /*
@@ -669,13 +665,9 @@ const openWindow = (params, callback) => {
     win.webContents.on(domEvent, async () => {
       try {
         const r = await win.webContents.executeJavaScript(script.script);
-        if (callback) {
-          callback({
-            key: key,
-            scriptOutput: r
-          });
-        }
+        retval.scriptOutput = r;
       } catch(ex) {
+        retval.scriptError = ex;
         console.error('cs exec error', ex);
       }
       if (script.closeOnCompletion) {
@@ -683,10 +675,9 @@ const openWindow = (params, callback) => {
       }
     });
   }
-  else if (callback != null) {
-    callback({
-      key: key
-    });
+
+  if (callback != null && typeof callback == 'function') {
+    callback(retval);
   }
 
   return win;

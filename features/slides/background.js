@@ -27,12 +27,12 @@ const executeItem = (item) => {
   switch(item.screenEdge) {
     case 'Up':
       // horizontally center
-      x = (size.width - item.width) / 2;
+      x = (size.width - width) / 2;
 
       // y starts at screen top and stays there
       y = 0;
 
-      width = item.width;
+      //width = item.width;
       //height = 1;
       break;
     case 'Down':
@@ -46,7 +46,7 @@ const executeItem = (item) => {
       // but starts at screen bottom
       y = size.height;
 
-      width = item.width;
+      //width = item.width;
       //height = 1;
       break;
     case 'Left':
@@ -58,7 +58,7 @@ const executeItem = (item) => {
       y = (size.height - item.height) / 2;
 
       //width = 1;
-      height = item.height;
+      //height = item.height;
       break;
     case 'Right':
       // x ends at at right screen edge - window size
@@ -72,7 +72,7 @@ const executeItem = (item) => {
       y = (size.height - item.height) / 2;
 
       //width = 1;
-      height = item.height;
+      //height = item.height;
       break;
     default:
       center = true;
@@ -95,7 +95,7 @@ const executeItem = (item) => {
     feature: labels.name,
     windowKey: `${labels.name}:${item.screenEdge}`,
     keepLive: item.keepLive || false,
-    persistState: item.persistState || false
+    persistState: item.persistState || false,
 
     // slide
     x,

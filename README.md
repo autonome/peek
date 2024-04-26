@@ -218,7 +218,7 @@ Windows/system
 - [x] app not showing in tray, even tho enabled
 - [x] all api calls get source attached
 - [x] window cache s/custom/map/
-- [ ] window cache all windows not just persistent
+- [x] window cache all windows not just persistent
 - [ ] window cache - evaluate key approach (use-case: apps need to identify windows they open)
 
 Feature lifecycle (un/install and reloads)

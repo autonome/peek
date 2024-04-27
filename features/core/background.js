@@ -3,7 +3,7 @@ import { log as l, openStore } from "./utils.js";
 
 const log = function(...args) { l(labels.name, args); };
 
-log('background', labels.name);
+console.log('background', labels.name);
 
 const debug = window.app.debug;
 const clear = false;
@@ -74,15 +74,15 @@ const uninitFeature = f => {
 // unused, worth testing more tho
 const initIframeFeature = file => {
   const pathPrefix = 'file:///Users/dietrich/misc/peek/';
-  log('initiframe');
+  console.log('initiframe');
   const i = document.createElement('iframe');
   const src = pathPrefix + file;
-  log('iframe src', src);
+  console.log('iframe src', src);
   document.body.appendChild(i);
   i.src = src;
-  log('iframe inited');
+  console.log('iframe inited');
   i.addEventListener('load', () => {
-    log('iframe loaded');
+    console.log('iframe loaded');
   });
 };
 
@@ -90,7 +90,7 @@ const prefs = () => store.get(storageKeys.PREFS);
 const features = () => store.get(storageKeys.FEATURES);
 
 const init = () => {
-  log('init');
+  console.log('init');
 
   const p = prefs();
 

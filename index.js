@@ -306,7 +306,7 @@ const onReady = () => {
     _prefs[msg.source] = msg.prefs;
 
     // show/hide in dock and tab switcher
-    if (app.dock && !msg.prefs.showInDockAndSwitcher) {
+    if (DEBUG == false || (app.dock && msg.prefs.showInDockAndSwitcher == false)) {
       console.log('hiding dock');
       app.dock.hide();
     }
@@ -392,16 +392,13 @@ ipcMain.on(strings.msgs.subscribe, (ev, msg) => {
 ipcMain.on(strings.msgs.escape, (ev, title) => {
   console.log('index.js: ESC');
 
-  // in debug mode, manually close windows
-  if (DEBUG) {
-    return;
-  }
-
   const fwin = BrowserWindow.getFocusedWindow();
   const entry = windows.get(fwin.id);
-  // focused window is managed by me
+
+  // configured to stay persistent
   // so hide it instead of actually closing it
-  if (entry) {
+  if (entry.params.keepLive) {
+    console.log('ESC HIDE', entry);
     BrowserWindow.fromId(entry.id).hide();
     console.log('index.js: ESC: hiding focused content window');
   }
@@ -614,7 +611,7 @@ const openWindow = (params, callback) => {
           console.log('main.onGoAway(): hiding ', params.address);
           win.hide();
         }
-        // else keep window alive and visible!
+        // TODO: else keep window alive and visible!
       }
       else {
         console.log('win.onGoAway(): destroying ', params.address);
@@ -652,20 +649,18 @@ const openWindow = (params, callback) => {
     }
   }
 
-  /*
-  win.webContents.on('keyup', async () => {
-    console.log('main: keyup')
+  // esc handler 
+  // TODO: make user-configurable
+  win.webContents.on('before-input-event', (e, i) => {
+    if (i.key == 'Escape') {
+      win.close();
+    }
   });
-  */
-
-  //const escScript = "window.addEventListener('keyup', e => window.close())";
-  //win.webContents.executeJavaScript(escScript);
 
   //win.webContents.send('window', { type: labels.featureType, id: win.id});
   //broadcastToWindows('window', { type: labels.featureType, id: win.id});
 
   // TODO: fix func-level callback handling and resp obj
-
   if (params.script) {
     const script = params.script;
     const domEvent = script.domEvent || 'dom-ready';
@@ -684,6 +679,7 @@ const openWindow = (params, callback) => {
     });
   }
 
+  // exec callback if present and valid
   if (callback != null && typeof callback == 'function') {
     callback(retval);
   }

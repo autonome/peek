@@ -3,9 +3,7 @@
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
 import { log as l, openStore } from "../utils.js";
 
-const log = function(...args) { l(labels.name, args); };
-
-log('background', labels.name);
+console.log('background', labels.name);
 
 const debug = window.app.debug;
 const clear = false;
@@ -79,7 +77,7 @@ const executeItem = (item) => {
       console.log('waddafa');
   }
 
-  log(item.screenEdge, x, y);
+  console.log(item.screenEdge, x, y);
 
   const key = `${item.screenEdge}:${item.address}`;
 
@@ -107,7 +105,7 @@ const executeItem = (item) => {
 };
 
 const initItems = (prefs, items) => {
-  log('initItems');
+  console.log('initItems');
   const cmdPrefix = prefs.shortcutKeyPrefix;
 
   items.forEach(item => {
@@ -122,7 +120,7 @@ const initItems = (prefs, items) => {
 };
 
 const init = () => {
-  log('init');
+  console.log('init');
 
   const prefs = () => store.get(storageKeys.PREFS);
   const items = () => store.get(storageKeys.ITEMS);

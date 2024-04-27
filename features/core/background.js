@@ -3,15 +3,17 @@ import { log as l, openStore } from "./utils.js";
 
 const log = function(...args) { l(labels.name, args); };
 
-log('background', labels.name);
+console.log('background', labels.name);
 
 const debug = window.app.debug;
-const clear = true;
+const clear = false;
 
 const store = openStore(id, defaults, clear /* clear storage */);
 const api = window.app;
 
 const winKeyCache = new Map();
+
+const settingsAddress = 'peek://core/settings.html';
 
 const openSettingsWindow = (prefs) => {
   const height = prefs.height || 600;
@@ -19,10 +21,11 @@ const openSettingsWindow = (prefs) => {
 
   const params = {
     debug,
-    address: 'peek://core/settings.html',
+    address: settingsAddress,
+    key: settingsAddress,
     transparent: true,
-    height,
-    width
+    //height,
+    //width
   };
 
   api.openWindow(params);
@@ -71,15 +74,15 @@ const uninitFeature = f => {
 // unused, worth testing more tho
 const initIframeFeature = file => {
   const pathPrefix = 'file:///Users/dietrich/misc/peek/';
-  log('initiframe');
+  console.log('initiframe');
   const i = document.createElement('iframe');
   const src = pathPrefix + file;
-  log('iframe src', src);
+  console.log('iframe src', src);
   document.body.appendChild(i);
   i.src = src;
-  log('iframe inited');
+  console.log('iframe inited');
   i.addEventListener('load', () => {
-    log('iframe loaded');
+    console.log('iframe loaded');
   });
 };
 
@@ -87,7 +90,7 @@ const prefs = () => store.get(storageKeys.PREFS);
 const features = () => store.get(storageKeys.FEATURES);
 
 const init = () => {
-  log('init');
+  console.log('init');
 
   const p = prefs();
 

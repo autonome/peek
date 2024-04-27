@@ -67,17 +67,17 @@ Some thoughts driving the design of Peek:
 
 ## Design patterns
 
-- Escape IZUI
-  * IZUI: inverse zooming user interface
-  * ZUIs navigate by starting from a known root and user navigates by zooming ever further in
-  * Escape starts anywhere, and instead of navigating by zooming in, all interfaces can zoom out to reset
-  * allows unbounded and diverse entry points with predictable behavior
-  * consistent path to familiar ground
+Escape IZUI
+* IZUI: inverse zooming user interface
+* ZUIs navigate by starting from a known root and user navigates by zooming ever further in
+* Escape starts anywhere, and instead of navigating by zooming in, all interfaces can zoom out to reset
+* allows unbounded and diverse entry points with predictable behavior
+* consistent path to familiar ground
 
 Escape navigation model
-  * navigation base can start at any level in stack
-  * forward navigations are added on top of stack
-  * backwards navigations walk the stack in reverse 
+* navigation base can start at any level in stack
+* forward navigations are added on top of stack
+* backwards navigations walk the stack in reverse 
 
 ## Architecture / Implementation
 
@@ -214,14 +214,17 @@ minimum viable concept preview.
 question: would others use this?
 
 Windows/system
-- [ ] app showing in dock even tho disabled
-- [ ] app not showing in tray, even tho enabled
-- [ ] cache key can be address path now?
-- [ ] all api calls
+- [x] app showing in dock even tho disabled
+- [x] app not showing in tray, even tho enabled
+- [x] all api calls get source attached
+- [x] window cache s/custom/map/
+- [x] window cache all windows not just persistent
+- [x] window cache - evaluate key approach (use-case: apps need to identify windows they open)
+- [ ] keys are for copies not singletons, eg settings should never have a key and shouldn't have copies
 
 Feature lifecycle (un/install and reloads)
 - [x] feature unload/reload - init/uninit whole feature and window
-- [ ] all api calls have feature id accessible by preload (via manifest?)
+- [x] all api calls have address accessible by preload
 - [ ] close other windows of feature, not just background window
     - track windows in origin groups?
 - [ ] unregister all shortcuts at shutdown
@@ -263,6 +266,7 @@ Daily driver blockers
 - [ ] actually load/unload scripts when enabled/disabled
 - [ ] fix ESC not working right
 - [ ] fix ESC not working in web content
+- [ ] fix ESC not working right over lil-gui
 
 Window transparency
 - [x] add support to api

@@ -504,6 +504,7 @@ const openWindow = (params, callback) => {
   console.log('openWindow', 'cache key', key);
 
   let retval = {
+    source,
     key,
     fromCache: false
   };
@@ -522,6 +523,7 @@ const openWindow = (params, callback) => {
       win.show();
     }
 
+    retval.id = id;
     retval.fromCache = true;
   }
   // Open new window
@@ -594,6 +596,8 @@ const openWindow = (params, callback) => {
     console.log('Opening window with:', winPrefs);
 
     win = new BrowserWindow(winPrefs);
+
+    retval.id = win.id;
 
     // add to cache
     windows.set(win.id, {

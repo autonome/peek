@@ -63,9 +63,10 @@ const init = () => {
 
   // Add items
   items.forEach((item, i) => {
+    console.log('adding slide', item);
     const folder = gui.addFolder(item.title);
 
-    addToGUI(folder, 'Key mapping', item.keyNum).disable();
+    addToGUI(folder, 'Screen edge', item.screenEdge).disable();
     addToGUI(folder, 'Address to load', item.address).onChange(e => {
       items[i].address = e;
     });

@@ -27,23 +27,6 @@ const log = (source, text) => {
   });
 };
 
-// all visible window types close on escape
-window.addEventListener('keyup', e => {
-  log('preload', 'keyup', e.key, window.location)
-  if (e.key == 'Escape') {
-    ipcRenderer.send('esc', '');
-  }
-});
-
-const addEscListener = () => {
-  window.addEventListener('keyup', e => {
-    log('preload', 'keyup', e.key, window.location)
-    if (e.key == 'Escape') {
-      ipcRenderer.send('esc', '');
-    }
-  });
-};
-
 let api = {};
 
 api.log = log;
@@ -53,7 +36,7 @@ api.debugLevel = DEBUG_LEVEL;
 
 api.shortcuts = {
   register: (shortcut, cb) => {
-    log(src, 'registering ' + shortcut + ' for ' + window.location)
+    console.log(src, 'registering ' + shortcut + ' for ' + window.location)
 
     const replyTopic = `${shortcut}${window.location}`;
 
@@ -64,7 +47,7 @@ api.shortcuts = {
     });
 
     ipcRenderer.on(replyTopic, (ev, msg) => {
-      log(src, 'shortcut execution reply');
+      console.log(src, 'shortcut execution reply');
       cb();
     });
   },
@@ -78,7 +61,7 @@ api.shortcuts = {
 };
 
 api.openWindow = (params, callback) => {
-  log(src, ['api.openwindow', JSON.stringify(params), 'for', window.location].join(', '));
+  console.log(src, ['api.openwindow', JSON.stringify(params), 'for', window.location].join(', '));
 
   // TODO: won't work for features that open multiple windows
   const replyTopic = `${params.feature}${params.address}`;
@@ -92,7 +75,7 @@ api.openWindow = (params, callback) => {
   });
 
   ipcRenderer.once(replyTopic, (ev, msg) => {
-    log(src, 'api.openwindow', 'resp from main', msg);
+    console.log(src, 'api.openwindow', 'resp from main', msg);
     if (callback) {
       callback(msg);
     }
@@ -100,7 +83,7 @@ api.openWindow = (params, callback) => {
 };
 
 api.closeWindow = (key, callback) => {
-  log(src, ['api.closewindow', key, 'for', window.location].join(', '));
+  console.log(src, ['api.closewindow', key, 'for', window.location].join(', '));
 
   const replyTopic = `${key}${Math.random().toString(16).slice(2)}`;
 
@@ -115,7 +98,7 @@ api.closeWindow = (key, callback) => {
   });
 
   ipcRenderer.once(replyTopic, (ev, msg) => {
-    log(src, 'api.closewindow', 'resp from main', msg);
+    console.log(src, 'api.closewindow', 'resp from main', msg);
     if (callback) {
       callback(msg);
     }
@@ -136,7 +119,7 @@ api.publish = (topic, msg) => {
 };
 
 api.subscribe = (topic, callback) => {
-  //log(src, 'subscribe', topic)
+  console.log(src, 'subscribe', topic)
 
   // noop if not an internal app file
   if (!isApp) {

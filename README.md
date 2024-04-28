@@ -220,10 +220,8 @@ Windows/system
 - [x] window cache s/custom/map/
 - [x] window cache all windows not just persistent
 - [x] window cache - evaluate key approach (use-case: apps need to identify windows they open)
-- [ ] fix keys
-    - settings shouldn't need a key and also shouldn't have copies
-    - maybe declare singleton windows specifically and get a key back?
-    - or always return window id, so apps can manage it?
+- [x] always return window id, so apps can manage it
+- [ ] reimplement keys, so much easier for callers than managing ids
 
 Feature lifecycle (un/install and reloads)
 - [x] feature unload/reload - init/uninit whole feature and window
@@ -232,11 +230,6 @@ Feature lifecycle (un/install and reloads)
 - [ ] close other windows of feature, not just background window
     - track windows in origin groups?
 - [ ] unregister all shortcuts at shutdown
-
-Features clean themselves up for lifecycle events
-- [ ] actually load/unload peeks when enabled/disabled
-- [ ] actually load/unload slides when enabled/disabled
-- [ ] actually load/unload scripts when enabled/disabled
 
 Figure out re-init/reload story when pref/feature change is saved
 - eg: extension lifecycle events and sw lifecycle events
@@ -253,6 +246,11 @@ Shortcut lifecycle
 - send pubsub msgs on shortcut reg/unreg with feature id
 - in core/bg, listen for regs and map to feature
 - then on feature uninstall, unreg
+
+Features clean themselves up for lifecycle events
+- [ ] actually load/unload peeks when enabled/disabled
+- [ ] actually load/unload slides when enabled/disabled
+- [ ] actually load/unload scripts when enabled/disabled
 
 Peeks/Slides
 - [ ] only register shortcut and create window if a URL is configured

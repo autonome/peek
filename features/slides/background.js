@@ -79,26 +79,22 @@ const executeItem = (item) => {
 
   console.log(item.screenEdge, x, y);
 
-  const key = `${item.screenEdge}:${item.address}`;
+  const key = `${item.address}:${item.screenEdge}`;
 
   //animateSlide(win, item).then();
 
   const params = {
-    // browserwindow
     address: item.address,
     height,
     width,
+    key,
 
-    // peek
     feature: labels.name,
-    windowKey: `${labels.name}:${item.screenEdge}`,
     keepLive: item.keepLive || false,
     persistState: item.persistState || false,
 
-    // slide
     x,
     y,
-    key,
   };
 
   api.openWindow(params);

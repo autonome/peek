@@ -25,7 +25,7 @@ const executeItem = (item) => {
 
     // peek
     feature: labels.name,
-    windowKey: `${labels.name}:${item.keyNum}`,
+    singleton: true,
     keepLive: item.keepLive || false,
     persistState: item.persistState || false
   };

@@ -165,17 +165,8 @@ app.on('activate', () => {
 
 // ***** Caches *****
 
+// keyed on window id
 const windows = new Map();
-
-const windowByKey = k => {
-  let ret = null;
-  windows.forEach((w, id) => {
-    if (w.key == k) {
-      ret = id;
-    }
-  });
-  return ret;
-};
 
 const _shortcuts = {};
 
@@ -490,31 +481,33 @@ const openWindow = (params, callback) => {
     : 'web';
   */
 
-  // generate window cache key
-  //
-  // window keys can be provided by features.
-  //
-  // this gives apps ability to have singleton windows vs copies
-  //
-  // otherwise use a simple concat
-  //
-  // TODO: need to figure out a better approach
-  const key = params.key ? params.key : params.address;
-
-  console.log('openWindow', 'cache key', key);
-
   let retval = {
     source,
-    key,
     fromCache: false
   };
 
+  const key = params.hasOwnProperty('key') ? params.key : null;
+
+  let id = null;
+  if (params.id && windows.has(params.id)) {
+    id = params.id;
+  }
+  else if (key != null) {
+    windows.forEach((w) => {
+      if (w.source == source && w.params.key == key) {
+        id = w.id;
+      }
+    });
+  }
+
+  console.log('openWindow', 'param id', id);
+
   let win = null;
 
-  // Reuse existing window if exists for key
-  const id = windowByKey(key);
+  // Reuse existing window if caller passed a valid window id
   if (id != null) {
-    console.log('REUSING WINDOW for ', key, 'show?', show)
+    console.log('REUSING WINDOW for ', params.address);
+    retval.id = id;
 
     const entry = windows.get(id);
 
@@ -528,7 +521,6 @@ const openWindow = (params, callback) => {
   }
   // Open new window
   else {
-    console.log('KEY NOT IN CACHE');
     console.log('openWindow(): creating new window');
 
     const height = params.height || APP_DEF_HEIGHT;
@@ -603,7 +595,6 @@ const openWindow = (params, callback) => {
     windows.set(win.id, {
       id: win.id,
       source,
-      key,
       params
     });
 
@@ -634,9 +625,8 @@ const openWindow = (params, callback) => {
     win.on('close', onGoAway);
 
     win.on('closed', () => {
-      console.log('win.on(closed): deleting ', key, ' for ', params.address);
+      console.log('win.on(closed): deleting ', id, ' for ', params.address);
       windows.delete(win.id);
-      //win = null;
     });
 
     if (DEBUG || params.debug) {

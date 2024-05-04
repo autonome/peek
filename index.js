@@ -315,7 +315,7 @@ const onReady = () => {
   const coreWin = openWindow({
     source: webCoreAddress,
     address: webCoreAddress,
-    show: DEBUG,
+    show: false,
     keepLive: true,
     keepVisible: true,
     debug: DEBUG
@@ -626,14 +626,23 @@ const openWindow = (params, callback) => {
     });
 
     if (DEBUG || params.debug) {
-      // TODO: why not working for core background page?
-      //win.webContents.openDevTools({ mode: 'detach' });
-      win.webContents.openDevTools();
-      // when devtools completely open, refocus content window
+      // TODO: make detach mode configurable
+      // really want to get so individual app windows can easily control this
+      // for themselves
+      win.webContents.openDevTools({ mode: 'detach' });
+      //win.webContents.openDevTools();
+
+      // when devtools completely open
       win.webContents.on('devtools-opened', () => {
-        //setImmediate(() => {
+        // if window is visible, focus content window
+        if (show) {
           win.webContents.focus();
-        //});
+        }
+        // otherwise force devtools focus
+        // (for some reason doesn't focus when no visible window...)
+        else {
+          app.focus();
+        }
       });
     }
 

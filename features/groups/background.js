@@ -13,13 +13,15 @@ const clear = false;
 const store = openStore(id, defaults, clear /* clear storage */);
 const api = window.app;
 
+const address = 'features/groups/home.html';
+
 const openGroupsWindow = () => {
   const height = 600;
   const width = 800;
 
   const params = {
-    feature: labels.name,
-    file: 'features/groups/home.html',
+    address,
+    key: address,
     height,
     width
   };

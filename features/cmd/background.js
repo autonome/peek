@@ -13,15 +13,16 @@ const clear = false;
 const store = openStore(id, defaults, clear /* clear storage */);
 const api = window.app;
 
+const address = 'peek://cmd/panel.html';
+
 const openInputWindow = prefs => {
   const height = prefs.height || 50;
   const width = prefs.width || 600;
 
   const params = {
     debug,
-    feature: labels.name,
-    address: 'peek://cmd/panel.html',
-    //transparent: true,
+    address,
+    key: address,
     height,
     width
   };
@@ -37,6 +38,7 @@ const openSettingsWindow = (prefs) => {
     debug,
     feature: labels.name,
     file: 'features/core/settings.html',
+    singleton: true,
     height,
     width
   };

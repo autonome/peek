@@ -220,35 +220,37 @@ Windows/system
 - [x] window cache s/custom/map/
 - [x] window cache all windows not just persistent
 - [x] window cache - evaluate key approach (use-case: apps need to identify windows they open)
-- [ ] keys are for copies not singletons, eg settings should never have a key and shouldn't have copies
+- [x] always return window id, so apps can manage it
+- [x] reimplement keys, so much easier for callers than managing ids
+- [ ] fix core prefs in main
 
 Feature lifecycle (un/install and reloads)
 - [x] feature unload/reload - init/uninit whole feature and window
 - [x] all api calls have address accessible by preload
-- [ ] close other windows of feature, not just background window
-    - track windows in origin groups?
-- [ ] unregister all shortcuts at shutdown
+- [x] close other windows of feature, not just background window
 
-Figure out re-init/reload story when pref/feature change is saved
-- eg: extension lifecycle events and sw lifecycle events
-- can leave to the apps? eg document.reload()? likely not for OS level stuff
-- could do a storage change listener, but all kinds of reasons why you *wouldn't* do full reload...
-- preload could register window + thing (eg kb listener) and listen for feature-disable events
-- ok so basically do at api level
+Feature re-init/reload when toggled
+- [ ] main: track shortcuts by source, remove when unloaded
+- [ ] main: child windows, and/or by source?
 
 Shortcut lifecycle
-- [ ] main process should handle multiple registrations
-- [ ] send feature id/origin w/ each registration
+- [ ] main process should handle multiple registrations correctly
+- [ ] send/track feature id/origin w/ each registration
 - [ ] unreg shortcuts on unload
 - confirm sucessful registration
 - send pubsub msgs on shortcut reg/unreg with feature id
 - in core/bg, listen for regs and map to feature
 - then on feature uninstall, unreg
 
+Features clean themselves up for lifecycle events
+- [ ] actually load/unload peeks when enabled/disabled
+- [ ] actually load/unload slides when enabled/disabled
+- [ ] actually load/unload scripts when enabled/disabled
+
 Peeks/Slides
-- [ ] only register shortcut and create window if a URL is configured
-- [ ] ensure unreg/closure on unconfigure
-- [ ] ensure unreg/closure on feature enable/disable
+- [x] only register shortcut and create window if a URL is configured
+- [ ] unreg/closure on peek/slide unconfigure
+- [ ] unreg/closure on feature enable/disable
 
 Cmd
 - [ ] fix it
@@ -261,15 +263,9 @@ Settings
 
 Daily driver blockers
 - [x] debug vs profile(s) for app dir
-- [ ] actually load/unload peeks when enabled/disabled
-- [ ] actually load/unload slides when enabled/disabled
-- [ ] actually load/unload scripts when enabled/disabled
-- [ ] fix ESC not working right
-- [ ] fix ESC not working in web content
-- [ ] fix ESC not working right over lil-gui
-
-Window transparency
-- [x] add support to api
+- [x] fix ESC not working right
+- [x] fix ESC not working in web content
+- [x] fix ESC not working right over lil-gui
 
 Deployment
 - [ ] app updates
@@ -282,6 +278,16 @@ Demo scenario
 - [ ] Scripts: eth price, weather change
 
 ### v0.2 - extensibility / remember shit
+
+DX papercuts
+- [ ] why crashing on reload main
+- [ ] devtools stealing focus
+- [ ] unified floating devtools
+
+Window features
+- [x] add transparency support to api
+- [ ] distentangle transparency and content-fit
+- [ ] add the rest of that shit
 
 App mgmt
 - [ ] uniform policy for feature id creation (lean on web/extensions)

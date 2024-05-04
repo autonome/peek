@@ -11,9 +11,12 @@ const clear = false;
 const store = openStore(id, defaults, clear /* clear storage */);
 const api = window.app;
 
-const winKeyCache = new Map();
+// maps app id to BrowserWindow id (background)
+const windows = new Map();
 
 const settingsAddress = 'peek://core/settings.html';
+const topicCorePrefs = 'topic:core:prefs';
+const topicFeatureToggle = 'core:feature:toggle';
 
 const openSettingsWindow = (prefs) => {
   const height = prefs.height || 600;
@@ -48,25 +51,24 @@ const initFeature = f => {
     debug,
     address: f.start_url,
     keepLive: true,
-    show: debug
+    show: false
   };
 
   window.app.openWindow(params, r => {
     console.log(`initFeature(): win opened for ${f.name}`, r)
-    winKeyCache.set(f.id, r.key);
+    windows.set(f.id, r.id);
   });
 
   console.log('window opened');
 };
 
 const uninitFeature = f => {
-
-  const key = winKeyCache.get(f.id);
-  if (key) {
+  const wid = windows.get(f.id);
+  if (wid) {
     console.log('closing window for', f.name);
-    window.app.closeWindow(key, r => {
+    window.app.closeWindow(wid, r => {
       console.log(`uninitFeature(): win closed for ${f.name}`, r)
-      winKeyCache.delete(f.id);
+      windows.delete(f.id);
     });
   }
 };
@@ -116,13 +118,13 @@ const init = () => {
   });
 
   // main process uses these for initialization
-  window.app.publish('prefs', {
+  window.app.publish(topicCorePrefs, {
     id: id,
     prefs: p
   });
 
   // feature enable/disable
-  window.app.subscribe('core:feature:toggle', msg => {
+  window.app.subscribe(topicFeatureToggle, msg => {
     console.log('feature toggle', msg)
 
     const f = features().find(f => f.id = msg.featureId);

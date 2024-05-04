@@ -51,7 +51,7 @@ const initFeature = f => {
     debug,
     address: f.start_url,
     keepLive: true,
-    show: debug
+    show: false
   };
 
   window.app.openWindow(params, r => {

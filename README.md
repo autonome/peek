@@ -221,26 +221,21 @@ Windows/system
 - [x] window cache all windows not just persistent
 - [x] window cache - evaluate key approach (use-case: apps need to identify windows they open)
 - [x] always return window id, so apps can manage it
-- [ ] reimplement keys, so much easier for callers than managing ids
+- [x] reimplement keys, so much easier for callers than managing ids
+- [ ] fix core prefs in main
 
 Feature lifecycle (un/install and reloads)
 - [x] feature unload/reload - init/uninit whole feature and window
 - [x] all api calls have address accessible by preload
-- [ ] implement lifecycle events (eg webext or serviceworker?)
-- [ ] close other windows of feature, not just background window
-    - track windows in origin groups?
-- [ ] unregister all shortcuts at shutdown
+- [x] close other windows of feature, not just background window
 
-Figure out re-init/reload story when pref/feature change is saved
-- eg: extension lifecycle events and sw lifecycle events
-- can leave to the apps? eg document.reload()? likely not for OS level stuff
-- could do a storage change listener, but all kinds of reasons why you *wouldn't* do full reload...
-- preload could register window + thing (eg kb listener) and listen for feature-disable events
-- ok so basically do at api level
+Feature re-init/reload when toggled
+- [ ] main: track shortcuts by source, remove when unloaded
+- [ ] main: child windows, and/or by source?
 
 Shortcut lifecycle
-- [ ] main process should handle multiple registrations
-- [ ] send feature id/origin w/ each registration
+- [ ] main process should handle multiple registrations correctly
+- [ ] send/track feature id/origin w/ each registration
 - [ ] unreg shortcuts on unload
 - confirm sucessful registration
 - send pubsub msgs on shortcut reg/unreg with feature id
@@ -253,9 +248,9 @@ Features clean themselves up for lifecycle events
 - [ ] actually load/unload scripts when enabled/disabled
 
 Peeks/Slides
-- [ ] only register shortcut and create window if a URL is configured
-- [ ] ensure unreg/closure on unconfigure
-- [ ] ensure unreg/closure on feature enable/disable
+- [x] only register shortcut and create window if a URL is configured
+- [ ] unreg/closure on peek/slide unconfigure
+- [ ] unreg/closure on feature enable/disable
 
 Cmd
 - [ ] fix it

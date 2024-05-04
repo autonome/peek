@@ -58,7 +58,7 @@ const strings = {
     console: 'console',
   },
   topics: {
-    prefs: 'prefs'
+    prefs: 'topic:core:prefs'
   },
   shortcuts: {
     errorAlreadyRegistered: 'Shortcut already registered',
@@ -111,12 +111,63 @@ app.setPath('sessionData', sessionDataPath);
 const isDev = require('electron-is-dev');
 
 if (isDev) {
-  // Enable live reload for Electron too
-  require('electron-reload')(__dirname, {
-    // Note that the path to electron may vary according to the main file
-    electron: require(`${__dirname}/node_modules/electron`)
+  require('node:fs').watch('.', () => {
+    console.log('something changed');
+
+    const readline = require('readline');
+
+    /*
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdin,
+    });
+    */
+
+    /*
+    readline.emitKeypressEvents(process.stdin);
+    if (process.stdin.isTTY) {
+      console.log('TTY');
+      process.stdin.setRawMode(true);
+    }
+    */
+
+    process.stdin.setRawMode(true);
+
+    //process.stdin.setEncoding('utf8');
+    //process.stdin.resume();
+    //process.stdin.emit('data', 'rs');
+    //process.stdin.emit('data', "\n");
+    //process.stdin.write("rs");
+    //process.stdin.write('rs\n');
+    //process.stdin.write('rs\x13');
+    //process.stdin.write("\u2386"); // enter
+    //process.stdin.write("\0x2386"); // enter
+    //process.stdin.write('\0x4C'); // keypad enter
+    //process.stdin.write('\0x24'); // return
+    //process.stdin.emit('keypress', null, {name: 'Enter'});
+    //process.stdin.write("rs");
+
+    // this at least is removed from the screen...
+    //process.stdin.write('rs\u000d'); // return
+
+    //rl.write('rs\n');
+    /*
+    rl.write(null, { name: 'r' });
+    rl.write(null, { name: 's' });
+    rl.write(null, { name: 'enter' });
+    */
+
+    /*
+    process.stdin.emit('keypress', null, {name: 'r'});
+    process.stdin.emit('keypress', null, {name: 's'});
+    process.stdin.emit('keypress', null, {name: 'Enter'});
+    */
+
+    //console.log('did i restart?');
   });
+
   /*
+  // hot reload
   try {
     require('electron-reloader')(module);
   } catch {}
@@ -168,9 +219,9 @@ app.on('activate', () => {
 // keyed on window id
 const windows = new Map();
 
-const _shortcuts = {};
-
-const _prefs = {};
+// app global prefs configurable by user
+// populated during app init
+let _prefs = {};
 
 // ***** pubsub *****
 
@@ -215,7 +266,7 @@ const initTray = () => {
     _tray.setToolTip(labels.tray.tooltip);
     _tray.on('click', () => {
       pubsub.publish('open', {
-        address: _prefs[webCoreAddress].startupFeature
+        address: _prefs.startupFeature
       });
     });
   }
@@ -292,9 +343,13 @@ const onReady = () => {
   // handle peek://
   initAppProtocol();
 
+  // listen for app prefs to configure ourself
+  // TODO: kinda janky, needs rethink
   pubsub.subscribe(strings.topics.prefs, msg => {
+    console.log('PREFS', msg);
+
     // cache all prefs
-    _prefs[msg.source] = msg.prefs;
+    _prefs = msg.prefs;
 
     // show/hide in dock and tab switcher
     if (DEBUG == false || (app.dock && msg.prefs.showInDockAndSwitcher == false)) {
@@ -316,7 +371,7 @@ const onReady = () => {
 
   // init web core
   const coreWin = openWindow({
-    source: this, // um, wat
+    source: webCoreAddress,
     address: webCoreAddress,
     show: DEBUG,
     keepLive: true,
@@ -333,7 +388,6 @@ app.whenReady().then(onReady);
 // ***** API *****
 
 ipcMain.on(strings.msgs.registerShortcut, (ev, msg) => {
-  //_shortcuts[msg.shortcut] = msg.replyTopic;
   registerShortcut(msg.shortcut, () => {
     console.log('on(registershortcut): shortcut executed', msg.shortcut, msg.replyTopic)
     ev.reply(msg.replyTopic, {});
@@ -411,7 +465,7 @@ const registerShortcut = (shortcut, callback) => {
 
   if (globalShortcut.isRegistered(shortcut)) {
     console.error(strings.shortcuts.errorAlreadyRegistered, shortcut);
-    //globalShortcut.unregister(shortcut);
+    globalShortcut.unregister(shortcut);
     return new Error(strings.shortcuts.errorAlreadyRegisterd);
   }
 
@@ -646,7 +700,7 @@ const openWindow = (params, callback) => {
   // esc handler 
   // TODO: make user-configurable
   win.webContents.on('before-input-event', (e, i) => {
-    if (i.key == 'Escape') {
+    if (win && i.key == 'Escape') {
       win.close();
     }
   });

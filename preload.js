@@ -17,7 +17,6 @@ const DEBUG_LEVEL = DEBUG_LEVELS.BASIC;
 const APP_SCHEME = 'peek';
 const APP_PROTOCOL = `${APP_SCHEME}:`;
 
-const isApp = window.location.protocol == APP_PROTOCOL;
 const sourceAddress = window.location.toString();
 
 const log = (source, text) => {
@@ -26,6 +25,8 @@ const log = (source, text) => {
     text
   });
 };
+
+const rndm = () => Math.random().toString(16).slice(2);
 
 let api = {};
 
@@ -38,7 +39,7 @@ api.shortcuts = {
   register: (shortcut, cb) => {
     console.log(src, 'registering ' + shortcut + ' for ' + window.location)
 
-    const replyTopic = `${shortcut}${window.location}`;
+    const replyTopic = `${shortcut}:${window.location}`;
 
     ipcRenderer.send('registershortcut', {
       source: sourceAddress,
@@ -106,28 +107,30 @@ api.closeWindow = (key, callback) => {
 };
 
 api.publish = (topic, msg) => {
-  // noop if not an internal app file
-  if (!isApp) {
-    return;
+  console.log(sourceAddress, 'publish', topic)
+
+  // TODO: c'mon
+  if (!topic) {
+    return new Error('wtf');
   }
 
+  msg.source = sourceAddress;
+
   ipcRenderer.send('publish', {
-    source: sourceAddress,
     topic,
     data: msg,
   });
 };
 
 api.subscribe = (topic, callback) => {
-  console.log(src, 'subscribe', topic)
+  //console.log(src, 'subscribe', topic)
 
-  // noop if not an internal app file
-  if (!isApp) {
-    // TODO: error
-    return;
+  // TODO: c'mon
+  if (!topic || !callback) {
+    return new Error('wtf');
   }
 
-  const replyTopic = `${topic}${Math.random().toString(16).slice(2)}`;
+  const replyTopic = `${topic}:${rndm()}`;
 
   ipcRenderer.send('subscribe', {
     source: sourceAddress,
@@ -136,9 +139,37 @@ api.subscribe = (topic, callback) => {
   });
 
   ipcRenderer.on(replyTopic, (ev, msg) => {
-    if (callback) {
-      callback(msg);
-    }
+    msg.source = sourceAddress;
+    callback(msg);
+  });
+};
+
+// eh
+api.sendToWindow = (windowId, msg) => {
+  ipcRenderer.send('sendToWindow', {
+    source: sourceAddress,
+    id,
+    msg
+  });
+};
+
+api.onMessage = callback => {
+  // TODO: c'mon
+  if (!topic || !callback) {
+    return new Error('wtf');
+  }
+
+  const replyTopic = `${topic}:${rndm()}`;
+
+  ipcRenderer.send('subscribe', {
+    source: sourceAddress,
+    topic,
+    replyTopic
+  });
+
+  ipcRenderer.on(replyTopic, (ev, msg) => {
+    msg.source = sourceAddress;
+    callback(msg);
   });
 };
 
@@ -167,6 +198,7 @@ const handleMainWindow = () => {
 };
 */
 
+/*
 window.addEventListener('DOMContentLoaded', () => {
   const replaceText = (selector, text) => {
     const element = document.getElementById(selector)
@@ -177,3 +209,4 @@ window.addEventListener('DOMContentLoaded', () => {
     replaceText(`${dependency}-version`, process.versions[dependency])
   }
 })
+*/

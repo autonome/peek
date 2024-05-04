@@ -108,71 +108,13 @@ app.setPath('userData', profileDataPath);
 app.setPath('sessionData', sessionDataPath);
 
 // ***** Developer / Error handling / Etc *****
+
+/*
 const isDev = require('electron-is-dev');
 
 if (isDev) {
-  require('node:fs').watch('.', () => {
-    console.log('something changed');
-
-    const readline = require('readline');
-
-    /*
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdin,
-    });
-    */
-
-    /*
-    readline.emitKeypressEvents(process.stdin);
-    if (process.stdin.isTTY) {
-      console.log('TTY');
-      process.stdin.setRawMode(true);
-    }
-    */
-
-    process.stdin.setRawMode(true);
-
-    //process.stdin.setEncoding('utf8');
-    //process.stdin.resume();
-    //process.stdin.emit('data', 'rs');
-    //process.stdin.emit('data', "\n");
-    //process.stdin.write("rs");
-    //process.stdin.write('rs\n');
-    //process.stdin.write('rs\x13');
-    //process.stdin.write("\u2386"); // enter
-    //process.stdin.write("\0x2386"); // enter
-    //process.stdin.write('\0x4C'); // keypad enter
-    //process.stdin.write('\0x24'); // return
-    //process.stdin.emit('keypress', null, {name: 'Enter'});
-    //process.stdin.write("rs");
-
-    // this at least is removed from the screen...
-    //process.stdin.write('rs\u000d'); // return
-
-    //rl.write('rs\n');
-    /*
-    rl.write(null, { name: 'r' });
-    rl.write(null, { name: 's' });
-    rl.write(null, { name: 'enter' });
-    */
-
-    /*
-    process.stdin.emit('keypress', null, {name: 'r'});
-    process.stdin.emit('keypress', null, {name: 's'});
-    process.stdin.emit('keypress', null, {name: 'Enter'});
-    */
-
-    //console.log('did i restart?');
-  });
-
-  /*
-  // hot reload
-  try {
-    require('electron-reloader')(module);
-  } catch {}
-  */
 }
+*/
 
 const unhandled = require('electron-unhandled');
 unhandled();
@@ -687,6 +629,12 @@ const openWindow = (params, callback) => {
       // TODO: why not working for core background page?
       //win.webContents.openDevTools({ mode: 'detach' });
       win.webContents.openDevTools();
+      // when devtools completely open, refocus content window
+      win.webContents.on('devtools-opened', () => {
+        //setImmediate(() => {
+          win.webContents.focus();
+        //});
+      });
     }
 
     if (params.address) {

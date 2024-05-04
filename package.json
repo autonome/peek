@@ -17,9 +17,7 @@
     "@electron-forge/maker-zip": "7.2.0",
     "electron": "27.1.3",
     "electron-is-dev": "2.0.0",
-    "electron-rebuild": "3.2.9",
-    "electron-reload": "2.0.0-alpha.1",
-    "electron-reloader": "1.2.3"
+    "electron-rebuild": "3.2.9"
   },
   "dependencies": {
     "electron-squirrel-startup": "1.0.0",
@@ -30,7 +28,7 @@
   },
   "scripts": {
     "start": "electron-forge start",
-    "debug": "DEBUG=1 electron-forge start",
+    "debug": "nodemon --exec DEBUG=1 electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make"
   }

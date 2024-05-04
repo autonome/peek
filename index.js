@@ -58,7 +58,7 @@ const strings = {
     console: 'console',
   },
   topics: {
-    prefs: 'prefs'
+    prefs: 'topic:core:prefs'
   },
   shortcuts: {
     errorAlreadyRegistered: 'Shortcut already registered',
@@ -108,20 +108,13 @@ app.setPath('userData', profileDataPath);
 app.setPath('sessionData', sessionDataPath);
 
 // ***** Developer / Error handling / Etc *****
+
+/*
 const isDev = require('electron-is-dev');
 
 if (isDev) {
-  // Enable live reload for Electron too
-  require('electron-reload')(__dirname, {
-    // Note that the path to electron may vary according to the main file
-    electron: require(`${__dirname}/node_modules/electron`)
-  });
-  /*
-  try {
-    require('electron-reloader')(module);
-  } catch {}
-  */
 }
+*/
 
 const unhandled = require('electron-unhandled');
 unhandled();
@@ -165,21 +158,12 @@ app.on('activate', () => {
 
 // ***** Caches *****
 
+// keyed on window id
 const windows = new Map();
 
-const windowByKey = k => {
-  let ret = null;
-  windows.forEach((w, id) => {
-    if (w.key == k) {
-      ret = id;
-    }
-  });
-  return ret;
-};
-
-const _shortcuts = {};
-
-const _prefs = {};
+// app global prefs configurable by user
+// populated during app init
+let _prefs = {};
 
 // ***** pubsub *****
 
@@ -224,7 +208,7 @@ const initTray = () => {
     _tray.setToolTip(labels.tray.tooltip);
     _tray.on('click', () => {
       pubsub.publish('open', {
-        address: _prefs[webCoreAddress].startupFeature
+        address: _prefs.startupFeature
       });
     });
   }
@@ -301,9 +285,13 @@ const onReady = () => {
   // handle peek://
   initAppProtocol();
 
+  // listen for app prefs to configure ourself
+  // TODO: kinda janky, needs rethink
   pubsub.subscribe(strings.topics.prefs, msg => {
+    console.log('PREFS', msg);
+
     // cache all prefs
-    _prefs[msg.source] = msg.prefs;
+    _prefs = msg.prefs;
 
     // show/hide in dock and tab switcher
     if (DEBUG == false || (app.dock && msg.prefs.showInDockAndSwitcher == false)) {
@@ -325,9 +313,9 @@ const onReady = () => {
 
   // init web core
   const coreWin = openWindow({
-    source: this, // um, wat
+    source: webCoreAddress,
     address: webCoreAddress,
-    show: DEBUG,
+    show: false,
     keepLive: true,
     keepVisible: true,
     debug: DEBUG
@@ -342,7 +330,6 @@ app.whenReady().then(onReady);
 // ***** API *****
 
 ipcMain.on(strings.msgs.registerShortcut, (ev, msg) => {
-  //_shortcuts[msg.shortcut] = msg.replyTopic;
   registerShortcut(msg.shortcut, () => {
     console.log('on(registershortcut): shortcut executed', msg.shortcut, msg.replyTopic)
     ev.reply(msg.replyTopic, {});
@@ -420,7 +407,7 @@ const registerShortcut = (shortcut, callback) => {
 
   if (globalShortcut.isRegistered(shortcut)) {
     console.error(strings.shortcuts.errorAlreadyRegistered, shortcut);
-    //globalShortcut.unregister(shortcut);
+    globalShortcut.unregister(shortcut);
     return new Error(strings.shortcuts.errorAlreadyRegisterd);
   }
 
@@ -490,30 +477,33 @@ const openWindow = (params, callback) => {
     : 'web';
   */
 
-  // generate window cache key
-  //
-  // window keys can be provided by features.
-  //
-  // this gives apps ability to have singleton windows vs copies
-  //
-  // otherwise use a simple concat
-  //
-  // TODO: need to figure out a better approach
-  const key = params.key ? params.key : params.address;
-
-  console.log('openWindow', 'cache key', key);
-
   let retval = {
-    key,
+    source,
     fromCache: false
   };
 
+  const key = params.hasOwnProperty('key') ? params.key : null;
+
+  let id = null;
+  if (params.id && windows.has(params.id)) {
+    id = params.id;
+  }
+  else if (key != null) {
+    windows.forEach((w) => {
+      if (w.source == source && w.params.key == key) {
+        id = w.id;
+      }
+    });
+  }
+
+  console.log('openWindow', 'param id', id);
+
   let win = null;
 
-  // Reuse existing window if exists for key
-  const id = windowByKey(key);
+  // Reuse existing window if caller passed a valid window id
   if (id != null) {
-    console.log('REUSING WINDOW for ', key, 'show?', show)
+    console.log('REUSING WINDOW for ', params.address);
+    retval.id = id;
 
     const entry = windows.get(id);
 
@@ -522,11 +512,11 @@ const openWindow = (params, callback) => {
       win.show();
     }
 
+    retval.id = id;
     retval.fromCache = true;
   }
   // Open new window
   else {
-    console.log('KEY NOT IN CACHE');
     console.log('openWindow(): creating new window');
 
     const height = params.height || APP_DEF_HEIGHT;
@@ -595,11 +585,12 @@ const openWindow = (params, callback) => {
 
     win = new BrowserWindow(winPrefs);
 
+    retval.id = win.id;
+
     // add to cache
     windows.set(win.id, {
       id: win.id,
       source,
-      key,
       params
     });
 
@@ -630,15 +621,29 @@ const openWindow = (params, callback) => {
     win.on('close', onGoAway);
 
     win.on('closed', () => {
-      console.log('win.on(closed): deleting ', key, ' for ', params.address);
+      console.log('win.on(closed): deleting ', id, ' for ', params.address);
       windows.delete(win.id);
-      //win = null;
     });
 
     if (DEBUG || params.debug) {
-      // TODO: why not working for core background page?
-      //win.webContents.openDevTools({ mode: 'detach' });
-      win.webContents.openDevTools();
+      // TODO: make detach mode configurable
+      // really want to get so individual app windows can easily control this
+      // for themselves
+      win.webContents.openDevTools({ mode: 'detach' });
+      //win.webContents.openDevTools();
+
+      // when devtools completely open
+      win.webContents.on('devtools-opened', () => {
+        // if window is visible, focus content window
+        if (show) {
+          win.webContents.focus();
+        }
+        // otherwise force devtools focus
+        // (for some reason doesn't focus when no visible window...)
+        else {
+          app.focus();
+        }
+      });
     }
 
     if (params.address) {
@@ -652,7 +657,7 @@ const openWindow = (params, callback) => {
   // esc handler 
   // TODO: make user-configurable
   win.webContents.on('before-input-event', (e, i) => {
-    if (i.key == 'Escape') {
+    if (win && i.key == 'Escape') {
       win.close();
     }
   });

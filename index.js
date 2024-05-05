@@ -352,6 +352,7 @@ ipcMain.on(strings.msgs.openWindow, (ev, msg) => {
 
 ipcMain.on(strings.msgs.closeWindow, (ev, msg) => {
   closeWindow(msg.params, output => {
+    console.log('main.closeWindow api callback, output:', output);
     if (msg && msg.replyTopic) {
       ev.reply(msg.replyTopic, output);
     }
@@ -623,6 +624,7 @@ const openWindow = (params, callback) => {
     win.on('closed', () => {
       console.log('win.on(closed): deleting ', id, ' for ', params.address);
       windows.delete(win.id);
+      win = null;
     });
 
     if (DEBUG || params.debug) {
@@ -697,9 +699,11 @@ const closeWindow = (params, callback) => {
   console.log('closeWindow', params, callback != null);
 
   let retval = false;
-  const id = windowByKey(params.key);
-  if (id != null) {
-    BrowserWindow.fromId(id).close();
+
+  if (params.hasOwnProperty('id')
+    && windows.has(params.id)) {
+    console.log('closeWindow(): closed', params.id);
+    BrowserWindow.fromId(params.id).close();
     retval = true;
   }
 

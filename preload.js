@@ -83,14 +83,14 @@ api.openWindow = (params, callback) => {
   });
 };
 
-api.closeWindow = (key, callback) => {
-  console.log(src, ['api.closewindow', key, 'for', window.location].join(', '));
+api.closeWindow = (id, callback) => {
+  console.log(src, ['api.closewindow', id, 'for', window.location].join(', '));
 
-  const replyTopic = `${key}${Math.random().toString(16).slice(2)}`;
+  const replyTopic = `${id}${Math.random().toString(16).slice(2)}`;
 
   const params = {
     source: sourceAddress,
-    key
+    id
   };
 
   ipcRenderer.send('closewindow', {

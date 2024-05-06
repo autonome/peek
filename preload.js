@@ -86,7 +86,7 @@ api.openWindow = (params, callback) => {
 api.closeWindow = (id, callback) => {
   console.log(src, ['api.closewindow', id, 'for', window.location].join(', '));
 
-  const replyTopic = `${id}${Math.random().toString(16).slice(2)}`;
+  const replyTopic = `${id}${rndm()}`;
 
   const params = {
     source: sourceAddress,

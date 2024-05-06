@@ -161,6 +161,9 @@ app.on('activate', () => {
 // keyed on window id
 const windows = new Map();
 
+// keyed on source address
+const shortcuts = new Map();
+
 // app global prefs configurable by user
 // populated during app init
 let _prefs = {};
@@ -330,6 +333,11 @@ app.whenReady().then(onReady);
 // ***** API *****
 
 ipcMain.on(strings.msgs.registerShortcut, (ev, msg) => {
+  console.log('ipc register shortcut', msg);
+
+  // record source of shortcut
+  shortcuts.set(msg.shortcut, msg.source);
+
   registerShortcut(msg.shortcut, () => {
     console.log('on(registershortcut): shortcut executed', msg.shortcut, msg.replyTopic)
     ev.reply(msg.replyTopic, {});
@@ -337,9 +345,11 @@ ipcMain.on(strings.msgs.registerShortcut, (ev, msg) => {
 });
 
 ipcMain.on(strings.msgs.unregisterShortcut, (ev, msg) => {
-  if (globalShortcut.isRegistered(msg.shortcut)) {
-    globalShortcut.unregister(msg.shortcut);
-  }
+  console.log('ipc unregister shortcut', msg);
+
+  unregisterShortcut(msg.shortcut, res => {
+    console.log('ipc unregister shortcut callback result:', res);
+  });
 });
 
 ipcMain.on(strings.msgs.openWindow, (ev, msg) => {
@@ -427,18 +437,27 @@ const unregisterShortcut = (shortcut, callback) => {
   console.log('unregisterShortcut', shortcut)
 
   if (!globalShortcut.isRegistered(shortcut)) {
-    console.error('Unable to register shortcut', shortcut);
+    console.error('Unable to unregister shortcut because not registered or it is not us', shortcut);
     return new Error("Failed in some way", { cause: err });
   }
 
-  const ret = globalShortcut.unregister(shortcut, () => {
-    console.log('shortcut executed', shortcut);
+  globalShortcut.unregister(shortcut, () => {
+    console.log('shortcut unregistered', shortcut);
+
+    // delete from cache
+    shortcuts.delete(shortcut);
     callback();
   });
+};
 
-  if (!ret) {
-    console.error('Unable to unregister shortcut', shortcut);
-    return new Error("Failed in some way", { cause: err });
+// unregister any shortcuts this address registered
+// and delete entry from cache
+const unregisterShortcutsForAddress = (aAddress) => {
+  for (const [shortcut, address] of shortcuts) {
+    if (address == aAddress) {
+      console.log('unregistering', shortcut, 'for', address);
+      unregisterShortcut(shortcut);
+    }
   }
 };
 
@@ -598,18 +617,19 @@ const openWindow = (params, callback) => {
     // TODO: make configurable
     const onGoAway = () => {
       console.log('ONGOAWAY');
+ 
       if (params.keepLive == true) {
         if (params.keepVisible == false) {
           console.log('main.onGoAway(): hiding ', params.address);
           win.hide();
         }
-        // TODO: else keep window alive and visible!
+        // otherwise keep window alive and visible!
       }
       else {
         console.log('win.onGoAway(): destroying ', params.address);
         win.destroy();
       }
-    }
+    };
 
     // don't do this in detached debug mode, devtools steals focus
     // and closes everything 😐
@@ -624,6 +644,10 @@ const openWindow = (params, callback) => {
     win.on('closed', () => {
       console.log('win.on(closed): deleting ', id, ' for ', params.address);
       windows.delete(win.id);
+
+      // unregister any shortcuts this window registered
+      unregisterShortcutsForAddress(params.address)
+
       win = null;
     });
 

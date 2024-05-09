@@ -34,7 +34,7 @@ const openSettingsWindow = (prefs) => {
   api.openWindow(params);
 };
 
-const initShortcut = (prefs) => {
+const initSettingsShortcut = (prefs) => {
   api.shortcuts.register(prefs.shortcutKey, () => {
     openSettingsWindow(prefs);
   });
@@ -98,7 +98,7 @@ const init = () => {
 
   console.log('prefs', p);
 
-  initShortcut(p);
+  initSettingsShortcut(p);
 
   features().forEach(initFeature);
   //features.forEach(initIframeFeature);
@@ -108,11 +108,9 @@ const init = () => {
   const startupFeature = features().find(f => f.name = startupFeatureTitle);
 
   // Listen for system- or feature-level requests to open windows.
-  // 
-  // In this case, for opening up global settings
-  // on app start (if configured) and from the tray icon.
   window.app.subscribe('open', msg => {
-    if (msg.feature && msg.feature == 'feature/core/settings') {
+    // on app start (if configured) and from the tray icon.
+    if (msg.address && msg.address == 'peek://core/settings') {
       openSettingsWindow(p);
     }
   });
@@ -127,7 +125,7 @@ const init = () => {
   window.app.subscribe(topicFeatureToggle, msg => {
     console.log('feature toggle', msg)
 
-    const f = features().find(f => f.id = msg.featureId);
+    const f = features().find(f => f.id == msg.featureId);
     if (f) {
       console.log('feature toggle', f);
       if (msg.enabled == false) {

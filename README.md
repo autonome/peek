@@ -222,7 +222,7 @@ Windows/system
 - [x] window cache - evaluate key approach (use-case: apps need to identify windows they open)
 - [x] always return window id, so apps can manage it
 - [x] reimplement keys, so much easier for callers than managing ids
-- [ ] fix core prefs in main
+- [ ] account for number of renderer processes (seems double?)
 
 Feature lifecycle (un/install and reloads)
 - [x] feature unload/reload - init/uninit whole feature and window
@@ -230,17 +230,14 @@ Feature lifecycle (un/install and reloads)
 - [x] close other windows of feature, not just background window
 
 Feature re-init/reload when toggled
-- [ ] main: track shortcuts by source, remove when unloaded
-- [ ] main: child windows, and/or by source?
+- [x] main: track shortcuts by source, remove when unloaded
+- [x] main: track window sources
+- [ ] main: close child windows when (before) closing source window
 
 Shortcut lifecycle
-- [ ] main process should handle multiple registrations correctly
-- [ ] send/track feature id/origin w/ each registration
-- [ ] unreg shortcuts on unload
-- confirm sucessful registration
-- send pubsub msgs on shortcut reg/unreg with feature id
-- in core/bg, listen for regs and map to feature
-- then on feature uninstall, unreg
+- [x] main process should handle multiple registrations correctly
+- [x] send/track feature id/origin w/ each registration
+- [x] unreg shortcuts on unload
 
 Features clean themselves up for lifecycle events
 - [ ] actually load/unload peeks when enabled/disabled
@@ -254,6 +251,7 @@ Peeks/Slides
 
 Cmd
 - [ ] fix it
+- [ ] app-scoped multi-window
 
 Settings
 - [x] fix window size

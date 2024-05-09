@@ -54,7 +54,6 @@ const strings = {
     subscribe: 'subscribe',
     openWindow: 'openwindow',
     closeWindow: 'closewindow',
-    escape: 'esc',
     console: 'console',
   },
   topics: {
@@ -385,28 +384,6 @@ ipcMain.on(strings.msgs.subscribe, (ev, msg) => {
   });
 });
 
-// ipc ESC handler
-// close focused window on Escape
-ipcMain.on(strings.msgs.escape, (ev, title) => {
-  console.log('index.js: ESC');
-
-  const fwin = BrowserWindow.getFocusedWindow();
-  const entry = windows.get(fwin.id);
-
-  // configured to stay persistent
-  // so hide it instead of actually closing it
-  if (entry.params.keepLive) {
-    console.log('ESC HIDE', entry);
-    BrowserWindow.fromId(entry.id).hide();
-    console.log('index.js: ESC: hiding focused content window');
-  }
-  // focused window is me
-  else if (!fwin.isDestroyed()) {
-    fwin.close();
-    console.log('index.js: ESC: closing focused window, is not in cache and not destroyed');
-  }
-});
-
 ipcMain.on(strings.msgs.console, (ev, msg) => {
   console.log('r:', msg.source, msg.text);
 });
@@ -485,13 +462,15 @@ const openWindow = (params, callback) => {
     return;
   }
 
+  const url = new URL(params.address);
+  const address = url.toString();
+  const isPrivileged = url.protocol.startsWith(APP_PROTOCOL);
+
+  /*
   // need to make an address scheme that has opaque host
   // AND origin - which isn't a thing really:
   // https://github.com/whatwg/url/issues/690
   // for now, hack out the "host".
-  const url = new URL(params.address);
-  const isPrivileged = url.protocol.startsWith(APP_PROTOCOL);
-  /*
   const separator = ':';
   const pseudoHost = isPrivileged ? params.pathName.split('/').shift()
     : 'web';
@@ -504,6 +483,7 @@ const openWindow = (params, callback) => {
 
   const key = params.hasOwnProperty('key') ? params.key : null;
 
+  // get window id if exists
   let id = null;
   if (params.id && windows.has(params.id)) {
     id = params.id;
@@ -522,7 +502,7 @@ const openWindow = (params, callback) => {
 
   // Reuse existing window if caller passed a valid window id
   if (id != null) {
-    console.log('REUSING WINDOW for ', params.address);
+    console.log('REUSING WINDOW for ', address);
     retval.id = id;
 
     const entry = windows.get(id);
@@ -546,7 +526,7 @@ const openWindow = (params, callback) => {
 
     // privileged app addresses get special powers
     if (isPrivileged) {
-      console.log('APP ADDRESS', params.address);
+      console.log('APP ADDRESS', address);
 
       // add preload
       webPreferences.preload = preloadPath;
@@ -605,7 +585,7 @@ const openWindow = (params, callback) => {
 
     win = new BrowserWindow(winPrefs);
 
-    retval.id = win.id;
+    id = win.id;
 
     // add to cache
     windows.set(win.id, {
@@ -614,43 +594,43 @@ const openWindow = (params, callback) => {
       params
     });
 
-    // TODO: make configurable
-    const onGoAway = () => {
-      console.log('ONGOAWAY');
- 
-      if (params.keepLive == true) {
-        if (params.keepVisible == false) {
-          console.log('main.onGoAway(): hiding ', params.address);
-          win.hide();
-        }
-        // otherwise keep window alive and visible!
-      }
-      else {
-        console.log('win.onGoAway(): destroying ', params.address);
-        win.destroy();
-      }
-    };
-
     // don't do this in detached debug mode, devtools steals focus
     // and closes everything 😐
     // TODO: fix
     // TODO: should be configurable behavior
     if (!DEBUG) {
-      win.on('blur', onGoAway);
+      win.on('blur', () => {
+        console.log('openWindow.onBlur() for', address);
+        closeOrHideWindow(id);
+      });
     }
     
-    win.on('close', onGoAway);
+    /*
+    win.on('close', () => {
+      console.log('openWindow.onClose() for', address);
+      // TODO: confirm if there's anything we still need to do here
+      //closeOrHideWindow(id);
+    });
+    */
 
+    // post actual close clean-up
     win.on('closed', () => {
-      console.log('win.on(closed): deleting ', id, ' for ', params.address);
-      windows.delete(win.id);
+      console.log('openWindow.onClosed: deleting ', id, ' for ', address);
 
       // unregister any shortcuts this window registered
-      unregisterShortcutsForAddress(params.address)
+      if (isPrivileged) {
+        unregisterShortcutsForAddress(address)
+        console.log('unregistered shortcuts');
+      }
+
+      // remove from cache
+      windows.delete(win.id);
 
       win = null;
     });
 
+    // TODO: use an actual devtools param
+    // not just implicit via debug
     if (DEBUG || params.debug) {
       // TODO: make detach mode configurable
       // really want to get so individual app windows can easily control this
@@ -672,19 +652,18 @@ const openWindow = (params, callback) => {
       });
     }
 
-    if (params.address) {
-      win.loadURL(params.address);
-    }
-    else {
-      console.error('openWindow: neither address nor file!');
-    }
+    win.loadURL(address);
   }
+
+  retval.id = id;
 
   // esc handler 
   // TODO: make user-configurable
   win.webContents.on('before-input-event', (e, i) => {
-    if (win && i.key == 'Escape') {
-      win.close();
+    //console.log('BIE', i.type, i.key);
+    if (i.key == 'Escape' && i.type == 'keyUp') {
+      //console.log('openWindow.wc.BIE(): esc', i);
+      closeOrHideWindow(id);
     }
   });
 
@@ -719,20 +698,83 @@ const openWindow = (params, callback) => {
 };
 
 // window closer
+// this will actually close the the window
+// regardless of "keep alive" opener params
 const closeWindow = (params, callback) => {
   console.log('closeWindow', params, callback != null);
 
   let retval = false;
 
-  if (params.hasOwnProperty('id')
-    && windows.has(params.id)) {
-    console.log('closeWindow(): closed', params.id);
+  if (params.hasOwnProperty('id') && windows.has(params.id)) {
+    console.log('closeWindow(): closing', params.id);
+
+    const entry = windows.get(params.id);
+    if (!entry) {
+      // wtf
+      return;
+    }
+
+    closeChildWindows(entry.params.address);
+
     BrowserWindow.fromId(params.id).close();
+
     retval = true;
   }
 
   if (callback != null) {
     callback(retval);
+  }
+};
+
+const closeOrHideWindow = id => {
+  console.log('CLOSEORHIDEWINDOW', id);
+
+  const win = BrowserWindow.fromId(id);
+  if (win.isDestroyed()) {
+    return;
+  }
+
+  const entry = windows.get(id);
+  if (!entry) {
+    // wtf
+    return;
+  }
+
+  const params = entry.params;
+
+  if (params.keepLive == true) {
+    console.log('closeOrHideWindow(): hiding ', params.address);
+    win.hide();
+  }
+  else {
+    // close any open windows this window opened
+    // TODO: need a "force" mode for this
+    closeChildWindows(params.address);
+
+    console.log('closeOrHideWindow(): closing ', params.address);
+    win.close();
+  }
+  console.log('DONE closeorhidewindow');
+};
+
+const closeChildWindows = (aAddress) => {
+  console.log('closeChildWindows()', aAddress);
+
+  if (aAddress == webCoreAddress) {
+    return;
+  }
+
+  for (const [id, entry] of windows) {
+    if (entry.source == aAddress) {
+      const address = entry.params.address;
+      console.log('closing child window', address, 'for', aAddress);
+
+      // recurseme
+      closeChildWindows(address);
+
+      // close window
+      BrowserWindow.fromId(id).close();
+    }
   }
 };
 

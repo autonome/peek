@@ -1,5 +1,5 @@
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { log as l, openStore } from "./utils.js";
+import { log as l, openStore, flattenObj } from "./utils.js";
 
 const log = function(...args) { l(labels.name, args); };
 
@@ -27,11 +27,11 @@ const openSettingsWindow = (prefs) => {
     address: settingsAddress,
     key: settingsAddress,
     transparent: true,
-    //height,
-    //width
+    height,
+    width
   };
 
-  api.openWindow(params);
+  window.open(settingsAddress, null, flattenObj(params));
 };
 
 const initSettingsShortcut = (prefs) => {

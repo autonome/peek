@@ -88,8 +88,11 @@ const addToGUI = (gui, label, value, disabled = false, step = null, max = null) 
   return ctr;
 }
 
+const flattenObj = o => Object.keys(o).map(k => `${k}=${o[k]}`).join(',');
+
 export {
   log,
   openStore,
-  addToGUI
+  addToGUI,
+  flattenObj
 };

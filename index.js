@@ -346,7 +346,6 @@ const onReady = () => {
     address: webCoreAddress,
     show: false,
     keepLive: true,
-    keepVisible: true,
     debug: DEBUG
   })
 
@@ -481,9 +480,6 @@ const openWindow = (params, callback) => {
   // TODO: need to figure out a better approach
   const show = params.hasOwnProperty('show') ? params.show : true;
 
-  // keep visible
-  const keepVisible = params.hasOwnProperty('keepVisible') ? params.keepVisible : false;
-
   // validate address
   if (!params.hasOwnProperty('address') || params.address.length == 0) {
     console.error('openWindow: no address or is empty!');
@@ -536,6 +532,7 @@ const openWindow = (params, callback) => {
     const entry = windows.get(id);
 
     win = BrowserWindow.fromId(entry.id);
+
     if (show) {
       win.show();
     }
@@ -650,7 +647,9 @@ const openWindow = (params, callback) => {
     });
 
     // tack all our shit on to windows opened by this window
-    win.webContents.setWindowOpenHandler(winOpenHandler);
+    win.webContents.setWindowOpenHandler(d => {
+      return winOpenHandler(source, d);
+    });
 
     // TODO: use an actual devtools param
     // not just implicit via debug
@@ -658,53 +657,60 @@ const openWindow = (params, callback) => {
       winDevtoolsConfig(win);
     }
 
+    // esc handler 
+    addEscHandler(win);
+
     win.loadURL(address);
-  }
 
-  retval.id = id;
+    // TODO: fix func-level callback handling and resp obj
+    if (params.script) {
+      const script = params.script;
+      const domEvent = script.domEvent || 'dom-ready';
 
-  // esc handler 
-  // TODO: make user-configurable
-  win.webContents.on('before-input-event', (e, i) => {
-    //console.log('BIE', i.type, i.key);
-    if (i.key == 'Escape' && i.type == 'keyUp') {
-      //console.log('openWindow.wc.BIE(): esc', i);
-      closeOrHideWindow(id);
+      win.webContents.on(domEvent, async () => {
+        try {
+          const r = await win.webContents.executeJavaScript(script.script);
+          retval.scriptOutput = r;
+        } catch(ex) {
+          retval.scriptError = ex;
+          console.error('cs exec error', ex);
+        }
+        if (script.closeOnCompletion) {
+          win.destroy();
+        }
+      });
     }
-  });
-
-  //win.webContents.send('window', { type: labels.featureType, id: win.id});
-  //broadcastToWindows('window', { type: labels.featureType, id: win.id});
-
-  // TODO: fix func-level callback handling and resp obj
-  if (params.script) {
-    const script = params.script;
-    const domEvent = script.domEvent || 'dom-ready';
-
-    win.webContents.on(domEvent, async () => {
-      try {
-        const r = await win.webContents.executeJavaScript(script.script);
-        retval.scriptOutput = r;
-      } catch(ex) {
-        retval.scriptError = ex;
-        console.error('cs exec error', ex);
-      }
-      if (script.closeOnCompletion) {
-        win.destroy();
-      }
-    });
   }
+
+  retval.id = win.id;
 
   // exec callback if present and valid
   if (callback != null && typeof callback == 'function') {
     callback(retval);
   }
 
+  //win.webContents.send('window', { type: labels.featureType, id: win.id});
+  //broadcastToWindows('window', { type: labels.featureType, id: win.id});
+
   return win;
 };
 
-const winOpenHandler = details => {
-  console.log('WINDOW.OPEN', details);
+// esc handler 
+// TODO: make user-configurable
+const addEscHandler = bw => {
+  console.log('adding esc handler');
+  bw.webContents.on('before-input-event', (e, i) => {
+    //console.log('BIE', i.type, i.key);
+    if (i.key == 'Escape' && i.type == 'keyUp') {
+      console.log('openWindow.wc.BIE(): esc', i);
+      closeOrHideWindow(bw.id);
+    }
+  });
+};
+
+// configure windows opened by renderers
+const winOpenHandler = (source, details) => {
+  console.log('WINDOW.OPEN', source, details);
 
   /*
   // TODO: do something that allows popping out
@@ -730,6 +736,7 @@ const winOpenHandler = details => {
   };
 
   /*
+  // TODO: merge all param handling and add here
   for (const [k, v] of params) {
     switch(k) {
       case 'height':
@@ -751,12 +758,23 @@ const winOpenHandler = details => {
     /*
     // not firing now, wtf
     bw.webContents.on('did-create-window', (w, d) => {
+      // could use frame name as key param?
       console.log('frameName', d.frameName);
       */
       bw.webContents.on('did-finish-load', () => {
         const url = bw.webContents.getURL();
         if (url == details.url) {
+          addEscHandler(bw);
+
           winDevtoolsConfig(bw);
+
+          // add to cache
+          windows.set(bw.id, {
+            id: bw.id,
+            source,
+            params
+          });
+
         }
       });
     //});
@@ -766,21 +784,21 @@ const winOpenHandler = details => {
     action: 'allow',
     overrideBrowserWindowOptions: overrides
   };
-
 };
 
-const winDevtoolsConfig = w => {
+// show/configure devtools when/after a window is opened
+const winDevtoolsConfig = bw => {
   // TODO: make detach mode configurable
   // really want to get so individual app windows can easily control this
   // for themselves
-  w.webContents.openDevTools({ mode: 'detach' });
+  bw.webContents.openDevTools({ mode: 'detach' });
   //win.webContents.openDevTools();
 
   // when devtools completely open
-  w.webContents.on('devtools-opened', () => {
+  bw.webContents.on('devtools-opened', () => {
     // if window is visible, focus content window
-    if (w.isVisible()) {
-      w.webContents.focus();
+    if (bw.isVisible()) {
+      bw.webContents.focus();
     }
     // otherwise force devtools focus
     // (for some reason doesn't focus when no visible window...)
@@ -824,12 +842,15 @@ const closeOrHideWindow = id => {
 
   const win = BrowserWindow.fromId(id);
   if (win.isDestroyed()) {
+    console.log('window already dead');
     return;
   }
 
   const entry = windows.get(id);
+
   if (!entry) {
-    // wtf
+    console.log('window not in cache, so closing (FIXME: should be in cache?)');
+    win.close();
     return;
   }
 

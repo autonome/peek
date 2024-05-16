@@ -30,7 +30,7 @@ const prefsSchema = {
       "default": 800
     },
     "startupFeature": {
-      "description": "Feature to load at app startup",
+      "description": "Address of what to load at startup, if anything",
       "type": "string",
       "default": "Settings"
     },
@@ -109,7 +109,7 @@ const defaults = {
     shortcutKey: 'Option+,',
     height: 850,
     width: 380,
-    startupFeature: 'peek://core/settings',
+    startupFeature: 'peek://core/settings.html',
     showTrayIcon: true,
     showInTrayAndSwitcher: false
   },

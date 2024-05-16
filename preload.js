@@ -106,7 +106,13 @@ api.closeWindow = (id, callback) => {
   });
 };
 
-api.publish = (topic, msg) => {
+api.scopes = {
+  SYSTEM: 1,
+  SELF: 2,
+  GLOBAL: 3
+};
+
+api.publish = (topic, msg, scope = api.scopes.SELF) => {
   console.log(sourceAddress, 'publish', topic)
 
   // TODO: c'mon
@@ -114,16 +120,16 @@ api.publish = (topic, msg) => {
     return new Error('wtf');
   }
 
-  msg.source = sourceAddress;
-
   ipcRenderer.send('publish', {
+    source: sourceAddress,
+    scope,
     topic,
     data: msg,
   });
 };
 
-api.subscribe = (topic, callback) => {
-  //console.log(src, 'subscribe', topic)
+api.subscribe = (topic, callback, scope = api.scopes.SELF) => {
+  console.log(src, 'subscribe', topic)
 
   // TODO: c'mon
   if (!topic || !callback) {
@@ -134,6 +140,7 @@ api.subscribe = (topic, callback) => {
 
   ipcRenderer.send('subscribe', {
     source: sourceAddress,
+    scope,
     topic,
     replyTopic
   });
@@ -144,7 +151,8 @@ api.subscribe = (topic, callback) => {
   });
 };
 
-// eh
+// unused
+/*
 api.sendToWindow = (windowId, msg) => {
   ipcRenderer.send('sendToWindow', {
     source: sourceAddress,
@@ -172,6 +180,7 @@ api.onMessage = callback => {
     callback(msg);
   });
 };
+*/
 
 contextBridge.exposeInMainWorld('app', api);
 

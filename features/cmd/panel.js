@@ -38,21 +38,19 @@ TODO: Commands
 
 */
 
-import { id, labels, schemas, ui, defaults } from './config.js';
-import { log as l, openStore } from "../utils.js";
+import { id, labels, schemas, storageKeys, defaults } from './config.js';
+import { log as l, openStore } from "./utils.js";
 
-const log = function(...args) { l(labels.name, args); };
-
-log('background');
+console.log('panel');
 
 const debug = window.app.debug;
-const store = openStore(id);
+const clear = false;
+
+const store = openStore(id, defaults, clear /* clear storage */);
 const api = window.app;
 
-const storageKeys = {
-  PREFS: 'prefs',
-  ITEMS: 'items',
-};
+const address = 'peek://cmd/panel.html';
+
 
 let state = {
   commands: [], // array of command names
@@ -121,7 +119,7 @@ async function css(el, props) {
 
 async function execute(name, typed) {
   if (state.commands[name]) {
-    log('executing cmd', name, typed);
+    console.log('executing cmd', name, typed);
 
     // execute command
     const msg = state.commands[name].execute({typed});

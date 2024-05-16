@@ -43,6 +43,8 @@ const APP_DEF_HEIGHT = 768;
 // core application logic is here
 const webCoreAddress = 'peek://core/background.html';
 
+const systemAddress = 'peek://system/';
+
 const strings = {
   defaults: {
     quitShortcut: 'Option+q'
@@ -169,27 +171,57 @@ let _prefs = {};
 
 // ***** pubsub *****
 
+const getPseudoHost = str => str.split('/')[2];
+
+const scopes = {
+  SYSTEM: 1,
+  SELF: 2,
+  GLOBAL: 3
+};
+
 const pubsub = (() => {
 
   const topics = new Map();
 
+  const scopeCheck = (pubSource, subSource, scope) => {
+    console.log('scopeCheck', subSource, pubSource, scope);
+    if (subSource == systemAddress) {
+      return true
+    }
+    if (scope == scopes.GLOBAL) {
+      return true;
+    }
+    if (getPseudoHost(subSource) == getPseudoHost(pubSource)) {
+      return true;
+    }
+    return false;
+  };
+
   return {
-    publish: (topic, msg) => {
+    publish: (source, scope, topic, msg) => {
       console.log('ps.pub', topic);
+
       if (topics.has(topic)) {
-        topics.get(topic).forEach(subscriber => {
-          subscriber(msg);
-        });
+
+        const t = topics.get(topic);
+
+        for (const [subSource, cb] of t) {
+          if (scopeCheck(source, subSource, scope)) {
+            console.log('FOUND ONE!', subSource);
+            cb(msg);
+          }
+        };
       }
     },
-    subscribe: (topic, cb) => {
-      console.log('ps.sub', topic);
+    subscribe: (source, scope, topic, cb) => {
+      console.log('ps.sub', source, scope, topic);
+
       if (!topics.has(topic)) {
-        topics.set(topic, [cb]);
+        topics.set(topic, new Map([ [source, cb] ]));
       }
       else {
         const subscribers = topics.get(topic);
-        subscribers.push(cb);
+        subscribers.set(source, cb);
         topics.set(topic, subscribers);
       }
     },
@@ -289,7 +321,7 @@ const onReady = () => {
 
   // listen for app prefs to configure ourself
   // TODO: kinda janky, needs rethink
-  pubsub.subscribe(strings.topics.prefs, msg => {
+  pubsub.subscribe(systemAddress, scopes.SYSTEM, strings.topics.prefs, msg => {
     console.log('PREFS', msg);
 
     // cache all prefs
@@ -306,11 +338,6 @@ const onReady = () => {
       console.log('showing tray');
       initTray();
     }
-
-    // open default app
-    pubsub.publish('open', {
-      address: msg.prefs.startupFeature
-    });
   });
 
   // init web core
@@ -324,6 +351,7 @@ const onReady = () => {
   })
 
   // eh, for helpers really
+  // TODO: this should be pref'd
   registerShortcut(strings.defaults.quitShortcut, onQuit);
 };
 
@@ -372,13 +400,13 @@ ipcMain.on(strings.msgs.closeWindow, (ev, msg) => {
 ipcMain.on(strings.msgs.publish, (ev, msg) => {
   console.log('ipc:publish', msg);
 
-  pubsub.publish(msg.topic, msg.data);
+  pubsub.publish(msg.source, msg.scope, msg.topic, msg.data);
 });
 
 ipcMain.on(strings.msgs.subscribe, (ev, msg) => {
   console.log('ipc:subscribe', msg);
 
-  pubsub.subscribe(msg.topic, data => {
+  pubsub.subscribe(msg.source, msg.scope, msg.topic, data => {
     console.log('ipc:subscribe:notification', msg);
     ev.reply(msg.replyTopic, data);
   });
@@ -605,14 +633,6 @@ const openWindow = (params, callback) => {
       });
     }
     
-    /*
-    win.on('close', () => {
-      console.log('openWindow.onClose() for', address);
-      // TODO: confirm if there's anything we still need to do here
-      //closeOrHideWindow(id);
-    });
-    */
-
     // post actual close clean-up
     win.on('closed', () => {
       console.log('openWindow.onClosed: deleting ', id, ' for ', address);
@@ -629,27 +649,13 @@ const openWindow = (params, callback) => {
       win = null;
     });
 
+    // tack all our shit on to windows opened by this window
+    win.webContents.setWindowOpenHandler(winOpenHandler);
+
     // TODO: use an actual devtools param
     // not just implicit via debug
     if (DEBUG || params.debug) {
-      // TODO: make detach mode configurable
-      // really want to get so individual app windows can easily control this
-      // for themselves
-      win.webContents.openDevTools({ mode: 'detach' });
-      //win.webContents.openDevTools();
-
-      // when devtools completely open
-      win.webContents.on('devtools-opened', () => {
-        // if window is visible, focus content window
-        if (show) {
-          win.webContents.focus();
-        }
-        // otherwise force devtools focus
-        // (for some reason doesn't focus when no visible window...)
-        else {
-          app.focus();
-        }
-      });
+      winDevtoolsConfig(win);
     }
 
     win.loadURL(address);
@@ -695,6 +701,93 @@ const openWindow = (params, callback) => {
   }
 
   return win;
+};
+
+const winOpenHandler = details => {
+  console.log('WINDOW.OPEN', details);
+
+  /*
+  // TODO: do something that allows popping out
+  // into default browser
+  if (details.url.startsWith('http')) {
+    shell.openExternal(details.url);
+    return { action: 'deny' };
+  }
+  */
+
+  const params = {};
+  details.features.split(',')
+    .map(entry => entry.split('='))
+    .forEach(entry => params[entry[0]] = entry[1]);
+  console.log('params', params);
+
+  const overrides = {
+    devTools: true, //DEBUG || params.debug,
+    skipTaskbar: true, // TODO
+    autoHideMenuBar: true, // TODO
+    titleBarStyle: 'hidden', // TODO
+    webPreferences: {}
+  };
+
+  /*
+  for (const [k, v] of params) {
+    switch(k) {
+      case 'height':
+        break;
+      case 'width':
+        break;
+      default:
+        console.log('unsupported window.open feature', k, v);
+    }
+  }
+  */
+
+  const isPrivileged = details.url.startsWith(APP_PROTOCOL);
+  if (isPrivileged) {
+    overrides.webPreferences.preload = preloadPath;
+  }
+
+  app.on('browser-window-created', (e, bw) => {
+    /*
+    // not firing now, wtf
+    bw.webContents.on('did-create-window', (w, d) => {
+      console.log('frameName', d.frameName);
+      */
+      bw.webContents.on('did-finish-load', () => {
+        const url = bw.webContents.getURL();
+        if (url == details.url) {
+          winDevtoolsConfig(bw);
+        }
+      });
+    //});
+  });
+
+  return {
+    action: 'allow',
+    overrideBrowserWindowOptions: overrides
+  };
+
+};
+
+const winDevtoolsConfig = w => {
+  // TODO: make detach mode configurable
+  // really want to get so individual app windows can easily control this
+  // for themselves
+  w.webContents.openDevTools({ mode: 'detach' });
+  //win.webContents.openDevTools();
+
+  // when devtools completely open
+  w.webContents.on('devtools-opened', () => {
+    // if window is visible, focus content window
+    if (w.isVisible()) {
+      w.webContents.focus();
+    }
+    // otherwise force devtools focus
+    // (for some reason doesn't focus when no visible window...)
+    else {
+      app.focus();
+    }
+  });
 };
 
 // window closer

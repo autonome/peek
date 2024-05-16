@@ -1,24 +1,19 @@
-import { id, labels, schemas, ui, defaults } from './config.js';
-import { log as l, openStore } from "../utils.js";
+import { id, labels, schemas, storageKeys, defaults } from './config.js';
+import { log as l, openStore } from "./utils.js";
 
-const log = function(...args) { l(labels.name, args); };
-
-log('background');
+console.log('commands');
 
 const debug = window.app.debug;
-const store = openStore(id);
-const api = window.app;
+const clear = false;
 
-const storageKeys = {
-  PREFS: 'prefs',
-  ITEMS: 'items',
-};
+const store = openStore(id, defaults, clear /* clear storage */);
+const api = window.app;
 
 let commands = {};
 
 function onCommandsUpdated () {
   window.dispatchEvent(new CustomEvent('cmd-update-commands', { detail: commands }));
-  log('main sending updated commands out', Object.keys(commands))
+  console.log('main sending updated commands out', Object.keys(commands))
 }
 
 window.addEventListener('DOMContentLoaded', initializeCommandSources);
@@ -40,7 +35,7 @@ function addCommand(command) {
 }
 
 function initializeCommandSources() {
-  log('initializeCommandSources');
+  console.log('initializeCommandSources');
 
   sourceOpenURL();
   //sourceBookmarklets();
@@ -66,6 +61,10 @@ const sourceOpenURL = () => {
       parts.shift();
 
       const address = parts.shift();
+
+      if (!address) {
+        return;
+      }
 
       const height = 600;
       const width = 800;

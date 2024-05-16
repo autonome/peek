@@ -103,14 +103,10 @@ const init = () => {
   features().forEach(initFeature);
   //features.forEach(initIframeFeature);
   
-  const startupFeatureTitle = p.startupFeature;
-
-  const startupFeature = features().find(f => f.name = startupFeatureTitle);
-
   // Listen for system- or feature-level requests to open windows.
   window.app.subscribe('open', msg => {
-    // on app start (if configured) and from the tray icon.
-    if (msg.address && msg.address == 'peek://core/settings') {
+    // eg from the tray icon.
+    if (msg.address && msg.address == settingsAddress) {
       openSettingsWindow(p);
     }
   });
@@ -119,7 +115,7 @@ const init = () => {
   window.app.publish(topicCorePrefs, {
     id: id,
     prefs: p
-  });
+  }, window.app.scopes.SYSTEM);
 
   // feature enable/disable
   window.app.subscribe(topicFeatureToggle, msg => {
@@ -141,6 +137,10 @@ const init = () => {
       console.log('feature toggle - no feature found for', f.name);
     }
   });
+
+  if (p.startupFeature == settingsAddress) {
+    openSettingsWindow(p);
+  }
 };
 
 window.addEventListener('load', init);

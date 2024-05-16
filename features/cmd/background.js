@@ -1,7 +1,7 @@
 // cmd/background.js
 
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { log as l, openStore } from "../utils.js";
+import { log as l, openStore } from "./utils.js";
 
 const log = function(...args) { l(labels.name, args); };
 
@@ -27,7 +27,8 @@ const openInputWindow = prefs => {
     width
   };
 
-  api.openWindow(params);
+  const features = Object.keys(params).map(k => `${k}=${params[k]}`).join(',');
+  window.open(address, null, features);
 };
 
 const openSettingsWindow = (prefs) => {

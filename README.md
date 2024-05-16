@@ -81,18 +81,43 @@ Escape navigation model
 
 ## Architecture / Implementation
 
-Peek is designed to be modular and configurable around the idea that parts of it can run in different environments.
+Peek is designed to be modular and configurable around the idea that parts of it
+can run in different environments.
 
 For example:
 - Definitely planning on a mobile app which syncs and runs your peeks/slides/scripts
 - I'd like to have a decentralized compute option for running your scripts outside of your clients and syncing the data
 - Want cloud storage for all config and data, esp infinite history, so can do fun things with it
 
+### "features" == privileged web apps
+
+The core features are web apps loaded over a custom protocol:
+- currently with a scheme of `peek`
+- access to a few special apis noted in the next section
+
+### Peek API
+
+Initially the prototype was all Electron. But that's not interesting, and doesn't
+really tell us anything about constraints of the web itself.
+
+So instead I asked this question: What's the minimum capability set that a web app would
+need to build the features I need?
+
+The answer, so far, is giving `peek` apps the following APIs:
+
+- window open/close
+- global hotkey registration
+- pubsub messaging
+
+Custom window api might be able to away entirely, by passing window.open features, working on that.
+
 ### Desktop App
 
 Proof of concept is Electron. By far the best option today for cross-platform desktop apps which need a web rendering engine. There's really nothing else remotely suited (yet).
 
-The user interface is just Tweakpane panels and modal chromeless web pages rn.
+User interface:
+- the built-in features are all modal chromeless web pages at this point
+- settings "apps" are [lil-gui](https://github.com/georgealways/lil-gui) panels
 
 TODO
 - Need to look at whether could library-ize some of what Agregore implemented for non-HTTP protocol support.
@@ -222,7 +247,12 @@ Windows/system
 - [x] window cache - evaluate key approach (use-case: apps need to identify windows they open)
 - [x] always return window id, so apps can manage it
 - [x] reimplement keys, so much easier for callers than managing ids
-- [ ] account for number of renderer processes (seems double?)
+- [x] account for number of renderer processes (seems double?)
+
+redo window system to be more webby
+- [x] prototype window.open
+- [x] evaluate webContents.setWindowOpenHandler
+- [ ] collapse all window opening to span both approaches
 
 Feature lifecycle (un/install and reloads)
 - [x] feature unload/reload - init/uninit whole feature and window
@@ -232,7 +262,7 @@ Feature lifecycle (un/install and reloads)
 Feature re-init/reload when toggled
 - [x] main: track shortcuts by source, remove when unloaded
 - [x] main: track window sources
-- [ ] main: close child windows when (before) closing source window
+- [x] main: close child windows when (before) closing source window
 
 Shortcut lifecycle
 - [x] main process should handle multiple registrations correctly
@@ -240,9 +270,9 @@ Shortcut lifecycle
 - [x] unreg shortcuts on unload
 
 Features clean themselves up for lifecycle events
-- [ ] actually load/unload peeks when enabled/disabled
-- [ ] actually load/unload slides when enabled/disabled
-- [ ] actually load/unload scripts when enabled/disabled
+- [ ] load/unload peeks when enabled/disabled
+- [ ] load/unload slides when enabled/disabled
+- [ ] load/unload scripts when enabled/disabled
 
 Peeks/Slides
 - [x] only register shortcut and create window if a URL is configured
@@ -250,13 +280,13 @@ Peeks/Slides
 - [ ] unreg/closure on feature enable/disable
 
 Cmd
-- [ ] fix it
+- [x] fix it
 - [ ] app-scoped multi-window
 
 Settings
 - [x] fix window size
 - [x] transparency
-- [ ] core settings re-render on feature toggle?
+- [ ] core settings re-render on feature toggle, eg feature-settings link enabled
 - [ ] default position (size to screen)
 
 Daily driver blockers

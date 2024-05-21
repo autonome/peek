@@ -1,7 +1,7 @@
 // slides/slides.js
 
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { log as l, openStore, flattenObj } from "../utils.js";
+import { openStore, flattenObj } from "../utils.js";
 
 console.log('background', labels.name);
 

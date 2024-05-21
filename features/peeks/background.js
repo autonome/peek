@@ -1,11 +1,9 @@
 // peeks/background.js
 
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { log as l, openStore } from "../utils.js";
+import { openStore, flattenObj } from "../utils.js";
 
-const log = function(...args) { l(labels.name, args); };
-
-log('background', labels.name);
+console.log('background', labels.name);
 
 const debug = window.app.debug;
 const clear = false;
@@ -25,12 +23,11 @@ const executeItem = (item) => {
 
     // peek
     feature: labels.name,
-    singleton: true,
     keepLive: item.keepLive || false,
     persistState: item.persistState || false
   };
 
-  api.openWindow(params);
+  window.open(item.address, null, flattenObj(params));
 };
 
 const initItems = (prefs, items) => {

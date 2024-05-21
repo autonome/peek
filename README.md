@@ -252,7 +252,12 @@ Windows/system
 redo window system to be more webby
 - [x] prototype window.open
 - [x] evaluate webContents.setWindowOpenHandler
-- [ ] collapse all window opening to span both approaches
+- [x] stop using openWindow to show pre-existing hidden windows?
+  - [x] can track web windows locally
+  - [x] can identify web windows on both sides (key/name)
+  - [x] add new custom api for windows superpowers
+- [x] collapse window opening to span both approaches
+- [x] finish converting all openWindow to window.open
 
 Feature lifecycle (un/install and reloads)
 - [x] feature unload/reload - init/uninit whole feature and window
@@ -269,19 +274,26 @@ Shortcut lifecycle
 - [x] send/track feature id/origin w/ each registration
 - [x] unreg shortcuts on unload
 
+Window features
+- [ ] add back in window features to window.open
+  - [ ] keep windows alive
+- [ ] enable global window resize
+- [ ] add draggable as pref
+
 Features clean themselves up for lifecycle events
+- [ ] determine if new web-native windowing approach resolves this
 - [ ] load/unload peeks when enabled/disabled
 - [ ] load/unload slides when enabled/disabled
 - [ ] load/unload scripts when enabled/disabled
 
 Peeks/Slides
 - [x] only register shortcut and create window if a URL is configured
-- [ ] unreg/closure on peek/slide unconfigure
-- [ ] unreg/closure on feature enable/disable
+- [ ] unreg shortcuts and close windows on peek un/configure
+- [ ] unreg shortcuts and close windows on slides un/configure
 
 Cmd
 - [x] fix it
-- [ ] app-scoped multi-window
+- [ ] app-scoped multi-window pages open
 
 Settings
 - [x] fix window size

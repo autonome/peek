@@ -19,18 +19,10 @@ const APP_PROTOCOL = `${APP_SCHEME}:`;
 
 const sourceAddress = window.location.toString();
 
-const log = (source, text) => {
-  ipcRenderer.send('console', {
-    source,
-    text
-  });
-};
-
 const rndm = () => Math.random().toString(16).slice(2);
 
 let api = {};
 
-api.log = log;
 api.debug = DEBUG;
 api.debugLevels = DEBUG_LEVELS;
 api.debugLevel = DEBUG_LEVEL;
@@ -151,6 +143,17 @@ api.subscribe = (topic, callback, scope = api.scopes.SELF) => {
   });
 };
 
+api.modifyWindow = (winName, params) => {
+  console.log('modifyWindow(): window', winName, params);
+  //w.name = `${sourceAddress}:${rndm()}`;
+  console.log('NAME', winName);
+  ipcRenderer.send('modifywindow', {
+    source: sourceAddress,
+    name: winName,
+    params
+  });
+};
+
 // unused
 /*
 api.sendToWindow = (windowId, msg) => {
@@ -187,7 +190,6 @@ contextBridge.exposeInMainWorld('app', api);
 /*
 window.addEventListener('load', () => {
   console.log('preload loaded');
-  log(src, 'preload loaded');
 });
 */
 

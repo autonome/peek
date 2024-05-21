@@ -26,6 +26,11 @@ h1 {
 }
 */
 
+.houseofpane {
+  background-color: black;
+  padding-top: 20px;
+}
+
 /* lil-gui */
 .houseofpane > div {
   min-width: 380px;

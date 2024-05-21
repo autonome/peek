@@ -1,7 +1,5 @@
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { log as l, openStore, flattenObj } from "./utils.js";
-
-const log = function(...args) { l(labels.name, args); };
+import { openStore, flattenObj } from "./utils.js";
 
 console.log('background', labels.name);
 
@@ -50,16 +48,19 @@ const initFeature = f => {
   const params = {
     debug,
     address: f.start_url,
+    key: f.start_url,
     keepLive: true,
     show: false
   };
 
-  window.app.openWindow(params, r => {
-    console.log(`initFeature(): win opened for ${f.name}`, r)
-    windows.set(f.id, r.id);
-  });
+  const w = window.open(f.start_url, null, flattenObj(params));
 
-  console.log('window opened');
+  window.app.subscribe('onWindowOpened', msg => {
+    if (msg.url == f.start_url) {
+      console.log(`initFeature(): win opened for ${f.name}`, r)
+      windows.set(w, params);
+    }
+  });
 };
 
 const uninitFeature = f => {
@@ -98,11 +99,12 @@ const init = () => {
 
   console.log('prefs', p);
 
-  initSettingsShortcut(p);
+  // main process uses these for initialization
+  window.app.publish(topicCorePrefs, {
+    id: id,
+    prefs: p
+  }, window.app.scopes.SYSTEM);
 
-  features().forEach(initFeature);
-  //features.forEach(initIframeFeature);
-  
   // Listen for system- or feature-level requests to open windows.
   window.app.subscribe('open', msg => {
     // eg from the tray icon.
@@ -111,11 +113,9 @@ const init = () => {
     }
   });
 
-  // main process uses these for initialization
-  window.app.publish(topicCorePrefs, {
-    id: id,
-    prefs: p
-  }, window.app.scopes.SYSTEM);
+  if (p.startupFeature == settingsAddress) {
+    openSettingsWindow(p);
+  }
 
   // feature enable/disable
   window.app.subscribe(topicFeatureToggle, msg => {
@@ -138,9 +138,34 @@ const init = () => {
     }
   });
 
-  if (p.startupFeature == settingsAddress) {
-    openSettingsWindow(p);
-  }
+  initSettingsShortcut(p);
+
+  features().forEach(initFeature);
+
+  //features.forEach(initIframeFeature);
+
+  /*
+  const addy = 'http://localhost';
+  const params = {
+    debug,
+    address: addy,
+    key: addy,
+    height: 300,
+    width: 300
+  };
+
+  const w = window.open(
+    addy,
+    params.key,
+    flattenObj(params)
+  );
+
+  window.app.subscribe('onWindowOpened', msg => {
+    api.modifyWindow(params.key, {
+      hide: true
+    });
+  });
+  */
 };
 
 window.addEventListener('load', init);
@@ -153,15 +178,15 @@ const onStorageChange = (e) => {
   const now = JSON.parse(e.newValue);
 
   const featureKey = `${id}+${storageKeys.FEATURES}`;
-  //log('onStorageChane', e.key, featureKey)
+  //console.log('onStorageChane', e.key, featureKey)
   if (e.key == featureKey) {
-    //log('STORAGE CHANGE', e.key, old[0].enabled, now[0].enabled);
+    //console.log('STORAGE CHANGE', e.key, old[0].enabled, now[0].enabled);
     features().forEach((feat, i) => {
-      log(feat.title, i, feat.enabled, old[i].enabled, now[i].enabled);
+      console.log(feat.title, i, feat.enabled, old[i].enabled, now[i].enabled);
       // disabled, so unload
       if (old[i].enabled == true && now[i].enabled == false) {
         // TODO
-        log('TODO: add unloading of features', feat)
+        console.log('TODO: add unloading of features', feat)
       }
       // enabled, so load
       else if (old[i].enabled == false && now[i].enabled == true) {

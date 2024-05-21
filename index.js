@@ -184,7 +184,7 @@ const pubsub = (() => {
   const topics = new Map();
 
   const scopeCheck = (pubSource, subSource, scope) => {
-    console.log('scopeCheck', subSource, pubSource, scope);
+    //console.log('scopeCheck', subSource, pubSource, scope);
     if (subSource == systemAddress) {
       return true
     }
@@ -207,7 +207,7 @@ const pubsub = (() => {
 
         for (const [subSource, cb] of t) {
           if (scopeCheck(source, subSource, scope)) {
-            console.log('FOUND ONE!', subSource);
+            //console.log('FOUND ONE!', subSource);
             cb(msg);
           }
         };
@@ -341,15 +341,20 @@ const onReady = () => {
   });
 
   // init web core
-  const coreWin = openWindow({
-    source: webCoreAddress,
-    address: webCoreAddress,
-    show: false,
-    keepLive: true,
-    debug: DEBUG
-  })
+  const winPrefs = {
+    show: false, //DEBUG,
+    webPreferences: {
+      preload: preloadPath
+    }
+  };
 
-  // eh, for helpers really
+  const win = new BrowserWindow(winPrefs);
+  win.loadURL(webCoreAddress);
+  winDevtoolsConfig(win);
+  win.webContents.setWindowOpenHandler(d => {
+    return winOpenHandler(webCoreAddress, d);
+  });
+
   // TODO: this should be pref'd
   registerShortcut(strings.defaults.quitShortcut, onQuit);
 };
@@ -415,6 +420,32 @@ ipcMain.on(strings.msgs.console, (ev, msg) => {
   console.log('r:', msg.source, msg.text);
 });
 
+ipcMain.on('modifywindow', (ev, msg) => {
+  console.log('modifywindow', msg);
+
+  const key = msg.hasOwnProperty('name') ? msg.name : null;
+  if (key != null) {
+    for (const [id, w] of windows) {
+      console.log('win?', w.source, msg.source, w.params.key, key);
+      if (w.source == msg.source && w.params.key == key) {
+        console.log('FOUND WINDOW FOR KEY', key);
+        const bw = BrowserWindow.fromId(id);
+        modWindow(bw, msg.params);
+      }
+    }
+  }
+
+});
+
+const modWindow = (bw, params) => {
+  if (params.show == true) {
+    bw.show();
+  }
+  else if (params.hide == true) {
+    bw.hide();
+  }
+};
+
 // ***** Helpers *****
 
 const registerShortcut = (shortcut, callback) => {
@@ -466,8 +497,8 @@ const unregisterShortcutsForAddress = (aAddress) => {
 };
 
 // window opener
-const openWindow = (params, callback) => {
-  console.log('openWindow', params, callback != null);
+const oldopenWindow = (params, callback) => {
+  console.log('OPENWINDOW', params, callback != null);
 
   // if no source identifier, barf
   // TODO: test the protocol
@@ -544,18 +575,10 @@ const openWindow = (params, callback) => {
   else {
     console.log('openWindow(): creating new window');
 
-    const height = params.height || APP_DEF_HEIGHT;
-    const width = params.width || APP_DEF_WIDTH;
-
     let webPreferences = {};
 
-    // privileged app addresses get special powers
-    if (isPrivileged) {
-      console.log('APP ADDRESS', address);
-
-      // add preload
-      webPreferences.preload = preloadPath;
-    }
+    // add preload
+    webPreferences.preload = preloadPath;
 
     if (!params.persistState) {
       // TODO: hack. this just isolates.
@@ -563,8 +586,6 @@ const openWindow = (params, callback) => {
     }
 
     let winPrefs = {
-      height,
-      width,
       show,
       skipTaskbar: true, // TODO
       autoHideMenuBar: true, // TODO
@@ -572,11 +593,10 @@ const openWindow = (params, callback) => {
       webPreferences
     };
 
-    ['x', 'y'].forEach( k => {
-      if (params.hasOwnProperty(k)) {
-        winPrefs[k] = params[k];
-      }
-    });
+    smash(params, winPrefs, 'height', APP_DEF_HEIGHT);
+    smash(params, winPrefs, 'width', APP_DEF_WIDTH);
+    smash(params, winPrefs, 'x', null, true);
+    smash(params, winPrefs, 'y', null, true);
 
     if (winPrefs.x == undefined
       && winPrefs.y == undefined) {
@@ -595,8 +615,6 @@ const openWindow = (params, callback) => {
       // (maybe do this in preload?)
       //win.setSize(width,height)
       winPrefs.useContentSize = true;
-      //delete winPrefs.height;
-      //delete winPrefs.width;
     }
     // can't have both transparent and resizable
     // TODO: need reference and testing
@@ -622,21 +640,21 @@ const openWindow = (params, callback) => {
     // don't do this in detached debug mode, devtools steals focus
     // and closes everything 😐
     // TODO: fix
-    // TODO: should be configurable behavior
+    // TODO: should be opener-configurable param
     if (!DEBUG) {
       win.on('blur', () => {
-        console.log('openWindow.onBlur() for', address);
-        closeOrHideWindow(id);
+        console.log('openWindow.onBlur() for', params.address);
+        closeOrHideWindow(win.id);
       });
     }
-    
+
     // post actual close clean-up
     win.on('closed', () => {
-      console.log('openWindow.onClosed: deleting ', id, ' for ', address);
+      console.log('openWindow.onClosed: deleting ', win.id, ' for ', params.address);
 
       // unregister any shortcuts this window registered
       if (isPrivileged) {
-        unregisterShortcutsForAddress(address)
+        unregisterShortcutsForAddress(params.address)
         console.log('unregistered shortcuts');
       }
 
@@ -646,7 +664,7 @@ const openWindow = (params, callback) => {
       win = null;
     });
 
-    // tack all our shit on to windows opened by this window
+    // handle any new windows opened by this window
     win.webContents.setWindowOpenHandler(d => {
       return winOpenHandler(source, d);
     });
@@ -660,9 +678,10 @@ const openWindow = (params, callback) => {
     // esc handler 
     addEscHandler(win);
 
-    win.loadURL(address);
+    win.loadURL(params.address);
 
     // TODO: fix func-level callback handling and resp obj
+    // TODO: just throw it all out and do real content scripts
     if (params.script) {
       const script = params.script;
       const domEvent = script.domEvent || 'dom-ready';
@@ -689,9 +708,6 @@ const openWindow = (params, callback) => {
     callback(retval);
   }
 
-  //win.webContents.send('window', { type: labels.featureType, id: win.id});
-  //broadcastToWindows('window', { type: labels.featureType, id: win.id});
-
   return win;
 };
 
@@ -702,7 +718,7 @@ const addEscHandler = bw => {
   bw.webContents.on('before-input-event', (e, i) => {
     //console.log('BIE', i.type, i.key);
     if (i.key == 'Escape' && i.type == 'keyUp') {
-      console.log('openWindow.wc.BIE(): esc', i);
+      console.log('openWindow.wc.BIE(): esc');
       closeOrHideWindow(bw.id);
     }
   });
@@ -710,7 +726,7 @@ const addEscHandler = bw => {
 
 // configure windows opened by renderers
 const winOpenHandler = (source, details) => {
-  console.log('WINDOW.OPEN', source, details);
+  console.log('WINOPENHANDLER', source, details);
 
   /*
   // TODO: do something that allows popping out
@@ -725,6 +741,7 @@ const winOpenHandler = (source, details) => {
   details.features.split(',')
     .map(entry => entry.split('='))
     .forEach(entry => params[entry[0]] = entry[1]);
+
   console.log('params', params);
 
   const overrides = {
@@ -732,53 +749,90 @@ const winOpenHandler = (source, details) => {
     skipTaskbar: true, // TODO
     autoHideMenuBar: true, // TODO
     titleBarStyle: 'hidden', // TODO
-    webPreferences: {}
+    webPreferences: {
+      preload: preloadPath
+    }
   };
 
-  /*
-  // TODO: merge all param handling and add here
-  for (const [k, v] of params) {
-    switch(k) {
-      case 'height':
-        break;
-      case 'width':
-        break;
-      default:
-        console.log('unsupported window.open feature', k, v);
-    }
-  }
-  */
+  smash(params, overrides, 'show', null, true);
 
-  const isPrivileged = details.url.startsWith(APP_PROTOCOL);
-  if (isPrivileged) {
-    overrides.webPreferences.preload = preloadPath;
+  const key = params.hasOwnProperty('key') ? params.key : null;
+  if (key != null) {
+    windows.forEach((w) => {
+      if (w.source == source && w.params.key == key) {
+        console.log('WINDOW ALREADY EXISTS FOR KEY', key);
+        //id = w.id;
+      }
+    });
   }
 
-  app.on('browser-window-created', (e, bw) => {
-    /*
+  // TODO: unhack
+  const onBrowserWinCreated = (e, bw) => {
+    app.off('browser-window-created', onBrowserWinCreated);
+
     // not firing now, wtf
     bw.webContents.on('did-create-window', (w, d) => {
-      // could use frame name as key param?
-      console.log('frameName', d.frameName);
-      */
-      bw.webContents.on('did-finish-load', () => {
-        const url = bw.webContents.getURL();
-        if (url == details.url) {
-          addEscHandler(bw);
+      console.log('DID-CREATE-WINDOW', d);
+    });
 
-          winDevtoolsConfig(bw);
+    bw.webContents.on('did-finish-load', () => {
+      console.log('DID-FINISH-LOAD()');
 
-          // add to cache
-          windows.set(bw.id, {
-            id: bw.id,
-            source,
-            params
+      // TODO: unhack
+      const url = bw.webContents.getURL();
+      if (url == details.url) {
+        params.address = url;
+
+        addEscHandler(bw);
+
+        winDevtoolsConfig(bw);
+
+        // don't do this in detached debug mode, devtools steals focus
+        // and closes everything 😐
+        // TODO: fix
+        // TODO: should be opener-configurable param
+        if (!DEBUG) {
+          bw.on('blur', () => {
+            console.log('openWindow.onBlur() for', params.address);
+            closeOrHideWindow(bw.id);
           });
-
         }
-      });
-    //});
-  });
+        
+        // post actual close clean-up
+        bw.on('closed', () => {
+          console.log('openWindow.onClosed: deleting ', bw.id, ' for ', params.address);
+
+          // unregister any shortcuts this window registered
+          const isPrivileged = params.address.startsWith(APP_PROTOCOL);
+          if (isPrivileged) {
+            unregisterShortcutsForAddress(params.address)
+          }
+
+          // remove from cache
+          windows.delete(bw.id);
+
+          bw = null;
+        });
+
+        // add to cache
+        windows.set(bw.id, {
+          id: bw.id,
+          source,
+          params
+        });
+
+        // send synthetic msg to source, notifying window was opened
+        pubsub.publish(source, scopes.SELF, 'onWindowOpened', {
+          url,
+          key
+        });
+      }
+    });
+  };
+
+  app.on('browser-window-created', onBrowserWinCreated);
+
+  console.log('OVERRIDES', overrides);
 
   return {
     action: 'allow',
@@ -916,6 +970,18 @@ const onQuit = () => {
   // Close all persisent windows?
 
   app.quit();
+};
+
+const smash = (source, target, k, d, noset = false) => {
+  if (source.hasOwnProperty(k)) {
+    target[k] = source[k];
+  }
+  else if (noset) {
+    /* no op */
+  }
+  else {
+    target[k] = d;
+  }
 };
 
 })();

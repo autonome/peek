@@ -1,5 +1,5 @@
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { log as l, openStore } from "./utils.js";
+import { openStore, flattenObj } from "./utils.js";
 
 console.log('commands');
 
@@ -66,20 +66,14 @@ const sourceOpenURL = () => {
         return;
       }
 
-      const height = 600;
-      const width = 800;
-
       const params = {
-        feature: labels.name,
-        address,
-        height,
-        width
+        address
       };
 
-      window.app.openWindow(params);
+      window.open(address, '_blank', flattenObj(params));
 
       return {
-        command: 'openWebWindow',
+        command: 'open',
         address
       };
     }

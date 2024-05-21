@@ -1,11 +1,9 @@
 // scripts/background.js
 
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { log as l, openStore } from "../utils.js";
+import { , openStore } from "../utils.js";
 
-const log = function(...args) { l(labels.name, args); };
-
-log('background', labels.name);
+console.log('background', labels.name);
 
 const debug = window.app.debug;
 const clear = false;
@@ -25,7 +23,6 @@ const executeItem = (script, cb) => {
   `;
 
   const params = {
-    feature: labels.name,
     address: script.address,
     show: false,
     script: {
@@ -35,7 +32,7 @@ const executeItem = (script, cb) => {
     }
   };
 
-  api.openWindow(params, cb);
+  window.open(script.address, null, flattenObj(params));
 };
 
 const initItems = (prefs, items) => {
@@ -51,12 +48,12 @@ const initItems = (prefs, items) => {
       const interval = setInterval(() => { 
         const r = executeItem(item, res => {
 
-          log('script result for', item.title, JSON.stringify(res));
-          log('script prev val', item.previousValue);
+          console.log('script result for', item.title, JSON.stringify(res));
+          console.log('script prev val', item.previousValue);
 
           if (item.previousValue != res) {
 
-            log('result changed!', item.title, item.previousValue, res);
+            console.log('result changed!', item.title, item.previousValue, res);
             // TODO: figure this out - it blows away all timers, which isn't great
             //
             // update stored value

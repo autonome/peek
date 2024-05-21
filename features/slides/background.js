@@ -1,7 +1,7 @@
 // slides/slides.js
 
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { log as l, openStore } from "../utils.js";
+import { openStore, flattenObj } from "../utils.js";
 
 console.log('background', labels.name);
 
@@ -12,10 +12,10 @@ const store = openStore(id, defaults, clear /* clear storage */);
 const api = window.app;
 
 const executeItem = (item) => {
-  let height = item.height || 600;
-  let width = item.width || 800;
+  const height = item.height || 600;
+  const width = item.width || 800;
 
-  const size = {
+  const screen = {
     height: window.screen.height,
     width: window.screen.width
   };
@@ -25,7 +25,7 @@ const executeItem = (item) => {
   switch(item.screenEdge) {
     case 'Up':
       // horizontally center
-      x = (size.width - width) / 2;
+      x = (screen.width - width) / 2;
 
       // y starts at screen top and stays there
       y = 0;
@@ -35,14 +35,14 @@ const executeItem = (item) => {
       break;
     case 'Down':
       // horizonally center
-      x = (size.width - item.width) / 2;
+      x = (screen.width - item.width) / 2;
 
       // y ends up at window height from bottom
       //
-      // eg: y = size.height - item.height;
+      // eg: y = screen.height - item.height;
       //
       // but starts at screen bottom
-      y = size.height;
+      y = screen.height;
 
       //width = item.width;
       //height = 1;
@@ -53,7 +53,7 @@ const executeItem = (item) => {
       x = 0;
 
       // vertically center
-      y = (size.height - item.height) / 2;
+      y = (screen.height - item.height) / 2;
 
       //width = 1;
       //height = item.height;
@@ -61,13 +61,13 @@ const executeItem = (item) => {
     case 'Right':
       // x ends at at right screen edge - window size
       //
-      // eg: x = size.width - item.width;
+      // eg: x = screen.width - item.width;
       //
       // but starts at screen right edge, will animate in 
-      x = size.width;
+      x = screen.width;
 
       // vertically center
-      y = (size.height - item.height) / 2;
+      y = (screen.height - item.height) / 2;
 
       //width = 1;
       //height = item.height;
@@ -97,7 +97,7 @@ const executeItem = (item) => {
     y,
   };
 
-  api.openWindow(params);
+  window.open(item.address, null, flattenObj(params));
 };
 
 const initItems = (prefs, items) => {

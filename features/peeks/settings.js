@@ -1,10 +1,8 @@
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { log as l, openStore, addToGUI } from "../utils.js";
+import { openStore, addToGUI } from "../utils.js";
 import GUI from './../../node_modules/lil-gui/dist/lil-gui.esm.min.js';
 
-const log = function(...args) { l(labels.name, args); };
-
-log('loading', labels.name, 'settings');
+console.log('loading', labels.name, 'settings');
 
 const debug = window.app.debug;
 const clear = false;

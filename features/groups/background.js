@@ -1,11 +1,9 @@
 // groups/background.js
 
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { log as l, openStore } from "../utils.js";
+import { openStore, flattenObj } from "../utils.js";
 
-const log = function(...args) { l(labels.name, args); };
-
-log('background', labels.name);
+console.log('background', labels.name);
 
 const debug = window.app.debug;
 const clear = false;
@@ -26,7 +24,7 @@ const openGroupsWindow = () => {
     width
   };
 
-  api.openWindow(params);
+  window.open(address, null, flattenObj(params));
 };
 
 const initShortcut = shortcut => {
@@ -48,7 +46,7 @@ const initItems = (prefs, items) => {
 };
 
 const init = () => {
-  log('init');
+  console.log('init');
 
   const prefs = () => store.get(storageKeys.PREFS);
 

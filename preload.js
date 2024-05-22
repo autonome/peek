@@ -138,8 +138,14 @@ api.subscribe = (topic, callback, scope = api.scopes.SELF) => {
   });
 
   ipcRenderer.on(replyTopic, (ev, msg) => {
+    console.log('topic', topic, msg);
     msg.source = sourceAddress;
-    callback(msg);
+    try {
+      callback(msg);
+    }
+    catch(ex) {
+      console.log('preload:subscribe subscriber callback errored for topic', topic, 'and source', sourceAddress, ex);
+    }
   });
 };
 

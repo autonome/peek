@@ -57,7 +57,7 @@ const initFeature = f => {
 
   window.app.subscribe('onWindowOpened', msg => {
     if (msg.url == f.start_url) {
-      console.log(`initFeature(): win opened for ${f.name}`, r)
+      console.log(`initFeature(): win opened for ${f.name}`, );
       windows.set(w, params);
     }
   });

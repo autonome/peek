@@ -77,8 +77,13 @@ const addToGUI = (gui, label, value, disabled = false, step = null, max = null) 
 
 const flattenObj = o => Object.keys(o).map(k => `${k}=${o[k]}`).join(',');
 
+const openWindow = (address, params) => {
+  const target = params.hasOwnProperty('key') ? params.key : '_blank';
+  return window.open(address, target, flattenObj(params));
+};
+
 export {
   openStore,
   addToGUI,
-  flattenObj
+  openWindow
 };

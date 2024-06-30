@@ -1,7 +1,7 @@
 // cmd/background.js
 
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { openStore, flattenObj } from "./utils.js";
+import { openStore, openWindow } from "./utils.js";
 
 console.log('background', labels.name);
 
@@ -26,8 +26,7 @@ const openInputWindow = prefs => {
     width
   };
 
-  const features = flattenObj(params);
-  window.open(address, null, features);
+  openWindow(address, params);
 };
 
 const openSettingsWindow = (prefs) => {
@@ -40,7 +39,7 @@ const openSettingsWindow = (prefs) => {
     transparent: true
   };
 
-  window.open(settingsAddress, null, flattenObj(params));
+  window.open(settingsAddress, params);
 };
 
 const initShortcut = (prefs) => {

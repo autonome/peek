@@ -1,5 +1,5 @@
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { openStore, flattenObj } from "./utils.js";
+import { openStore, openWindow } from "./utils.js";
 
 console.log('background', labels.name);
 
@@ -17,6 +17,7 @@ const topicCorePrefs = 'topic:core:prefs';
 const topicFeatureToggle = 'core:feature:toggle';
 
 const openSettingsWindow = (prefs) => {
+  console.log('openSettingsWindow()');
   const height = prefs.height || 600;
   const width = prefs.width || 380;
 
@@ -29,7 +30,9 @@ const openSettingsWindow = (prefs) => {
     width
   };
 
-  window.open(settingsAddress, null, flattenObj(params));
+  console.log('opening settings window', params);
+  const w = openWindow(settingsAddress, params);
+  console.log('opened settings window', w);
 };
 
 const initSettingsShortcut = (prefs) => {
@@ -53,14 +56,8 @@ const initFeature = f => {
     show: false
   };
 
-  const w = window.open(f.start_url, null, flattenObj(params));
-
-  window.app.subscribe('onWindowOpened', msg => {
-    if (msg.url == f.start_url) {
-      console.log(`initFeature(): win opened for ${f.name}`, );
-      windows.set(w, params);
-    }
-  });
+  const w = openWindow(f.start_url, params);
+  windows.set(w, params);
 };
 
 const uninitFeature = f => {
@@ -154,11 +151,7 @@ const init = () => {
     width: 300
   };
 
-  const w = window.open(
-    addy,
-    params.key,
-    flattenObj(params)
-  );
+  const w = openWindow(addy, params);
 
   window.app.subscribe('onWindowOpened', msg => {
     api.modifyWindow(params.key, {

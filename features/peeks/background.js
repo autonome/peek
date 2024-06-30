@@ -1,7 +1,7 @@
 // peeks/background.js
 
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { openStore, flattenObj } from "../utils.js";
+import { openStore, openWindow } from "../utils.js";
 
 console.log('background', labels.name);
 
@@ -27,7 +27,7 @@ const executeItem = (item) => {
     persistState: item.persistState || false
   };
 
-  window.open(item.address, null, flattenObj(params));
+  window.open(item.address, params);
 };
 
 const initItems = (prefs, items) => {

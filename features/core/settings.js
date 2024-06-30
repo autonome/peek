@@ -1,5 +1,5 @@
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { openStore, addToGUI, flattenObj } from "../utils.js";
+import { openStore, addToGUI, openWindow} from "../utils.js";
 import GUI from './../../node_modules/lil-gui/dist/lil-gui.esm.min.js';
 
 const DEBUG = window.app.debug;
@@ -82,7 +82,7 @@ const openSettingsAddress = (title, address) => {
     transparent: true
   };
 
-  window.open(address, null, flattenObj(params));
+  window.open(address, params);
 }
 
 window.addEventListener('load', init);

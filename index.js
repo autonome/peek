@@ -350,8 +350,11 @@ const onReady = () => {
 
   const win = new BrowserWindow(winPrefs);
   win.loadURL(webCoreAddress);
+
   winDevtoolsConfig(win);
+
   win.webContents.setWindowOpenHandler(d => {
+    //console.log('CORE BG WINOPENHANDLER', d);
     return winOpenHandler(webCoreAddress, d);
   });
 
@@ -740,6 +743,11 @@ const winOpenHandler = (source, details) => {
   const params = {};
   details.features.split(',')
     .map(entry => entry.split('='))
+    // TODO: ugh
+    .map(entry => {
+      entry[1] = (entry[1] === 'false') ? false : true;
+      return entry;
+    })
     .forEach(entry => params[entry[0]] = entry[1]);
 
   console.log('params', params);
@@ -768,19 +776,26 @@ const winOpenHandler = (source, details) => {
 
   // TODO: unhack
   const onBrowserWinCreated = (e, bw) => {
+    console.log('onBrowserWinCreaetd');
     app.off('browser-window-created', onBrowserWinCreated);
 
-    // not firing now, wtf
+    /* not firing now, wtf
     bw.webContents.on('did-create-window', (w, d) => {
       console.log('DID-CREATE-WINDOW', d);
     });
+    */
 
-    bw.webContents.on('did-finish-load', () => {
+    const didFinishLoad = () => {
       console.log('DID-FINISH-LOAD()');
 
       // TODO: unhack
       const url = bw.webContents.getURL();
+
+      console.log('dFL(): url', url, details.url);
+
       if (url == details.url) {
+        bw.webContents.off('did-finish-load', didFinishLoad);
+
         params.address = url;
 
         addEscHandler(bw);
@@ -827,7 +842,9 @@ const winOpenHandler = (source, details) => {
           key
         });
       }
-    });
+    };
+
+    bw.webContents.on('did-finish-load', didFinishLoad);
   };
 
   app.on('browser-window-created', onBrowserWinCreated);

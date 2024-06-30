@@ -276,7 +276,8 @@ Shortcut lifecycle
 
 Window features
 - [ ] add back in window features to window.open
-  - [ ] keep windows alive
+  - [x] show/hide (keep alive)
+  - [x] transparent
 - [ ] enable global window resize
 - [ ] add draggable as pref
 
@@ -307,6 +308,9 @@ Daily driver blockers
 - [x] fix ESC not working in web content
 - [x] fix ESC not working right over lil-gui
 
+Dev stuff
+- [x] figure out single devtools window if possible
+
 Deployment
 - [ ] app updates
 - [ ] icons
@@ -318,6 +322,9 @@ Demo scenario
 - [ ] Scripts: eth price, weather change
 
 ### v0.2 - extensibility / remember shit
+
+Backburner wishlist
+- [ ] window switching order algo
 
 DX papercuts
 - [ ] why crashing on reload main
@@ -343,9 +350,6 @@ Focus vs not focused app mode
 - [ ] app focus detection in shortcuts
 - [ ] separate global shortcuts from app shortcuts (eg quit)
 - [ ] all-window show/hide when doing global shortcuts while app unfocused
-
-Dev niceties
-- [ ] figure out single devtools window if possible
 
 Install/load/address features
 - [x] built-in feature loading from origin not file

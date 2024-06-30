@@ -1,7 +1,7 @@
 // scripts/background.js
 
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { , openStore } from "../utils.js";
+import { openStore, openWindow } from "../utils.js";
 
 console.log('background', labels.name);
 
@@ -32,7 +32,7 @@ const executeItem = (script, cb) => {
     }
   };
 
-  window.open(script.address, null, flattenObj(params));
+  window.open(script.address, params);
 };
 
 const initItems = (prefs, items) => {

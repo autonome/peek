@@ -53,30 +53,6 @@ api.shortcuts = {
   }
 };
 
-/*
-api.openWindow = (params, callback) => {
-  console.log(src, ['api.openwindow', JSON.stringify(params), 'for', window.location].join(', '));
-
-  // TODO: won't work for features that open multiple windows
-  const replyTopic = `${params.feature}${params.address}`;
-
-  // add source address to params
-  params.source = sourceAddress;
-
-  ipcRenderer.send('openwindow', {
-    params,
-    replyTopic
-  });
-
-  ipcRenderer.once(replyTopic, (ev, msg) => {
-    console.log(src, 'api.openwindow', 'resp from main', msg);
-    if (callback) {
-      callback(msg);
-    }
-  });
-};
-*/
-
 api.closeWindow = (id, callback) => {
   console.log(src, ['api.closewindow', id, 'for', window.location].join(', '));
 

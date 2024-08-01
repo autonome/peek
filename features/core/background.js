@@ -16,8 +16,19 @@ const settingsAddress = 'peek://core/settings.html';
 const topicCorePrefs = 'topic:core:prefs';
 const topicFeatureToggle = 'core:feature:toggle';
 
+let _settingsWin = null;
+
 const openSettingsWindow = (prefs) => {
   console.log('openSettingsWindow()');
+
+  // TODO: fuck, have to call main process to do this
+  if (_settingsWin) {
+    console.log('win exists, focusing');
+    _settingsWin.focus();
+    console.log('focused');
+    return;
+  }
+
   const height = prefs.height || 600;
   const width = prefs.width || 380;
 
@@ -31,9 +42,8 @@ const openSettingsWindow = (prefs) => {
   };
 
   console.log('opening settings window', params);
-  const w = openWindow(settingsAddress, params);
-  //w.focus();
-  console.log('opened settings window', w);
+  _settingsWin = openWindow(settingsAddress, params);
+  console.log('opened settings window', _settingsWin);
 };
 
 const initSettingsShortcut = (prefs) => {

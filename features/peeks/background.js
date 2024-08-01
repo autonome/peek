@@ -46,7 +46,7 @@ const initItems = (prefs, items) => {
 };
 
 const init = () => {
-  log('init');
+  console.log('init');
 
   const prefs = () => store.get(storageKeys.PREFS);
   const items = () => store.get(storageKeys.ITEMS);

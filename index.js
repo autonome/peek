@@ -160,7 +160,7 @@ app.on('activate', () => {
 // ***** Caches *****
 
 // keyed on window id
-const windows = new Map();
+const _windows = new Map();
 
 // keyed on source address
 const shortcuts = new Map();
@@ -428,7 +428,7 @@ ipcMain.on('modifywindow', (ev, msg) => {
 
   const key = msg.hasOwnProperty('name') ? msg.name : null;
   if (key != null) {
-    for (const [id, w] of windows) {
+    for (const [id, w] of _windows) {
       console.log('win?', w.source, msg.source, w.params.key, key);
       if (w.source == msg.source && w.params.key == key) {
         console.log('FOUND WINDOW FOR KEY', key);
@@ -543,11 +543,11 @@ const oldopenWindow = (params, callback) => {
 
   // get window id if exists
   let id = null;
-  if (params.id && windows.has(params.id)) {
+  if (params.id && _windows.has(params.id)) {
     id = params.id;
   }
   else if (key != null) {
-    windows.forEach((w) => {
+    _windows.forEach((w) => {
       if (w.source == source && w.params.key == key) {
         id = w.id;
       }
@@ -563,7 +563,7 @@ const oldopenWindow = (params, callback) => {
     console.log('REUSING WINDOW for ', address);
     retval.id = id;
 
-    const entry = windows.get(id);
+    const entry = _windows.get(id);
 
     win = BrowserWindow.fromId(entry.id);
 
@@ -634,7 +634,7 @@ const oldopenWindow = (params, callback) => {
     id = win.id;
 
     // add to cache
-    windows.set(win.id, {
+    _windows.set(win.id, {
       id: win.id,
       source,
       params
@@ -662,13 +662,14 @@ const oldopenWindow = (params, callback) => {
       }
 
       // remove from cache
-      windows.delete(win.id);
+      _windows.delete(win.id);
 
       win = null;
     });
 
     // handle any new windows opened by this window
     win.webContents.setWindowOpenHandler(d => {
+      console.log('win.webContents.setWindowOpenHandler');
       return winOpenHandler(source, d);
     });
 
@@ -764,9 +765,11 @@ const winOpenHandler = (source, details) => {
 
   smash(params, overrides, 'show', null, true);
 
+  // keys are used to force singleton windows
+  // TODO: this doesn't really do anything rn
   const key = params.hasOwnProperty('key') ? params.key : null;
   if (key != null) {
-    windows.forEach((w) => {
+    _windows.forEach((w) => {
       if (w.source == source && w.params.key == key) {
         console.log('WINDOW ALREADY EXISTS FOR KEY', key);
         //id = w.id;
@@ -776,14 +779,19 @@ const winOpenHandler = (source, details) => {
 
   // TODO: unhack
   const onBrowserWinCreated = (e, bw) => {
-    console.log('onBrowserWinCreaetd');
+    console.log('onBrowserWinCreated');
     app.off('browser-window-created', onBrowserWinCreated);
 
-    /* not firing now, wtf
+    // Capture new windows created from content in this window
+    // (not firing sometimes, wtf? maybe in debug/not mode?)
     bw.webContents.on('did-create-window', (w, d) => {
-      console.log('DID-CREATE-WINDOW', d);
+      console.log('DID-CREATE-WINDOW', w, d);
+      /*
+      setTimeout(() => {
+        onBrow
+      },100);
+      */
     });
-    */
 
     const didFinishLoad = () => {
       console.log('DID-FINISH-LOAD()');
@@ -796,7 +804,7 @@ const winOpenHandler = (source, details) => {
       if (url == details.url) {
         bw.webContents.off('did-finish-load', didFinishLoad);
 
-        params.address = url;
+        //params.address = url;
 
         addEscHandler(bw);
 
@@ -808,39 +816,41 @@ const winOpenHandler = (source, details) => {
         // TODO: should be opener-configurable param
         if (!DEBUG) {
           bw.on('blur', () => {
-            console.log('openWindow.onBlur() for', params.address);
+            console.log('openWindow.onBlur() for', url);
             closeOrHideWindow(bw.id);
           });
         }
         
         // post actual close clean-up
         bw.on('closed', () => {
-          console.log('openWindow.onClosed: deleting ', bw.id, ' for ', params.address);
+          console.log('openWindow.onClosed: deleting ', bw.id, ' for ', url);
 
           // unregister any shortcuts this window registered
-          const isPrivileged = params.address.startsWith(APP_PROTOCOL);
+          const isPrivileged = url.startsWith(APP_PROTOCOL);
           if (isPrivileged) {
-            unregisterShortcutsForAddress(params.address)
+            unregisterShortcutsForAddress(url)
           }
 
           // remove from cache
-          windows.delete(bw.id);
+          _windows.delete(bw.id);
 
           bw = null;
         });
 
         // add to cache
-        windows.set(bw.id, {
+        _windows.set(bw.id, {
           id: bw.id,
           source,
           params
         });
 
+        /*
         // send synthetic msg to source, notifying window was opened
         pubsub.publish(source, scopes.SELF, 'onWindowOpened', {
           url,
           key
         });
+        */
       }
     };
 
@@ -887,10 +897,10 @@ const closeWindow = (params, callback) => {
 
   let retval = false;
 
-  if (params.hasOwnProperty('id') && windows.has(params.id)) {
+  if (params.hasOwnProperty('id') && _windows.has(params.id)) {
     console.log('closeWindow(): closing', params.id);
 
-    const entry = windows.get(params.id);
+    const entry = _windows.get(params.id);
     if (!entry) {
       // wtf
       return;
@@ -917,7 +927,7 @@ const closeOrHideWindow = id => {
     return;
   }
 
-  const entry = windows.get(id);
+  const entry = _windows.get(id);
 
   if (!entry) {
     console.log('window not in cache, so closing (FIXME: should be in cache?)');
@@ -949,7 +959,7 @@ const closeChildWindows = (aAddress) => {
     return;
   }
 
-  for (const [id, entry] of windows) {
+  for (const [id, entry] of _windows) {
     if (entry.source == aAddress) {
       const address = entry.params.address;
       console.log('closing child window', address, 'for', aAddress);

@@ -53,6 +53,7 @@ api.shortcuts = {
   }
 };
 
+/*
 api.openWindow = (params, callback) => {
   console.log(src, ['api.openwindow', JSON.stringify(params), 'for', window.location].join(', '));
 
@@ -74,6 +75,7 @@ api.openWindow = (params, callback) => {
     }
   });
 };
+*/
 
 api.closeWindow = (id, callback) => {
   console.log(src, ['api.closewindow', id, 'for', window.location].join(', '));

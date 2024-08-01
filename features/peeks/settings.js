@@ -1,3 +1,4 @@
+console.log('peek settings');
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
 import { openStore, addToGUI } from "../utils.js";
 import GUI from './../../node_modules/lil-gui/dist/lil-gui.esm.min.js';

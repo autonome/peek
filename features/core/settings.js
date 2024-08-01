@@ -86,3 +86,7 @@ const openSettingsAddress = (title, address) => {
 }
 
 window.addEventListener('load', init);
+
+window.addEventListener('blur', () => {
+  console.log('core settings blur');
+});

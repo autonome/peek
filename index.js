@@ -54,7 +54,6 @@ const strings = {
     unregisterShortcut: 'unregistershortcut',
     publish: 'publish',
     subscribe: 'subscribe',
-    openWindow: 'openwindow',
     closeWindow: 'closewindow',
     console: 'console',
   },
@@ -386,14 +385,6 @@ ipcMain.on(strings.msgs.unregisterShortcut, (ev, msg) => {
   });
 });
 
-ipcMain.on(strings.msgs.openWindow, (ev, msg) => {
-  openWindow(msg.params, output => {
-    if (msg && msg.replyTopic) {
-      ev.reply(msg.replyTopic, output);
-    }
-  });
-});
-
 ipcMain.on(strings.msgs.closeWindow, (ev, msg) => {
   closeWindow(msg.params, output => {
     console.log('main.closeWindow api callback, output:', output);
@@ -499,222 +490,6 @@ const unregisterShortcutsForAddress = (aAddress) => {
   }
 };
 
-// window opener
-const oldopenWindow = (params, callback) => {
-  console.log('OPENWINDOW', params, callback != null);
-
-  // if no source identifier, barf
-  // TODO: test the protocol
-  if (!params.hasOwnProperty('source') ||
-    params.source == undefined) {
-    throw new Error('openWindow: no identifying source for openWindow request!');
-  }
-  const source = params.source;
-
-  // TODO: need to figure out a better approach
-  const show = params.hasOwnProperty('show') ? params.show : true;
-
-  // validate address
-  if (!params.hasOwnProperty('address') || params.address.length == 0) {
-    console.error('openWindow: no address or is empty!');
-    return;
-  }
-
-  const url = new URL(params.address);
-  const address = url.toString();
-  const isPrivileged = url.protocol.startsWith(APP_PROTOCOL);
-
-  /*
-  // need to make an address scheme that has opaque host
-  // AND origin - which isn't a thing really:
-  // https://github.com/whatwg/url/issues/690
-  // for now, hack out the "host".
-  const separator = ':';
-  const pseudoHost = isPrivileged ? params.pathName.split('/').shift()
-    : 'web';
-  */
-
-  let retval = {
-    source,
-    fromCache: false
-  };
-
-  const key = params.hasOwnProperty('key') ? params.key : null;
-
-  // get window id if exists
-  let id = null;
-  if (params.id && _windows.has(params.id)) {
-    id = params.id;
-  }
-  else if (key != null) {
-    _windows.forEach((w) => {
-      if (w.source == source && w.params.key == key) {
-        id = w.id;
-      }
-    });
-  }
-
-  console.log('openWindow', 'param id', id);
-
-  let win = null;
-
-  // Reuse existing window if caller passed a valid window id
-  if (id != null) {
-    console.log('REUSING WINDOW for ', address);
-    retval.id = id;
-
-    const entry = _windows.get(id);
-
-    win = BrowserWindow.fromId(entry.id);
-
-    if (show) {
-      win.show();
-    }
-
-    retval.id = id;
-    retval.fromCache = true;
-  }
-  // Open new window
-  else {
-    console.log('openWindow(): creating new window');
-
-    let webPreferences = {};
-
-    // add preload
-    webPreferences.preload = preloadPath;
-
-    if (!params.persistState) {
-      // TODO: hack. this just isolates.
-      webPreferences.partition = Date.now()
-    }
-
-    let winPrefs = {
-      show,
-      skipTaskbar: true, // TODO
-      autoHideMenuBar: true, // TODO
-      titleBarStyle: 'hidden', // TODO
-      webPreferences
-    };
-
-    smash(params, winPrefs, 'height', APP_DEF_HEIGHT);
-    smash(params, winPrefs, 'width', APP_DEF_WIDTH);
-    smash(params, winPrefs, 'x', null, true);
-    smash(params, winPrefs, 'y', null, true);
-
-    if (winPrefs.x == undefined
-      && winPrefs.y == undefined) {
-      winPrefs.center = true;
-    }
-
-    if (params.hasOwnProperty('transparent')
-      && typeof params.transparent == 'boolean'
-      && params.transparent == true) {
-      winPrefs.transparent = params.transparent;
-      winPrefs.frame = false;
-      //winPrefs.fullscreen = true;
-      //mainWindow.setIgnoreMouseEvents(true);
-
-      // wait until load event and resize
-      // (maybe do this in preload?)
-      //win.setSize(width,height)
-      winPrefs.useContentSize = true;
-    }
-    // can't have both transparent and resizable
-    // TODO: need reference and testing
-    // and maybe error somehow
-    else if (params.hasOwnProperty('resizable')
-      && typeof params.resizable == 'boolean') {
-      winPrefs.resizable = params.resizable;
-    }
-
-    console.log('Opening window with:', winPrefs);
-
-    win = new BrowserWindow(winPrefs);
-
-    id = win.id;
-
-    // add to cache
-    _windows.set(win.id, {
-      id: win.id,
-      source,
-      params
-    });
-
-    // don't do this in detached debug mode, devtools steals focus
-    // and closes everything 😐
-    // TODO: fix
-    // TODO: should be opener-configurable param
-    if (!DEBUG) {
-      win.on('blur', () => {
-        console.log('openWindow.onBlur() for', params.address);
-        closeOrHideWindow(win.id);
-      });
-    }
-
-    // post actual close clean-up
-    win.on('closed', () => {
-      console.log('openWindow.onClosed: deleting ', win.id, ' for ', params.address);
-
-      // unregister any shortcuts this window registered
-      if (isPrivileged) {
-        unregisterShortcutsForAddress(params.address)
-        console.log('unregistered shortcuts');
-      }
-
-      // remove from cache
-      _windows.delete(win.id);
-
-      win = null;
-    });
-
-    // handle any new windows opened by this window
-    win.webContents.setWindowOpenHandler(d => {
-      console.log('win.webContents.setWindowOpenHandler');
-      return winOpenHandler(source, d);
-    });
-
-    // TODO: use an actual devtools param
-    // not just implicit via debug
-    if (DEBUG || params.debug) {
-      winDevtoolsConfig(win);
-    }
-
-    // esc handler 
-    addEscHandler(win);
-
-    win.loadURL(params.address);
-
-    // TODO: fix func-level callback handling and resp obj
-    // TODO: just throw it all out and do real content scripts
-    if (params.script) {
-      const script = params.script;
-      const domEvent = script.domEvent || 'dom-ready';
-
-      win.webContents.on(domEvent, async () => {
-        try {
-          const r = await win.webContents.executeJavaScript(script.script);
-          retval.scriptOutput = r;
-        } catch(ex) {
-          retval.scriptError = ex;
-          console.error('cs exec error', ex);
-        }
-        if (script.closeOnCompletion) {
-          win.destroy();
-        }
-      });
-    }
-  }
-
-  retval.id = win.id;
-
-  // exec callback if present and valid
-  if (callback != null && typeof callback == 'function') {
-    callback(retval);
-  }
-
-  return win;
-};
-
 // esc handler 
 // TODO: make user-configurable
 const addEscHandler = bw => {
@@ -722,7 +497,7 @@ const addEscHandler = bw => {
   bw.webContents.on('before-input-event', (e, i) => {
     //console.log('BIE', i.type, i.key);
     if (i.key == 'Escape' && i.type == 'keyUp') {
-      console.log('openWindow.wc.BIE(): esc');
+      console.log('webcontents.onBeforeInputEvent(): esc');
       closeOrHideWindow(bw.id);
     }
   });
@@ -782,7 +557,7 @@ const winOpenHandler = (source, details) => {
     console.log('onBrowserWinCreated');
     app.off('browser-window-created', onBrowserWinCreated);
 
-    // Capture new windows created from content in this window
+    // Capture new content windows created from this content window
     // (not firing sometimes, wtf? maybe in debug/not mode?)
     bw.webContents.on('did-create-window', (w, d) => {
       console.log('DID-CREATE-WINDOW', w, d);
@@ -816,14 +591,14 @@ const winOpenHandler = (source, details) => {
         // TODO: should be opener-configurable param
         if (!DEBUG) {
           bw.on('blur', () => {
-            console.log('openWindow.onBlur() for', url);
+            console.log('dFL.onBlur() for', url);
             closeOrHideWindow(bw.id);
           });
         }
         
         // post actual close clean-up
         bw.on('closed', () => {
-          console.log('openWindow.onClosed: deleting ', bw.id, ' for ', url);
+          console.log('dFL.onClosed: deleting ', bw.id, ' for ', url);
 
           // unregister any shortcuts this window registered
           const isPrivileged = url.startsWith(APP_PROTOCOL);

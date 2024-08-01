@@ -32,11 +32,13 @@ const openSettingsWindow = (prefs) => {
 
   console.log('opening settings window', params);
   const w = openWindow(settingsAddress, params);
+  //w.focus();
   console.log('opened settings window', w);
 };
 
 const initSettingsShortcut = (prefs) => {
   api.shortcuts.register(prefs.shortcutKey, () => {
+    console.log('settings shortcut executed');
     openSettingsWindow(prefs);
   });
 };

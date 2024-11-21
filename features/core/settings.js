@@ -77,6 +77,7 @@ const init = () => {
 };
 
 const openSettingsAddress = (title, address) => {
+  console.log('openSettingsAddress', title, address);
   const params = {
     address,
     transparent: true

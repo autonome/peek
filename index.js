@@ -41,7 +41,8 @@ const APP_DEF_HEIGHT = 768;
 
 // app hidden window to load
 // core application logic is here
-const webCoreAddress = 'peek://core/background.html';
+//const webCoreAddress = 'peek://core/background.html';
+const webCoreAddress = 'peek://test/index.html';
 
 const systemAddress = 'peek://system/';
 
@@ -343,7 +344,8 @@ const onReady = () => {
   const winPrefs = {
     show: false, //DEBUG,
     webPreferences: {
-      preload: preloadPath
+      preload: preloadPath,
+      webSecurity: false
     }
   };
 
@@ -373,7 +375,7 @@ ipcMain.on(strings.msgs.registerShortcut, (ev, msg) => {
 
   registerShortcut(msg.shortcut, () => {
     console.log('on(registershortcut): shortcut executed', msg.shortcut, msg.replyTopic)
-    ev.reply(msg.replyTopic, {});
+    ev.reply(msg.replyTopic, { foo: 'bar' });
   });
 });
 
@@ -418,13 +420,22 @@ ipcMain.on('modifywindow', (ev, msg) => {
   console.log('modifywindow', msg);
 
   const key = msg.hasOwnProperty('name') ? msg.name : null;
+
   if (key != null) {
     for (const [id, w] of _windows) {
       console.log('win?', w.source, msg.source, w.params.key, key);
       if (w.source == msg.source && w.params.key == key) {
         console.log('FOUND WINDOW FOR KEY', key);
         const bw = BrowserWindow.fromId(id);
-        modWindow(bw, msg.params);
+        let r = false;
+        try {
+          modWindow(bw, msg.params);
+          r = true;
+        }
+        catch(ex) {
+          console.error(ex);
+        }
+        ev.reply(msg.replyTopic, { output: r });
       }
     }
   }
@@ -432,11 +443,14 @@ ipcMain.on('modifywindow', (ev, msg) => {
 });
 
 const modWindow = (bw, params) => {
-  if (params.show == true) {
-    bw.show();
+  if (params.action == 'close') {
+    bw.close();
   }
-  else if (params.hide == true) {
+  if (params.action == 'hide') {
     bw.hide();
+  }
+  if (params.action == 'show') {
+    bw.show();
   }
 };
 
@@ -554,18 +568,13 @@ const winOpenHandler = (source, details) => {
 
   // TODO: unhack
   const onBrowserWinCreated = (e, bw) => {
-    console.log('onBrowserWinCreated');
+    console.log('onBrowserWinCreated', bw.id);
     app.off('browser-window-created', onBrowserWinCreated);
 
     // Capture new content windows created from this content window
     // (not firing sometimes, wtf? maybe in debug/not mode?)
     bw.webContents.on('did-create-window', (w, d) => {
       console.log('DID-CREATE-WINDOW', w, d);
-      /*
-      setTimeout(() => {
-        onBrow
-      },100);
-      */
     });
 
     const didFinishLoad = () => {
@@ -575,6 +584,7 @@ const winOpenHandler = (source, details) => {
       const url = bw.webContents.getURL();
 
       console.log('dFL(): url', url, details.url);
+      console.log('dfl', bw.id);
 
       if (url == details.url) {
         bw.webContents.off('did-finish-load', didFinishLoad);
@@ -587,7 +597,10 @@ const winOpenHandler = (source, details) => {
 
         // don't do this in detached debug mode, devtools steals focus
         // and closes everything 😐
-        // TODO: fix
+        // TODO: fix w/ devtoolsIsFocused()
+        //  - enumerat windows
+        //  - find devtools
+        //  - if exists and has focus, then bail
         // TODO: should be opener-configurable param
         if (!DEBUG) {
           bw.on('blur', () => {

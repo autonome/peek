@@ -21,6 +21,7 @@ let _settingsWin = null;
 const openSettingsWindow = (prefs) => {
   console.log('openSettingsWindow()');
 
+  /*
   // TODO: fuck, have to call main process to do this
   if (_settingsWin) {
     console.log('win exists, focusing');
@@ -28,6 +29,7 @@ const openSettingsWindow = (prefs) => {
     console.log('focused');
     return;
   }
+  */
 
   const height = prefs.height || 600;
   const width = prefs.width || 380;

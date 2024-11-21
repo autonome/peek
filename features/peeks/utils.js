@@ -24,11 +24,13 @@ const openStore = (prefix, defaults, clear = false) => {
     clear: () => localStorage.clear()
   };
 
+  /*
   if (window.app.debug
       && window.app.debugLevel == window.app.debugLevels.FIRST_RUN) {
     log(id, 'openStore(): clearing storage')
     store.clear();
   }
+  */
 
   if (clear) {
     store.clear();

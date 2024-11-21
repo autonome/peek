@@ -5,11 +5,12 @@ import GUI from './../../node_modules/lil-gui/dist/lil-gui.esm.min.js';
 
 console.log('loading', labels.name, 'settings');
 
-const debug = window.app.debug;
+//console.log('app', window.app);
+//const debug = window.app.debug;
 const clear = false;
 
 const store = openStore(id, defaults, clear /* clear storage */);
-const api = window.app;
+//const api = window.app;
 
 const container = document.querySelector('.houseofpane');
 let prefs = store.get(storageKeys.PREFS);

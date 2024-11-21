@@ -3,7 +3,9 @@ const {
   ipcRenderer
 } = require('electron');
 
+
 const src = 'preload';
+console.log(src, 'init', window);
 
 const DEBUG = process.env.DEBUG || false;
 const DEBUG_LEVELS = {
@@ -31,7 +33,8 @@ api.shortcuts = {
   register: (shortcut, cb) => {
     console.log(src, 'registering ' + shortcut + ' for ' + window.location)
 
-    const replyTopic = `${shortcut}:${window.location}`;
+    //const replyTopic = `${shortcut}:${window.location}`;
+    const replyTopic = `${shortcut}${rndm()}`;
 
     ipcRenderer.send('registershortcut', {
       source: sourceAddress,
@@ -127,6 +130,30 @@ api.subscribe = (topic, callback, scope = api.scopes.SELF) => {
   });
 };
 
+api.window = {
+  close: target => {
+    console.log('window.close', target);
+
+    if (target === null) {
+      window.close();
+      return;
+    }
+
+    ipcRenderer.send('modifywindow', {
+      source: sourceAddress,
+      params: {
+        action: 'close'
+      }
+    });
+  },
+  hide: () => {
+  },
+  move: () => {
+  },
+  show: () => {
+  }
+};
+
 api.modifyWindow = (winName, params) => {
   console.log('modifyWindow(): window', winName, params);
   //w.name = `${sourceAddress}:${rndm()}`;
@@ -170,16 +197,14 @@ api.onMessage = callback => {
 */
 
 contextBridge.exposeInMainWorld('app', api);
+console.log(src, 'api exposed');
 
-/*
 window.addEventListener('load', () => {
-  console.log('preload loaded');
+  console.log(src, 'load', window);
 });
-*/
 
 /*
 const handleMainWindow = () => {
-  d('handleMainWindow');
   window.addEventListener('load', () => {
     const replaceText = (selector, text) => {
       const element = document.getElementById(selector)

@@ -2,7 +2,7 @@ const id = 'features/utils';
 
 const openStore = (prefix, defaults, clear = false) => {
 
-  //log(id, 'openStore', prefix, (defaults ? Object.keys(defaults) : ''));
+  //console.log(id, 'openStore', prefix, (defaults ? Object.keys(defaults) : ''));
 
   // multiple contexts
   const keyify = k => `${prefix}+${k}`;
@@ -12,12 +12,12 @@ const openStore = (prefix, defaults, clear = false) => {
     set: (k, v) => {
       const key = keyify(k);
       const value = JSON.stringify(v);
-      //log(id, 'store.set', key)
+      //console.log(id, 'store.set', key)
       localStorage.setItem(key, value);
     },
     get: (k) => {
       const key = keyify(k);
-      //log(id, 'store.get', key)
+      //console.log(id, 'store.get', key)
       const r = localStorage.getItem(key);
       return r ? JSON.parse(r) : null;
     },
@@ -26,7 +26,7 @@ const openStore = (prefix, defaults, clear = false) => {
 
   if (window.app.debug
       && window.app.debugLevel == window.app.debugLevels.FIRST_RUN) {
-    log(id, 'openStore(): clearing storage')
+    //console.log(id, 'openStore(): clearing storage')
     store.clear();
   }
 
@@ -38,14 +38,14 @@ const openStore = (prefix, defaults, clear = false) => {
     Object.keys(data).forEach(k => {
       const v = store.get(k);
       if (!v) {
-        //log(id, 'openStore(): init is setting', k, data[k]);
+        //console.log(id, 'openStore(): init is setting', k, data[k]);
         store.set(k, data[k]);
       }
     });
   };
 
   if (defaults != null) {
-    //log('UTILS/openStore()', 'initing');
+    //console.log('UTILS/openStore()', 'initing');
     initStore(store, defaults);
   }
 

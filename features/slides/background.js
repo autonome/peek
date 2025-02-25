@@ -1,11 +1,9 @@
 // slides/slides.js
 
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { log as l, openStore } from "../utils.js";
+import { openStore, openWindow } from "../utils.js";
 
-const log = function(...args) { l(labels.name, args); };
-
-log('background', labels.name);
+console.log('background', labels.name);
 
 const debug = window.app.debug;
 const clear = false;
@@ -14,10 +12,10 @@ const store = openStore(id, defaults, clear /* clear storage */);
 const api = window.app;
 
 const executeItem = (item) => {
-  let height = item.height || 600;
-  let width = item.width || 800;
+  const height = item.height || 600;
+  const width = item.width || 800;
 
-  const size = {
+  const screen = {
     height: window.screen.height,
     width: window.screen.width
   };
@@ -27,26 +25,26 @@ const executeItem = (item) => {
   switch(item.screenEdge) {
     case 'Up':
       // horizontally center
-      x = (size.width - item.width) / 2;
+      x = (screen.width - width) / 2;
 
       // y starts at screen top and stays there
       y = 0;
 
-      width = item.width;
+      //width = item.width;
       //height = 1;
       break;
     case 'Down':
       // horizonally center
-      x = (size.width - item.width) / 2;
+      x = (screen.width - item.width) / 2;
 
       // y ends up at window height from bottom
       //
-      // eg: y = size.height - item.height;
+      // eg: y = screen.height - item.height;
       //
       // but starts at screen bottom
-      y = size.height;
+      y = screen.height;
 
-      width = item.width;
+      //width = item.width;
       //height = 1;
       break;
     case 'Left':
@@ -55,59 +53,55 @@ const executeItem = (item) => {
       x = 0;
 
       // vertically center
-      y = (size.height - item.height) / 2;
+      y = (screen.height - item.height) / 2;
 
       //width = 1;
-      height = item.height;
+      //height = item.height;
       break;
     case 'Right':
       // x ends at at right screen edge - window size
       //
-      // eg: x = size.width - item.width;
+      // eg: x = screen.width - item.width;
       //
       // but starts at screen right edge, will animate in 
-      x = size.width;
+      x = screen.width;
 
       // vertically center
-      y = (size.height - item.height) / 2;
+      y = (screen.height - item.height) / 2;
 
       //width = 1;
-      height = item.height;
+      //height = item.height;
       break;
     default:
       center = true;
       console.log('waddafa');
   }
 
-  log(item.screenEdge, x, y);
+  console.log(item.screenEdge, x, y);
 
-  const key = `${item.screenEdge}:${item.address}`;
+  const key = `${item.address}:${item.screenEdge}`;
 
   //animateSlide(win, item).then();
 
   const params = {
-    // browserwindow
     address: item.address,
     height,
     width,
+    key,
 
-    // peek
     feature: labels.name,
-    windowKey: `${labels.name}:${item.screenEdge}`,
     keepLive: item.keepLive || false,
-    persistData: item.persistData || false,
+    persistState: item.persistState || false,
 
-    // slide
     x,
     y,
-    key,
   };
 
-  api.openWindow(params);
+  window.open(item.address, params);
 };
 
 const initItems = (prefs, items) => {
-  log('initItems');
+  console.log('initItems');
   const cmdPrefix = prefs.shortcutKeyPrefix;
 
   items.forEach(item => {
@@ -122,7 +116,7 @@ const initItems = (prefs, items) => {
 };
 
 const init = () => {
-  log('init');
+  console.log('init');
 
   const prefs = () => store.get(storageKeys.PREFS);
   const items = () => store.get(storageKeys.ITEMS);

@@ -1,9 +1,7 @@
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { log as l, openStore } from "../utils.js";
+import { openStore, openWindow } from "./utils.js";
 
-const log = function(...args) { l(labels.name, args); };
-
-log('background', labels.name);
+console.log('background', labels.name);
 
 const debug = window.app.debug;
 const clear = false;
@@ -11,25 +9,48 @@ const clear = false;
 const store = openStore(id, defaults, clear /* clear storage */);
 const api = window.app;
 
-const winKeyCache = new Map();
+// maps app id to BrowserWindow id (background)
+const windows = new Map();
+
+const settingsAddress = 'peek://core/settings.html';
+const topicCorePrefs = 'topic:core:prefs';
+const topicFeatureToggle = 'core:feature:toggle';
+
+let _settingsWin = null;
 
 const openSettingsWindow = (prefs) => {
+  console.log('openSettingsWindow()');
+
+  /*
+  // TODO: fuck, have to call main process to do this
+  if (_settingsWin) {
+    console.log('win exists, focusing');
+    _settingsWin.focus();
+    console.log('focused');
+    return;
+  }
+  */
+
   const height = prefs.height || 600;
-  const width = prefs.width || 800;
+  const width = prefs.width || 380;
 
   const params = {
     debug,
-    feature: labels.name,
-    address: 'peek://core/settings.html',
+    address: settingsAddress,
+    key: settingsAddress,
+    transparent: true,
     height,
     width
   };
 
-  api.openWindow(params);
+  console.log('opening settings window', params);
+  _settingsWin = openWindow(settingsAddress, params);
+  console.log('opened settings window', _settingsWin);
 };
 
-const initShortcut = (prefs) => {
+const initSettingsShortcut = (prefs) => {
   api.shortcuts.register(prefs.shortcutKey, () => {
+    console.log('settings shortcut executed');
     openSettingsWindow(prefs);
   });
 };
@@ -42,29 +63,24 @@ const initFeature = f => {
   console.log('initializing feature ', f);
 
   const params = {
-    feature: f.name,
     debug,
     address: f.start_url,
+    key: f.start_url,
     keepLive: true,
-    show: debug
+    show: false
   };
 
-  window.app.openWindow(params, r => {
-    console.log(`initFeature(): win opened for ${f.name}`, r)
-    winKeyCache.set(f.id, r.key);
-  });
-
-  console.log('window opened');
+  const w = openWindow(f.start_url, params);
+  windows.set(w, params);
 };
 
 const uninitFeature = f => {
-
-  const key = winKeyCache.get(f.id);
-  if (key) {
+  const wid = windows.get(f.id);
+  if (wid) {
     console.log('closing window for', f.name);
-    window.app.closeWindow(key, r => {
+    window.app.closeWindow(wid, r => {
       console.log(`uninitFeature(): win closed for ${f.name}`, r)
-      winKeyCache.delete(f.id);
+      windows.delete(f.id);
     });
   }
 };
@@ -72,15 +88,15 @@ const uninitFeature = f => {
 // unused, worth testing more tho
 const initIframeFeature = file => {
   const pathPrefix = 'file:///Users/dietrich/misc/peek/';
-  log('initiframe');
+  console.log('initiframe');
   const i = document.createElement('iframe');
   const src = pathPrefix + file;
-  log('iframe src', src);
+  console.log('iframe src', src);
   document.body.appendChild(i);
   i.src = src;
-  log('iframe inited');
+  console.log('iframe inited');
   i.addEventListener('load', () => {
-    log('iframe loaded');
+    console.log('iframe loaded');
   });
 };
 
@@ -88,42 +104,35 @@ const prefs = () => store.get(storageKeys.PREFS);
 const features = () => store.get(storageKeys.FEATURES);
 
 const init = () => {
-  log('init');
+  console.log('init');
 
   const p = prefs();
 
   console.log('prefs', p);
 
-  initShortcut(p);
-
-  features().forEach(initFeature);
-  //features.forEach(initIframeFeature);
-  
-  const startupFeatureTitle = p.startupFeature;
-
-  const startupFeature = features().find(f => f.name = startupFeatureTitle);
+  // main process uses these for initialization
+  window.app.publish(topicCorePrefs, {
+    id: id,
+    prefs: p
+  }, window.app.scopes.SYSTEM);
 
   // Listen for system- or feature-level requests to open windows.
-  // 
-  // In this case, for opening up global settings
-  // on app start (if configured) and from the tray icon.
   window.app.subscribe('open', msg => {
-    if (msg.feature && msg.feature == 'feature/core/settings') {
+    // eg from the tray icon.
+    if (msg.address && msg.address == settingsAddress) {
       openSettingsWindow(p);
     }
   });
 
-  // main process uses these for initialization
-  window.app.publish('prefs', {
-    feature: id,
-    prefs: p
-  });
+  if (p.startupFeature == settingsAddress) {
+    openSettingsWindow(p);
+  }
 
   // feature enable/disable
-  window.app.subscribe('core:feature:toggle', msg => {
+  window.app.subscribe(topicFeatureToggle, msg => {
     console.log('feature toggle', msg)
 
-    const f = features().find(f => f.id = msg.featureId);
+    const f = features().find(f => f.id == msg.featureId);
     if (f) {
       console.log('feature toggle', f);
       if (msg.enabled == false) {
@@ -139,6 +148,31 @@ const init = () => {
       console.log('feature toggle - no feature found for', f.name);
     }
   });
+
+  initSettingsShortcut(p);
+
+  features().forEach(initFeature);
+
+  //features.forEach(initIframeFeature);
+
+  /*
+  const addy = 'http://localhost';
+  const params = {
+    debug,
+    address: addy,
+    key: addy,
+    height: 300,
+    width: 300
+  };
+
+  const w = openWindow(addy, params);
+
+  window.app.subscribe('onWindowOpened', msg => {
+    api.modifyWindow(params.key, {
+      hide: true
+    });
+  });
+  */
 };
 
 window.addEventListener('load', init);
@@ -151,15 +185,15 @@ const onStorageChange = (e) => {
   const now = JSON.parse(e.newValue);
 
   const featureKey = `${id}+${storageKeys.FEATURES}`;
-  //log('onStorageChane', e.key, featureKey)
+  //console.log('onStorageChane', e.key, featureKey)
   if (e.key == featureKey) {
-    //log('STORAGE CHANGE', e.key, old[0].enabled, now[0].enabled);
+    //console.log('STORAGE CHANGE', e.key, old[0].enabled, now[0].enabled);
     features().forEach((feat, i) => {
-      log(feat.title, i, feat.enabled, old[i].enabled, now[i].enabled);
+      console.log(feat.title, i, feat.enabled, old[i].enabled, now[i].enabled);
       // disabled, so unload
       if (old[i].enabled == true && now[i].enabled == false) {
         // TODO
-        log('TODO: add unloading of features', feat)
+        console.log('TODO: add unloading of features', feat)
       }
       // enabled, so load
       else if (old[i].enabled == false && now[i].enabled == true) {

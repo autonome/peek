@@ -1,18 +1,5 @@
 const id = 'features/utils';
 
-const log = (...args) => {
-  if (!window.app.debug) {
-    return;
-  }
-
-  const aargs = [...args];
-  const source = aargs.shift();
-  const str = aargs.map(JSON.stringify).join(', ');
-  //const str = aargs.join(', ');
-  console.log(str);
-  window.app.log(source, str);
-};
-
 const openStore = (prefix, defaults, clear = false) => {
 
   //log(id, 'openStore', prefix, (defaults ? Object.keys(defaults) : ''));
@@ -88,8 +75,15 @@ const addToGUI = (gui, label, value, disabled = false, step = null, max = null) 
   return ctr;
 }
 
+const flattenObj = o => Object.keys(o).map(k => `${k}=${o[k]}`).join(',');
+
+const openWindow = (address, params) => {
+  const target = params.hasOwnProperty('key') ? params.key : '_blank';
+  return window.open(address, target, flattenObj(params));
+};
+
 export {
-  log,
   openStore,
-  addToGUI
+  addToGUI,
+  openWindow
 };

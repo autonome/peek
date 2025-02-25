@@ -3,9 +3,10 @@ body {
   font-feature-settings: "tnum";
   font-size: 12.4px;
   font-variant-numeric: tabular-nums;
-  margin: 12px;
+  /*margin: 12px;*/
 }
 
+/*
 body > div {
   margin-bottom: 10px;
 }
@@ -23,11 +24,17 @@ h1 {
   justify-content: space-between;
   columns: 2;
 }
+*/
 
-/* tweakpanes */
+.houseofpane {
+  background-color: black;
+  padding-top: 20px;
+}
+
+/* lil-gui */
 .houseofpane > div {
   min-width: 380px;
   max-width: 380px;
-  margin-bottom: 10px;
+  /*margin-bottom: 10px;*/
   break-inside: avoid-column;
 }

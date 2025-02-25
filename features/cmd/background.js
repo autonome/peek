@@ -1,11 +1,9 @@
 // cmd/background.js
 
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { log as l, openStore } from "../utils.js";
+import { openStore, openWindow } from "./utils.js";
 
-const log = function(...args) { l(labels.name, args); };
-
-log('background', labels.name);
+console.log('background', labels.name);
 
 const debug = window.app.debug;
 const clear = false;
@@ -13,19 +11,22 @@ const clear = false;
 const store = openStore(id, defaults, clear /* clear storage */);
 const api = window.app;
 
+const address = 'peek://cmd/panel.html';
+const settingsAddress = 'peek://cmd/settings.html';
+
 const openInputWindow = prefs => {
   const height = prefs.height || 50;
   const width = prefs.width || 600;
 
   const params = {
     debug,
-    feature: labels.name,
-    file: 'features/cmd/panel.html',
+    address,
+    key: address,
     height,
     width
   };
 
-  api.openWindow(params);
+  openWindow(address, params);
 };
 
 const openSettingsWindow = (prefs) => {
@@ -34,13 +35,11 @@ const openSettingsWindow = (prefs) => {
 
   const params = {
     debug,
-    feature: labels.name,
-    file: 'features/core/settings.html',
-    height,
-    width
+    address: settingsAddress,
+    transparent: true
   };
 
-  _api.openWindow(params);
+  window.open(settingsAddress, params);
 };
 
 const initShortcut = (prefs) => {
@@ -50,7 +49,7 @@ const initShortcut = (prefs) => {
 };
 
 const init = () => {
-  log('init');
+  console.log('init');
 
   const prefs = () => store.get(storageKeys.PREFS);
 

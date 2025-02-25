@@ -1,11 +1,10 @@
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { log as l, openStore, addToGUI } from "../utils.js";
+import { openStore, addToGUI, openWindow} from "../utils.js";
 import GUI from './../../node_modules/lil-gui/dist/lil-gui.esm.min.js';
 
-const log = function(...args) { l(labels.name, args); };
 const DEBUG = window.app.debug;
 
-log('loading', labels.name, 'settings');
+console.log('loading', labels.name, 'settings');
 
 const store = openStore(id);
 const container = document.querySelector('.houseofpane');
@@ -78,12 +77,17 @@ const init = () => {
 };
 
 const openSettingsAddress = (title, address) => {
+  console.log('openSettingsAddress', title, address);
   const params = {
-    feature: title,
     address,
+    transparent: true
   };
 
-  window.app.openWindow(params, () => window.app.log(title, 'settings win opened', address));
+  window.open(address, params);
 }
 
 window.addEventListener('load', init);
+
+window.addEventListener('blur', () => {
+  console.log('core settings blur');
+});

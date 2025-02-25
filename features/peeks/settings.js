@@ -1,16 +1,16 @@
+console.log('peek settings');
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { log as l, openStore, addToGUI } from "../utils.js";
+import { openStore, addToGUI } from "../utils.js";
 import GUI from './../../node_modules/lil-gui/dist/lil-gui.esm.min.js';
 
-const log = function(...args) { l(labels.name, args); };
+console.log('loading', labels.name, 'settings');
 
-log('loading', labels.name, 'settings');
-
-const debug = window.app.debug;
+//console.log('app', window.app);
+//const debug = window.app.debug;
 const clear = false;
 
 const store = openStore(id, defaults, clear /* clear storage */);
-const api = window.app;
+//const api = window.app;
 
 const container = document.querySelector('.houseofpane');
 let prefs = store.get(storageKeys.PREFS);

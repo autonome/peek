@@ -1,24 +1,19 @@
-import { id, labels, schemas, ui, defaults } from './config.js';
-import { log as l, openStore } from "../utils.js";
+import { id, labels, schemas, storageKeys, defaults } from './config.js';
+import { openStore, flattenObj } from "./utils.js";
 
-const log = function(...args) { l(labels.name, args); };
-
-log('background');
+console.log('commands');
 
 const debug = window.app.debug;
-const store = openStore(id);
-const api = window.app;
+const clear = false;
 
-const storageKeys = {
-  PREFS: 'prefs',
-  ITEMS: 'items',
-};
+const store = openStore(id, defaults, clear /* clear storage */);
+const api = window.app;
 
 let commands = {};
 
 function onCommandsUpdated () {
   window.dispatchEvent(new CustomEvent('cmd-update-commands', { detail: commands }));
-  log('main sending updated commands out', Object.keys(commands))
+  console.log('main sending updated commands out', Object.keys(commands))
 }
 
 window.addEventListener('DOMContentLoaded', initializeCommandSources);
@@ -40,7 +35,7 @@ function addCommand(command) {
 }
 
 function initializeCommandSources() {
-  log('initializeCommandSources');
+  console.log('initializeCommandSources');
 
   sourceOpenURL();
   //sourceBookmarklets();
@@ -67,20 +62,18 @@ const sourceOpenURL = () => {
 
       const address = parts.shift();
 
-      const height = 600;
-      const width = 800;
+      if (!address) {
+        return;
+      }
 
       const params = {
-        feature: labels.name,
-        address,
-        height,
-        width
+        address
       };
 
-      window.app.openWindow(params);
+      window.open(address, '_blank', flattenObj(params));
 
       return {
-        command: 'openWebWindow',
+        command: 'open',
         address
       };
     }

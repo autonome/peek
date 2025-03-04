@@ -3,7 +3,6 @@ const {
   ipcRenderer
 } = require('electron');
 
-
 const src = 'preload';
 console.log(src, 'init', window);
 

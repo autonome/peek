@@ -1,7 +1,6 @@
 // main.js
 
-const {
-  electron,
+import {
   app,
   BrowserWindow,
   globalShortcut,
@@ -11,11 +10,12 @@ const {
   net,
   protocol,
   Tray
-} = require('electron');
+} from 'electron';
 
-const fs = require('node:fs');
-const path = require('node:path');
-const { pathToFileURL } = require('url');
+import fs from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'url';
+const __dirname = import.meta.dirname;
 
 (async () => {
 
@@ -107,18 +107,6 @@ if (!fs.existsSync(sessionDataPath)){
 // configure Electron with these paths
 app.setPath('userData', profileDataPath);
 app.setPath('sessionData', sessionDataPath);
-
-// ***** Developer / Error handling / Etc *****
-
-/*
-const isDev = require('electron-is-dev');
-
-if (isDev) {
-}
-*/
-
-const unhandled = require('electron-unhandled');
-unhandled();
 
 // ***** Features / Strings *****
 

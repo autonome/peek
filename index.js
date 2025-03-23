@@ -1,7 +1,6 @@
 // main.js
 
-const {
-  electron,
+import {
   app,
   BrowserWindow,
   globalShortcut,
@@ -11,11 +10,12 @@ const {
   net,
   protocol,
   Tray
-} = require('electron');
+} from 'electron';
 
-const fs = require('node:fs');
-const path = require('node:path');
-const { pathToFileURL } = require('url');
+import fs from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'url';
+const __dirname = import.meta.dirname;
 
 (async () => {
 
@@ -34,15 +34,15 @@ const preloadPath = path.join(__dirname, 'preload.js');
 
 const APP_SCHEME = 'peek';
 const APP_PROTOCOL = `${APP_SCHEME}:`;
-const APP_CORE_PATH = 'features';
+const APP_CORE_PATH = 'app';
 
 const APP_DEF_WIDTH = 1024;
 const APP_DEF_HEIGHT = 768;
 
 // app hidden window to load
 // core application logic is here
-//const webCoreAddress = 'peek://core/background.html';
-const webCoreAddress = 'peek://test/index.html';
+const webCoreAddress = 'peek://background.html';
+//const webCoreAddress = 'peek://test/index.html';
 
 const systemAddress = 'peek://system/';
 
@@ -107,18 +107,6 @@ if (!fs.existsSync(sessionDataPath)){
 // configure Electron with these paths
 app.setPath('userData', profileDataPath);
 app.setPath('sessionData', sessionDataPath);
-
-// ***** Developer / Error handling / Etc *****
-
-/*
-const isDev = require('electron-is-dev');
-
-if (isDev) {
-}
-*/
-
-const unhandled = require('electron-unhandled');
-unhandled();
 
 // ***** Features / Strings *****
 
@@ -263,20 +251,29 @@ protocol.registerSchemesAsPrivileged([{
   }
 }]);
 
+// TODO: unhack all this
 const initAppProtocol = () => {
   protocol.handle(APP_SCHEME, (req) => {
-    const { host, pathname } = new URL(req.url);
+    let { host, pathname } = new URL(req.url);
 
-    // TODO: nope
-    if (pathname === '/') {
-      pathname = 'background.html';
+    // trim trailing slash
+    pathname = pathname.replace(/^\//, '');
+
+    const isBackground = host === 'background.html';
+
+    if (isBackground) {
+      host = '/';
+
+      if (pathname.length == 0) {
+        pathname = 'background.html';
+      }
     }
-
-    // TODO: unhack all this
+     
     const isNode = pathname.indexOf('node_modules') > -1;
 
-    const hackedPath = isNode ? pathname.replace(/^\//, '')
-      : path.join(APP_CORE_PATH, host, pathname.replace(/^\//,''));
+    const hackedPath = isNode
+      ? pathname
+      : path.join(APP_CORE_PATH, host, pathname);
 
     const pathToServe = path.resolve(__dirname, hackedPath);
 

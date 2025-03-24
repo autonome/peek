@@ -108,7 +108,7 @@ const defaults = {
   prefs: {
     shortcutKey: 'Option+,',
     height: 850,
-    width: 380,
+    width: 800,
     startupFeature: 'peek://app/settings/settings.html',
     showTrayIcon: true,
     showInTrayAndSwitcher: false

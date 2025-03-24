@@ -10,7 +10,6 @@ const clear = false;
 const store = openStore(id, defaults, clear /* clear storage */);
 
 const address = 'peek://cmd/panel.html';
-const settingsAddress = 'peek://cmd/settings.html';
 
 const openInputWindow = prefs => {
   const height = prefs.height || 50;
@@ -27,19 +26,6 @@ const openInputWindow = prefs => {
   openWindow(address, params);
 };
 
-const openSettingsWindow = (prefs) => {
-  const height = prefs.height || 600;
-  const width = prefs.width || 800;
-
-  const params = {
-    debug,
-    address: settingsAddress,
-    transparent: true
-  };
-
-  openWindow(settingsAddress, params);
-};
-
 const initShortcut = (prefs) => {
   api.shortcuts.register(prefs.shortcutKey, () => {
     openInputWindow(prefs);
@@ -52,13 +38,6 @@ const init = () => {
   const prefs = () => store.get(storageKeys.PREFS);
 
   initShortcut(prefs());
-
-  api.subscribe('open', msg => {
-    if (msg.feature && msg.feature == `${id}/settings`) {
-      openSettingsWindow(prefs());
-    }
-  });
-
 };
 
 export default {

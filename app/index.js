@@ -1,20 +1,7 @@
 import { id, labels, schemas, storageKeys, defaults } from './settings/config.js';
 import { openStore, openWindow } from "./utils.js";
 import api from './api.js';
-
-// features
-import cmd from './cmd/index.js';
-import groups from './groups/index.js';
-import peeks from './peeks/index.js';
-import scripts from './scripts/index.js';
-import slides from './slides/index.js';
-
-const fc = {};
-fc[cmd.id] = cmd,
-fc[groups.id] = groups,
-fc[peeks.id] = peeks,
-fc[scripts.id] = scripts,
-fc[slides.id] = slides
+import fc from './features.js';
 
 console.log('core', id, labels.name);
 
@@ -26,7 +13,7 @@ const store = openStore(id, defaults, clear /* clear storage */);
 // maps app id to BrowserWindow id (background)
 const windows = new Map();
 
-const settingsAddress = 'peek://settings/settings.html';
+const settingsAddress = 'peek://app/settings/settings.html';
 const topicCorePrefs = 'topic:core:prefs';
 const topicFeatureToggle = 'core:feature:toggle';
 
@@ -76,21 +63,7 @@ const initFeature = f => {
 
   console.log('initializing feature ', f);
 
-  const params = {
-    debug,
-    address: f.start_url,
-    key: f.start_url,
-    keepLive: true,
-    show: false
-  };
-
   fc[f.id].init();
-
-  /*
-  const w = openWindow(f.start_url, params);
-  windows.set(w, params);
-  */
-
 };
 
 const uninitFeature = f => {

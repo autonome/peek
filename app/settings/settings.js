@@ -4,11 +4,12 @@ import GUI from './../../node_modules/lil-gui/dist/lil-gui.esm.min.js';
 import api from './../api.js';
 
 const DEBUG = api.debug;
+const clear = false;
 
 console.log('loading', labels.name, 'settings');
 
-const store = openStore(id);
-const container = document.querySelector('.houseofpane');
+const store = openStore(id, defaults, clear /* clear storage */);
+
 let prefs = store.get(storageKeys.PREFS);
 let features = store.get(storageKeys.FEATURES);
 

@@ -41,7 +41,7 @@ const APP_DEF_HEIGHT = 768;
 
 // app hidden window to load
 // core application logic is here
-const webCoreAddress = 'peek://background.html';
+const webCoreAddress = 'peek://app/background.html';
 //const webCoreAddress = 'peek://test/index.html';
 
 const systemAddress = 'peek://system/';

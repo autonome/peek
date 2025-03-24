@@ -6,7 +6,7 @@ import fc from './features.js';
 console.log('core', id, labels.name);
 
 const debug = api.debug;
-const clear = false;
+const clear = true;
 
 const store = openStore(id, defaults, clear /* clear storage */);
 
@@ -33,7 +33,7 @@ const openSettingsWindow = (prefs) => {
   */
 
   const height = prefs.height || 600;
-  const width = prefs.width || 380;
+  const width = prefs.width || 800;
 
   const params = {
     debug,

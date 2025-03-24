@@ -265,14 +265,14 @@ Feature lifecycle (un/install and reloads)
 - [x] close other windows of feature, not just background window
 
 Feature re-init/reload when toggled
-- [x] main: track shortcuts by source, remove when unloaded
-- [x] main: track window sources
-- [x] main: close child windows when (before) closing source window
+- [ ] track shortcuts by source, remove when unloaded
+- [ ] main: track window sources
+- [ ] main: close child windows when (before) closing source window
 
 Shortcut lifecycle
 - [x] main process should handle multiple registrations correctly
 - [x] send/track feature id/origin w/ each registration
-- [x] unreg shortcuts on unload
+- [ ] unreg shortcuts on unload
 
 Window features
 - [ ] add back in window features to window.open
@@ -282,7 +282,6 @@ Window features
 - [ ] add draggable as pref
 
 Features clean themselves up for lifecycle events
-- [ ] determine if new web-native windowing approach resolves this
 - [ ] load/unload peeks when enabled/disabled
 - [ ] load/unload slides when enabled/disabled
 - [ ] load/unload scripts when enabled/disabled
@@ -293,7 +292,7 @@ Peeks/Slides
 - [ ] unreg shortcuts and close windows on slides un/configure
 
 Cmd
-- [x] fix it
+- [ ] update to latest Cmd extension code
 - [ ] app-scoped multi-window pages open
 
 Settings

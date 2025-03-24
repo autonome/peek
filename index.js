@@ -251,9 +251,9 @@ protocol.registerSchemesAsPrivileged([{
   }
 }]);
 
-// TODO: unhack all this
+// TODO: unhack all this trash fire
 const initAppProtocol = () => {
-  protocol.handle(APP_SCHEME, (req) => {
+  protocol.handle(APP_SCHEME, req => {
     let { host, pathname } = new URL(req.url);
 
     // trim trailing slash
@@ -277,10 +277,27 @@ const initAppProtocol = () => {
 
     const pathToServe = path.resolve(__dirname, hackedPath);
 
-    const relativePath = path.relative(__dirname, pathToServe);
+    let relativePath = path.relative(__dirname, pathToServe);
 
+    try {
+      const stat = fs.statSync(relativePath)
+      // file exists
+    }
+    catch(ex) {
+      // FIXME
+      // file does not exist
+      // but maybe it's in parent dir
+      // b/c what the fuck is happening w/ custom
+      // protocols and parent-relative path resolution?!
+      relativePath = relativePath.replace(/\/[a-z]+\//,'/');
+    }
+
+    // NOTE: commented out since relative paths seem to get
+    // filtered out before this?!
+      
     // NB, this checks for paths that escape the bundle, e.g.
     // app://bundle/../../secret_file.txt
+    /*
     const isSafe = relativePath && !relativePath.startsWith('..')
       && !path.isAbsolute(relativePath);
 
@@ -292,8 +309,9 @@ const initAppProtocol = () => {
         headers: { 'content-type': 'text/html' }
       })
     }
+    */
 
-    const finalPath = pathToFileURL(pathToServe).toString();
+    const finalPath = pathToFileURL(relativePath).toString();
 
     return net.fetch(finalPath);
   });

@@ -1,9 +1,7 @@
-/*
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { openStore, addToGUI, openWindow} from "../utils.js";
+import { openStore, addToGUI, openWindow} from "./../utils.js";
 import GUI from './../../node_modules/lil-gui/dist/lil-gui.esm.min.js';
-*/
-import api from '../api.js';
+import api from './../api.js';
 
 const DEBUG = api.debug;
 

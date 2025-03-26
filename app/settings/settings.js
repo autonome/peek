@@ -5,7 +5,7 @@ import api from '../api.js';
 import fc from '../features.js';
 
 const DEBUG = api.debug;
-const clear = true;
+const clear = false;
 
 console.log('loading', 'settings');
 
@@ -53,7 +53,7 @@ const settingsGUI = (container, feature, itemGUI) => {
   // anytime anything changes, persist to storage
   gui.onFinishChange(() => {
   	store.set(storageKeys.PREFS, prefs);
-  	store.set(storageKeys.ITEMS, features);
+  	store.set(storageKeys.ITEMS, items);
 	});
 
   // Add prefs
@@ -86,7 +86,7 @@ const settingsGUI = (container, feature, itemGUI) => {
   // Add items, if any
   if (items) {
     items.forEach((item, i) => {
-      itemGUI(item, i, gui);
+      itemGUI(items, item, i, gui);
     });
   }
 
@@ -95,7 +95,7 @@ const settingsGUI = (container, feature, itemGUI) => {
 
 const panels = {};
 
-const guiFeature = (feature, i, gui) => {
+const guiFeature = (features, feature, i, gui) => {
   const folder = gui.addFolder(feature.name);
   addToGUI(folder, 'Description', feature.description).disable();
   addToGUI(folder, 'Enabled', feature.enabled).onChange(e => {
@@ -112,13 +112,13 @@ const guiFeature = (feature, i, gui) => {
   }).disable(!feature.enabled);
 };
 
-const guiCmd = (feature, i, gui) => {};
+const guiCmd = (items, item, i, gui) => {};
 panels['Cmd'] = guiCmd;
 
-const guiGroups = (feature, i, gui) => {};
+const guiGroups = (items, item, i, gui) => {};
 panels['Groups'] = guiGroups;
 
-const guiPeeks = (item, i, gui) => {
+const guiPeeks = (items, item, i, gui) => {
   const folder = gui.addFolder(item.title);
 
   addToGUI(folder, 'Key mapping', item.keyNum).disable();
@@ -142,7 +142,7 @@ const guiPeeks = (item, i, gui) => {
 };
 panels['Peeks'] = guiPeeks;
 
-const guiScripts = (item, i, gui) => {
+const guiScripts = (items, item, i, gui) => {
   const folder = gui.addFolder(item.title);
 
   addToGUI(folder, 'Id', item.id).onChange(e => {
@@ -175,7 +175,7 @@ const guiScripts = (item, i, gui) => {
 };
 panels['Scripts'] = guiScripts;
 
-const guiSlides = (item, i, gui) => {
+const guiSlides = (items, item, i, gui) => {
   console.log('adding slide', item);
   const folder = gui.addFolder(item.title);
 

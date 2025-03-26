@@ -100,7 +100,7 @@ const schemas = {
 
 const storageKeys = {
   PREFS: 'prefs',
-  FEATURES: 'features',
+  ITEMS: 'items',
 };
 
 // defaults for user-modifiable preferences or data
@@ -113,7 +113,7 @@ const defaults = {
     showTrayIcon: true,
     showInTrayAndSwitcher: false
   },
-  features: [
+  items: [
     { id: 'cee1225d-40ac-41e5-a34c-e2edba69d599',
       name: 'Cmd',
       description: 'Command entry',
@@ -152,7 +152,7 @@ const defaults = {
   ]
 };
 
-export {
+export default {
   id,
   labels,
   schemas,

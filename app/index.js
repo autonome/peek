@@ -1,12 +1,14 @@
-import { id, labels, schemas, storageKeys, defaults } from './settings/config.js';
+import appConfig from './config.js';
 import { openStore, openWindow } from "./utils.js";
 import api from './api.js';
 import fc from './features.js';
 
+const { id, labels, schemas, storageKeys, defaults } = appConfig;
+
 console.log('core', id, labels.name);
 
 const debug = api.debug;
-const clear = true;
+const clear = false;
 
 const store = openStore(id, defaults, clear /* clear storage */);
 
@@ -93,7 +95,7 @@ const initIframeFeature = file => {
 };
 
 const prefs = () => store.get(storageKeys.PREFS);
-const features = () => store.get(storageKeys.FEATURES);
+const features = () => store.get(storageKeys.ITEMS);
 
 const init = () => {
   console.log('init');
@@ -176,7 +178,7 @@ const onStorageChange = (e) => {
   const old = JSON.parse(e.oldValue);
   const now = JSON.parse(e.newValue);
 
-  const featureKey = `${id}+${storageKeys.FEATURES}`;
+  const featureKey = `${id}+${storageKeys.ITEMS}`;
   //console.log('onStorageChane', e.key, featureKey)
   if (e.key == featureKey) {
     //console.log('STORAGE CHANGE', e.key, old[0].enabled, now[0].enabled);

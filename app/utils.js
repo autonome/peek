@@ -29,6 +29,7 @@ const openStore = (prefix, defaults, clear = false) => {
   }
 
   if (clear) {
+    console.log('openStore(): CLEARING');
     store.clear();
   }
 

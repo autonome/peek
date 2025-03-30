@@ -23,7 +23,7 @@ h1 {
 */
 .houseofpane {
   justify-content: space-between;
-  columns: 2;
+  columns: 3;
 }
 
 .houseofpane {
@@ -33,8 +33,10 @@ h1 {
 
 /* lil-gui */
 .houseofpane > div {
+  /*
   min-width: 380px;
   max-width: 800px;
+  */
   /*margin-bottom: 10px;*/
   break-inside: avoid-column;
 }

@@ -51,29 +51,6 @@ const openStore = (prefix, defaults, clear = false) => {
   return store;
 };
 
-const addToGUI = (gui, label, value, disabled = false, step = null, max = null) => {
-  const params = {};
-  params[label] = value;
-
-  const ctr = gui.add(params, label);
-
-  /*
-  if (disabled == true) {
-    ctr.disable();
-  }
-
-  if (max != null) {
-    ctr.max(max);
-  }
-
-  if (step != null) {
-    ctr.step(step);
-  }
-  */
-
-  return ctr;
-}
-
 const flattenObj = o => Object.keys(o).map(k => `${k}=${o[k]}`).join(',');
 
 const openWindow = (address, params) => {
@@ -82,7 +59,6 @@ const openWindow = (address, params) => {
 };
 
 export {
-  addToGUI,
   flattenObj,
   openStore,
   openWindow

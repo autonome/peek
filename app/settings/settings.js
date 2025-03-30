@@ -37,8 +37,6 @@ const addToGUI = (gui, label, value, disabled = false, step = null, max = null) 
 const settingsGUI = (container, feature, itemGUI) => {
 	const { id, labels, schemas, storageKeys, defaults } = feature;
 
-  console.log('settingsgui', labels.name, itemGUI);
-
 	const store = openStore(id, defaults, clear /* clear storage */);
 
 	let prefs = store.get(storageKeys.PREFS);
@@ -176,7 +174,6 @@ const guiScripts = (items, item, i, gui) => {
 panels['Scripts'] = guiScripts;
 
 const guiSlides = (items, item, i, gui) => {
-  console.log('adding slide', item);
   const folder = gui.addFolder(item.title);
 
   addToGUI(folder, 'Screen edge', item.screenEdge).disable();
@@ -207,7 +204,6 @@ const init = () => {
 
   for (const i in fc) {
     const name = fc[i].labels.name;
-    console.log('NAME', name);
     settingsGUI(container, fc[i], panels[name]);
   }
 };

@@ -1,42 +1,48 @@
 # Peek
 
-Please meet Peek, a web user agent application designed for using the web where, when and how you want it.
+Peek is a web user agent application designed for using the web where, when and how you want.
 
-** WARNING: THIS IS VACATIONWARE **
+Today's browsers are one-size-fits-all applications, cramming the vast universe of user needs across an unimaginably large web into in an unmodifiable tabbed-window design.
 
-- Peek is not a web browser! Yet! And likely never will be a browser as you would expect from browsers to date. There are no tabs, and no windows in the tabbed-browser-like sense of them. If that's what you're looking for, there are a few decent browsers for you to choose from.
-- Peek is not safe for general use yet! It is a crude proof of concept I whipped up while on vacation. While I have thoughts on security model and user interface, I have not written it up into a proper security model yet.
+Peek is a web user agent that is a workbench for experimenting with task alignment - making it easy to create new user interface shapes for the web which fit our need in the moment.
 
-<img width="969" alt="CleanShot 2023-04-03 at 18 50 22@2x" src="https://user-images.githubusercontent.com/50103/229501558-7084d66e-962a-4c0f-a10e-11787ef3ce68.png">
+We often use the web with a specific goal in mind - that goal should drive the design of the interface of the web user agent.
 
-## Design
+<img width="969" alt="settings screenshot" src="settings-screenshot.png">
 
-Many user tasks on the web are either transient, chained or persistent, data oriented, or some mix of those. The document-oriented web does not meet those needs. Major browser vendors can't meet those needs well, for many reasons.
+## Important notes
 
-- transient
-- chained
-- persistent
-- data oriented
+___PEEK IS NOT A WEB BROWSER___
 
-About this space:
-- Embrace the app-ness aspect of the web platform, less about the document-ness
-- Javascript is ok here
-- Decouple html+js+css from http+dns+ssl - not entirely, but that trust+security model is not a required starting point
+Peek is not a web browser, and will never be a browser in the way you are probably familiar with: There are no tabs, and no windows in the tabbed-browser-like sense of them. Peek likely does not have many other of many details we are used to in web browsers, but do not notice until they are missing. Peek may be most useful to you if you view it as an entirely different type of application than a traditional web browser.
+
+___PEEK IS A CONCEPT PREVIEW___
+
+Peek is not safe for daily use yet! It is a proof of concept. Do not use it for anything critical. Peek does not have the same security approach as traditional web browsers, and its security model and security user interface have not yet been determined. Peek has not had a security audit.
 
 ## Features
 
 You can use Peek in a few ways, with more coming:
 
-- Peeks - Keyboard activated modal chromeless web pages
-- Slides - Keyboard or gesture activated modal chromeless web pages which slide in from any screen edges
-- Scripts - Scripts periodically executed against a web page in the background which extract data and notify on changes
+- Peeks - Keyboard-activated modal chromeless web pages for quickly glancing at or interacting with pages
+- Slides - Keyboard- or gesture-activated modal chromeless web pages which slide in from any screen edges
+- Scripts - Scripts periodically executed against a web page in the background which extract data for you to route to other pages or applications, or to aggregate, store and process later
 
-In progress:
-- Commands
-- Groups
+In progress, or thinking about:
 
-Thinking about:
-- "native" web apps
+- Commands - a graphical command entry palette (GCLI) for opening pages or executing commands against them
+- Groups - a way to categorize, recall and interact with groups of pages
+- "native" web apps - using Peek as a way to "install" web pages on the local device, as separate applications instead of just separate processes
+
+### Usage
+
+- Settings
+  * In app, `Cmd/Ctrl+r,` or launch app to open settings, or click tray icon
+  * Configure Peeks/Slides/Scripts in settings
+- Peeks
+  * `Opt+0-9` to open Peeks
+- Slides
+  * `Opt+←→↑↓` to open Slides
 
 ### Peeks
 
@@ -52,7 +58,14 @@ Scripts periodically load a web page in the background and extract data matching
 
 Ok, so not really "scripts" yet. But safe and effective enough for now.
 
-## Why
+## Design
+
+Many user tasks on the web are either transient, chained or persistent, data oriented, or some mix of those. Neither the document-oriented nor application-centric web meets those needs. Traditional browser makers can't meet those needs well, for many reasons.
+
+- transient
+- chained
+- persistent
+- data oriented
 
 Some thoughts driving the design of Peek:
 
@@ -60,36 +73,45 @@ Some thoughts driving the design of Peek:
 - Windows and tabs should have died a long time ago, a mixed metaphor constraining the ability of the web to grow/thrive/change and meet user needs
 - Security user interface must be a clear articulation of risks and trade-offs, and users should own the decisions
 
-## User values
+### Escape IZUI
 
-- users can move, resize, change to their requirements
-  - eg, browsers restrict minheight of a window, but i should be able make as short as i like
+TODO: articulate the escape-to-leave aspect, eg you can peek from *other* applications and ESC to go back to exactly where you were without breaking the task flow.
 
-## Design patterns
+Escape is an inverted zooming user interface (IZUI) design for a flexibl window manager that makes possible a web user agent application than can have multiple entry points and a heterogeneous windowing ecosystem.
 
-Escape IZUI
-* IZUI: inverse zooming user interface
-* ZUIs navigate by starting from a known root and user navigates by zooming ever further in
-* Escape starts anywhere, and instead of navigating by zooming in, all interfaces can zoom out to reset
-* allows unbounded and diverse entry points with predictable behavior
-* consistent path to familiar ground
+IZUI vs ZUI
+
+* ZUIs navigate by starting from a known root and user navigates by zooming ever further in, and then back out
+* Escape can enter a window stack at any point, and via a variety of methods, often from outside the application
+* Instead of navigating by zooming in, all interfaces can zoom out to go back, using the Escape key
+* This design allows unbounded and diverse entry points, but with predictable behavior
+* Regardless of the entry point, the user always has a consistent path to familiar ground
 
 Escape navigation model
 * navigation base can start at any level in stack
 * forward navigations are added on top of stack
-* backwards navigations walk the stack in reverse 
+* backwards navigations walk the stack in reverse up the tree to the root
 
 ## Architecture / Implementation
+
+About this space:
+
+- Web pages can themselves be navigators of the web
+- Embrace the app-ness of the web platform, as a way to efficiently access the document-ness
+- Decouple html+js+css from http+dns+ssl - not entirely, but that trust+security model is not a required starting point
+- Javascript is ok here
 
 Peek is designed to be modular and configurable around the idea that parts of it
 can run in different environments.
 
 For example:
-- Definitely planning on a mobile app which syncs and runs your peeks/slides/scripts
+- Planning on a mobile app which syncs and runs your peeks/slides/scripts
 - I'd like to have a decentralized compute option for running your scripts outside of your clients and syncing the data
 - Want cloud storage for all config and data, esp infinite history, so can do fun things with it
 
 ### "features" == privileged web apps
+
+NOTE: This was rolled back for now. Added complexity not yet required for validating the end user value proposition of the core features.
 
 The core features are web apps loaded over a custom protocol:
 - currently with a scheme of `peek`
@@ -122,16 +144,6 @@ User interface:
 TODO
 - Need to look at whether could library-ize some of what Agregore implemented for non-HTTP protocol support.
 - Min browser might be interesting as a forkable base to work from and contribute to, if they're open to it. At least, should look more at the architecture.
-
-### Usage
-
-- Settings
-  * In app, `cmd/ctl+r,` or launch app to open settings, or click tray
-  * Configure Peeks/Slides/Scripts in settings
-- Peeks
-  * `Opt+0-9` to open Peeks
-- Slides
-  * `Opt+←→↑↓` to open Slides
 
 ### Mobile
 
@@ -265,14 +277,14 @@ Feature lifecycle (un/install and reloads)
 - [x] close other windows of feature, not just background window
 
 Feature re-init/reload when toggled
-- [x] main: track shortcuts by source, remove when unloaded
-- [x] main: track window sources
-- [x] main: close child windows when (before) closing source window
+- [ ] track shortcuts by source, remove when unloaded
+- [ ] main: track window sources
+- [ ] main: close child windows when (before) closing source window
 
 Shortcut lifecycle
 - [x] main process should handle multiple registrations correctly
 - [x] send/track feature id/origin w/ each registration
-- [x] unreg shortcuts on unload
+- [ ] unreg shortcuts on unload
 
 Window features
 - [ ] add back in window features to window.open
@@ -282,7 +294,6 @@ Window features
 - [ ] add draggable as pref
 
 Features clean themselves up for lifecycle events
-- [ ] determine if new web-native windowing approach resolves this
 - [ ] load/unload peeks when enabled/disabled
 - [ ] load/unload slides when enabled/disabled
 - [ ] load/unload scripts when enabled/disabled
@@ -293,7 +304,7 @@ Peeks/Slides
 - [ ] unreg shortcuts and close windows on slides un/configure
 
 Cmd
-- [x] fix it
+- [ ] update to latest Cmd extension code
 - [ ] app-scoped multi-window pages open
 
 Settings
@@ -316,7 +327,7 @@ Deployment
 - [ ] icons
 - [ ] about page
 
-Demo scenario
+Demo reel
 - [ ] Peeks: translate, calendar, ai chat, currency conversion, everytimezone, tldraw
 - [ ] Slides: soundcloud, crypto prices, notepad, todo list
 - [ ] Scripts: eth price, weather change
@@ -436,7 +447,38 @@ yarn debug
 - and seeing output of content scripts, or ability to re-run locally on demand
 - needs some sync facility (inevitable anyway)
 
-## Resources
+## Demo reel
+
+Demo reel
+- [ ] Peeks: translate, calendar, ai chat, currency conversion, everytimezone, tldraw
+- [ ] Slides: soundcloud, stock prices, notepad, todo list
+- [ ] Scripts: eth price, weather change
+- [ ] Cmd: address something in the above to switch between, to pipe from/to?
+
+- author web content
+- pull in bits from the web
+- share preview for feedback
+- publish (or at least get output)
+
+writing the recap of the web track at ipfs thing 2023
+
+- make a new markdown doc
+- sections titled for each video title
+- each video's embed code in each section
+- navigate around the document for review and updates
+- need to easily preview rendered content
+- share preview link
+- publish somewhere
+
+## Unfiled
+
+Small examples of agency
+
+- users can move, resize, change things to their requirements
+  - eg, browsers restrict min-height of a window, but i should be able make as short as i like
+
+
+## Browser architecture references
 
 Agregore ext protocol impl
 - where all are registered: https://github.com/AgregoreWeb/agregore-browser/blob/master/app/protocols/index.js#L74
@@ -446,12 +488,6 @@ Agregore ext protocol impl
 Browsers
 - Min browser architecture - https://github.com/minbrowser/min/wiki/Architecture
 - Dot browser https://www.dothq.org/en-US
-
-Misc
-- https://github.com/Rajaniraiyn/awesome-electron-browsers
-- https://github.com/mawie81/electron-window-state
-- https://antonfisher.com/posts/2020/12/27/how-to-animate-native-electron-window/
-- https://stackoverflow.com/questions/44818508/how-do-i-move-a-frameless-window-in-electron-without-using-webkit-app-region
 
 ## History
 
@@ -480,19 +516,3 @@ The only way to create the ideal user experience for a web user agent that *Does
 
 
 
-## Testcase: Authoring Flows
-
-- author web content
-- pull in bits from the web
-- share preview for feedback
-- publish (or at least get output)
-
-writing the recap of the web track at ipfs thing 2023
-
-- make a new markdown doc
-- sections titled for each video title
-- each video's embed code in each section
-- navigate around the document for review and updates
-- need to easily preview rendered content
-- share preview link
-- publish somewhere

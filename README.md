@@ -8,7 +8,7 @@ Peek is a web user agent that is a workbench for experimenting with task alignme
 
 We often use the web with a specific goal in mind - that goal should drive the design of the interface of the web user agent.
 
-<img width="969" alt="CleanShot 2023-04-03 at 18 50 22@2x" src="https://user-images.githubusercontent.com/50103/229501558-7084d66e-962a-4c0f-a10e-11787ef3ce68.png">
+<img width="969" alt="settings screenshot" src="settings-screenshot.png">
 
 ## Important notes
 
@@ -72,12 +72,6 @@ Some thoughts driving the design of Peek:
 - Web user agents should be bounded by the user, not browser vendor business models
 - Windows and tabs should have died a long time ago, a mixed metaphor constraining the ability of the web to grow/thrive/change and meet user needs
 - Security user interface must be a clear articulation of risks and trade-offs, and users should own the decisions
-
-### 
-
-- users can move, resize, change to their requirements
-  - eg, browsers restrict min-height of a window, but i should be able make as short as i like
-
 
 ### Escape IZUI
 
@@ -476,7 +470,15 @@ writing the recap of the web track at ipfs thing 2023
 - share preview link
 - publish somewhere
 
-## Resources
+## Unfiled
+
+Small examples of agency
+
+- users can move, resize, change things to their requirements
+  - eg, browsers restrict min-height of a window, but i should be able make as short as i like
+
+
+## Browser architecture references
 
 Agregore ext protocol impl
 - where all are registered: https://github.com/AgregoreWeb/agregore-browser/blob/master/app/protocols/index.js#L74
@@ -486,12 +488,6 @@ Agregore ext protocol impl
 Browsers
 - Min browser architecture - https://github.com/minbrowser/min/wiki/Architecture
 - Dot browser https://www.dothq.org/en-US
-
-Misc
-- https://github.com/Rajaniraiyn/awesome-electron-browsers
-- https://github.com/mawie81/electron-window-state
-- https://antonfisher.com/posts/2020/12/27/how-to-animate-native-electron-window/
-- https://stackoverflow.com/questions/44818508/how-do-i-move-a-frameless-window-in-electron-without-using-webkit-app-region
 
 ## History
 

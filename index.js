@@ -454,7 +454,167 @@ ipcMain.on('modifywindow', (ev, msg) => {
       }
     }
   }
+});
 
+// Window API handlers
+ipcMain.handle('window-open', async (ev, msg) => {
+  console.log('window-open', msg);
+  
+  const { url, options } = msg;
+  const win = new BrowserWindow({
+    width: options.width || APP_DEF_WIDTH,
+    height: options.height || APP_DEF_HEIGHT,
+    show: options.show !== false,
+    webPreferences: {
+      preload: preloadPath
+    }
+  });
+  
+  try {
+    await win.loadURL(url);
+    
+    // Add to windows cache
+    _windows.set(win.id, {
+      id: win.id,
+      source: msg.source,
+      params: { ...options, address: url }
+    });
+    
+    return { success: true, id: win.id };
+  } catch (error) {
+    console.error('Failed to open window:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('window-close', async (ev, msg) => {
+  console.log('window-close', msg);
+  
+  try {
+    if (!msg.id) {
+      return { success: false, error: 'Window ID is required' };
+    }
+    
+    const win = BrowserWindow.fromId(msg.id);
+    if (!win) {
+      return { success: false, error: 'Window not found' };
+    }
+    
+    win.close();
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to close window:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('window-hide', async (ev, msg) => {
+  console.log('window-hide', msg);
+  
+  try {
+    if (!msg.id) {
+      return { success: false, error: 'Window ID is required' };
+    }
+    
+    const win = BrowserWindow.fromId(msg.id);
+    if (!win) {
+      return { success: false, error: 'Window not found' };
+    }
+    
+    win.hide();
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to hide window:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('window-show', async (ev, msg) => {
+  console.log('window-show', msg);
+  
+  try {
+    if (!msg.id) {
+      return { success: false, error: 'Window ID is required' };
+    }
+    
+    const win = BrowserWindow.fromId(msg.id);
+    if (!win) {
+      return { success: false, error: 'Window not found' };
+    }
+    
+    win.show();
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to show window:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('window-move', async (ev, msg) => {
+  console.log('window-move', msg);
+  
+  try {
+    if (!msg.id) {
+      return { success: false, error: 'Window ID is required' };
+    }
+    
+    const win = BrowserWindow.fromId(msg.id);
+    if (!win) {
+      return { success: false, error: 'Window not found' };
+    }
+    
+    if (typeof msg.x !== 'number' || typeof msg.y !== 'number') {
+      return { success: false, error: 'Valid x and y coordinates are required' };
+    }
+    
+    win.setPosition(msg.x, msg.y);
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to move window:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('window-focus', async (ev, msg) => {
+  console.log('window-focus', msg);
+  
+  try {
+    if (!msg.id) {
+      return { success: false, error: 'Window ID is required' };
+    }
+    
+    const win = BrowserWindow.fromId(msg.id);
+    if (!win) {
+      return { success: false, error: 'Window not found' };
+    }
+    
+    win.focus();
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to focus window:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('window-blur', async (ev, msg) => {
+  console.log('window-blur', msg);
+  
+  try {
+    if (!msg.id) {
+      return { success: false, error: 'Window ID is required' };
+    }
+    
+    const win = BrowserWindow.fromId(msg.id);
+    if (!win) {
+      return { success: false, error: 'Window not found' };
+    }
+    
+    win.blur();
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to blur window:', error);
+    return { success: false, error: error.message };
+  }
 });
 
 const modWindow = (bw, params) => {

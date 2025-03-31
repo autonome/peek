@@ -92,8 +92,8 @@ console.log('PROFILE', PROFILE);
 
 // specify various app data paths and make if not exist
 const defaultUserDataPath = app.getPath('userData');
-const profileDataPath = path.join(defaultUserDataPath, PROFILE); 
-const sessionDataPath = path.join(profileDataPath, 'chromium'); 
+const profileDataPath = path.join(defaultUserDataPath, PROFILE);
+const sessionDataPath = path.join(profileDataPath, 'chromium');
 
 //console.log('udp', defaultUserDataPath);
 //console.log('pdp', profileDataPath);
@@ -268,7 +268,6 @@ const initAppProtocol = () => {
         pathname = 'background.html';
       }
     }
-     
     const isNode = pathname.indexOf('node_modules') > -1;
 
     const hackedPath = isNode
@@ -294,7 +293,7 @@ const initAppProtocol = () => {
 
     // NOTE: commented out since relative paths seem to get
     // filtered out before this?!
-      
+
     // NB, this checks for paths that escape the bundle, e.g.
     // app://bundle/../../secret_file.txt
     /*
@@ -347,7 +346,7 @@ const onReady = () => {
       console.log('hiding dock');
       app.dock.hide();
     }
-   
+
     // initialize system tray
     if (msg.prefs.showTrayIcon == true) {
       console.log('showing tray');
@@ -459,7 +458,7 @@ ipcMain.on('modifywindow', (ev, msg) => {
 // Window API handlers
 ipcMain.handle('window-open', async (ev, msg) => {
   console.log('window-open', msg);
-  
+
   const { url, options } = msg;
   const win = new BrowserWindow({
     width: options.width || APP_DEF_WIDTH,
@@ -469,17 +468,17 @@ ipcMain.handle('window-open', async (ev, msg) => {
       preload: preloadPath
     }
   });
-  
+
   try {
     await win.loadURL(url);
-    
+
     // Add to windows cache
     _windows.set(win.id, {
       id: win.id,
       source: msg.source,
       params: { ...options, address: url }
     });
-    
+
     return { success: true, id: win.id };
   } catch (error) {
     console.error('Failed to open window:', error);
@@ -489,17 +488,17 @@ ipcMain.handle('window-open', async (ev, msg) => {
 
 ipcMain.handle('window-close', async (ev, msg) => {
   console.log('window-close', msg);
-  
+
   try {
     if (!msg.id) {
       return { success: false, error: 'Window ID is required' };
     }
-    
+
     const win = BrowserWindow.fromId(msg.id);
     if (!win) {
       return { success: false, error: 'Window not found' };
     }
-    
+
     win.close();
     return { success: true };
   } catch (error) {
@@ -510,17 +509,17 @@ ipcMain.handle('window-close', async (ev, msg) => {
 
 ipcMain.handle('window-hide', async (ev, msg) => {
   console.log('window-hide', msg);
-  
+
   try {
     if (!msg.id) {
       return { success: false, error: 'Window ID is required' };
     }
-    
+
     const win = BrowserWindow.fromId(msg.id);
     if (!win) {
       return { success: false, error: 'Window not found' };
     }
-    
+
     win.hide();
     return { success: true };
   } catch (error) {
@@ -531,17 +530,17 @@ ipcMain.handle('window-hide', async (ev, msg) => {
 
 ipcMain.handle('window-show', async (ev, msg) => {
   console.log('window-show', msg);
-  
+
   try {
     if (!msg.id) {
       return { success: false, error: 'Window ID is required' };
     }
-    
+
     const win = BrowserWindow.fromId(msg.id);
     if (!win) {
       return { success: false, error: 'Window not found' };
     }
-    
+
     win.show();
     return { success: true };
   } catch (error) {
@@ -552,21 +551,21 @@ ipcMain.handle('window-show', async (ev, msg) => {
 
 ipcMain.handle('window-move', async (ev, msg) => {
   console.log('window-move', msg);
-  
+
   try {
     if (!msg.id) {
       return { success: false, error: 'Window ID is required' };
     }
-    
+
     const win = BrowserWindow.fromId(msg.id);
     if (!win) {
       return { success: false, error: 'Window not found' };
     }
-    
+
     if (typeof msg.x !== 'number' || typeof msg.y !== 'number') {
       return { success: false, error: 'Valid x and y coordinates are required' };
     }
-    
+
     win.setPosition(msg.x, msg.y);
     return { success: true };
   } catch (error) {
@@ -577,17 +576,17 @@ ipcMain.handle('window-move', async (ev, msg) => {
 
 ipcMain.handle('window-focus', async (ev, msg) => {
   console.log('window-focus', msg);
-  
+
   try {
     if (!msg.id) {
       return { success: false, error: 'Window ID is required' };
     }
-    
+
     const win = BrowserWindow.fromId(msg.id);
     if (!win) {
       return { success: false, error: 'Window not found' };
     }
-    
+
     win.focus();
     return { success: true };
   } catch (error) {
@@ -598,17 +597,17 @@ ipcMain.handle('window-focus', async (ev, msg) => {
 
 ipcMain.handle('window-blur', async (ev, msg) => {
   console.log('window-blur', msg);
-  
+
   try {
     if (!msg.id) {
       return { success: false, error: 'Window ID is required' };
     }
-    
+
     const win = BrowserWindow.fromId(msg.id);
     if (!win) {
       return { success: false, error: 'Window not found' };
     }
-    
+
     win.blur();
     return { success: true };
   } catch (error) {
@@ -679,7 +678,7 @@ const unregisterShortcutsForAddress = (aAddress) => {
   }
 };
 
-// esc handler 
+// esc handler
 // TODO: make user-configurable
 const addEscHandler = bw => {
   console.log('adding esc handler');
@@ -783,7 +782,7 @@ const winOpenHandler = (source, details) => {
             closeOrHideWindow(bw.id);
           });
         }
-        
+
         // post actual close clean-up
         bw.on('closed', () => {
           console.log('dFL.onClosed: deleting ', bw.id, ' for ', url);

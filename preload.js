@@ -130,26 +130,61 @@ api.subscribe = (topic, callback, scope = api.scopes.SELF) => {
 };
 
 api.window = {
-  close: target => {
-    console.log('window.close', target);
-
-    if (target === null) {
+  open: (url, options = {}) => {
+    console.log('window.open', url, options);
+    return ipcRenderer.invoke('window-open', {
+      source: sourceAddress,
+      url,
+      options
+    });
+  },
+  close: (id = null) => {
+    console.log('window.close', id);
+    if (id === null) {
       window.close();
       return;
     }
-
-    ipcRenderer.send('modifywindow', {
+    return ipcRenderer.invoke('window-close', {
       source: sourceAddress,
-      params: {
-        action: 'close'
-      }
+      id
     });
   },
-  hide: () => {
+  hide: (id) => {
+    console.log('window.hide', id);
+    return ipcRenderer.invoke('window-hide', {
+      source: sourceAddress,
+      id
+    });
   },
-  move: () => {
+  show: (id) => {
+    console.log('window.show', id);
+    return ipcRenderer.invoke('window-show', {
+      source: sourceAddress,
+      id
+    });
   },
-  show: () => {
+  move: (id, x, y) => {
+    console.log('window.move', id, x, y);
+    return ipcRenderer.invoke('window-move', {
+      source: sourceAddress,
+      id,
+      x,
+      y
+    });
+  },
+  focus: (id) => {
+    console.log('window.focus', id);
+    return ipcRenderer.invoke('window-focus', {
+      source: sourceAddress,
+      id
+    });
+  },
+  blur: (id) => {
+    console.log('window.blur', id);
+    return ipcRenderer.invoke('window-blur', {
+      source: sourceAddress,
+      id
+    });
   }
 };
 

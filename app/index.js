@@ -34,8 +34,15 @@ const openSettingsWindow = (prefs) => {
   }
   */
 
-  const height = prefs.height || 600;
-  const width = prefs.width || 800;
+  // Get screen dimensions from window object
+  const screenWidth = window.screen.availWidth;
+  const screenHeight = window.screen.availHeight;
+
+  // Calculate 80% of screen dimensions
+  const width = Math.floor(screenWidth * 0.8);
+  const height = Math.floor(screenHeight * 0.8);
+
+  console.log(`Setting window size to ${width}x${height} (80% of ${screenWidth}x${screenHeight})`);
 
   const params = {
     debug,

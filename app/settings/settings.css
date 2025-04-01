@@ -3,40 +3,105 @@ body {
   font-feature-settings: "tnum";
   font-size: 12.4px;
   font-variant-numeric: tabular-nums;
-  /*margin: 12px;*/
-}
-
-/*
-body > div {
-  margin-bottom: 10px;
-}
-
-body > div > div { 
-  margin-bottom: 10px;
-}
-
-h1 {
-  margin-top: 1px;
-  margin-bottom: 2px;
-}
-
-*/
-.houseofpane {
-  justify-content: space-between;
-  columns: 3;
+  background-color: transparent;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
 .houseofpane {
-  background-color: black;
-  padding-top: 20px;
+  /*
+  display: flex;
+  flex-wrap: wrap;
+  flex-flow: column-wrap;
+  gap: 24px;
+  justify-content: flex-start;
+  align-items: flex-start;
+  */
+  columns: 4;
+  margin: 20px;
+  padding: 20px;
+  background-color: transparent;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* lil-gui */
 .houseofpane > div {
+  flex: 0 0 auto;
+  margin-bottom: 24px;
   /*
-  min-width: 380px;
-  max-width: 800px;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+  overflow: hidden;
   */
-  /*margin-bottom: 10px;*/
-  break-inside: avoid-column;
+  min-width: 260px;
+  max-width: 450px;
+}
+
+/* Override lil-gui to look better with transparent background */
+.lil-gui {
+  --background-color: rgba(255, 255, 255, 0.8);
+  --widget-color: rgba(240, 240, 240, 0.9);
+  --hover-color: rgba(245, 245, 245, 0.95);
+  background: var(--background-color);
+  border-radius: 10px;
+  overflow: hidden;
+  width: auto !important;
+  min-width: 260px;
+}
+
+/* Make folders look nicer */
+/*
+.lil-gui .title {
+  padding: 10px 12px !important;
+  font-size: 12px !important;
+}
+
+.lil-gui .children {
+  padding: 6px 12px 10px !important;
+  max-height: 400px;
+  overflow-y: auto;
+}
+*/
+
+/* Controllers for wider columns */
+.lil-gui .controller {
+  min-height: 28px !important;
+  padding: 0 12px !important;
+}
+
+.lil-gui .controller .name {
+  font-size: 11px !important;
+  width: 40% !important;
+}
+
+.lil-gui .controller .widget {
+  width: 60% !important;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .houseofpane {
+    padding: 16px;
+    gap: 16px;
+    justify-content: center;
+  }
+  
+  .houseofpane > div {
+    min-width: 280px;
+    max-width: 100%;
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .houseofpane {
+    padding: 8px;
+    gap: 12px;
+  }
+  
+  .houseofpane > div {
+    min-width: 100%;
+  }
 }

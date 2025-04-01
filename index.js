@@ -719,8 +719,8 @@ const winOpenHandler = (source, details) => {
   const overrides = {
     devTools: true, //DEBUG || params.debug,
     skipTaskbar: true, // TODO
-    autoHideMenuBar: true, // TODO
-    titleBarStyle: 'hidden', // TODO
+    autoHideMenuBar: false, // TODO
+    //titleBarStyle: 'hidden', // TODO
     webPreferences: {
       preload: preloadPath
     }

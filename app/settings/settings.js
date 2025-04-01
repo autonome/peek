@@ -95,6 +95,7 @@ const panels = {};
 
 const guiFeature = (features, feature, i, gui) => {
   const folder = gui.addFolder(feature.name);
+  folder.close();
   addToGUI(folder, 'Description', feature.description).disable();
   addToGUI(folder, 'Enabled', feature.enabled).onChange(e => {
     // TODO: validate new value against schema
@@ -118,6 +119,7 @@ panels['Groups'] = guiGroups;
 
 const guiPeeks = (items, item, i, gui) => {
   const folder = gui.addFolder(item.title);
+  folder.close();
 
   addToGUI(folder, 'Key mapping', item.keyNum).disable();
   addToGUI(folder, 'Address to load', item.address).onChange(e => {
@@ -142,6 +144,7 @@ panels['Peeks'] = guiPeeks;
 
 const guiScripts = (items, item, i, gui) => {
   const folder = gui.addFolder(item.title);
+  folder.close();
 
   addToGUI(folder, 'Id', item.id).onChange(e => {
     items[i].id = e;
@@ -175,6 +178,7 @@ panels['Scripts'] = guiScripts;
 
 const guiSlides = (items, item, i, gui) => {
   const folder = gui.addFolder(item.title);
+  folder.close();
 
   addToGUI(folder, 'Screen edge', item.screenEdge).disable();
   addToGUI(folder, 'Address to load', item.address).onChange(e => {
@@ -202,10 +206,13 @@ const init = () => {
 
   settingsGUI(container, appConfig, guiFeature);
 
+  const byName = {};
   for (const i in fc) {
     const name = fc[i].labels.name;
+    byName[ fc[i].labels.name ] = i;
     settingsGUI(container, fc[i], panels[name]);
   }
+
 };
 
 window.addEventListener('load', init);

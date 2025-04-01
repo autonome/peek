@@ -10,11 +10,17 @@ body {
 }
 
 .houseofpane {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  /*
+  display: flex;
+  flex-wrap: wrap;
+  flex-flow: column-wrap;
   gap: 24px;
-  margin: 0;
-  padding: 24px;
+  justify-content: flex-start;
+  align-items: flex-start;
+  */
+  columns: 4;
+  margin: 20px;
+  padding: 20px;
   background-color: transparent;
   width: 100%;
   box-sizing: border-box;
@@ -22,12 +28,15 @@ body {
 
 /* lil-gui */
 .houseofpane > div {
-  break-inside: avoid;
+  flex: 0 0 auto;
   margin-bottom: 24px;
+  /*
   box-shadow: 0 3px 12px rgba(0, 0, 0, 0.1);
   border-radius: 10px;
   overflow: hidden;
+  */
   min-width: 260px;
+  max-width: 450px;
 }
 
 /* Override lil-gui to look better with transparent background */
@@ -38,11 +47,12 @@ body {
   background: var(--background-color);
   border-radius: 10px;
   overflow: hidden;
-  width: 100% !important;
-  max-width: none !important;
+  width: auto !important;
+  min-width: 260px;
 }
 
 /* Make folders look nicer */
+/*
 .lil-gui .title {
   padding: 10px 12px !important;
   font-size: 12px !important;
@@ -53,6 +63,7 @@ body {
   max-height: 400px;
   overflow-y: auto;
 }
+*/
 
 /* Controllers for wider columns */
 .lil-gui .controller {
@@ -70,9 +81,27 @@ body {
 }
 
 /* Responsive adjustments */
+@media (max-width: 768px) {
+  .houseofpane {
+    padding: 16px;
+    gap: 16px;
+    justify-content: center;
+  }
+  
+  .houseofpane > div {
+    min-width: 280px;
+    max-width: 100%;
+    width: 100%;
+  }
+}
+
 @media (max-width: 480px) {
   .houseofpane {
     padding: 8px;
     gap: 12px;
+  }
+  
+  .houseofpane > div {
+    min-width: 100%;
   }
 }

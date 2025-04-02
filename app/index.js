@@ -1,5 +1,6 @@
 import appConfig from './config.js';
-import { openStore, openWindow } from "./utils.js";
+import { openStore } from "./utils.js";
+import windowManager from "./windows.js";  // Renamed to avoid naming collision
 import api from './api.js';
 import fc from './features.js';
 
@@ -21,18 +22,8 @@ const topicFeatureToggle = 'core:feature:toggle';
 
 let _settingsWin = null;
 
-const openSettingsWindow = (prefs) => {
+const openSettingsWindow = async (prefs) => {
   console.log('openSettingsWindow()');
-
-  /*
-  // TODO: fuck, have to call main process to do this
-  if (_settingsWin) {
-    console.log('win exists, focusing');
-    _settingsWin.focus();
-    console.log('focused');
-    return;
-  }
-  */
 
   // Get screen dimensions from window object
   const screenWidth = window.screen.availWidth;
@@ -46,16 +37,28 @@ const openSettingsWindow = (prefs) => {
 
   const params = {
     debug,
-    address: settingsAddress,
     key: settingsAddress,
     transparent: true,
     height,
-    width
+    width,
+    // Settings window should stay open when clicking elsewhere, so not modal
+    modal: false
   };
 
-  console.log('opening settings window', params);
-  _settingsWin = openWindow(settingsAddress, params);
-  console.log('opened settings window', _settingsWin);
+  console.log('Opening settings window with params:', params);
+  
+  try {
+    // Use the window creation API from windows.js
+    const windowController = await windowManager.createWindow(settingsAddress, params);
+    
+    console.log('Settings window opened successfully with controller:', windowController);
+    _settingsWin = windowController;
+    
+    // Focus the window to bring it to front
+    await windowController.focus();
+  } catch (error) {
+    console.error('Failed to open settings window:', error);
+  }
 };
 
 const initSettingsShortcut = (prefs) => {
@@ -110,7 +113,7 @@ const initIframeFeature = file => {
 const prefs = () => store.get(storageKeys.PREFS);
 const features = () => store.get(storageKeys.ITEMS);
 
-const init = () => {
+const init = async () => {
   console.log('init');
 
   const p = prefs();
@@ -127,12 +130,19 @@ const init = () => {
   api.subscribe('open', msg => {
     // eg from the tray icon.
     if (msg.address && msg.address == settingsAddress) {
-      openSettingsWindow(p);
+      openSettingsWindow(p).catch(err => {
+        console.error('Error opening settings window from open event:', err);
+      });
     }
   });
 
+  // Open settings window on startup if configured
   if (p.startupFeature == settingsAddress) {
-    openSettingsWindow(p);
+    try {
+      await openSettingsWindow(p);
+    } catch (error) {
+      console.error('Error opening startup settings window:', error);
+    }
   }
 
   // feature enable/disable
@@ -163,26 +173,31 @@ const init = () => {
   //features.forEach(initIframeFeature);
 
   /*
+  // Example of using the new windows.js API:
   const addy = 'http://localhost';
   const params = {
     debug,
-    address: addy,
     key: addy,
     height: 300,
     width: 300
   };
 
-  const w = openWindow(addy, params);
-
-  api.subscribe('onWindowOpened', msg => {
-    api.modifyWindow(params.key, {
-      hide: true
+  windowManager.createWindow(addy, params)
+    .then(windowController => {
+      // Can use windowController to interact with the window
+      windowController.hide();
+    })
+    .catch(error => {
+      console.error('Error opening example window:', error);
     });
-  });
   */
 };
 
-window.addEventListener('load', init);
+window.addEventListener('load', () => {
+  init().catch(error => {
+    console.error('Error during application initialization:', error);
+  });
+});
 
 /*
 const odiff = (a, b) => Object.entries(b).reduce((c, [k, v]) => Object.assign(c, a[k] ? {} : { [k]: v }), {});

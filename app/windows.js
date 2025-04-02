@@ -1,4 +1,4 @@
-import { openStore, openWindow } from "./utils.js";
+import { openStore } from "./utils.js";
 import api from './api.js';
 import fc from './features.js';
 
@@ -20,11 +20,12 @@ const openModalWindow = (address, params = {}) => {
   
   console.log('Opening modal window with params:', params);
   
-  // Prefer using the IPC API directly
+  // Always use the IPC API
   if (api.window && api.window.open) {
     return api.window.open(address, params);
   } else {
-    return openWindow(address, params);
+    console.error('API window.open not available');
+    throw new Error('API window.open not available. Cannot open window.');
   }
 };
 
@@ -39,7 +40,7 @@ const createWindow = async (address, params = {}) => {
   
   let windowId;
   
-  // Prefer using the IPC API directly
+  // Always use the IPC API
   if (api.window && api.window.open) {
     const result = await api.window.open(address, params);
     if (result.success) {
@@ -49,20 +50,8 @@ const createWindow = async (address, params = {}) => {
       throw new Error(`Failed to open window: ${result.error}`);
     }
   } else {
-    // Fallback to regular window.open
-    const win = openWindow(address, params);
-    return {
-      window: win,
-      close: () => {
-        if (win) win.close();
-      },
-      hide: () => {
-        if (win) win.close();
-      },
-      show: () => {
-        // Can't re-open with this method
-      }
-    };
+    console.error('API window.open not available');
+    throw new Error('API window.open not available. Cannot open window.');
   }
   
   // Return an API for the window

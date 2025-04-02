@@ -147,15 +147,75 @@ app.on('activate', () => {
 
 // ***** Caches *****
 
-// keyed on window id
-const _windows = new Map();
-
 // keyed on source address
 const shortcuts = new Map();
 
 // app global prefs configurable by user
 // populated during app init
 let _prefs = {};
+
+// ***** Window Manager *****
+
+class WindowManager {
+  constructor() {
+    this.windows = new Map();
+    
+    // Track window close events to clean up
+    app.on('browser-window-created', (_, window) => {
+      window.on('closed', () => {
+        const windowId = window.id;
+        const windowData = this.getWindow(windowId);
+        
+        // Notify subscribers that window was closed
+        if (windowData) {
+          pubsub.publish(windowData.source, scopes.GLOBAL, 'window:closed', {
+            id: windowId,
+            source: windowData.source
+          });
+        }
+        
+        // Remove from window manager
+        this.removeWindow(windowId);
+      });
+    });
+  }
+  
+  addWindow(id, options) {
+    this.windows.set(id, options);
+  }
+  
+  getWindow(id) {
+    return this.windows.get(id);
+  }
+  
+  removeWindow(id) {
+    this.windows.delete(id);
+  }
+  
+  findWindowByKey(source, key) {
+    if (!key) return null;
+    
+    for (const [id, win] of this.windows) {
+      if (win.source === source && win.params && win.params.key === key) {
+        return { id, window: BrowserWindow.fromId(id), data: win };
+      }
+    }
+    return null;
+  }
+  
+  getChildWindows(source) {
+    const children = [];
+    for (const [id, win] of this.windows) {
+      if (win.source === source) {
+        children.push({ id, data: win });
+      }
+    }
+    return children;
+  }
+}
+
+// Initialize window manager
+const windowManager = new WindowManager();
 
 // ***** pubsub *****
 
@@ -354,23 +414,132 @@ const onReady = () => {
     }
   });
 
-  // init web core
+  // Initialize the background window using the new window-open method
+  // Create a BrowserWindow directly for the core background process
   const winPrefs = {
-    show: false, //DEBUG,
+    show: false,
+    key: 'background-core',
     webPreferences: {
       preload: preloadPath,
       webSecurity: false
     }
   };
-
+  
+  // Create the background window
   const win = new BrowserWindow(winPrefs);
   win.loadURL(webCoreAddress);
-
+  
+  // Setup devtools
   winDevtoolsConfig(win);
-
-  win.webContents.setWindowOpenHandler(d => {
-    //console.log('CORE BG WINOPENHANDLER', d);
-    return winOpenHandler(webCoreAddress, d);
+  
+  // Add to window manager
+  windowManager.addWindow(win.id, {
+    id: win.id,
+    source: systemAddress,
+    params: { ...winPrefs, address: webCoreAddress }
+  });
+  
+  // Add escape key handler to background window
+  addEscHandler(win);
+  
+  // Set up handlers for windows opened from the background window
+  win.webContents.setWindowOpenHandler((details) => {
+    console.log('Background window opening child window:', details.url);
+    
+    // Parse window features into options
+    const featuresMap = {};
+    if (details.features) {
+      details.features.split(',')
+        .map(entry => entry.split('='))
+        .forEach(([key, value]) => {
+          // Convert string booleans to actual booleans
+          if (value === 'true') value = true;
+          else if (value === 'false') value = false;
+          // Convert numeric values to numbers
+          else if (!isNaN(value) && value.trim() !== '') {
+            value = parseInt(value, 10);
+          }
+          featuresMap[key] = value;
+        });
+    }
+    
+    console.log('Parsed features map:', featuresMap);
+    
+    // Check if window with this key already exists
+    if (featuresMap.key) {
+      const existingWindow = windowManager.findWindowByKey(webCoreAddress, featuresMap.key);
+      if (existingWindow) {
+        console.log('Reusing existing window with key:', featuresMap.key);
+        existingWindow.window.show();
+        return { action: 'deny' };
+      }
+    }
+    
+    // Create a new window - we'll handle it directly
+    
+    // Prepare browser window options
+    const winOptions = {
+      ...featuresMap,
+      width: parseInt(featuresMap.width) || APP_DEF_WIDTH,
+      height: parseInt(featuresMap.height) || APP_DEF_HEIGHT,
+      show: featuresMap.show !== false,
+      webPreferences: {
+        preload: preloadPath
+      }
+    };
+    
+    // Make sure position parameters are correctly handled
+    if (featuresMap.x !== undefined) {
+      winOptions.x = parseInt(featuresMap.x);
+    }
+    if (featuresMap.y !== undefined) {
+      winOptions.y = parseInt(featuresMap.y);
+    }
+    
+    console.log('Background window creating child with options:', winOptions);
+    
+    // Make sure we register browser window created handler to track the new window
+    const onCreated = (e, newWin) => {
+      // Check if this is the window we just created
+      newWin.webContents.once('did-finish-load', () => {
+        const loadedUrl = newWin.webContents.getURL();
+        if (loadedUrl === details.url) {
+          // Remove the listener
+          app.removeListener('browser-window-created', onCreated);
+          
+          // Add the window to our manager with necessary parameters
+          windowManager.addWindow(newWin.id, {
+            id: newWin.id,
+            source: webCoreAddress,
+            params: { 
+              ...featuresMap,
+              address: details.url,
+              modal: featuresMap.modal
+            }
+          });
+          
+          // Add escape key handler
+          addEscHandler(newWin);
+          
+          // Set up modal behavior
+          if (featuresMap.modal === true) {
+            newWin.on('blur', () => {
+              console.log('Modal window lost focus:', details.url);
+              closeOrHideWindow(newWin.id);
+            });
+          }
+        }
+      });
+    };
+    
+    // Start listening for the window creation
+    app.on('browser-window-created', onCreated);
+    
+    // Return allow with overridden options
+    return { 
+      action: 'allow',
+      overrideBrowserWindowOptions: winOptions
+    };
   });
 
   // TODO: this should be pref'd
@@ -436,21 +605,19 @@ ipcMain.on('modifywindow', (ev, msg) => {
   const key = msg.hasOwnProperty('name') ? msg.name : null;
 
   if (key != null) {
-    for (const [id, w] of _windows) {
-      console.log('win?', w.source, msg.source, w.params.key, key);
-      if (w.source == msg.source && w.params.key == key) {
-        console.log('FOUND WINDOW FOR KEY', key);
-        const bw = BrowserWindow.fromId(id);
-        let r = false;
-        try {
-          modWindow(bw, msg.params);
-          r = true;
-        }
-        catch(ex) {
-          console.error(ex);
-        }
-        ev.reply(msg.replyTopic, { output: r });
+    const existingWindow = windowManager.findWindowByKey(msg.source, key);
+    if (existingWindow) {
+      console.log('FOUND WINDOW FOR KEY', key);
+      const bw = existingWindow.window;
+      let r = false;
+      try {
+        modWindow(bw, msg.params);
+        r = true;
       }
+      catch(ex) {
+        console.error(ex);
+      }
+      ev.reply(msg.replyTopic, { output: r });
     }
   }
 });
@@ -460,24 +627,65 @@ ipcMain.handle('window-open', async (ev, msg) => {
   console.log('window-open', msg);
 
   const { url, options } = msg;
-  const win = new BrowserWindow({
-    width: options.width || APP_DEF_WIDTH,
-    height: options.height || APP_DEF_HEIGHT,
+  
+  // Check if window with this key already exists
+  if (options.key) {
+    const existingWindow = windowManager.findWindowByKey(msg.source, options.key);
+    if (existingWindow) {
+      console.log('Reusing existing window with key:', options.key);
+      existingWindow.window.show();
+      return { success: true, id: existingWindow.id, reused: true };
+    }
+  }
+  
+  // Prepare browser window options
+  const winOptions = {
+    ...options,  // Pass all options to support any BrowserWindow constructor param
+    width: parseInt(options.width) || APP_DEF_WIDTH,
+    height: parseInt(options.height) || APP_DEF_HEIGHT,
     show: options.show !== false,
     webPreferences: {
+      ...options.webPreferences,
       preload: preloadPath
     }
-  });
+  };
+  
+  // Make sure position parameters are correctly handled
+  if (options.x !== undefined) {
+    winOptions.x = parseInt(options.x);
+  }
+  if (options.y !== undefined) {
+    winOptions.y = parseInt(options.y);
+  }
+  
+  console.log('Creating window with options:', winOptions);
+  
+  // Create new window
+  const win = new BrowserWindow(winOptions);
 
   try {
     await win.loadURL(url);
 
-    // Add to windows cache
-    _windows.set(win.id, {
+    // Add to window manager with modal parameter
+    windowManager.addWindow(win.id, {
       id: win.id,
       source: msg.source,
-      params: { ...options, address: url }
+      params: { 
+        ...options, 
+        address: url
+      }
     });
+    
+    // Add escape key handler to all windows
+    addEscHandler(win);
+    
+    // Set up modal behavior if requested
+    if (options.modal === true) {
+      win.on('blur', () => {
+        console.log('window-open: blur for modal window', url);
+        closeOrHideWindow(win.id);
+      });
+    }
 
     return { success: true, id: win.id };
   } catch (error) {
@@ -500,6 +708,7 @@ ipcMain.handle('window-close', async (ev, msg) => {
     }
 
     win.close();
+    // WindowManager will automatically clean up on window close event
     return { success: true };
   } catch (error) {
     console.error('Failed to close window:', error);
@@ -515,8 +724,16 @@ ipcMain.handle('window-hide', async (ev, msg) => {
       return { success: false, error: 'Window ID is required' };
     }
 
+    // Get window data from manager to verify it exists
+    const winData = windowManager.getWindow(msg.id);
+    if (!winData) {
+      return { success: false, error: 'Window not found in window manager' };
+    }
+
     const win = BrowserWindow.fromId(msg.id);
     if (!win) {
+      // Clean up stale window reference
+      windowManager.removeWindow(msg.id);
       return { success: false, error: 'Window not found' };
     }
 
@@ -536,8 +753,16 @@ ipcMain.handle('window-show', async (ev, msg) => {
       return { success: false, error: 'Window ID is required' };
     }
 
+    // Get window data from manager to verify it exists
+    const winData = windowManager.getWindow(msg.id);
+    if (!winData) {
+      return { success: false, error: 'Window not found in window manager' };
+    }
+
     const win = BrowserWindow.fromId(msg.id);
     if (!win) {
+      // Clean up stale window reference
+      windowManager.removeWindow(msg.id);
       return { success: false, error: 'Window not found' };
     }
 
@@ -557,8 +782,16 @@ ipcMain.handle('window-move', async (ev, msg) => {
       return { success: false, error: 'Window ID is required' };
     }
 
+    // Get window data from manager to verify it exists
+    const winData = windowManager.getWindow(msg.id);
+    if (!winData) {
+      return { success: false, error: 'Window not found in window manager' };
+    }
+
     const win = BrowserWindow.fromId(msg.id);
     if (!win) {
+      // Clean up stale window reference
+      windowManager.removeWindow(msg.id);
       return { success: false, error: 'Window not found' };
     }
 
@@ -582,8 +815,16 @@ ipcMain.handle('window-focus', async (ev, msg) => {
       return { success: false, error: 'Window ID is required' };
     }
 
+    // Get window data from manager to verify it exists
+    const winData = windowManager.getWindow(msg.id);
+    if (!winData) {
+      return { success: false, error: 'Window not found in window manager' };
+    }
+
     const win = BrowserWindow.fromId(msg.id);
     if (!win) {
+      // Clean up stale window reference
+      windowManager.removeWindow(msg.id);
       return { success: false, error: 'Window not found' };
     }
 
@@ -603,8 +844,16 @@ ipcMain.handle('window-blur', async (ev, msg) => {
       return { success: false, error: 'Window ID is required' };
     }
 
+    // Get window data from manager to verify it exists
+    const winData = windowManager.getWindow(msg.id);
+    if (!winData) {
+      return { success: false, error: 'Window not found in window manager' };
+    }
+
     const win = BrowserWindow.fromId(msg.id);
     if (!win) {
+      // Clean up stale window reference
+      windowManager.removeWindow(msg.id);
       return { success: false, error: 'Window not found' };
     }
 
@@ -613,6 +862,36 @@ ipcMain.handle('window-blur', async (ev, msg) => {
   } catch (error) {
     console.error('Failed to blur window:', error);
     return { success: false, error: error.message };
+  }
+});
+
+// Add a window-exists handler to check if a window is still valid
+ipcMain.handle('window-exists', async (ev, msg) => {
+  console.log('window-exists', msg);
+
+  try {
+    if (!msg.id) {
+      return { exists: false, error: 'Window ID is required' };
+    }
+
+    // Check if the window exists in the window manager
+    const winData = windowManager.getWindow(msg.id);
+    if (!winData) {
+      return { exists: false };
+    }
+
+    // Double-check that the window object is still valid
+    const win = BrowserWindow.fromId(msg.id);
+    if (!win || win.isDestroyed()) {
+      // Clean up stale window reference
+      windowManager.removeWindow(msg.id);
+      return { exists: false };
+    }
+
+    return { exists: true };
+  } catch (error) {
+    console.error('Failed to check if window exists:', error);
+    return { exists: false, error: error.message };
   }
 });
 
@@ -681,153 +960,19 @@ const unregisterShortcutsForAddress = (aAddress) => {
 // esc handler
 // TODO: make user-configurable
 const addEscHandler = bw => {
-  console.log('adding esc handler');
+  console.log('adding esc handler to window:', bw.id);
   bw.webContents.on('before-input-event', (e, i) => {
-    //console.log('BIE', i.type, i.key);
     if (i.key == 'Escape' && i.type == 'keyUp') {
-      console.log('webcontents.onBeforeInputEvent(): esc');
+      console.log('Escape key pressed in window:', bw.id);
+      
+      // Always trigger close/hide on Escape, just like the original code
+      console.log('Closing or hiding window on escape');
       closeOrHideWindow(bw.id);
     }
   });
 };
 
-// configure windows opened by renderers
-const winOpenHandler = (source, details) => {
-  console.log('WINOPENHANDLER', source, details);
-
-  /*
-  // TODO: do something that allows popping out
-  // into default browser
-  if (details.url.startsWith('http')) {
-    shell.openExternal(details.url);
-    return { action: 'deny' };
-  }
-  */
-
-  const params = {};
-  details.features.split(',')
-    .map(entry => entry.split('='))
-    // TODO: ugh
-    .map(entry => {
-      entry[1] = (entry[1] === 'false') ? false : true;
-      return entry;
-    })
-    .forEach(entry => params[entry[0]] = entry[1]);
-
-  console.log('params', params);
-
-  const overrides = {
-    devTools: true, //DEBUG || params.debug,
-    skipTaskbar: true, // TODO
-    autoHideMenuBar: false, // TODO
-    //titleBarStyle: 'hidden', // TODO
-    webPreferences: {
-      preload: preloadPath
-    }
-  };
-
-  smash(params, overrides, 'show', null, true);
-
-  // keys are used to force singleton windows
-  // TODO: this doesn't really do anything rn
-  const key = params.hasOwnProperty('key') ? params.key : null;
-  if (key != null) {
-    _windows.forEach((w) => {
-      if (w.source == source && w.params.key == key) {
-        console.log('WINDOW ALREADY EXISTS FOR KEY', key);
-        //id = w.id;
-      }
-    });
-  }
-
-  // TODO: unhack
-  const onBrowserWinCreated = (e, bw) => {
-    console.log('onBrowserWinCreated', bw.id);
-    app.off('browser-window-created', onBrowserWinCreated);
-
-    // Capture new content windows created from this content window
-    // (not firing sometimes, wtf? maybe in debug/not mode?)
-    bw.webContents.on('did-create-window', (w, d) => {
-      console.log('DID-CREATE-WINDOW', w, d);
-    });
-
-    const didFinishLoad = () => {
-      console.log('DID-FINISH-LOAD()');
-
-      // TODO: unhack
-      const url = bw.webContents.getURL();
-
-      console.log('dFL(): url', url, details.url);
-      console.log('dfl', bw.id);
-
-      if (url == details.url) {
-        bw.webContents.off('did-finish-load', didFinishLoad);
-
-        //params.address = url;
-
-        addEscHandler(bw);
-
-        winDevtoolsConfig(bw);
-
-        // don't do this in detached debug mode, devtools steals focus
-        // and closes everything 😐
-        // TODO: fix w/ devtoolsIsFocused()
-        //  - enumerat windows
-        //  - find devtools
-        //  - if exists and has focus, then bail
-        // TODO: should be opener-configurable param
-        if (!DEBUG) {
-          bw.on('blur', () => {
-            console.log('dFL.onBlur() for', url);
-            closeOrHideWindow(bw.id);
-          });
-        }
-
-        // post actual close clean-up
-        bw.on('closed', () => {
-          console.log('dFL.onClosed: deleting ', bw.id, ' for ', url);
-
-          // unregister any shortcuts this window registered
-          const isPrivileged = url.startsWith(APP_PROTOCOL);
-          if (isPrivileged) {
-            unregisterShortcutsForAddress(url)
-          }
-
-          // remove from cache
-          _windows.delete(bw.id);
-
-          bw = null;
-        });
-
-        // add to cache
-        _windows.set(bw.id, {
-          id: bw.id,
-          source,
-          params
-        });
-
-        /*
-        // send synthetic msg to source, notifying window was opened
-        pubsub.publish(source, scopes.SELF, 'onWindowOpened', {
-          url,
-          key
-        });
-        */
-      }
-    };
-
-    bw.webContents.on('did-finish-load', didFinishLoad);
-  };
-
-  app.on('browser-window-created', onBrowserWinCreated);
-
-  console.log('OVERRIDES', overrides);
-
-  return {
-    action: 'allow',
-    overrideBrowserWindowOptions: overrides
-  };
-};
+// Nothing here - removed old window handler code
 
 // show/configure devtools when/after a window is opened
 const winDevtoolsConfig = bw => {
@@ -859,10 +1004,10 @@ const closeWindow = (params, callback) => {
 
   let retval = false;
 
-  if (params.hasOwnProperty('id') && _windows.has(params.id)) {
+  if (params.hasOwnProperty('id') && windowManager.getWindow(params.id)) {
     console.log('closeWindow(): closing', params.id);
 
-    const entry = _windows.get(params.id);
+    const entry = windowManager.getWindow(params.id);
     if (!entry) {
       // wtf
       return;
@@ -881,37 +1026,43 @@ const closeWindow = (params, callback) => {
 };
 
 const closeOrHideWindow = id => {
-  console.log('CLOSEORHIDEWINDOW', id);
+  console.log('CLOSE OR HIDE WINDOW CALLED FOR ID:', id);
 
-  const win = BrowserWindow.fromId(id);
-  if (win.isDestroyed()) {
-    console.log('window already dead');
-    return;
+  try {
+    const win = BrowserWindow.fromId(id);
+    if (!win || win.isDestroyed()) {
+      console.log('Window already destroyed or invalid');
+      return;
+    }
+
+    const entry = windowManager.getWindow(id);
+    console.log('Window entry from manager:', entry);
+
+    if (!entry) {
+      console.log('Window not found in window manager, closing directly');
+      win.close();
+      return;
+    }
+
+    const params = entry.params;
+    console.log('Window parameters:', params);
+
+    // Check if window should be hidden rather than closed
+    // Either keepLive or modal parameter can trigger hiding behavior
+    if (params.keepLive === true || params.modal === true) {
+      console.log(`HIDING window ${id} (${params.address}) - modal: ${params.modal}, keepLive: ${params.keepLive}`);
+      win.hide();
+    } else {
+      // close any open windows this window opened
+      closeChildWindows(params.address);
+      console.log(`CLOSING window ${id} (${params.address})`);
+      win.close();
+    }
+    
+    console.log('closeOrHideWindow completed');
+  } catch (error) {
+    console.error('Error in closeOrHideWindow:', error);
   }
-
-  const entry = _windows.get(id);
-
-  if (!entry) {
-    console.log('window not in cache, so closing (FIXME: should be in cache?)');
-    win.close();
-    return;
-  }
-
-  const params = entry.params;
-
-  if (params.keepLive == true) {
-    console.log('closeOrHideWindow(): hiding ', params.address);
-    win.hide();
-  }
-  else {
-    // close any open windows this window opened
-    // TODO: need a "force" mode for this
-    closeChildWindows(params.address);
-
-    console.log('closeOrHideWindow(): closing ', params.address);
-    win.close();
-  }
-  console.log('DONE closeorhidewindow');
 };
 
 const closeChildWindows = (aAddress) => {
@@ -921,16 +1072,20 @@ const closeChildWindows = (aAddress) => {
     return;
   }
 
-  for (const [id, entry] of _windows) {
-    if (entry.source == aAddress) {
-      const address = entry.params.address;
-      console.log('closing child window', address, 'for', aAddress);
+  // Get all child windows from the window manager
+  const childWindows = windowManager.getChildWindows(aAddress);
+  
+  for (const child of childWindows) {
+    const address = child.data.params.address;
+    console.log('closing child window', address, 'for', aAddress);
 
-      // recurseme
-      closeChildWindows(address);
+    // recurseme
+    closeChildWindows(address);
 
-      // close window
-      BrowserWindow.fromId(id).close();
+    // close window
+    const win = BrowserWindow.fromId(child.id);
+    if (win) {
+      win.close();
     }
   }
 };
@@ -938,9 +1093,12 @@ const closeChildWindows = (aAddress) => {
 /*
 // send message to all windows
 const broadcastToWindows = (topic, msg) => {
-  _windows.forEach(win => {
-    win.webContents.send(topic, msg);
-  });
+  for (const [id, _] of windowManager.windows) {
+    const win = BrowserWindow.fromId(id);
+    if (win) {
+      win.webContents.send(topic, msg);
+    }
+  }
 };
 */
 
@@ -956,9 +1114,16 @@ app.on('window-all-closed', () => {
 
 const onQuit = () => {
   console.log('onQuit');
-  // Close all persisent windows?
-
-  app.quit();
+  
+  // Notify all processes that the app is shutting down
+  pubsub.publish(systemAddress, scopes.GLOBAL, 'app:shutdown', {
+    timestamp: Date.now()
+  });
+  
+  // Give windows a moment to clean up before forcing quit
+  setTimeout(() => {
+    app.quit();
+  }, 100);
 };
 
 const smash = (source, target, k, d, noset = false) => {

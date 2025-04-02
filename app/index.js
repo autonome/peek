@@ -76,6 +76,11 @@ const initFeature = f => {
 };
 
 const uninitFeature = f => {
+  console.log('TODO: uninitFeature', f);
+
+  // add uninit to each feature
+  //fc[f.id].init();
+  /*
   const wid = windows.get(f.id);
   if (wid) {
     console.log('closing window for', f.name);
@@ -84,6 +89,7 @@ const uninitFeature = f => {
       windows.delete(f.id);
     });
   }
+  */
 };
 
 // unused, worth testing more tho

@@ -75,7 +75,7 @@ const executeItem = (item) => {
       console.log('waddafa');
   }
 
-  console.log(item.screenEdge, x, y);
+  console.log('execute slide', item.screenEdge, x, y);
 
   const key = `${item.address}:${item.screenEdge}`;
 
@@ -99,7 +99,6 @@ const executeItem = (item) => {
 };
 
 const initItems = (prefs, items) => {
-  console.log('initItems');
   const cmdPrefix = prefs.shortcutKeyPrefix;
 
   items.forEach(item => {

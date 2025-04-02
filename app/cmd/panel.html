@@ -7,14 +7,17 @@
     <meta http-equiv="Content-Security-Policy" content="script-src 'self';">
     <meta name="description" content="">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-    </style>
     <link rel="stylesheet" href="panel.css">
   </head>
   <body>
+    <div class="command-container">
+      <input id="command-input" type="text" autofocus placeholder="Type a command..." />
+      <div id="results"></div>
+    </div>
+    
     <script type=module src="../utils.js"></script>
     <script type=module src="./config.js"></script>
     <script type=module src="./panel.js"></script>
     <script type=module src="./commands.js"></script>
   </body>
-  </html>
+</html>

@@ -51,36 +51,9 @@ const openStore = (prefix, defaults, clear = false) => {
   return store;
 };
 
-const flattenObj = o => Object.keys(o).map(k => {
-  // Make sure boolean values are properly converted to strings
-  if (typeof o[k] === 'boolean') {
-    return `${k}=${o[k]}`;
-  } 
-  // For numbers and strings, just convert directly
-  else {
-    return `${k}=${o[k]}`;
-  }
-}).join(',');
-
-const openWindow = (address, params) => {
-  const target = params.hasOwnProperty('key') ? params.key : '_blank';
-  
-  // Log parameters to help with debugging
-  console.log('openWindow called with params:', params);
-  
-  if (window.app && window.app.window) {
-    // Use the IPC window API if available (this goes through main process)
-    console.log('Using window.app.window.open API');
-    return window.app.window.open(address, params);
-  } else {
-    // Fall back to regular window.open if API not available
-    console.log('Using regular window.open', flattenObj(params));
-    return window.open(address, target, flattenObj(params));
-  }
-};
+// Removed openWindow - use windows.js instead
+// The flattenObj helper is now private - it's only needed for window.open
 
 export {
-  flattenObj,
-  openStore,
-  openWindow
+  openStore
 };

@@ -1,5 +1,5 @@
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { openStore, openWindow } from "../utils.js";
+import { openStore } from "../utils.js";
 import windows from "../windows.js";
 import api from '../api.js';
 

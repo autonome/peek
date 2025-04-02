@@ -10,6 +10,7 @@ const clear = false;
 const store = openStore(id, defaults, clear /* clear storage */);
 
 const executeItem = (item) => {
+  console.log('executeItem:slide', item);
   const height = item.height || 600;
   const width = item.width || 800;
 

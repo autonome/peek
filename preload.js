@@ -44,6 +44,7 @@ api.shortcuts = {
     ipcRenderer.on(replyTopic, (ev, msg) => {
       console.log(src, 'shortcut execution reply');
       cb();
+      console.log(src, 'shortcut execution reply done');
     });
   },
   unregister: shortcut => {

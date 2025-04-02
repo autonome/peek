@@ -77,7 +77,7 @@ Some thoughts driving the design of Peek:
 
 TODO: articulate the escape-to-leave aspect, eg you can peek from *other* applications and ESC to go back to exactly where you were without breaking the task flow.
 
-Escape is an inverted zooming user interface (IZUI) design for a flexibl window manager that makes possible a web user agent application than can have multiple entry points and a heterogeneous windowing ecosystem.
+Escape is an inverted zooming user interface (IZUI) design for a flexible window manager that makes possible a web user agent application than can have multiple entry points and a heterogeneous windowing ecosystem.
 
 IZUI vs ZUI
 
@@ -448,6 +448,18 @@ yarn debug
 - needs some sync facility (inevitable anyway)
 
 ## Demo reel
+
+preview gif
+- empty background
+- slide: open right slide, start music on hypem.com
+- cmd: open a search w/ cmd, click on recipe link
+- copy chinese text
+- peek #1 at translate to get english
+- copy image of noodle soup
+- down slide to open tldraw, paste image
+- left slide to open chatgpt to ask about how chongqing xiao mian is different from in chengdu
+- peek at the weather
+- top slide to get directions to noodle shop
 
 Demo reel
 - [ ] Peeks: translate, calendar, ai chat, currency conversion, everytimezone, tldraw

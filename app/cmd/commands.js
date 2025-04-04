@@ -1,5 +1,6 @@
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { openStore, flattenObj } from '../utils.js';
+import { openStore } from '../utils.js';
+import windows from '../windows.js';
 
 console.log('commands');
 
@@ -50,12 +51,11 @@ function initializeCommandSources() {
 }
 
 const sourceOpenURL = () => {
-  const cmdName = 'open';
+  // Add a regular open command
   addCommand({
-    name: cmdName,
+    name: 'open',
     execute: msg => {
-
-      console.log(cmdName, 'msg', msg);
+      console.log('open command', msg);
 
       const parts = msg.typed.split(' ');
       parts.shift();
@@ -66,14 +66,85 @@ const sourceOpenURL = () => {
         return;
       }
 
-      const params = {
-        address
-      };
-
-      window.open(address, '_blank', flattenObj(params));
+      // Use the new windows API
+      windows.createWindow(address, {
+        width: 800,
+        height: 600,
+        openDevTools: debug // Only open DevTools in debug mode
+      }).then(windowController => {
+        console.log('Window opened with ID:', windowController.id);
+      }).catch(error => {
+        console.error('Failed to open window:', error);
+      });
 
       return {
         command: 'open',
+        address
+      };
+    }
+  });
+  
+  // Add a debug command that opens windows with DevTools
+  addCommand({
+    name: 'debug',
+    execute: msg => {
+      console.log('debug command', msg);
+
+      const parts = msg.typed.split(' ');
+      parts.shift();
+
+      const address = parts.shift();
+
+      if (!address) {
+        return;
+      }
+
+      // Use the new windows API with DevTools enabled
+      windows.createWindow(address, {
+        width: 900,
+        height: 700,
+        openDevTools: true,
+        detachedDevTools: true
+      }).then(windowController => {
+        console.log('Debug window opened with ID:', windowController.id);
+      }).catch(error => {
+        console.error('Failed to open debug window:', error);
+      });
+
+      return {
+        command: 'debug',
+        address
+      };
+    }
+  });
+  
+  // Add a modal window command
+  addCommand({
+    name: 'modal',
+    execute: msg => {
+      console.log('modal command', msg);
+
+      const parts = msg.typed.split(' ');
+      parts.shift();
+
+      const address = parts.shift();
+
+      if (!address) {
+        return;
+      }
+
+      // Use the modal window API
+      windows.openModalWindow(address, {
+        width: 700,
+        height: 500
+      }).then(result => {
+        console.log('Modal window opened:', result);
+      }).catch(error => {
+        console.error('Failed to open modal window:', error);
+      });
+
+      return {
+        command: 'modal',
         address
       };
     }

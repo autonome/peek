@@ -51,7 +51,6 @@ const openStore = (prefix, defaults, clear = false) => {
   return store;
 };
 
-// Removed openWindow - use windows.js instead
 // The flattenObj helper is now private - it's only needed for window.open
 
 export {

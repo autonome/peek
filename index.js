@@ -429,8 +429,18 @@ const onReady = () => {
   const win = new BrowserWindow(winPrefs);
   win.loadURL(webCoreAddress);
   
-  // Setup devtools
-  winDevtoolsConfig(win);
+  // Setup devtools for the background window (always open in debug mode)
+  if (DEBUG) {
+    win.webContents.openDevTools({ mode: 'detach' });
+    
+    win.webContents.on('devtools-opened', () => {
+      if (win.isVisible()) {
+        win.webContents.focus();
+      } else {
+        app.focus();
+      }
+    });
+  }
   
   // Add to window manager
   windowManager.addWindow(win.id, {
@@ -520,6 +530,9 @@ const onReady = () => {
           
           // Add escape key handler
           addEscHandler(newWin);
+          
+          // Set up DevTools if requested
+          winDevtoolsConfig(newWin);
           
           // Set up modal behavior
           if (featuresMap.modal === true) {
@@ -657,6 +670,10 @@ ipcMain.handle('window-open', async (ev, msg) => {
   if (options.y !== undefined) {
     winOptions.y = parseInt(options.y);
   }
+
+  if (options.modal === true) {
+    winOptions.frame = false;
+  }
   
   console.log('Creating window with options:', winOptions);
   
@@ -678,6 +695,9 @@ ipcMain.handle('window-open', async (ev, msg) => {
     
     // Add escape key handler to all windows
     addEscHandler(win);
+    
+    // Set up DevTools if requested
+    winDevtoolsConfig(win);
     
     // Set up modal behavior if requested
     if (options.modal === true) {
@@ -976,24 +996,32 @@ const addEscHandler = bw => {
 
 // show/configure devtools when/after a window is opened
 const winDevtoolsConfig = bw => {
-  // TODO: make detach mode configurable
-  // really want to get so individual app windows can easily control this
-  // for themselves
-  bw.webContents.openDevTools({ mode: 'detach' });
-  //win.webContents.openDevTools();
-
-  // when devtools completely open
-  bw.webContents.on('devtools-opened', () => {
-    // if window is visible, focus content window
-    if (bw.isVisible()) {
-      bw.webContents.focus();
-    }
-    // otherwise force devtools focus
-    // (for some reason doesn't focus when no visible window...)
-    else {
-      app.focus();
-    }
-  });
+  const windowData = windowManager.getWindow(bw.id);
+  const params = windowData ? windowData.params : {};
+  
+  // Check if devTools should be opened
+  if (params.openDevTools === true) {
+    // Determine if detached mode should be used
+    const devToolsOptions = { 
+      mode: params.detachedDevTools === true ? 'detach' : 'right' 
+    };
+    
+    console.log(`Opening DevTools for window ${bw.id} with options:`, devToolsOptions);
+    bw.webContents.openDevTools(devToolsOptions);
+    
+    // when devtools completely open
+    bw.webContents.on('devtools-opened', () => {
+      // if window is visible, focus content window
+      if (bw.isVisible()) {
+        bw.webContents.focus();
+      }
+      // otherwise force devtools focus
+      // (for some reason doesn't focus when no visible window...)
+      else {
+        app.focus();
+      }
+    });
+  }
 };
 
 // window closer

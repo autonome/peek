@@ -63,7 +63,7 @@ let state = {
 };
 
 window.addEventListener('cmd-update-commands', function(e) {
-  //console.log('ui received updated commands');
+  console.log('ui received updated commands');
   state.commands = e.detail;
 });
 
@@ -95,10 +95,13 @@ async function render() {
     commandInput.focus();
   });
   
-  // Automatically focus the input when the window loads
+  // Automatically focus the input when the window loads and position cursor at end
   setTimeout(() => {
     commandInput.focus();
-  }, 100);
+    // Place cursor at the end of the input
+    const length = commandInput.value.length;
+    commandInput.setSelectionRange(length, length);
+  }, 50);
 }
 
 render();
@@ -123,8 +126,7 @@ async function execute(name, typed) {
 }
 
 function findMatchingCommands(text) {
-  const r = true;
-  r || console.log('findMatchingCommands', text, state.commands.length);
+  console.log('findMatchingCommands', text, state.commands.length);
 
   let count = state.commands.length,
       matches = [];
@@ -137,7 +139,7 @@ function findMatchingCommands(text) {
     // 1. typed string is anywhere in a command name
     // 2. command name is at beginning of typed string
     //    (eg: for command input - "weather san diego")
-    r || console.log('testing option...', name);
+    console.log('testing option...', name);
     if (name.toLowerCase().indexOf(state.typed.toLowerCase()) != -1 ||
         state.typed.toLowerCase().indexOf(name.toLowerCase()) === 0) {
       matches.push(name);
@@ -189,15 +191,14 @@ function onKeyDummyStop(e) {
 }
 
 async function onKeyup(e) {
-  // flag for logging
-  const r = true;
-  
   // Get the command input element and results container
   const commandInput = document.getElementById('command-input');
   const resultsContainer = document.getElementById('results');
   
   // Use the input value as the typed text
   state.typed = commandInput.value;
+
+  console.log('onKeyup', e.key, state.typed);
 
   if (isModifier(e)) {
     return;
@@ -211,6 +212,7 @@ async function onKeyup(e) {
 
   // if user pressed return, attempt to execute command
   if (e.key == 'Enter' && !hasModifier(e)) {
+    console.log('enter pressed', state.typed);
     let name = state.matches[state.matchIndex];
     if (name && Object.keys(state.commands).indexOf(name) > -1) {
       execute(name, state.typed);

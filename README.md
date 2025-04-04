@@ -452,7 +452,9 @@ yarn debug
 preview gif
 - empty background
 - slide: open right slide, start music on hypem.com
-- cmd: open a search w/ cmd, click on recipe link
+
+- cmd: open a search for 'xiao mian' w/ cmd, click on recipe link
+  - add a 'search' command
 - copy chinese text
 - peek #1 at translate to get english
 - copy image of noodle soup

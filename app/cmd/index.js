@@ -22,11 +22,13 @@ const openInputWindow = prefs => {
     height,
     width,
     // Using modal parameter so it hides on escape/blur
-    modal: true,
-    
-    // Remove titlebar and make window frameless
+    //modal: true,
+
+    // Keep resident in the background
+    keepLive: true,
+
+    // Completely remove window frame and decorations
     frame: false,
-    titleBarStyle: 'hidden',
     transparent: true,
     
     // Make sure the window stays on top
@@ -37,11 +39,22 @@ const openInputWindow = prefs => {
     
     // Set a reasonable minimum size
     minWidth: 400,
-    minHeight: 30
+    minHeight: 50,
+    
+    // Make sure shadows are shown for visual appearance
+    hasShadow: true,
+    
+    // Additional window behavior options
+    skipTaskbar: true,
+    resizable: false,
+    fullscreenable: false,
+
+    openDevTools: true,
+    detachedDevTools: true,
   };
 
   // Use the modal window API to open the window
-  windows.openModalWindow(address, params)
+  windows.createWindow(address, params)
     .then(result => {
       console.log('Command window opened:', result);
     })

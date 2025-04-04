@@ -12,6 +12,8 @@ const windows = new Map();
  * Opens a modal window with the provided address and parameters
  * @param {string} address - URL to open in the window
  * @param {Object} params - Window parameters
+ * @param {boolean} [params.openDevTools=false] - Whether to open DevTools for this window
+ * @param {boolean} [params.detachedDevTools=true] - Whether DevTools should be detached
  * @returns {Promise<Object>} - Promise resolving to the window API result
  */
 const openModalWindow = (address, params = {}) => {
@@ -33,6 +35,8 @@ const openModalWindow = (address, params = {}) => {
  * Creates a window and handles its lifecycle
  * @param {string} address - URL to open in the window
  * @param {Object} params - Window parameters 
+ * @param {boolean} [params.openDevTools=false] - Whether to open DevTools for this window
+ * @param {boolean} [params.detachedDevTools=true] - Whether DevTools should be detached
  * @returns {Promise<Object>} - Promise resolving to an object with methods to interact with the window
  */
 const createWindow = async (address, params = {}) => {

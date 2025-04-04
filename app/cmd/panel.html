@@ -29,6 +29,14 @@
         box-sizing: border-box;
       }
       
+      /* Command display wrapper */
+      .command-display {
+        width: 100%;
+        height: 40px;
+        position: relative;
+      }
+      
+      /* Command input field */
       #command-input {
         width: 100%;
         height: 40px;
@@ -40,14 +48,37 @@
         font-weight: 500;
         padding: 0;
         -webkit-app-region: no-drag;
+        position: relative;
+        z-index: 2;
       }
       
+      /* Hidden suggestion element that shows the matching command with highlighting */
+      #command-text {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 40px;
+        line-height: 40px;
+        font-size: 20px;
+        font-weight: 500;
+        color: rgba(255, 255, 255, 0.5);
+        white-space: pre;
+        overflow: hidden;
+        pointer-events: none;
+        z-index: 1;
+      }
+      
+      /* Styling for the matched part */
+      #command-text .matched {
+        text-decoration: underline;
+      }
+      
+      /* Results list */
       #results {
         display: none;
-        position: absolute;
-        top: 60%;
-        left: 10px;
-        right: 10px;
+        margin-top: 5px;
+        width: 100%;
         max-height: 200px;
         overflow-y: auto;
         -webkit-app-region: no-drag;
@@ -58,7 +89,7 @@
       }
       
       .command-item {
-        padding: 5px;
+        padding: 8px;
         cursor: pointer;
         border-radius: 4px;
       }
@@ -74,7 +105,10 @@
   </head>
   <body>
     <div class="center-wrapper">
-      <input id="command-input" type="text" autofocus placeholder="Type a command..." />
+      <div class="command-display">
+        <input id="command-input" type="text" autofocus spellcheck="false" />
+        <div id="command-text"></div>
+      </div>
     </div>
     <div id="results"></div>
     

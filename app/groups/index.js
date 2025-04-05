@@ -1,5 +1,6 @@
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { openStore, openWindow } from "../utils.js";
+import { openStore } from "../utils.js";
+import windows from "../windows.js";
 import api from '../api.js';
 
 console.log('background', labels.name);
@@ -16,13 +17,21 @@ const openGroupsWindow = () => {
   const width = 800;
 
   const params = {
-    address,
     key: address,
     height,
-    width
+    width,
+    // Not using modal so window stays open when clicking elsewhere
+    modal: false
   };
 
-  openWindow(address, params);
+  // Use the window creation API
+  windows.createWindow(address, params)
+    .then(window => {
+      console.log('Groups window opened:', window);
+    })
+    .catch(error => {
+      console.error('Failed to open groups window:', error);
+    });
 };
 
 const initShortcut = shortcut => {

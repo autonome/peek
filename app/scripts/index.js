@@ -1,5 +1,6 @@
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { openStore, openWindow } from "../utils.js";
+import { openStore } from "../utils.js";
+import windows from "../windows.js";
 import api from '../api.js';
 
 console.log('background', labels.name);
@@ -21,16 +22,31 @@ const executeItem = (script, cb) => {
   `;
 
   const params = {
-    address: script.address,
     show: false,
     script: {
       script: str,
       domEvent: 'dom-ready',
       closeOnCompletion: true,
-    }
+    },
+    // Make script windows hidden and auto-close
+    modal: false
   };
 
-  openWindow(script.address, params);
+  // For script windows, we use createWindow for more control
+  windows.createWindow(script.address, params)
+    .then(window => {
+      console.log('Script window opened and running');
+      
+      // Auto-close after execution
+      setTimeout(() => {
+        window.close().catch(err => {
+          console.error('Error closing script window:', err);
+        });
+      }, 5000); // Give it 5 seconds to execute
+    })
+    .catch(error => {
+      console.error('Failed to open script window:', error);
+    });
 };
 
 const initItems = (prefs, items) => {

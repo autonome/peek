@@ -164,6 +164,13 @@ api.window = {
       id
     });
   },
+  exists: (id) => {
+    console.log('window.exists', id);
+    return ipcRenderer.invoke('window-exists', {
+      source: sourceAddress,
+      id
+    });
+  },
   move: (id, x, y) => {
     console.log('window.move', id, x, y);
     return ipcRenderer.invoke('window-move', {

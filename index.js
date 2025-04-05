@@ -45,6 +45,7 @@ const webCoreAddress = 'peek://app/background.html';
 //const webCoreAddress = 'peek://test/index.html';
 
 const systemAddress = 'peek://system/';
+const settingsAddress = 'peek://app/settings/settings.html';
 
 const strings = {
   defaults: {
@@ -983,11 +984,23 @@ const addEscHandler = bw => {
   console.log('adding esc handler to window:', bw.id);
   bw.webContents.on('before-input-event', (e, i) => {
     if (i.key == 'Escape' && i.type == 'keyUp') {
-      console.log('Escape key pressed in window:', bw.id);
+      // Get window info for better logging
+      const entry = windowManager.getWindow(bw.id);
+      const isSettingsWindow = entry && entry.params && entry.params.address === settingsAddress;
       
-      // Always trigger close/hide on Escape, just like the original code
-      console.log('Closing or hiding window on escape');
+      console.log('===== Escape key pressed =====');
+      console.log(`Window ID: ${bw.id}`);
+      console.log(`Is settings window: ${isSettingsWindow}`);
+      
+      if (entry && entry.params) {
+        console.log(`Window address: ${entry.params.address}`);
+        console.log(`Modal: ${entry.params.modal}, KeepLive: ${entry.params.keepLive}`);
+      }
+      
+      // Always trigger close/hide on Escape
+      console.log('Calling closeOrHideWindow...');
       closeOrHideWindow(bw.id);
+      console.log('===== Escape handling complete =====');
     }
   });
 };
@@ -1075,9 +1088,15 @@ const closeOrHideWindow = id => {
     const params = entry.params;
     console.log('Window parameters:', params);
 
+    // Special case for settings window - always close it on ESC
+    if (params.address === settingsAddress) {
+      console.log(`CLOSING settings window ${id}`);
+      closeChildWindows(params.address);
+      win.close();
+    }
     // Check if window should be hidden rather than closed
     // Either keepLive or modal parameter can trigger hiding behavior
-    if (params.keepLive === true || params.modal === true) {
+    else if (params.keepLive === true || params.modal === true) {
       console.log(`HIDING window ${id} (${params.address}) - modal: ${params.modal}, keepLive: ${params.keepLive}`);
       win.hide();
     } else {

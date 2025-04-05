@@ -1,5 +1,6 @@
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { openStore, openWindow } from "../utils.js";
+import { openStore } from "../utils.js";
+import windows from "../windows.js";
 import api from '../api.js';
 
 console.log('index', labels.name);
@@ -17,13 +18,49 @@ const openInputWindow = prefs => {
 
   const params = {
     debug,
-    address,
     key: address,
     height,
-    width
+    width,
+    // Using modal parameter so it hides on escape/blur
+    //modal: true,
+
+    // Keep resident in the background
+    keepLive: true,
+
+    // Completely remove window frame and decorations
+    frame: false,
+    transparent: true,
+    
+    // Make sure the window stays on top
+    alwaysOnTop: true,
+    
+    // Center the window
+    center: true,
+    
+    // Set a reasonable minimum size
+    minWidth: 400,
+    minHeight: 50,
+    
+    // Make sure shadows are shown for visual appearance
+    hasShadow: true,
+    
+    // Additional window behavior options
+    skipTaskbar: true,
+    resizable: false,
+    fullscreenable: false,
+
+    openDevTools: true,
+    detachedDevTools: true,
   };
 
-  openWindow(address, params);
+  // Use the modal window API to open the window
+  windows.createWindow(address, params)
+    .then(result => {
+      console.log('Command window opened:', result);
+    })
+    .catch(error => {
+      console.error('Failed to open command window:', error);
+    });
 };
 
 const initShortcut = (prefs) => {

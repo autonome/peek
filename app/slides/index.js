@@ -1,5 +1,6 @@
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { openStore, openWindow } from "../utils.js";
+import { openStore } from "../utils.js";
+import windows from "../windows.js";
 import api from '../api.js';
 
 console.log('background', labels.name);
@@ -8,6 +9,9 @@ const debug = api.debug;
 const clear = false;
 
 const store = openStore(id, defaults, clear /* clear storage */);
+
+// Map to track opened slides - key is slide key, value is window ID
+const slideWindows = new Map();
 
 const executeItem = (item) => {
   const height = item.height || 600;
@@ -81,21 +85,73 @@ const executeItem = (item) => {
 
   //animateSlide(win, item).then();
 
-  const params = {
-    address: item.address,
-    height,
-    width,
-    key,
+  // Check if this slide is already open
+  if (slideWindows.has(key)) {
+    // Get the window ID for the existing slide
+    const windowId = slideWindows.get(key);
+    console.log('Slide already open, verifying window exists with ID:', windowId);
+    
+    // First check if window exists
+    api.window.exists({ id: windowId }).then(existsResult => {
+      if (existsResult.exists) {
+        // Window exists, try to show it
+        api.window.show({ id: windowId }).then(result => {
+          if (result.success) {
+            console.log('Successfully showed existing slide:', key);
+          } else {
+            console.error('Failed to show existing slide:', result.error);
+            slideWindows.delete(key);
+            openNewSlide();
+          }
+        }).catch(err => {
+          console.error('Error showing window:', err);
+          slideWindows.delete(key);
+          openNewSlide();
+        });
+      } else {
+        console.log('Window no longer exists, creating new one');
+        slideWindows.delete(key);
+        openNewSlide();
+      }
+    }).catch(err => {
+      console.error('Error checking if window exists:', err);
+      slideWindows.delete(key);
+      openNewSlide();
+    });
+  } else {
+    openNewSlide();
+  }
+  
+  function openNewSlide() {
+    const params = {
+      address: item.address,
+      height,
+      width,
+      key,
+      
+      feature: labels.name,
+      keepLive: item.keepLive || false,
+      persistState: item.persistState || false,
+      
+      // Add modal parameter - this will make the window hide when unfocused or when escape is pressed
+      modal: true,
+      
+      x,
+      y,
+    };
 
-    feature: labels.name,
-    keepLive: item.keepLive || false,
-    persistState: item.persistState || false,
+    // Open the window
+    api.window.open(item.address, params).then(result => {
+      if (result.success) {
+        console.log('Successfully opened slide with ID:', result.id);
+        // Store the window ID for future reference
+        slideWindows.set(key, result.id);
+      } else {
+        console.error('Failed to open slide:', result.error);
+      }
+    });
+  }
 
-    x,
-    y,
-  };
-
-  openWindow(item.address, params);
 };
 
 const initItems = (prefs, items) => {
@@ -112,22 +168,59 @@ const initItems = (prefs, items) => {
   });
 };
 
+/**
+ * Handle cleanup when the module is unloaded
+ */
+const cleanup = () => {
+  console.log('Cleaning up slides module');
+  
+  // Close or hide all slide windows
+  for (const [key, windowId] of slideWindows.entries()) {
+    console.log('Closing slide window:', key);
+    api.window.hide({ id: windowId }).catch(err => {
+      console.error('Error hiding slide window:', err);
+      // Try to close it if hiding fails
+      api.window.close({ id: windowId }).catch(err => {
+        console.error('Error closing slide window:', err);
+      });
+    });
+  }
+  
+  // Clear the map
+  slideWindows.clear();
+};
+
 const init = () => {
   console.log('init');
 
   const prefs = () => store.get(storageKeys.PREFS);
   const items = () => store.get(storageKeys.ITEMS);
 
+  // Add global window closed handler
+  api.subscribe('window:closed', (data) => {
+    // Check all slide windows to see if any match the closed window ID
+    for (const [key, windowId] of slideWindows.entries()) {
+      if (data.id === windowId) {
+        console.log('Slide window was closed externally:', key);
+        slideWindows.delete(key);
+      }
+    }
+  });
+
   // initialize slides
   if (items().length > 0) {
     initItems(prefs(), items());
   }
+  
+  // Set up listener for app shutdown to clean up windows
+  api.subscribe('app:shutdown', cleanup);
 };
 
 export default {
   defaults,
   id,
   init,
+  cleanup,
   labels,
   schemas,
   storageKeys

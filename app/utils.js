@@ -51,15 +51,8 @@ const openStore = (prefix, defaults, clear = false) => {
   return store;
 };
 
-const flattenObj = o => Object.keys(o).map(k => `${k}=${o[k]}`).join(',');
-
-const openWindow = (address, params) => {
-  const target = params.hasOwnProperty('key') ? params.key : '_blank';
-  return window.open(address, target, flattenObj(params));
-};
+// The flattenObj helper is now private - it's only needed for window.open
 
 export {
-  flattenObj,
-  openStore,
-  openWindow
+  openStore
 };

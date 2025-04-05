@@ -1,5 +1,6 @@
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { openStore, openWindow } from "../utils.js";
+import { openStore } from "../utils.js";
+import windows from "../windows.js";
 import api from '../api.js';
 
 console.log('background', labels.name);
@@ -10,23 +11,35 @@ const clear = false;
 const store = openStore(id, defaults, clear /* clear storage */);
 
 const executeItem = (item) => {
-  console.log('executeItem:slide', item);
+  console.log('executeItem:peek', item);
   const height = item.height || 600;
   const width = item.width || 800;
 
   const params = {
     // browserwindow
-    address: item.address,
     height,
     width,
 
     // peek
     feature: labels.name,
     keepLive: item.keepLive || false,
-    persistState: item.persistState || false
+    persistState: item.persistState || false,
+    
+    // Create a unique key for this peek using its address
+    key: `peek:${item.address}`,
+    
+    // Use modal behavior (closes on escape/blur)
+    modal: true
   };
 
-  openWindow(item.address, params);
+  // Use the modal window API for peeks
+  windows.openModalWindow(item.address, params)
+    .then(result => {
+      console.log('Peek window opened:', result);
+    })
+    .catch(error => {
+      console.error('Failed to open peek window:', error);
+    });
 };
 
 const initItems = (prefs, items) => {

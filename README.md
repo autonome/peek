@@ -112,13 +112,25 @@ For example:
 - I'd like to have a decentralized compute option for running your scripts outside of your clients and syncing the data
 - Want cloud storage for all config and data, esp infinite history, so can do fun things with it
 
-### "features" == privileged web apps
+### Feature extensibility
 
-NOTE: This was rolled back for now. Added complexity not yet required for validating the end user value proposition of the core features.
+An extensibility model for achieving "personal web workbench" requires a few things:
+- UI extensibility requires OS-level window features beyond what the web allows today (also a baby step towards a minimal OS user interface)
+- Data harvest/transform/process/publish requires a method of moving data between features (web apps) *locally*, cf Web Actions/Intents/Applets, MCP, pubsub, MQTT etc
+- Portable ways of accessing network, storage and compute, which address 
 
-The core features are web apps loaded over a custom protocol:
-- currently with a scheme of `peek`
-- access to a few special apis noted in the next section
+The current implementation has only a few sketches of that world implemented, and has gone through a few iterations:
+- first proof of concept was all Electron - so, privileged JS
+- second experiment moved each feature to a separate web app running in own window scope, with access to smallest possible custom API, with one main web app loading and orchestrating the others, using pubsub for cross-app communication
+- third and current implementation bundles all features into one web app, with access to smallest possible custom API for platform-level capabilities
+
+The web app is loaded into custom scheme of `peek`, which provides access to a few special apis noted in the next section, allows cross-origin network access and other things.
+
+This is not ideal, as the extensibility vector is contributions to core, which too tightly bounds experimentation and innovation.
+
+However it's pretty portable given the small custom API surface area.
+
+It would be nice, but not required, to have some alignment with the WebExtension spec - blur your eyes and they're in a similar direction.
 
 ### Peek API
 
@@ -172,6 +184,7 @@ Misc specific
 - web page w/ some locations as an input to a map (creates overlay) "map this page"
 - be able to see where a book/etc recommendation came from
 - save a tweet, with URL / image / relevant text, but not whole page webrecorder style
+- "watch local event listings, rate against my music listening patterns and send me shows i might be interested in going to"
 
 Content scripts
 - extract+log shazams
@@ -216,6 +229,17 @@ Publishing
 ## History view/search
 
 A lot of groups work depends on history being in place, and being accessable and annotate-able.
+
+ideally use chromium history
+
+storage+access
+- check out Agregore history viewing approach
+- check out state of electron+webext
+- other way of accessing underlying chromium history?
+
+features
+- awesomebar algo scoring
+- adaptive matching
 
 ## Chaining / piping
 
@@ -533,6 +557,8 @@ preview gif
 
 - slide-top: get directions to noodle shop
 
+## Use-cases
+
 Peeks
 - translate
 - calendar
@@ -586,6 +612,7 @@ Publishing: event recap post
 - need to easily preview rendered content
 - share preview link
 - publish (somewhere?)
+
 
 ## Unfiled
 

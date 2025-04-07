@@ -62,10 +62,13 @@ Ok, so not really "scripts" yet. But safe and effective enough for now.
 
 Many user tasks on the web are either transient, chained or persistent, data oriented, or some mix of those. Neither the document-oriented nor application-centric web meets those needs. Traditional browser makers can't meet those needs well, for many reasons.
 
+Characteristics of how we use the web, that are not addressed in contemporary web browsers:
+
 - transient
 - chained
 - persistent
-- data oriented
+- data-centric
+- archival / evidential
 
 Some thoughts driving the design of Peek:
 
@@ -156,11 +159,12 @@ TODO
 
 ## Papercut / use-case log
 
-core
+Core high level actions
 - open a web page on top/bottom/left/right
 - keep web pages persistent in the background
 - quickly open a web page modally, and close it
 
+Misc specific
 - open bandcamp in a window, move over to 2nd display, accidently close it while moving around between other windows
 - recent books or recipes from newsletters i subscribe to (but probably didn't read)
 - extract a table from a page periodically, send it somewhere as csv or whatever (chained actions)
@@ -173,15 +177,72 @@ Content scripts
 - extract+log shazams
 - extract+log spotify playlist
 
+Calculators (variant of script + cmd?)
+- page -> table
+- page -> summary
+- page -> microsummaries
+- page -> dates
+- page -> events
+
 Workflow deconstructing a "why" task flavour of bookmarking
 - save https://www.criterionchannel.com/hong-kong-in-new-york
 - extract the movies
 - get reference metadata for each (?!)
 - add to "to watch list", with pointer back to source url
 
+## Groups
+
+- panorama/tabcandy-ish
+- all browser history
+- smart groups vs curated groups
+- autoclustering on topic/date
+- escape from a new page enters default group?
+
+Groups + Cmds
+- top/bottom inputs for filtering/grouping/etc
+- implemented is a cmd input?
+- cmds for opening/searching/finding/viewing/filtering/piping
+- cmds for moving pages into groups
+- groups -> {x} (eg export/pipe) could depend on the chaining/piping bit (see below)
+
+Architecture
+- internally is tags?
+- static vs dynamic groups tho?
+
+Publishing
+- publishing groups as internal/public feeds?
+- to pinboard?
+
+## History view/search
+
+A lot of groups work depends on history being in place, and being accessable and annotate-able.
+
+## Chaining / piping
+
+investigate: vague thought re chaining:
+- dynamic interstitial representations
+- mime type detection?
+- eg image previews
+- or a table of data
+- previews of cmds?
+
+interfaces
+- horizontal vs vertical chains
+- back/forward navigation?
+- each step is a cmd+preview?
+- dynamic cmd+previews?
+
+import/export/undo/redo
+- record/replay?
+- save a chain as a compound action (cmd)?
+
+architecture
+- look at web actions/intents/applets
+- xml pipeline language
+
 ## Roadmap
 
-## v0.1 - MVPOC
+### v0.1 - MVPOC
 
 minimum viable proof of concept.
 
@@ -244,11 +305,11 @@ Internal cleanup
 - [x] fix label names, match to pwa manifest
 - [x] put readable log labels back in
 
-## v0.2 - MVCP (minimum viable concept preview)
+### v0.2 - MVCP (minimum viable concept preview)
 
 minimum viable concept preview.
 
-question: would others use this?
+question: can others try this?
 
 Windows/system
 - [x] app showing in dock even tho disabled
@@ -332,7 +393,7 @@ Demo reel
 - [ ] Slides: soundcloud, crypto prices, notepad, todo list
 - [ ] Scripts: eth price, weather change
 
-### v0.2 - extensibility / remember shit
+### v0.3 - extensibility / history
 
 Backburner wishlist
 - [ ] window switching order algo
@@ -449,40 +510,82 @@ yarn debug
 
 ## Demo reel
 
+to add:
+- something where i'm in a different app and peek/slide
+
 preview gif
 - empty background
-- slide: open right slide, start music on hypem.com
+- slide-right: start music on hypem.com
 
-- cmd: open a search for 'xiao mian' w/ cmd, click on recipe link
+- cmd: `search` for 'xiao mian' w/ cmd, click on recipe link
   - add a 'search' command
+
 - copy chinese text
-- peek #1 at translate to get english
+- slide-top: paste to translate into english
+
+- cmd: `images` chongqing xiao mian
 - copy image of noodle soup
-- down slide to open tldraw, paste image
-- left slide to open chatgpt to ask about how chongqing xiao mian is different from in chengdu
-- peek at the weather
-- top slide to get directions to noodle shop
+- slide-down: to open tldraw, paste image
 
-Demo reel
-- [ ] Peeks: translate, calendar, ai chat, currency conversion, everytimezone, tldraw
-- [ ] Slides: soundcloud, stock prices, notepad, todo list
-- [ ] Scripts: eth price, weather change
-- [ ] Cmd: address something in the above to switch between, to pipe from/to?
+- slide-left: ask chatgpt about how chongqing xiao mian is different from in chengdu
 
+- peek-0: check the weather
+
+- slide-top: get directions to noodle shop
+
+Peeks
+- translate
+- calendar
+- ai chat
+- currency conversion
+- everytimezone
+- tldraw
+
+Slides
+- music: Soundcloud, Hypem
+- stock prices
+- notepad
+- todo list
+
+Scripts
+- weather change, eg upcoming weather
+- crypto prices
+
+Cmd - web
+- open url
+- web search
+- image search
+- conversions?
+- ddg !actions
+
+Cmd - system
+- search browser history
+- set peeks/slides
+- open settings
+- restart app
+- llm prompts
+
+Future
+- address something to switch between
+- pipe from/to?
+
+Publishing high level
 - author web content
 - pull in bits from the web
 - share preview for feedback
 - publish (or at least get output)
 
-writing the recap of the web track at ipfs thing 2023
+Publishing examples
+- writing an event recap
 
+Publishing: event recap post
 - make a new markdown doc
 - sections titled for each video title
 - each video's embed code in each section
 - navigate around the document for review and updates
 - need to easily preview rendered content
 - share preview link
-- publish somewhere
+- publish (somewhere?)
 
 ## Unfiled
 

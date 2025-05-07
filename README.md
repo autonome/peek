@@ -613,8 +613,37 @@ Publishing: event recap post
 - share preview link
 - publish (somewhere?)
 
+Music
+- commands
+- views
+- last.fm of my own, to POSSE out
 
 ## Unfiled
+
+markdown hot reload previewer w/ toc
+- markdown support, with sidebar nav
+- reader mode
+- hot reload for file:// (other?)
+- add side-by-side view
+- once md and side-by-side, add side-by-side so the md is the nav, content is the preview
+- what's the cmd chain for this?
+
+content types + chaining
+- cmd: view as… table, feed, markdown, data points, named entities
+- chain: static archive, publish, save, share (os), mailto
+- cmd params, eg {url}, which can themselves autocomplete (eg history)
+
+multiprotocol
+- at
+- ipfs/ipns
+- pragmatic addressing+rendering for data (r/d/masl + mime handlers)
+
+broader patterns (chatting w/ luke)
+- why do we have to copy/paste?
+- devtools and ide are divorced
+
+chainframe/framechain
+- (web intents/applets/actions) + (webxdc/miniapps/tiles/farcasterframes)
 
 Small examples of agency
 

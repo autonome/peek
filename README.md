@@ -33,6 +33,7 @@ In progress, or thinking about:
 - Commands - a graphical command entry palette (GCLI) for opening pages or executing commands against them
 - Groups - a way to categorize, recall and interact with groups of pages
 - "native" web apps - using Peek as a way to "install" web pages on the local device, as separate applications instead of just separate processes
+- "Peeklets" HUD - select parts of pages to add to collection which are rendered as an overlay, toggled by shortcut
 
 ### Usage
 

@@ -19,8 +19,6 @@ const __dirname = import.meta.dirname;
 
 (async () => {
 
-console.log('main');
-
 const DEBUG = process.env.DEBUG || false;
 const DEBUG_LEVELS = {
   BASIC: 1,

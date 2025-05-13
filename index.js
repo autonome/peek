@@ -420,7 +420,9 @@ const onReady = () => {
     key: 'background-core',
     webPreferences: {
       preload: preloadPath,
-      webSecurity: false
+      // Should not be needed false ever or something has gone very
+      // wrong.
+      //webSecurity: false
     }
   };
   

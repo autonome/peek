@@ -1,6 +1,5 @@
 import { openStore } from "./utils.js";
 import api from './api.js';
-import fc from './features.js';
 
 const debug = api.debug;
 const clear = false;

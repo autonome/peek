@@ -288,8 +288,8 @@ const initTray = () => {
     _tray = new Tray(ICON_PATH);
     _tray.setToolTip(labels.tray.tooltip);
     _tray.on('click', () => {
-      pubsub.publish('open', {
-        address: _prefs.startupFeature
+      pubsub.publish('peek://app/background.html', scopes.GLOBAL, 'open', {
+        address: settingsAddress
       });
     });
   }

@@ -1,6 +1,6 @@
 import appConfig from './config.js';
 import { openStore } from "./utils.js";
-import windowManager from "./windows.js";  // Renamed to avoid naming collision
+import windowManager from "./windows.js";
 import api from './api.js';
 import fc from './features.js';
 
@@ -81,18 +81,7 @@ const initFeature = f => {
 const uninitFeature = f => {
   console.log('TODO: uninitFeature', f);
 
-  // add uninit to each feature
-  //fc[f.id].init();
-  /*
-  const wid = windows.get(f.id);
-  if (wid) {
-    console.log('closing window for', f.name);
-    api.closeWindow(wid, r => {
-      console.log(`uninitFeature(): win closed for ${f.name}`, r)
-      windows.delete(f.id);
-    });
-  }
-  */
+  // TODO uninitialize each active feature and close its window
 };
 
 // unused, worth testing more tho

@@ -313,36 +313,35 @@ protocol.registerSchemesAsPrivileged([{
 // TODO: unhack all this trash fire
 const initAppProtocol = () => {
   protocol.handle(APP_SCHEME, req => {
+    //console.log('PROTOCOL', req.url);
+
     let { host, pathname } = new URL(req.url);
+    //console.log('host, pathname', host, pathname);
 
     // trim trailing slash
     pathname = pathname.replace(/^\//, '');
 
-    const isBackground = host === 'background.html';
+    let relativePath = pathname;
 
-    if (isBackground) {
-      host = '/';
+    // Ugh
+    const isNode = pathname.indexOf('node_modules') > -1;
+    if (!isNode) {
+      relativePath = path.join(host, pathname);
 
-      if (pathname.length == 0) {
-        pathname = 'background.html';
+      // if not core, prepend core path
+      if (host != APP_CORE_PATH) {
+        relativePath = path.join(APP_CORE_PATH, relativePath);
       }
     }
-    const isNode = pathname.indexOf('node_modules') > -1;
 
-    const hackedPath = isNode
-      ? pathname
-      : path.join(APP_CORE_PATH, host, pathname);
+    const absolutePath = path.resolve(__dirname, relativePath);
+    //console.log('ABSOLUTE PATH', absolutePath);
 
-    const pathToServe = path.resolve(__dirname, hackedPath);
-
-    let relativePath = path.relative(__dirname, pathToServe);
-
+    // FIXME: Complete and utter trash
     try {
       const stat = fs.statSync(relativePath)
-      // file exists
     }
     catch(ex) {
-      // FIXME
       // file does not exist
       // but maybe it's in parent dir
       // b/c what the fuck is happening w/ custom
@@ -350,28 +349,10 @@ const initAppProtocol = () => {
       relativePath = relativePath.replace(/\/[a-z]+\//,'/');
     }
 
-    // NOTE: commented out since relative paths seem to get
-    // filtered out before this?!
+    const fileURL = pathToFileURL(relativePath).toString();
+    //console.log('FILE URL', fileURL);
 
-    // NB, this checks for paths that escape the bundle, e.g.
-    // app://bundle/../../secret_file.txt
-    /*
-    const isSafe = relativePath && !relativePath.startsWith('..')
-      && !path.isAbsolute(relativePath);
-
-    // ugh
-    if (!isNode && !isSafe) {
-      console.log('NOTSAFE');
-      return new Response('bad', {
-        status: 400,
-        headers: { 'content-type': 'text/html' }
-      })
-    }
-    */
-
-    const finalPath = pathToFileURL(relativePath).toString();
-
-    return net.fetch(finalPath);
+    return net.fetch(fileURL);
   });
 }
 

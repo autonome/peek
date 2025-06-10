@@ -16,7 +16,8 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
-    "lint": "echo \"No linting configured\""
+    "lint": "echo \"No linting configured\"",
+    "help": "electron --help"
   },
   "dependencies": {
     "lil-gui": "^0.19.2"

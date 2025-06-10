@@ -2,7 +2,6 @@
  * Commands manager - loads and provides commands to the command panel
  */
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { openStore } from '../utils.js';
 import commandsModule from './commands/index.js';
 
 console.log('commands');
@@ -10,7 +9,6 @@ console.log('commands');
 const debug = window.app.debug;
 const clear = false;
 
-const store = openStore(id, defaults, clear /* clear storage */);
 const api = window.app;
 
 // Command registry - uses an object map for legacy compatibility

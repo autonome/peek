@@ -288,7 +288,7 @@ const initTray = () => {
     _tray = new Tray(ICON_PATH);
     _tray.setToolTip(labels.tray.tooltip);
     _tray.on('click', () => {
-      pubsub.publish('peek://app/background.html', scopes.GLOBAL, 'open', {
+      pubsub.publish(webCoreAddress, scopes.GLOBAL, 'open', {
         address: settingsAddress
       });
     });
@@ -337,24 +337,12 @@ const initAppProtocol = () => {
     const absolutePath = path.resolve(__dirname, relativePath);
     //console.log('ABSOLUTE PATH', absolutePath);
 
-    // FIXME: Complete and utter trash
-    try {
-      const stat = fs.statSync(relativePath)
-    }
-    catch(ex) {
-      // file does not exist
-      // but maybe it's in parent dir
-      // b/c what the fuck is happening w/ custom
-      // protocols and parent-relative path resolution?!
-      relativePath = relativePath.replace(/\/[a-z]+\//,'/');
-    }
-
-    const fileURL = pathToFileURL(relativePath).toString();
+    const fileURL = pathToFileURL(absolutePath).toString();
     //console.log('FILE URL', fileURL);
 
     return net.fetch(fileURL);
   });
-}
+};
 
 // ***** init *****
 

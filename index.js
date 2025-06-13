@@ -246,7 +246,7 @@ const pubsub = (() => {
 
   return {
     publish: (source, scope, topic, msg) => {
-      console.log('ps.pub', topic);
+      //console.log('ps.pub', topic);
 
       if (topics.has(topic)) {
 
@@ -261,7 +261,7 @@ const pubsub = (() => {
       }
     },
     subscribe: (source, scope, topic, cb) => {
-      console.log('ps.sub', source, scope, topic);
+      //console.log('ps.sub', source, scope, topic);
 
       if (!topics.has(topic)) {
         topics.set(topic, new Map([ [source, cb] ]));
@@ -323,14 +323,30 @@ const initAppProtocol = () => {
 
     let relativePath = pathname;
 
-    // Ugh
+    // Ugh, handle node_modules paths
+    // does this even work in packaged build?
     const isNode = pathname.indexOf('node_modules') > -1;
+
     if (!isNode) {
       relativePath = path.join(host, pathname);
 
       // if not core, prepend core path
       if (host != APP_CORE_PATH) {
         relativePath = path.join(APP_CORE_PATH, relativePath);
+      }
+
+      // Ugh, desparate attempt to handle `../` paths
+      // FIXME: Complete and utter trash
+      try {
+        const stat = fs.statSync(relativePath)
+      }
+      catch(ex) {
+        // file does not exist
+        // but maybe it's in parent dir
+        // b/c what the fuck is happening w/ custom
+        // protocols and parent-relative path resolution?!
+        const parts = relativePath.split(path.sep);
+        relativePath = parts.toSpliced(1, 1).join(path.sep);
       }
     }
 
@@ -1036,7 +1052,7 @@ const closeWindow = (params, callback) => {
 };
 
 const closeOrHideWindow = id => {
-  console.log('CLOSE OR HIDE WINDOW CALLED FOR ID:', id);
+  //console.log('CLOSE OR HIDE WINDOW CALLED FOR ID:', id);
 
   try {
     const win = BrowserWindow.fromId(id);
@@ -1046,7 +1062,7 @@ const closeOrHideWindow = id => {
     }
 
     const entry = windowManager.getWindow(id);
-    console.log('Window entry from manager:', entry);
+    //console.log('Window entry from manager:', entry);
 
     if (!entry) {
       console.log('Window not found in window manager, closing directly');
@@ -1055,7 +1071,7 @@ const closeOrHideWindow = id => {
     }
 
     const params = entry.params;
-    console.log('Window parameters:', params);
+    //console.log('Window parameters:', params);
 
     // Special case for settings window - always close it on ESC
     if (params.address === settingsAddress) {
@@ -1066,7 +1082,7 @@ const closeOrHideWindow = id => {
     // Check if window should be hidden rather than closed
     // Either keepLive or modal parameter can trigger hiding behavior
     else if (params.keepLive === true || params.modal === true) {
-      console.log(`HIDING window ${id} (${params.address}) - modal: ${params.modal}, keepLive: ${params.keepLive}`);
+      //console.log(`HIDING window ${id} (${params.address}) - modal: ${params.modal}, keepLive: ${params.keepLive}`);
       win.hide();
     } else {
       // close any open windows this window opened

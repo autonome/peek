@@ -19,7 +19,7 @@ const openModalWindow = (address, params = {}) => {
   // Set modal flag to true
   params.modal = true;
   
-  console.log('Opening modal window with params:', params);
+  //console.log('Opening modal window with params:', params);
   
   // Always use the IPC API
   if (api.window && api.window.open) {
@@ -39,7 +39,7 @@ const openModalWindow = (address, params = {}) => {
  * @returns {Promise<Object>} - Promise resolving to an object with methods to interact with the window
  */
 const createWindow = async (address, params = {}) => {
-  console.log('Creating window with params:', params);
+  //console.log('Creating window with params:', params);
   
   let windowId;
   

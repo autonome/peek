@@ -329,25 +329,6 @@ const initAppProtocol = () => {
 
     if (!isNode) {
       relativePath = path.join(host, pathname);
-
-      // if not core, prepend core path
-      if (host != APP_CORE_PATH) {
-        relativePath = path.join(APP_CORE_PATH, relativePath);
-      }
-
-      // Ugh, desparate attempt to handle `../` paths
-      // FIXME: Complete and utter trash
-      try {
-        const stat = fs.statSync(relativePath)
-      }
-      catch(ex) {
-        // file does not exist
-        // but maybe it's in parent dir
-        // b/c what the fuck is happening w/ custom
-        // protocols and parent-relative path resolution?!
-        const parts = relativePath.split(path.sep);
-        relativePath = parts.toSpliced(1, 1).join(path.sep);
-      }
     }
 
     const absolutePath = path.resolve(__dirname, relativePath);

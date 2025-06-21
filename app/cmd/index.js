@@ -10,7 +10,7 @@ const clear = false;
 
 const store = openStore(id, defaults, clear /* clear storage */);
 
-const address = 'peek://cmd/panel.html';
+const address = 'peek://app/cmd/panel.html';
 
 const openInputWindow = prefs => {
   const height = prefs.height || 50;

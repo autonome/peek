@@ -10,7 +10,7 @@ const clear = false;
 
 const store = openStore(id, defaults, clear /* clear storage */);
 
-const address = 'features/groups/home.html';
+const address = 'peek://app/groups/home.html';
 
 const openGroupsWindow = () => {
   const height = 600;

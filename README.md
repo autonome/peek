@@ -373,11 +373,11 @@ Shortcut lifecycle
 - [ ] unreg shortcuts on unload
 
 Window features
-- [ ] add back in window features to window.open
+- [x] add back in window features to window.open
   - [x] show/hide (keep alive)
   - [x] transparent
 - [ ] enable global window resize
-- [ ] add draggable as pref
+- [ ] add draggable as pref (draggable as default)
 
 Features clean themselves up for lifecycle events
 - [ ] load/unload peeks when enabled/disabled
@@ -404,6 +404,7 @@ Daily driver blockers
 - [x] fix ESC not working right
 - [x] fix ESC not working in web content
 - [x] fix ESC not working right over lil-gui
+- [ ] ESC not working when a page doesn't load for any reason
 
 Dev stuff
 - [x] figure out single devtools window if possible
@@ -418,6 +419,17 @@ Demo reel
 - [ ] Slides: soundcloud, crypto prices, notepad, todo list
 - [ ] Scripts: eth price, weather change
 
+Survival
+- [ ] Schema versioning
+- [ ] Export config to file
+- [ ] Import config from file
+
+Tests
+- [ ] stacked defaults file
+- [ ] import file
+- [ ] run app-specific test suites (in app sub dir)
+- [ ] run full test suite
+
 ### v0.3 - extensibility / history
 
 Backburner wishlist
@@ -425,7 +437,7 @@ Backburner wishlist
 
 DX papercuts
 - [ ] why crashing on reload main
-- [ ] devtools stealing focus
+- [ ] devtools stealing focus, put in backround
 - [ ] unified floating devtools
 
 Window features
@@ -440,7 +452,7 @@ App mgmt
 App dev
 - [ ] app model - web? extension? P/IWA? other?
 - [ ] shared libs, eg utils
-- [ ] language: call them feature or apps? other?
+- [ ] language: call them feature or apps? other? extensions? mods?
 
 Focus vs not focused app mode
 - [ ] openWindow option to not close on escape (perma windows w/ controls)

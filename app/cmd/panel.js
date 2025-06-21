@@ -10,8 +10,6 @@ const clear = false;
 const store = openStore(id, defaults, clear /* clear storage */);
 const api = window.app;
 
-const address = 'peek://cmd/panel.html';
-
 let state = {
   commands: [], // array of command names
   matches: [], // array of commands matching the typed text

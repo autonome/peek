@@ -420,6 +420,7 @@ Demo reel
 - [ ] Scripts: eth price, weather change
 
 Survival
+- [ ] Settings feature to blow away local datastore
 - [ ] Schema versioning
 - [ ] Export config to file
 - [ ] Import config from file

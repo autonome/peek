@@ -161,6 +161,18 @@ TODO
 - Need to look at whether could library-ize some of what Agregore implemented for non-HTTP protocol support.
 - Min browser might be interesting as a forkable base to work from and contribute to, if they're open to it. At least, should look more at the architecture.
 
+## Contribution
+
+- in proto stage
+- all dragons, no promises
+
+## Development
+
+```
+yarn install
+yarn debug
+```
+
 ### Mobile
 
 - Quick access to Script output and manual runs, as widgets (or output from cloud runners?)
@@ -265,49 +277,12 @@ architecture
 - look at web actions/intents/applets
 - xml pipeline language
 
-## Contribution
-
-- in proto stage
-- all dragons, no promises
-
-## Development
-
-```
-yarn install
-yarn debug
-```
-
 ## Mobile
 
 - some of the features don't make sense as-is on mobile
 - but maybe quick access on mobile to slides/peeks would be nice
 - and seeing output of content scripts, or ability to re-run locally on demand
 - needs some sync facility (inevitable anyway)
-
-## Demo reel
-
-to add:
-- something where i'm in a different app and peek/slide
-
-preview gif
-- empty background
-- slide-right: start music on hypem.com
-
-- cmd: `search` for 'xiao mian' w/ cmd, click on recipe link
-  - add a 'search' command
-
-- copy chinese text
-- slide-top: paste to translate into english
-
-- cmd: `images` chongqing xiao mian
-- copy image of noodle soup
-- slide-down: to open tldraw, paste image
-
-- slide-left: ask chatgpt about how chongqing xiao mian is different from in chengdu
-
-- peek-0: check the weather
-
-- slide-top: get directions to noodle shop
 
 ## Use-cases
 
@@ -401,18 +376,6 @@ Small examples of agency
 
 - users can move, resize, change things to their requirements
   - eg, browsers restrict min-height of a window, but i should be able make as short as i like
-
-
-## Browser architecture references
-
-Agregore ext protocol impl
-- where all are registered: https://github.com/AgregoreWeb/agregore-browser/blob/master/app/protocols/index.js#L74
-- how convert the fetch APIs to be compatible with the streaming protocol handler API in electron: https://github.com/AgregoreWeb/agregore-browser/blob/master/app/protocols/fetch-to-handler.js
-- where register IPFS: https://github.com/AgregoreWeb/agregore-browser/blob/electron-23/app/protocols/ipfs-protocol.js
-
-Browsers
-- Min browser architecture - https://github.com/minbrowser/min/wiki/Architecture
-- Dot browser https://www.dothq.org/en-US
 
 ## History
 

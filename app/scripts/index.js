@@ -27,9 +27,7 @@ const executeItem = (script, cb) => {
       script: str,
       domEvent: 'dom-ready',
       closeOnCompletion: true,
-    },
-    // Make script windows hidden and auto-close
-    modal: false
+    }
   };
 
   // For script windows, we use createWindow for more control

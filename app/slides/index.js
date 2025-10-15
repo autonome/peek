@@ -133,15 +133,12 @@ const executeItem = (item) => {
       keepLive: item.keepLive || false,
       persistState: item.persistState || false,
       
-      // Add modal parameter - this will make the window hide when unfocused or when escape is pressed
-      modal: true,
-      
       x,
       y,
     };
 
     // Open the window
-    api.window.open(item.address, params).then(result => {
+    windows.openModalWindow(item.address, params).then(result => {
       if (result.success) {
         console.log('Successfully opened slide with ID:', result.id);
         // Store the window ID for future reference

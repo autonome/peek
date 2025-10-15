@@ -26,13 +26,9 @@ const executeItem = (item) => {
     persistState: item.persistState || false,
     
     // Create a unique key for this peek using its address
-    key: `peek:${item.address}`,
-    
-    // Use modal behavior (closes on escape/blur)
-    modal: true
+    key: `peek:${item.address}`
   };
 
-  // Use the modal window API for peeks
   windows.openModalWindow(item.address, params)
     .then(result => {
       console.log('Peek window opened:', result);

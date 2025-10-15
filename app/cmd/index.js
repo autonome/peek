@@ -21,8 +21,6 @@ const openInputWindow = prefs => {
     key: address,
     height,
     width,
-    // Using modal parameter so it hides on escape/blur
-    //modal: true,
 
     // Keep resident in the background
     keepLive: true,
@@ -53,8 +51,7 @@ const openInputWindow = prefs => {
     detachedDevTools: true,
   };
 
-  // Use the modal window API to open the window
-  windows.createWindow(address, params)
+  windows.openModalWindow(address, params)
     .then(result => {
       console.log('Command window opened:', result);
     })

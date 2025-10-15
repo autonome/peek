@@ -40,9 +40,7 @@ const openSettingsWindow = async (prefs) => {
     key: settingsAddress,
     transparent: true,
     height,
-    width,
-    // Settings window should stay open when clicking elsewhere, so not modal
-    modal: false
+    width
   };
 
   console.log('Opening settings window with params:', params);

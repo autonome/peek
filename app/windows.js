@@ -16,9 +16,12 @@ const windows = new Map();
  * @returns {Promise<Object>} - Promise resolving to the window API result
  */
 const openModalWindow = (address, params = {}) => {
-  // Set modal flag to true
+  // Modal closes on escape/blur but app keeps focus (see below)
   params.modal = true;
   
+  // Panel returns focus to previously active app
+  params.type = 'panel';
+
   //console.log('Opening modal window with params:', params);
   
   // Always use the IPC API

@@ -19,9 +19,7 @@ const openGroupsWindow = () => {
   const params = {
     key: address,
     height,
-    width,
-    // Not using modal so window stays open when clicking elsewhere
-    modal: false
+    width
   };
 
   // Use the window creation API

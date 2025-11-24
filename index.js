@@ -69,16 +69,17 @@ const strings = {
   }
 };
 
-const p = process.env.PROFILE;
-console.log('env prof?', p, p != undefined, typeof p)
 const profileIsLegit = p => p != undefined && typeof p == 'string' && p.length > 0;
 
-const PROFILE =
-  profileIsLegit(process.env.PROFILE)
+// Profile selection:
+// 1. Explicit PROFILE env var takes precedence
+// 2. Packaged app uses 'default' (production)
+// 3. Running from source uses 'dev' (development)
+const PROFILE = profileIsLegit(process.env.PROFILE)
   ? process.env.PROFILE
-  : (DEBUG == true ? 'debug' : 'default');
+  : (app.isPackaged ? 'default' : 'dev');
 
-console.log('PROFILE', PROFILE);
+console.log('PROFILE', PROFILE, app.isPackaged ? '(packaged)' : '(source)');
 
 // Profile dirs are subdir of userData dir
 // ..................................... ↓ we set this per profile

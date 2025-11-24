@@ -3,32 +3,27 @@
   <head>
     <title>peek:core:settings</title>
     <meta charset="UTF-8">
-    <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
     <meta http-equiv="Content-Security-Policy" content="script-src 'self';">
     <meta name="description" content="">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="settings.css">
-    <link rel="stylesheet" href="./../../node_modules/lil-gui/dist/lil-gui.min.css">
   </head>
   <body>
-    <!--
-    <div>
-      <h1>peek</h1>
-    </div>
-    -->
+    <div class="settings-layout">
+      <aside class="sidebar">
+        <header class="sidebar-header">
+          <h1>Settings</h1>
+        </header>
+        <nav class="sidebar-nav" id="sidebarNav">
+          <!-- Navigation items will be generated here -->
+        </nav>
+      </aside>
 
-    <div class="houseofpane">
+      <main class="content" id="settingsContent">
+        <!-- Settings content will be generated here -->
+      </main>
     </div>
-
-    <!--
-    <div>
-      Node.js <span id="node-version"></span><br>
-      Chromium <span id="chrome-version"></span><br>
-      Electron <span id="electron-version"></span><br>
-    </div>
-    -->
 
     <script type=module src="./settings.js"></script>
-
   </body>
 </html>

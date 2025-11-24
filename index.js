@@ -15,6 +15,9 @@ import {
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'url';
+import { createStore, createIndexes, createRelationships, createMetrics } from 'tinybase';
+import { schema, indexes, relationships, metrics } from './app/datastore/schema.js';
+
 const __dirname = import.meta.dirname;
 
 (async () => {
@@ -106,6 +109,94 @@ if (!fs.existsSync(sessionDataPath)){
 // configure Electron with these paths
 app.setPath('userData', profileDataPath);
 app.setPath('sessionData', sessionDataPath);
+
+// ***** Datastore *****
+
+let datastoreStore = null;
+let datastoreIndexes = null;
+let datastoreRelationships = null;
+let datastoreMetrics = null;
+
+// Initialize datastore
+const initDatastore = () => {
+  console.log('main', 'initializing datastore');
+
+  try {
+    // Create the store with schema
+    datastoreStore = createStore();
+    datastoreStore.setTablesSchema(schema);
+
+    // Create indexes
+    datastoreIndexes = createIndexes(datastoreStore);
+    Object.entries(indexes).forEach(([indexName, indexConfig]) => {
+      datastoreIndexes.setIndexDefinition(
+        indexName,
+        indexConfig.table,
+        indexConfig.on
+      );
+    });
+
+    // Create relationships
+    datastoreRelationships = createRelationships(datastoreStore);
+    Object.entries(relationships).forEach(([relName, relConfig]) => {
+      datastoreRelationships.setRelationshipDefinition(
+        relName,
+        relConfig.localTableId,
+        relConfig.remoteTableId,
+        relConfig.relationshipId
+      );
+    });
+
+    // Create metrics
+    datastoreMetrics = createMetrics(datastoreStore);
+    Object.entries(metrics).forEach(([metricName, metricConfig]) => {
+      if (metricConfig.metric) {
+        datastoreMetrics.setMetricDefinition(
+          metricName,
+          metricConfig.table,
+          metricConfig.aggregate,
+          metricConfig.metric
+        );
+      } else {
+        datastoreMetrics.setMetricDefinition(
+          metricName,
+          metricConfig.table,
+          'count'
+        );
+      }
+    });
+
+    console.log('main', 'datastore initialized successfully');
+    return true;
+  } catch (error) {
+    console.error('main', 'datastore initialization failed:', error);
+    return false;
+  }
+};
+
+// Helper functions for datastore operations
+const generateId = (prefix = 'id') => {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+};
+
+const now = () => Date.now();
+
+const parseUrl = (uri) => {
+  try {
+    const url = new URL(uri);
+    return {
+      protocol: url.protocol.replace(':', ''),
+      domain: url.hostname,
+      path: url.pathname + url.search + url.hash
+    };
+  } catch (error) {
+    return {
+      protocol: '',
+      domain: '',
+      path: uri
+    };
+  }
+};
 
 // ***** Features / Strings *****
 
@@ -346,6 +437,9 @@ const initAppProtocol = () => {
 // Electron app load
 const onReady = () => {
   console.log('onReady');
+
+  // Initialize datastore
+  initDatastore();
 
   //https://stackoverflow.com/questions/35916158/how-to-prevent-multiple-instances-in-electron
   const gotTheLock = app.requestSingleInstanceLock();
@@ -879,6 +973,259 @@ ipcMain.handle('window-exists', async (ev, msg) => {
   } catch (error) {
     console.error('Failed to check if window exists:', error);
     return { exists: false, error: error.message };
+  }
+});
+
+// ***** Datastore IPC Handlers *****
+
+ipcMain.handle('datastore-add-address', async (ev, data) => {
+  try {
+    const { uri, options = {} } = data;
+    const parsed = parseUrl(uri);
+    const addressId = generateId('addr');
+    const timestamp = now();
+
+    const row = {
+      uri,
+      protocol: options.protocol || parsed.protocol,
+      domain: options.domain || parsed.domain,
+      path: options.path || parsed.path,
+      title: options.title || '',
+      mimeType: options.mimeType || 'text/html',
+      favicon: options.favicon || '',
+      description: options.description || '',
+      tags: options.tags || '',
+      metadata: options.metadata || '{}',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      lastVisitAt: options.lastVisitAt || 0,
+      visitCount: options.visitCount || 0,
+      starred: options.starred || 0,
+      archived: options.archived || 0
+    };
+
+    datastoreStore.setRow('addresses', addressId, row);
+    return { success: true, id: addressId };
+  } catch (error) {
+    console.error('datastore-add-address error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('datastore-get-address', async (ev, data) => {
+  try {
+    const { id } = data;
+    const row = datastoreStore.getRow('addresses', id);
+    return { success: true, data: row };
+  } catch (error) {
+    console.error('datastore-get-address error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('datastore-update-address', async (ev, data) => {
+  try {
+    const { id, updates } = data;
+    const existing = datastoreStore.getRow('addresses', id);
+    if (!existing) {
+      return { success: false, error: 'Address not found' };
+    }
+
+    const updated = {
+      ...existing,
+      ...updates,
+      updatedAt: now()
+    };
+
+    datastoreStore.setRow('addresses', id, updated);
+    return { success: true, data: updated };
+  } catch (error) {
+    console.error('datastore-update-address error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('datastore-query-addresses', async (ev, data) => {
+  try {
+    const { filter = {} } = data;
+    const table = datastoreStore.getTable('addresses');
+    let results = Object.entries(table).map(([id, row]) => ({ id, ...row }));
+
+    // Apply filters
+    if (filter.domain) {
+      results = results.filter(addr => addr.domain === filter.domain);
+    }
+    if (filter.protocol) {
+      results = results.filter(addr => addr.protocol === filter.protocol);
+    }
+    if (filter.starred !== undefined) {
+      results = results.filter(addr => addr.starred === filter.starred);
+    }
+    if (filter.tag) {
+      results = results.filter(addr => addr.tags.includes(filter.tag));
+    }
+
+    // Sort
+    if (filter.sortBy === 'lastVisit') {
+      results.sort((a, b) => b.lastVisitAt - a.lastVisitAt);
+    } else if (filter.sortBy === 'visitCount') {
+      results.sort((a, b) => b.visitCount - a.visitCount);
+    } else if (filter.sortBy === 'created') {
+      results.sort((a, b) => b.createdAt - a.createdAt);
+    }
+
+    // Limit
+    if (filter.limit) {
+      results = results.slice(0, filter.limit);
+    }
+
+    return { success: true, data: results };
+  } catch (error) {
+    console.error('datastore-query-addresses error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('datastore-add-visit', async (ev, data) => {
+  try {
+    const { addressId, options = {} } = data;
+    const visitId = generateId('visit');
+    const timestamp = now();
+
+    const row = {
+      addressId,
+      timestamp: options.timestamp || timestamp,
+      duration: options.duration || 0,
+      source: options.source || 'direct',
+      sourceId: options.sourceId || '',
+      windowType: options.windowType || 'main',
+      metadata: options.metadata || '{}',
+      scrollDepth: options.scrollDepth || 0,
+      interacted: options.interacted || 0
+    };
+
+    datastoreStore.setRow('visits', visitId, row);
+
+    // Update address visit stats
+    const address = datastoreStore.getRow('addresses', addressId);
+    if (address) {
+      const updated = {
+        ...address,
+        lastVisitAt: timestamp,
+        visitCount: address.visitCount + 1,
+        updatedAt: timestamp
+      };
+      datastoreStore.setRow('addresses', addressId, updated);
+    }
+
+    return { success: true, id: visitId };
+  } catch (error) {
+    console.error('datastore-add-visit error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('datastore-query-visits', async (ev, data) => {
+  try {
+    const { filter = {} } = data;
+    const table = datastoreStore.getTable('visits');
+    let results = Object.entries(table).map(([id, row]) => ({ id, ...row }));
+
+    // Apply filters
+    if (filter.addressId) {
+      results = results.filter(visit => visit.addressId === filter.addressId);
+    }
+    if (filter.source) {
+      results = results.filter(visit => visit.source === filter.source);
+    }
+    if (filter.since) {
+      const since = typeof filter.since === 'number' ? filter.since : now() - filter.since;
+      results = results.filter(visit => visit.timestamp >= since);
+    }
+
+    // Sort by timestamp (most recent first)
+    results.sort((a, b) => b.timestamp - a.timestamp);
+
+    // Limit
+    if (filter.limit) {
+      results = results.slice(0, filter.limit);
+    }
+
+    return { success: true, data: results };
+  } catch (error) {
+    console.error('datastore-query-visits error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('datastore-add-content', async (ev, data) => {
+  try {
+    const { options = {} } = data;
+    const contentId = generateId('content');
+    const timestamp = now();
+
+    const row = {
+      title: options.title || 'Untitled',
+      content: options.content || '',
+      mimeType: options.mimeType || 'text/plain',
+      contentType: options.contentType || 'plain',
+      language: options.language || '',
+      encoding: options.encoding || 'utf-8',
+      tags: options.tags || '',
+      addressRefs: options.addressRefs || '',
+      parentId: options.parentId || '',
+      metadata: options.metadata || '{}',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      syncPath: options.syncPath || '',
+      synced: options.synced || 0,
+      starred: options.starred || 0,
+      archived: options.archived || 0
+    };
+
+    datastoreStore.setRow('content', contentId, row);
+    return { success: true, id: contentId };
+  } catch (error) {
+    console.error('datastore-add-content error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('datastore-get-table', async (ev, data) => {
+  try {
+    const { tableName } = data;
+    const table = datastoreStore.getTable(tableName);
+    return { success: true, data: table };
+  } catch (error) {
+    console.error('datastore-get-table error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('datastore-set-row', async (ev, data) => {
+  try {
+    const { tableName, rowId, rowData } = data;
+    datastoreStore.setRow(tableName, rowId, rowData);
+    return { success: true };
+  } catch (error) {
+    console.error('datastore-set-row error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('datastore-get-stats', async () => {
+  try {
+    const stats = {
+      totalAddresses: datastoreMetrics.getMetric('totalAddresses'),
+      totalVisits: datastoreMetrics.getMetric('totalVisits'),
+      avgVisitDuration: datastoreMetrics.getMetric('avgVisitDuration'),
+      totalContent: datastoreMetrics.getMetric('totalContent'),
+      syncedContent: datastoreMetrics.getMetric('syncedContent')
+    };
+    return { success: true, data: stats };
+  } catch (error) {
+    console.error('datastore-get-stats error:', error);
+    return { success: false, error: error.message };
   }
 });
 

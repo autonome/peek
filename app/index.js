@@ -13,6 +13,13 @@ const clear = false;
 
 const store = openStore(id, defaults, clear /* clear storage */);
 
+// Datastore is now initialized in main process and accessible via api.datastore
+console.log('core', 'datastore available via api.datastore');
+
+// Import and expose history tracking helpers
+import historyTracking from './datastore/history.js';
+window.datastoreHistory = historyTracking;
+
 // maps app id to BrowserWindow id (background)
 const windows = new Map();
 

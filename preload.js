@@ -207,6 +207,40 @@ api.modifyWindow = (winName, params) => {
   });
 };
 
+// Datastore API
+api.datastore = {
+  addAddress: (uri, options) => {
+    return ipcRenderer.invoke('datastore-add-address', { uri, options });
+  },
+  getAddress: (id) => {
+    return ipcRenderer.invoke('datastore-get-address', { id });
+  },
+  updateAddress: (id, updates) => {
+    return ipcRenderer.invoke('datastore-update-address', { id, updates });
+  },
+  queryAddresses: (filter) => {
+    return ipcRenderer.invoke('datastore-query-addresses', { filter });
+  },
+  addVisit: (addressId, options) => {
+    return ipcRenderer.invoke('datastore-add-visit', { addressId, options });
+  },
+  queryVisits: (filter) => {
+    return ipcRenderer.invoke('datastore-query-visits', { filter });
+  },
+  addContent: (options) => {
+    return ipcRenderer.invoke('datastore-add-content', { options });
+  },
+  getTable: (tableName) => {
+    return ipcRenderer.invoke('datastore-get-table', { tableName });
+  },
+  setRow: (tableName, rowId, rowData) => {
+    return ipcRenderer.invoke('datastore-set-row', { tableName, rowId, rowData });
+  },
+  getStats: () => {
+    return ipcRenderer.invoke('datastore-get-stats');
+  }
+};
+
 // unused
 /*
 api.sendToWindow = (windowId, msg) => {

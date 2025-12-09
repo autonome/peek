@@ -32,15 +32,9 @@ let _settingsWin = null;
 const openSettingsWindow = async (prefs) => {
   console.log('openSettingsWindow()');
 
-  // Get screen dimensions from window object
-  const screenWidth = window.screen.availWidth;
-  const screenHeight = window.screen.availHeight;
-
-  // Calculate 80% of screen dimensions
-  const width = Math.floor(screenWidth * 0.8);
-  const height = Math.floor(screenHeight * 0.8);
-
-  console.log(`Setting window size to ${width}x${height} (80% of ${screenWidth}x${screenHeight})`);
+  // Fixed size for settings window - content doesn't need to scale with screen
+  const width = 900;
+  const height = 650;
 
   const params = {
     debug,

@@ -397,20 +397,6 @@ const init = () => {
   coreNav.addEventListener('click', () => showSection('core'));
   sidebarNav.appendChild(coreNav);
 
-  // Add Datastore link
-  const datastoreNav = document.createElement('a');
-  datastoreNav.className = 'nav-item';
-  datastoreNav.textContent = 'Datastore';
-  datastoreNav.style.cursor = 'pointer';
-  datastoreNav.addEventListener('click', () => {
-    api.window.open('peek://app/datastore/viewer.html', {
-      width: 900,
-      height: 600,
-      key: 'datastore-viewer'
-    });
-  });
-  sidebarNav.appendChild(datastoreNav);
-
   const coreSection = createSection('core', 'Core Settings', renderCoreSettings);
   coreSection.classList.add('active');
   contentArea.appendChild(coreSection);
@@ -433,6 +419,21 @@ const init = () => {
     const section = createSection(sectionId, name, () => renderFeatureSettings(feature));
     contentArea.appendChild(section);
   }
+
+  // Add Datastore link at the bottom
+  const datastoreNav = document.createElement('a');
+  datastoreNav.className = 'nav-item';
+  datastoreNav.textContent = 'Datastore';
+  datastoreNav.style.cursor = 'pointer';
+  datastoreNav.style.marginTop = 'auto';
+  datastoreNav.addEventListener('click', () => {
+    api.window.open('peek://app/datastore/viewer.html', {
+      width: 900,
+      height: 600,
+      key: 'datastore-viewer'
+    });
+  });
+  sidebarNav.appendChild(datastoreNav);
 };
 
 window.addEventListener('load', init);

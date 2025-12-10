@@ -73,7 +73,9 @@ const renderTableList = async () => {
     if (datastoreApi) {
       try {
         const result = await datastoreApi.getTable(tableName);
-        count = result ? Object.keys(result).length : 0;
+        if (result && result.success && result.data) {
+          count = Object.keys(result.data).length;
+        }
       } catch (e) {
         console.error('Error getting table count:', e);
       }
@@ -165,7 +167,10 @@ const showTable = async (tableName) => {
   let tableData = {};
   if (datastoreApi) {
     try {
-      tableData = await datastoreApi.getTable(tableName) || {};
+      const result = await datastoreApi.getTable(tableName);
+      if (result && result.success && result.data) {
+        tableData = result.data;
+      }
     } catch (e) {
       console.error('Error getting table data:', e);
     }

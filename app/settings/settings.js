@@ -397,6 +397,20 @@ const init = () => {
   coreNav.addEventListener('click', () => showSection('core'));
   sidebarNav.appendChild(coreNav);
 
+  // Add Datastore link
+  const datastoreNav = document.createElement('a');
+  datastoreNav.className = 'nav-item';
+  datastoreNav.textContent = 'Datastore';
+  datastoreNav.style.cursor = 'pointer';
+  datastoreNav.addEventListener('click', () => {
+    api.window.open('peek://app/datastore/viewer.html', {
+      width: 900,
+      height: 600,
+      key: 'datastore-viewer'
+    });
+  });
+  sidebarNav.appendChild(datastoreNav);
+
   const coreSection = createSection('core', 'Core Settings', renderCoreSettings);
   coreSection.classList.add('active');
   contentArea.appendChild(coreSection);

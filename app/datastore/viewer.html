@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Datastore Viewer</title>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self';">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="../settings/settings.css">
+    <style>
+      .viewer-layout {
+        display: flex;
+        height: 100vh;
+        overflow: hidden;
+      }
+
+      .table-nav {
+        width: 200px;
+        background: var(--bg-secondary);
+        border-right: 1px solid var(--border-primary);
+        display: flex;
+        flex-direction: column;
+        flex-shrink: 0;
+      }
+
+      .table-nav-header {
+        padding: 20px;
+        border-bottom: 1px solid var(--border-primary);
+      }
+
+      .table-nav-header h1 {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 8px;
+      }
+
+      .back-link {
+        font-size: 13px;
+        color: var(--text-secondary);
+        text-decoration: none;
+        cursor: pointer;
+      }
+
+      .back-link:hover {
+        color: var(--text-primary);
+      }
+
+      .table-list {
+        padding: 12px 0;
+        overflow-y: auto;
+        flex: 1;
+      }
+
+      .table-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 20px;
+        color: var(--text-secondary);
+        cursor: pointer;
+        border-left: 3px solid transparent;
+      }
+
+      .table-item:hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
+      }
+
+      .table-item.active {
+        background: var(--bg-primary);
+        border-left-color: var(--text-primary);
+        color: var(--text-primary);
+        font-weight: 500;
+      }
+
+      .table-count {
+        font-size: 12px;
+        color: var(--text-muted);
+        background: var(--bg-tertiary);
+        padding: 2px 8px;
+        border-radius: 10px;
+      }
+
+      .viewer-content {
+        flex: 1;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        background: var(--bg-primary);
+      }
+
+      .content-header {
+        padding: 20px;
+        border-bottom: 1px solid var(--border-primary);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .content-header h2 {
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+
+      .stats {
+        display: flex;
+        gap: 20px;
+      }
+
+      .stat {
+        text-align: center;
+      }
+
+      .stat-value {
+        font-size: 24px;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+
+      .stat-label {
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+
+      .table-container {
+        flex: 1;
+        overflow: auto;
+        padding: 20px;
+      }
+
+      .data-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+
+      .data-table th {
+        text-align: left;
+        padding: 10px 12px;
+        background: var(--bg-secondary);
+        border-bottom: 1px solid var(--border-primary);
+        font-weight: 600;
+        color: var(--text-primary);
+        position: sticky;
+        top: 0;
+      }
+
+      .data-table td {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--border-light);
+        color: var(--text-secondary);
+        max-width: 300px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .data-table tr:hover td {
+        background: var(--bg-tertiary);
+      }
+
+      .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: var(--text-muted);
+      }
+
+      .empty-state h3 {
+        font-size: 16px;
+        font-weight: 500;
+        margin-bottom: 8px;
+        color: var(--text-secondary);
+      }
+
+      .refresh-btn {
+        padding: 6px 12px;
+        font-size: 12px;
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border-primary);
+        color: var(--text-primary);
+        border-radius: 4px;
+        cursor: pointer;
+      }
+
+      .refresh-btn:hover {
+        background: var(--bg-hover);
+      }
+
+      .cell-id {
+        font-family: monospace;
+        font-size: 11px;
+        color: var(--text-muted);
+      }
+
+      .cell-timestamp {
+        font-size: 12px;
+      }
+
+      .cell-url {
+        color: var(--text-primary);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="viewer-layout">
+      <aside class="table-nav">
+        <header class="table-nav-header">
+          <h1>Datastore</h1>
+          <a class="back-link" id="backLink">&larr; Back to Settings</a>
+        </header>
+        <nav class="table-list" id="tableList">
+          <!-- Table items generated here -->
+        </nav>
+      </aside>
+
+      <main class="viewer-content">
+        <header class="content-header">
+          <h2 id="tableTitle">Overview</h2>
+          <div class="stats" id="statsArea">
+            <!-- Stats shown here -->
+          </div>
+        </header>
+        <div class="table-container" id="tableContainer">
+          <!-- Table data shown here -->
+        </div>
+      </main>
+    </div>
+
+    <script type="module" src="./viewer.js"></script>
+  </body>
+</html>

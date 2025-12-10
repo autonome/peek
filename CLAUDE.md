@@ -153,3 +153,9 @@ From TODO.md, key areas being worked on:
 7. Window keys must be unique - use pattern like `peek:${address}` to avoid collisions
 8. Check if items are enabled (`item.enabled == true`) before registering shortcuts
 9. IPC messages auto-attach source address - don't manually add source tracking
+
+## Git Commit Policy
+
+- User (dietrich ayala) is sole author of all commits
+- Do not add co-author lines or "Generated with Claude" to commit messages
+- Do not commit changes - leave commits to the user

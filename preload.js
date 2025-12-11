@@ -241,6 +241,11 @@ api.datastore = {
   }
 };
 
+// App control API
+api.quit = () => {
+  ipcRenderer.send('app-quit', { source: sourceAddress });
+};
+
 // unused
 /*
 api.sendToWindow = (windowId, msg) => {

@@ -70,7 +70,7 @@ Daily driver blockers
 - [x] debug vs profile(s) for app dir
 - [x] fix ESC not working right
 - [x] fix ESC not working in web content
-- [x] fix ESC not working right over lil-gui
+- [x] fix ESC not working right in settings
 - [ ] ESC not working when a page doesn't load for any reason
 
 Dev stuff

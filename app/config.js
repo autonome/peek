@@ -44,8 +44,13 @@ const prefsSchema = {
       "type": "boolean",
       "default": false
     },
+    "quitShortcut": {
+      "description": "Global keyboard shortcut to quit the app",
+      "type": "string",
+      "default": "Option+q"
+    },
   },
-  "required": [ "shortcutKey", "startupFeature", "enableTrayIcon", "showInDockAndSwitcher" ]
+  "required": [ "shortcutKey", "startupFeature", "enableTrayIcon", "showInDockAndSwitcher", "quitShortcut" ]
 };
 
 const featureSchema = {
@@ -107,6 +112,7 @@ const storageKeys = {
 const defaults = {
   prefs: {
     shortcutKey: 'Option+,',
+    quitShortcut: 'Option+q',
     height: 850,
     width: 800,
     startupFeature: 'peek://app/settings/settings.html',

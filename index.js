@@ -244,6 +244,7 @@ const shortcuts = new Map();
 // app global prefs configurable by user
 // populated during app init
 let _prefs = {};
+let _quitShortcut = null;
 
 // ***** Window Manager *****
 
@@ -472,6 +473,18 @@ const onReady = () => {
       console.log('showing tray');
       initTray();
     }
+
+    // update quit shortcut if changed
+    const newQuitShortcut = msg.prefs.quitShortcut || strings.defaults.quitShortcut;
+    if (newQuitShortcut !== _quitShortcut) {
+      if (_quitShortcut) {
+        console.log('unregistering old quit shortcut:', _quitShortcut);
+        globalShortcut.unregister(_quitShortcut);
+      }
+      console.log('registering new quit shortcut:', newQuitShortcut);
+      registerShortcut(newQuitShortcut, onQuit);
+      _quitShortcut = newQuitShortcut;
+    }
   });
 
   // Initialize the background window using the new window-open method
@@ -617,8 +630,9 @@ const onReady = () => {
     };
   });
 
-  // TODO: this should be pref'd
-  registerShortcut(strings.defaults.quitShortcut, onQuit);
+  // Register default quit shortcut - will be updated when prefs arrive
+  _quitShortcut = strings.defaults.quitShortcut;
+  registerShortcut(_quitShortcut, onQuit);
 };
 
 app.whenReady().then(onReady);
@@ -672,6 +686,11 @@ ipcMain.on(strings.msgs.subscribe, (ev, msg) => {
 
 ipcMain.on(strings.msgs.console, (ev, msg) => {
   console.log('r:', msg.source, msg.text);
+});
+
+ipcMain.on('app-quit', (ev, msg) => {
+  console.log('app-quit requested from:', msg?.source);
+  onQuit();
 });
 
 ipcMain.on('modifywindow', (ev, msg) => {

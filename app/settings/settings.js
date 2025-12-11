@@ -420,12 +420,11 @@ const init = () => {
     contentArea.appendChild(section);
   }
 
-  // Add Datastore link at the bottom
+  // Add Datastore link
   const datastoreNav = document.createElement('a');
   datastoreNav.className = 'nav-item';
   datastoreNav.textContent = 'Datastore';
   datastoreNav.style.cursor = 'pointer';
-  datastoreNav.style.marginTop = 'auto';
   datastoreNav.addEventListener('click', () => {
     api.window.open('peek://app/datastore/viewer.html', {
       width: 900,
@@ -434,6 +433,31 @@ const init = () => {
     });
   });
   sidebarNav.appendChild(datastoreNav);
+
+  // Add Quit button at the very bottom
+  const quitBtn = document.createElement('button');
+  quitBtn.textContent = 'Quit';
+  quitBtn.style.cssText = `
+    margin: auto 20px 20px 20px;
+    padding: 8px 16px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    width: calc(100% - 40px);
+  `;
+  quitBtn.addEventListener('mouseenter', () => {
+    quitBtn.style.background = 'var(--bg-hover)';
+  });
+  quitBtn.addEventListener('mouseleave', () => {
+    quitBtn.style.background = 'var(--bg-tertiary)';
+  });
+  quitBtn.addEventListener('click', () => {
+    api.quit();
+  });
+  sidebarNav.appendChild(quitBtn);
 };
 
 window.addEventListener('load', init);

@@ -155,7 +155,7 @@ Proof of concept is Electron. By far the best option today for cross-platform de
 
 User interface:
 - the built-in features are all modal chromeless web pages at this point
-- settings "apps" are [lil-gui](https://github.com/georgealways/lil-gui) panels
+- settings UI uses custom sidebar navigation with dark mode support
 
 TODO
 - Need to look at whether could library-ize some of what Agregore implemented for non-HTTP protocol support.

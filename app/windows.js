@@ -1,5 +1,6 @@
 import { openStore } from "./utils.js";
 import api from './api.js';
+import { trackNavigation } from './datastore/history.js';
 
 const debug = api.debug;
 const clear = false;
@@ -8,25 +9,53 @@ const clear = false;
 const windows = new Map();
 
 /**
+ * Track navigation for an address unless it's an internal peek:// URL
+ * @param {string} address - URL that was navigated to
+ * @param {Object} params - Window parameters containing tracking options
+ */
+const maybeTrackNavigation = (address, params = {}) => {
+  // Skip tracking for internal peek:// URLs
+  if (address.startsWith('peek://')) {
+    return;
+  }
+
+  trackNavigation(address, {
+    source: params.trackingSource || params.feature || 'window',
+    sourceId: params.trackingSourceId || '',
+    windowType: params.modal ? 'modal' : 'main',
+    title: params.title || ''
+  });
+};
+
+/**
  * Opens a modal window with the provided address and parameters
  * @param {string} address - URL to open in the window
  * @param {Object} params - Window parameters
  * @param {boolean} [params.openDevTools=false] - Whether to open DevTools for this window
  * @param {boolean} [params.detachedDevTools=true] - Whether DevTools should be detached
+ * @param {string} [params.trackingSource] - Source for navigation tracking
+ * @param {string} [params.trackingSourceId] - Source ID for navigation tracking
  * @returns {Promise<Object>} - Promise resolving to the window API result
  */
-const openModalWindow = (address, params = {}) => {
+const openModalWindow = async (address, params = {}) => {
   // Modal closes on escape/blur but app keeps focus (see below)
   params.modal = true;
-  
+
   // Panel returns focus to previously active app
   params.type = 'panel';
 
   //console.log('Opening modal window with params:', params);
-  
+
   // Always use the IPC API
   if (api.window && api.window.open) {
-    return api.window.open(address, params);
+    const result = await api.window.open(address, params);
+
+    // Track navigation on success
+    if (result.success) {
+      maybeTrackNavigation(address, params);
+    }
+
+    return result;
   } else {
     console.error('API window.open not available');
     throw new Error('API window.open not available. Cannot open window.');
@@ -36,21 +65,26 @@ const openModalWindow = (address, params = {}) => {
 /**
  * Creates a window and handles its lifecycle
  * @param {string} address - URL to open in the window
- * @param {Object} params - Window parameters 
+ * @param {Object} params - Window parameters
  * @param {boolean} [params.openDevTools=false] - Whether to open DevTools for this window
  * @param {boolean} [params.detachedDevTools=true] - Whether DevTools should be detached
+ * @param {string} [params.trackingSource] - Source for navigation tracking
+ * @param {string} [params.trackingSourceId] - Source ID for navigation tracking
  * @returns {Promise<Object>} - Promise resolving to an object with methods to interact with the window
  */
 const createWindow = async (address, params = {}) => {
   //console.log('Creating window with params:', params);
-  
+
   let windowId;
-  
+
   // Always use the IPC API
   if (api.window && api.window.open) {
     const result = await api.window.open(address, params);
     if (result.success) {
       windowId = result.id;
+
+      // Track navigation on success
+      maybeTrackNavigation(address, params);
     } else {
       console.error('Failed to open window:', result.error);
       throw new Error(`Failed to open window: ${result.error}`);
@@ -59,7 +93,7 @@ const createWindow = async (address, params = {}) => {
     console.error('API window.open not available');
     throw new Error('API window.open not available. Cannot open window.');
   }
-  
+
   // Return an API for the window
   return {
     id: windowId,

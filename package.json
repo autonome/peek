@@ -12,7 +12,8 @@
   },
   "scripts": {
     "start": "electron-forge start",
-    "debug": "nodemon --exec DEBUG=1 electron-forge start",
+    "debug": "DEBUG=1 electron-forge start",
+    "hot-debug": "nodemon --exec DEBUG=1 electron-forge start",
     "package": "electron-forge package",
     "moveapp": "rm -rf ~/Applications/Peek.app && cp -r out/Peek-darwin-arm64/Peek.app ~/Applications/Peek.app",
     "make": "electron-forge make",

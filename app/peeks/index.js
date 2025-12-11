@@ -26,22 +26,17 @@ const executeItem = (item) => {
     persistState: item.persistState || false,
 
     // Create a unique key for this peek using its address
-    key: `peek:${item.address}`
+    key: `peek:${item.address}`,
+
+    // tracking (handled automatically by windows API)
+    trackingSource: 'peek',
+    trackingSourceId: item.keyNum ? `peek_${item.keyNum}` : 'peek',
+    title: item.title || ''
   };
 
   windows.openModalWindow(item.address, params)
     .then(result => {
       console.log('Peek window opened:', result);
-
-      // Track navigation in datastore
-      if (window.datastoreHistory) {
-        window.datastoreHistory.trackNavigation(item.address, {
-          source: 'peek',
-          sourceId: item.keyNum ? `peek_${item.keyNum}` : 'peek',
-          windowType: 'modal',
-          title: item.title || ''
-        });
-      }
     })
     .catch(error => {
       console.error('Failed to open peek window:', error);

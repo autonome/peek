@@ -30,15 +30,17 @@ export default {
     const normalizedAddress = urlResult.url;
     console.log('Using normalized URL:', normalizedAddress);
 
-    // Use the new windows API
+    // Use the new windows API (tracking handled automatically)
     try {
       const windowController = await windows.createWindow(normalizedAddress, {
         width: 800,
         height: 600,
-        openDevTools: window.app.debug // Only open DevTools in debug mode
+        openDevTools: window.app.debug,
+        trackingSource: 'cmd',
+        trackingSourceId: 'open'
       });
       console.log('Window opened with ID:', windowController.id);
-      
+
       return {
         command: 'open',
         address: normalizedAddress,
@@ -46,7 +48,7 @@ export default {
       };
     } catch (error) {
       console.error('Failed to open window:', error);
-      return { 
+      return {
         error: 'Failed to open window: ' + error.message,
         address: normalizedAddress
       };

@@ -1,6 +1,7 @@
 // cmd/panel.js
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
 import { openStore } from "../utils.js";
+import './commands.js'; // Load commands module to dispatch cmd-update-commands event
 
 console.log('panel');
 

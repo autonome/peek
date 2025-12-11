@@ -135,6 +135,11 @@ const executeItem = (item) => {
 
       x,
       y,
+
+      // tracking (handled automatically by windows API)
+      trackingSource: 'slide',
+      trackingSourceId: item.screenEdge ? `slide_${item.screenEdge}` : 'slide',
+      title: item.title || ''
     };
 
     // Open the window
@@ -143,16 +148,6 @@ const executeItem = (item) => {
         console.log('Successfully opened slide with ID:', result.id);
         // Store the window ID for future reference
         slideWindows.set(key, result.id);
-
-        // Track navigation in datastore
-        if (window.datastoreHistory) {
-          window.datastoreHistory.trackNavigation(item.address, {
-            source: 'slide',
-            sourceId: item.screenEdge ? `slide_${item.screenEdge}` : 'slide',
-            windowType: 'modal',
-            title: item.title || ''
-          });
-        }
       } else {
         console.error('Failed to open slide:', result.error);
       }

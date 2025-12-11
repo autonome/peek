@@ -17,13 +17,15 @@ export default {
       return;
     }
 
-    // Use the new windows API with DevTools enabled
+    // Use the new windows API with DevTools enabled (tracking handled automatically)
     try {
       const windowController = await windows.createWindow(address, {
         width: 900,
         height: 700,
         openDevTools: true,
-        detachedDevTools: true
+        detachedDevTools: true,
+        trackingSource: 'cmd',
+        trackingSourceId: 'debug'
       });
       console.log('Debug window opened with ID:', windowController.id);
     } catch (error) {

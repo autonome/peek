@@ -175,12 +175,33 @@ function handleSpecialKey(e) {
 }
 
 /**
+ * Builds execution context from typed string and command name
+ */
+function buildExecutionContext(name, typed) {
+  // Split typed text by command name to get parts
+  const parts = typed.trim().split(name).map(s => s.trim());
+  // Parameters are everything after the command name
+  const params = parts.slice(1).filter(p => p.length > 0);
+  // Search is the joined params (text after command name)
+  const search = params.length > 0 ? params.join(' ') : null;
+
+  return {
+    typed,       // Full typed string
+    name,        // Command name
+    params,      // Array of parameters
+    search       // Text after command name (for search-style commands)
+  };
+}
+
+/**
  * Executes a command
  */
 async function execute(name, typed) {
   if (state.commands[name]) {
     debug && console.log('executing cmd', name, typed);
-    const msg = state.commands[name].execute({typed});
+    const context = buildExecutionContext(name, typed);
+    debug && console.log('execution context', context);
+    state.commands[name].execute(context);
     setTimeout(shutdown, 100);
   }
 }

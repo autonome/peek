@@ -996,6 +996,40 @@ ipcMain.handle('window-exists', async (ev, msg) => {
   }
 });
 
+ipcMain.handle('window-list', async (ev, msg) => {
+  console.log('window-list', msg);
+
+  try {
+    const windows = [];
+
+    for (const [id, winData] of windowManager.windows) {
+      const win = BrowserWindow.fromId(id);
+      if (win && !win.isDestroyed()) {
+        // Get the current URL of the window
+        const url = win.webContents.getURL();
+
+        // Skip internal peek:// URLs unless requested
+        if (!msg?.includeInternal && url.startsWith('peek://')) {
+          continue;
+        }
+
+        windows.push({
+          id,
+          url,
+          title: win.getTitle(),
+          source: winData.source,
+          params: winData.params
+        });
+      }
+    }
+
+    return { success: true, windows };
+  } catch (error) {
+    console.error('Failed to list windows:', error);
+    return { success: false, error: error.message, windows: [] };
+  }
+});
+
 // ***** Datastore IPC Handlers *****
 
 ipcMain.handle('datastore-add-address', async (ev, data) => {
@@ -1207,6 +1241,48 @@ ipcMain.handle('datastore-add-content', async (ev, data) => {
     return { success: true, id: contentId };
   } catch (error) {
     console.error('datastore-add-content error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('datastore-query-content', async (ev, data) => {
+  try {
+    const { filter = {} } = data;
+    const table = datastoreStore.getTable('content');
+    let results = Object.entries(table).map(([id, row]) => ({ id, ...row }));
+
+    // Apply filters
+    if (filter.contentType) {
+      results = results.filter(item => item.contentType === filter.contentType);
+    }
+    if (filter.mimeType) {
+      results = results.filter(item => item.mimeType === filter.mimeType);
+    }
+    if (filter.synced !== undefined) {
+      results = results.filter(item => item.synced === filter.synced);
+    }
+    if (filter.starred !== undefined) {
+      results = results.filter(item => item.starred === filter.starred);
+    }
+    if (filter.tag) {
+      results = results.filter(item => item.tags && item.tags.includes(filter.tag));
+    }
+
+    // Sort
+    if (filter.sortBy === 'updated') {
+      results.sort((a, b) => b.updatedAt - a.updatedAt);
+    } else if (filter.sortBy === 'created') {
+      results.sort((a, b) => b.createdAt - a.createdAt);
+    }
+
+    // Limit
+    if (filter.limit) {
+      results = results.slice(0, filter.limit);
+    }
+
+    return { success: true, data: results };
+  } catch (error) {
+    console.error('datastore-query-content error:', error);
     return { success: false, error: error.message };
   }
 });

@@ -193,6 +193,13 @@ api.window = {
       source: sourceAddress,
       id
     });
+  },
+  list: (options = {}) => {
+    console.log('window.list', options);
+    return ipcRenderer.invoke('window-list', {
+      source: sourceAddress,
+      ...options
+    });
   }
 };
 
@@ -229,6 +236,9 @@ api.datastore = {
   },
   addContent: (options) => {
     return ipcRenderer.invoke('datastore-add-content', { options });
+  },
+  queryContent: (filter) => {
+    return ipcRenderer.invoke('datastore-query-content', { filter });
   },
   getTable: (tableName) => {
     return ipcRenderer.invoke('datastore-get-table', { tableName });

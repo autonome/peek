@@ -4,6 +4,8 @@
 import openCommand from './open.js';
 import debugCommand from './debug.js';
 import modalCommand from './modal.js';
+import groupsModule from './groups.js';
+import noteModule from './note.js';
 
 // Source commands (commented out as they need browser extension APIs)
 // These modules contain command sources that dynamically generate commands
@@ -16,13 +18,14 @@ import containerTabSource from './containertab.js';
 // Individual commands (commented out as they need browser extension APIs)
 import bookmarkCommand from './bookmark.js';
 import emailCommand from './email.js';
-import noteCommand from './note.js';
 
 // Active commands - only these will be loaded
 const activeCommands = [
   openCommand,
   debugCommand,
-  modalCommand
+  modalCommand,
+  ...groupsModule.commands,
+  ...noteModule.commands
 ];
 
 // Inactive commands - these require browser extension APIs and are not loaded
@@ -30,8 +33,7 @@ const inactiveCommands = [
   // Individual commands
   bookmarkCommand,
   emailCommand,
-  noteCommand,
-  
+
   // Source commands that dynamically generate commands
   bookmarkletsSource,
   googleDocsSource,
@@ -43,20 +45,21 @@ const inactiveCommands = [
 // Array of all available commands
 const commands = [...activeCommands];
 
-// Source commands - these are modules that generate multiple commands
-const sources = [];
+// Source commands - these are modules that generate multiple commands dynamically
+const sources = [
+  groupsModule
+];
 
 /**
  * Initializes command sources that dynamically generate commands
  * @param {Function} addCommand - Function to register a command
  */
-export const initializeSources = (addCommand) => {
-  // Currently no active sources
-  sources.forEach(source => {
-    if (typeof source.initialize === 'function') {
-      source.initialize(addCommand);
+export const initializeSources = async (addCommand) => {
+  for (const source of sources) {
+    if (typeof source.initializeSources === 'function') {
+      await source.initializeSources(addCommand);
     }
-  });
+  }
 };
 
 /**

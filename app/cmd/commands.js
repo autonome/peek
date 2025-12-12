@@ -34,7 +34,7 @@ function addCommand(command) {
 /**
  * Initializes all command sources and registers them
  */
-function initializeCommandSources() {
+async function initializeCommandSources() {
   console.log('initializeCommandSources');
 
   // Load commands from the commands module
@@ -42,10 +42,10 @@ function initializeCommandSources() {
   moduleCommands.forEach(command => {
     addCommand(command);
   });
-  
+
   // Initialize any command sources that dynamically generate commands
   if (typeof commandsModule.initializeSources === 'function') {
-    commandsModule.initializeSources(addCommand);
+    await commandsModule.initializeSources(addCommand);
   }
 
   // Notify that commands are ready
@@ -53,7 +53,7 @@ function initializeCommandSources() {
 }
 
 // Initialize commands when the DOM is loaded
-window.addEventListener('DOMContentLoaded', initializeCommandSources);
+window.addEventListener('DOMContentLoaded', () => initializeCommandSources());
 
 /**
  * Helper function for notifications (currently unused)

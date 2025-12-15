@@ -288,79 +288,94 @@ function updateMatchCount(name) {
 
 /**
  * Updates the command text UI with proper highlighting
+ * Shows typed text in white, suggestion completion in grey
  */
 function updateCommandUI() {
   const commandText = document.getElementById('command-text');
   commandText.innerHTML = '';
-  
-  // If no matches or no typed text, clear the suggestion
-  if (state.matches.length === 0 || !state.typed) {
+
+  // If no typed text, show nothing
+  if (!state.typed) {
     return;
   }
-  
+
+  // If no matches, just show the typed text
+  if (state.matches.length === 0) {
+    const typedSpan = document.createElement('span');
+    typedSpan.className = 'typed';
+    typedSpan.textContent = state.typed;
+    commandText.appendChild(typedSpan);
+    return;
+  }
+
   const selectedMatch = state.matches[state.matchIndex];
   if (!selectedMatch) {
+    const typedSpan = document.createElement('span');
+    typedSpan.className = 'typed';
+    typedSpan.textContent = state.typed;
+    commandText.appendChild(typedSpan);
     return;
   }
-  
-  // Check if we have parameters (text after space)
+
+  // Check if we have parameters (text after the command)
   const hasParameters = state.typed.includes(' ');
-  let matchText = state.typed;
-  
-  // If we have parameters, only match against the command part
-  if (hasParameters) {
-    matchText = state.typed.substring(0, state.typed.indexOf(' '));
-  }
-  
-  // Find the matching part in the selected command
-  const lowerSelected = selectedMatch.toLowerCase();
-  const lowerMatchText = matchText.toLowerCase();
-  
-  // Calculate match information
-  let matchIndex = lowerSelected.indexOf(lowerMatchText);
-  
-  // Special case for prefix match
-  if (matchIndex === -1 && lowerMatchText && lowerSelected.startsWith(lowerMatchText)) {
-    matchIndex = 0;
-  }
-  
-  // If we found a match in the command part
-  if (matchIndex !== -1) {
-    // Split the command into parts
-    const beforeMatch = selectedMatch.substring(0, matchIndex);
-    const matchPart = selectedMatch.substring(matchIndex, matchIndex + matchText.length);
-    const afterMatch = selectedMatch.substring(matchIndex + matchText.length);
-    
-    // Before the match
-    if (beforeMatch) {
-      const beforeSpan = document.createElement('span');
-      beforeSpan.textContent = beforeMatch;
-      commandText.appendChild(beforeSpan);
+  const typedCommand = hasParameters ? state.typed.substring(0, state.typed.indexOf(' ')) : state.typed;
+  const typedParams = hasParameters ? state.typed.substring(state.typed.indexOf(' ')) : '';
+
+  // Find where the typed text matches in the command
+  const lowerMatch = selectedMatch.toLowerCase();
+  const lowerTyped = typedCommand.toLowerCase();
+  const matchIndex = lowerMatch.indexOf(lowerTyped);
+
+  if (matchIndex === 0) {
+    // Typed text is at the start - show typed in white, rest in grey
+    const typedSpan = document.createElement('span');
+    typedSpan.className = 'typed';
+    typedSpan.textContent = typedCommand;
+    commandText.appendChild(typedSpan);
+
+    // Show the rest of the command suggestion in grey
+    if (selectedMatch.length > typedCommand.length) {
+      const restSpan = document.createElement('span');
+      restSpan.textContent = selectedMatch.substring(typedCommand.length);
+      commandText.appendChild(restSpan);
     }
-    
-    // The matched part (underlined)
-    const matchSpan = document.createElement('span');
-    matchSpan.className = 'matched';
-    matchSpan.textContent = matchPart;
-    commandText.appendChild(matchSpan);
-    
-    // After the match
-    if (afterMatch) {
-      const afterSpan = document.createElement('span');
-      afterSpan.textContent = afterMatch;
-      commandText.appendChild(afterSpan);
-    }
-    
-    // Add parameters if present
-    if (hasParameters) {
-      const paramsText = state.typed.substring(state.typed.indexOf(' '));
+
+    // Add parameters in white
+    if (typedParams) {
       const paramsSpan = document.createElement('span');
-      paramsSpan.textContent = paramsText;
+      paramsSpan.className = 'typed';
+      paramsSpan.textContent = typedParams;
+      commandText.appendChild(paramsSpan);
+    }
+  } else if (matchIndex > 0) {
+    // Typed text matches in the middle - show full command with typed part highlighted
+    const beforeSpan = document.createElement('span');
+    beforeSpan.textContent = selectedMatch.substring(0, matchIndex);
+    commandText.appendChild(beforeSpan);
+
+    const typedSpan = document.createElement('span');
+    typedSpan.className = 'typed';
+    typedSpan.textContent = selectedMatch.substring(matchIndex, matchIndex + typedCommand.length);
+    commandText.appendChild(typedSpan);
+
+    const afterSpan = document.createElement('span');
+    afterSpan.textContent = selectedMatch.substring(matchIndex + typedCommand.length);
+    commandText.appendChild(afterSpan);
+
+    // Add parameters in white
+    if (typedParams) {
+      const paramsSpan = document.createElement('span');
+      paramsSpan.className = 'typed';
+      paramsSpan.textContent = typedParams;
       commandText.appendChild(paramsSpan);
     }
   } else {
-    // No match found - just clear the suggestion
-    commandText.textContent = '';
+    // No match position found, just show typed text
+    const typedSpan = document.createElement('span');
+    typedSpan.className = 'typed';
+    typedSpan.textContent = state.typed;
+    commandText.appendChild(typedSpan);
   }
 }
 

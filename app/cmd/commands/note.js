@@ -1,8 +1,11 @@
 /**
  * Note command - saves quick notes to the datastore
- * Notes are stored in the content table with contentType='note'
+ * Notes are stored in the content table with mimeType='text/plain'
+ * and tagged with 'note' and 'from:cmd'
  */
 import api from '../../api.js';
+
+const NOTE_TAGS = 'note,from:cmd';
 
 /**
  * Save a new note to the datastore
@@ -11,8 +14,8 @@ const saveNote = async (noteText) => {
   const result = await api.datastore.addContent({
     title: noteText.substring(0, 50) + (noteText.length > 50 ? '...' : ''),
     content: noteText,
-    contentType: 'note',
-    mimeType: 'text/plain'
+    mimeType: 'text/plain',
+    tags: NOTE_TAGS
   });
 
   if (!result.success) {
@@ -27,7 +30,7 @@ const saveNote = async (noteText) => {
  */
 const getNotes = async (limit = 20) => {
   const result = await api.datastore.queryContent({
-    contentType: 'note',
+    tag: 'note',
     sortBy: 'created',
     limit
   });

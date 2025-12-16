@@ -523,9 +523,8 @@ const onReady = () => {
     source: systemAddress,
     params: { ...winPrefs, address: webCoreAddress }
   });
-  
-  // Add escape key handler to background window
-  addEscHandler(win);
+
+  // NOTE: No ESC handler for background window - it should never be closed
   
   // Set up handlers for windows opened from the background window
   win.webContents.setWindowOpenHandler((details) => {
@@ -765,14 +764,16 @@ ipcMain.handle('window-open', async (ev, msg) => {
     await win.loadURL(url);
 
     // Add to window manager with modal parameter
-    windowManager.addWindow(win.id, {
+    const windowEntry = {
       id: win.id,
       source: msg.source,
-      params: { 
-        ...options, 
+      params: {
+        ...options,
         address: url
       }
-    });
+    };
+    console.log('Adding window to manager:', windowEntry.id, 'modal:', windowEntry.params.modal, 'keepLive:', windowEntry.params.keepLive);
+    windowManager.addWindow(win.id, windowEntry);
     
     // Add escape key handler to all windows
     addEscHandler(win);
@@ -1476,7 +1477,7 @@ const closeWindow = (params, callback) => {
 };
 
 const closeOrHideWindow = id => {
-  //console.log('CLOSE OR HIDE WINDOW CALLED FOR ID:', id);
+  console.log('closeOrHideWindow called for ID:', id);
 
   try {
     const win = BrowserWindow.fromId(id);
@@ -1486,7 +1487,7 @@ const closeOrHideWindow = id => {
     }
 
     const entry = windowManager.getWindow(id);
-    //console.log('Window entry from manager:', entry);
+    console.log('Window entry from manager:', entry);
 
     if (!entry) {
       console.log('Window not found in window manager, closing directly');
@@ -1495,7 +1496,13 @@ const closeOrHideWindow = id => {
     }
 
     const params = entry.params;
-    //console.log('Window parameters:', params);
+    console.log('Window parameters - modal:', params.modal, 'keepLive:', params.keepLive);
+
+    // Never close the background window
+    if (params.address === webCoreAddress) {
+      console.log('Refusing to close background window');
+      return;
+    }
 
     // Special case for settings window - always close it on ESC
     if (params.address === settingsAddress) {

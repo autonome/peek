@@ -506,15 +506,7 @@ const onReady = () => {
   
   // Setup devtools for the background window (always open in debug mode)
   if (DEBUG) {
-    win.webContents.openDevTools({ mode: 'detach' });
-    
-    win.webContents.on('devtools-opened', () => {
-      if (win.isVisible()) {
-        win.webContents.focus();
-      } else {
-        app.focus();
-      }
-    });
+    win.webContents.openDevTools({ mode: 'detach', activate: false });
   }
   
   // Add to window manager
@@ -1424,24 +1416,21 @@ const winDevtoolsConfig = bw => {
   
   // Check if devTools should be opened
   if (params.openDevTools === true) {
+    const isDetached = params.detachedDevTools === true;
     // Determine if detached mode should be used
-    const devToolsOptions = { 
-      mode: params.detachedDevTools === true ? 'detach' : 'right' 
+    // activate: false prevents devtools from stealing focus (only works with detach/undocked)
+    const devToolsOptions = {
+      mode: isDetached ? 'detach' : 'right',
+      activate: false
     };
-    
+
     console.log(`Opening DevTools for window ${bw.id} with options:`, devToolsOptions);
     bw.webContents.openDevTools(devToolsOptions);
-    
-    // when devtools completely open
-    bw.webContents.on('devtools-opened', () => {
-      // if window is visible, focus content window
+
+    // when devtools completely open, ensure content window has focus
+    bw.webContents.once('devtools-opened', () => {
       if (bw.isVisible()) {
-        bw.webContents.focus();
-      }
-      // otherwise force devtools focus
-      // (for some reason doesn't focus when no visible window...)
-      else {
-        app.focus();
+        bw.focus();
       }
     });
   }

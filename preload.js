@@ -119,7 +119,7 @@ api.subscribe = (topic, callback, scope = api.scopes.SELF) => {
   });
 
   ipcRenderer.on(replyTopic, (ev, msg) => {
-    console.log('topic', topic, msg);
+    DEBUG && console.log('topic', topic, msg);
     msg.source = sourceAddress;
     try {
       callback(msg);

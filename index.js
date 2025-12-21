@@ -16,6 +16,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'url';
 import { createStore, createIndexes, createRelationships, createMetrics } from 'tinybase';
+import { createSqlite3Persister } from 'tinybase/persisters/persister-sqlite3';
+import sqlite3 from 'sqlite3';
 import { schema, indexes, relationships, metrics } from './app/datastore/schema.js';
 
 const __dirname = import.meta.dirname;
@@ -117,15 +119,36 @@ let datastoreStore = null;
 let datastoreIndexes = null;
 let datastoreRelationships = null;
 let datastoreMetrics = null;
+let datastorePersister = null;
 
-// Initialize datastore
-const initDatastore = () => {
+// Initialize datastore with SQLite persistence
+let datastoreDb = null;  // SQLite database instance
+
+const initDatastore = async (userDataPath) => {
   console.log('main', 'initializing datastore');
 
   try {
     // Create the store with schema
     datastoreStore = createStore();
     datastoreStore.setTablesSchema(schema);
+
+    // Set up SQLite persistence
+    const dbPath = path.join(userDataPath, 'datastore.sqlite');
+    console.log('main', 'datastore path:', dbPath);
+
+    // Create SQLite database
+    datastoreDb = new sqlite3.Database(dbPath);
+
+    // Create persister with SQLite
+    datastorePersister = createSqlite3Persister(datastoreStore, datastoreDb);
+
+    // Load existing data
+    await datastorePersister.load();
+    console.log('main', 'datastore loaded from SQLite');
+
+    // Start auto-save
+    await datastorePersister.startAutoSave();
+    console.log('main', 'datastore auto-save enabled');
 
     // Create indexes
     datastoreIndexes = createIndexes(datastoreStore);
@@ -437,11 +460,11 @@ const initAppProtocol = () => {
 // ***** init *****
 
 // Electron app load
-const onReady = () => {
+const onReady = async () => {
   console.log('onReady');
 
-  // Initialize datastore
-  initDatastore();
+  // Initialize datastore with SQLite persistence
+  await initDatastore(profileDataPath);
 
   //https://stackoverflow.com/questions/35916158/how-to-prevent-multiple-instances-in-electron
   const gotTheLock = app.requestSingleInstanceLock();
@@ -1564,14 +1587,41 @@ app.on('window-all-closed', () => {
   }
 });
 
-const onQuit = () => {
+const onQuit = async () => {
   console.log('onQuit');
-  
+
   // Notify all processes that the app is shutting down
   pubsub.publish(systemAddress, scopes.GLOBAL, 'app:shutdown', {
     timestamp: Date.now()
   });
-  
+
+  // Clean up datastore
+  if (datastorePersister) {
+    try {
+      await datastorePersister.stopAutoSave();
+      await datastorePersister.save(); // Final save
+      datastorePersister.destroy();
+      console.log('Datastore persister cleaned up');
+    } catch (error) {
+      console.error('Error cleaning up datastore persister:', error);
+    }
+  }
+
+  // Close SQLite database
+  if (datastoreDb) {
+    try {
+      await new Promise((resolve, reject) => {
+        datastoreDb.close((err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+      console.log('SQLite database closed');
+    } catch (error) {
+      console.error('Error closing SQLite database:', error);
+    }
+  }
+
   // Give windows a moment to clean up before forcing quit
   setTimeout(() => {
     app.quit();

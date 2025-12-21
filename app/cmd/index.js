@@ -47,7 +47,7 @@ const openInputWindow = prefs => {
     resizable: false,
     fullscreenable: false,
 
-    openDevTools: true,
+    openDevTools: debug,
     detachedDevTools: true,
   };
 

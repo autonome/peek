@@ -11,12 +11,32 @@ const clear = false;
 const store = openStore(id, defaults, clear /* clear storage */);
 const api = window.app;
 
+// Storage keys for persistent adaptive matching
+const STORAGE_KEY_FEEDBACK = 'adaptiveFeedback';
+const STORAGE_KEY_COUNTS = 'matchCounts';
+
+// Load persisted adaptive data
+const loadAdaptiveData = () => {
+  const feedback = store.get(STORAGE_KEY_FEEDBACK) || {};
+  const counts = store.get(STORAGE_KEY_COUNTS) || {};
+  return { feedback, counts };
+};
+
+// Save adaptive data to storage
+const saveAdaptiveData = (feedback, counts) => {
+  store.set(STORAGE_KEY_FEEDBACK, feedback);
+  store.set(STORAGE_KEY_COUNTS, counts);
+};
+
+// Initialize with persisted data
+const persistedData = loadAdaptiveData();
+
 let state = {
   commands: [], // array of command names
   matches: [], // array of commands matching the typed text
   matchIndex: 0, // index of selected match
-  matchCounts: {}, // match counts - selectedcommand:numberofselections
-  matchFeedback: {}, // adaptive matching - partiallytypedandselected:fullname
+  matchCounts: persistedData.counts, // match counts - selectedcommand:numberofselections
+  adaptiveFeedback: persistedData.feedback, // adaptive matching - typed -> { command: count, ... }
   typed: '', // text typed by user so far, if any
   lastExecuted: '' // text last typed by user when last they hit return
 };
@@ -115,11 +135,11 @@ function handleSpecialKey(e) {
       // Preserve any parameters when executing
       const typedText = commandInput.value;
       
-      // Store command name for history and feedback
+      // Store command name for history and adaptive feedback
       const commandPart = typedText.split(' ')[0];
       state.lastExecuted = name;
       updateMatchCount(name);
-      updateMatchFeedback(commandPart, name);
+      updateAdaptiveFeedback(commandPart, name);
       
       // Execute with full typed text
       execute(name, typedText);
@@ -248,32 +268,76 @@ function findMatchingCommands(text) {
     }
   }
 
-  // Sort by match count
+  // Sort by adaptive score first, then by match count (frecency)
+  // Adaptive score takes priority - commands you've selected for this input pattern
+  // will float to the top based on reinforcement learning
   matches.sort(function(a, b) {
+    // First compare adaptive scores for this typed string
+    const aAdaptive = getAdaptiveScore(commandPart, a);
+    const bAdaptive = getAdaptiveScore(commandPart, b);
+
+    // If there's a significant difference in adaptive scores, use that
+    if (Math.abs(aAdaptive - bAdaptive) > 0.01) {
+      return bAdaptive - aAdaptive;
+    }
+
+    // Otherwise fall back to match count (frecency)
     const aCount = state.matchCounts[a] || 0;
     const bCount = state.matchCounts[b] || 0;
     return bCount - aCount;
   });
 
-  // Insert adaptive feedback at the top if present
-  if (state.matchFeedback[text]) {
-    // Check if it's already in the list
-    const feedbackIndex = matches.indexOf(state.matchFeedback[text]);
-    if (feedbackIndex !== -1) {
-      // Move to the beginning
-      matches.splice(feedbackIndex, 1);
-    }
-    matches.unshift(state.matchFeedback[text]);
-  }
-
   return matches;
 }
 
 /**
- * Updates the match feedback for adaptive suggestions
+ * Updates the adaptive feedback for a typed string -> command selection
+ * Uses asymptotic scoring: score = count / (count + k)
+ * This creates ever-strengthening reinforcement based on user decisions
  */
-function updateMatchFeedback(typed, name) {
-  state.matchFeedback[typed] = name;
+function updateAdaptiveFeedback(typed, name) {
+  // Initialize feedback for this typed string if needed
+  if (!state.adaptiveFeedback[typed]) {
+    state.adaptiveFeedback[typed] = {};
+  }
+
+  // Increment the count for this typed -> command pair
+  if (!state.adaptiveFeedback[typed][name]) {
+    state.adaptiveFeedback[typed][name] = 0;
+  }
+  state.adaptiveFeedback[typed][name]++;
+
+  // Also record feedback for all prefixes of the typed string
+  // This helps with single-character matching
+  for (let i = 1; i < typed.length; i++) {
+    const prefix = typed.substring(0, i);
+    if (!state.adaptiveFeedback[prefix]) {
+      state.adaptiveFeedback[prefix] = {};
+    }
+    if (!state.adaptiveFeedback[prefix][name]) {
+      state.adaptiveFeedback[prefix][name] = 0;
+    }
+    // Give partial credit to prefixes (half weight)
+    state.adaptiveFeedback[prefix][name] += 0.5;
+  }
+
+  // Persist to storage
+  saveAdaptiveData(state.adaptiveFeedback, state.matchCounts);
+}
+
+/**
+ * Gets the adaptive score for a command given the typed string
+ * Uses asymptotic formula: score = count / (count + k)
+ * Returns 0-1 where higher is better
+ */
+function getAdaptiveScore(typed, name) {
+  const k = 3; // Tuning constant - higher = slower convergence
+  const feedback = state.adaptiveFeedback[typed];
+  if (!feedback || !feedback[name]) {
+    return 0;
+  }
+  const count = feedback[name];
+  return count / (count + k);
 }
 
 /**
@@ -284,6 +348,9 @@ function updateMatchCount(name) {
     state.matchCounts[name] = 0;
   }
   state.matchCounts[name]++;
+
+  // Persist to storage
+  saveAdaptiveData(state.adaptiveFeedback, state.matchCounts);
 }
 
 /**
@@ -405,7 +472,7 @@ function updateResultsUI() {
       execute(match, state.typed);
       state.lastExecuted = match;
       updateMatchCount(match);
-      updateMatchFeedback(state.typed, match);
+      updateAdaptiveFeedback(state.typed.split(' ')[0], match);
       document.getElementById('command-input').value = '';
       state.typed = '';
       updateCommandUI();

@@ -9,6 +9,11 @@ export default {
     icon: './assets/appicon',
     appBundleId: 'com.peek.app',
     appCategoryType: 'public.app-category.productivity',
+    // Register as handler for http/https URLs
+    protocols: [
+      { name: 'HTTP', schemes: ['http'] },
+      { name: 'HTTPS', schemes: ['https'] }
+    ],
     // Uncomment this section when ready to sign the app for distribution
     /*
     osxSign: {

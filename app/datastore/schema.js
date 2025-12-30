@@ -1,4 +1,40 @@
 // Datastore schema definitions for TinyBase
+//
+// STORAGE NOTES (Dec 2024):
+//
+// Current state:
+// - TinyBase datastore: SQLite-backed via sqlite3 + createSqlite3Persister
+//   - Stores: addresses, visits, content, tags, blobs, scripts_data, feeds
+//   - Location: {userData}/{PROFILE}/datastore.sqlite
+//
+// - Feature settings: localStorage via openStore() in app/utils.js
+//   - Stores: peeks, slides, scripts, cmd, groups configs
+//
+// - Adaptive matching (cmd): localStorage
+//   - Stores: typed -> command selection feedback
+//
+// - App prefs: localStorage
+//   - Stores: shortcuts, window size, startup feature, etc.
+//
+// Future consideration:
+// - May move away from TinyBase toward loosely-coupled SQLite everywhere
+// - Some storage should converge, but not all
+// - localStorage items that need to scale (like history) should move to SQLite
+// - Simple key-value prefs can stay in localStorage
+//
+// URL SOURCE TAXONOMY:
+// The visits table tracks where each URL navigation came from via source/sourceId fields:
+//
+// | Source     | SourceId      | Description                                    |
+// |------------|---------------|------------------------------------------------|
+// | external   | os            | URL opened from another app via OS handler     |
+// | external   | cli           | URL passed as CLI argument                     |
+// | cmd        | open          | User typed URL in cmd bar                      |
+// | cmd        | history       | User selected from history command             |
+// | peek       | <peek-id>     | Opened from a peek                             |
+// | slide      | <slide-id>    | Opened from a slide                            |
+// | link       | <source-url>  | Link clicked in peek:// content                |
+// | window     | ''            | Default fallback                               |
 
 export const schema = {
   addresses: {

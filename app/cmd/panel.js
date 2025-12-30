@@ -130,20 +130,41 @@ function handleSpecialKey(e) {
   
   // Enter key - execute command
   if (e.key === 'Enter' && !hasModifier(e)) {
+    // Check if the typed text is a URL - if so, use the "open" command
+    const trimmedText = commandInput.value.trim();
+    const urlResult = getValidURL(trimmedText);
+    if (urlResult.valid && state.commands['open']) {
+      debug && console.log('Detected URL, using open command:', urlResult.url);
+      state.lastExecuted = 'open';
+      updateMatchCount('open');
+      updateAdaptiveFeedback(trimmedText.split(' ')[0], 'open');
+
+      // Execute open command with the URL
+      execute('open', 'open ' + trimmedText);
+
+      // Clear input and UI
+      commandInput.value = '';
+      state.typed = '';
+      updateCommandUI();
+      updateResultsUI();
+      return;
+    }
+
+    // Otherwise, execute the matched command
     const name = state.matches[state.matchIndex];
     if (name && Object.keys(state.commands).indexOf(name) > -1) {
       // Preserve any parameters when executing
       const typedText = commandInput.value;
-      
+
       // Store command name for history and adaptive feedback
       const commandPart = typedText.split(' ')[0];
       state.lastExecuted = name;
       updateMatchCount(name);
       updateAdaptiveFeedback(commandPart, name);
-      
+
       // Execute with full typed text
       execute(name, typedText);
-      
+
       // Clear input and UI
       commandInput.value = '';
       state.typed = '';
@@ -495,4 +516,40 @@ function hasModifier(e) {
  */
 function isModifier(e) {
   return ['Alt', 'Control', 'Shift', 'Meta'].indexOf(e.key) !== -1;
+}
+
+/**
+ * Checks if a string is a valid URL (with or without protocol)
+ * @param {string} str - The string to check
+ * @returns {Object} - Object with valid flag and normalized URL
+ */
+function getValidURL(str) {
+  if (!str) return { valid: false };
+
+  // Check if it starts with a valid protocol
+  const hasValidProtocol = /^(https?|ftp|file):\/\//.test(str);
+
+  if (!hasValidProtocol) {
+    // Check if it looks like a domain (e.g., "example.com" or "localhost")
+    const isDomainPattern = /^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}(\/.*)?$/.test(str);
+    const isLocalhost = /^localhost(:\d+)?(\/.*)?$/.test(str);
+
+    if (isDomainPattern || isLocalhost) {
+      const urlWithProtocol = 'https://' + str;
+      try {
+        new URL(urlWithProtocol);
+        return { valid: true, url: urlWithProtocol };
+      } catch (e) {
+        return { valid: false };
+      }
+    }
+    return { valid: false };
+  }
+
+  try {
+    new URL(str);
+    return { valid: true, url: str };
+  } catch (e) {
+    return { valid: false };
+  }
 }

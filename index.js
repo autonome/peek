@@ -488,9 +488,51 @@ const onReady = async () => {
   // handle peek://
   initAppProtocol();
 
-  // Register as default handler for http/https URLs
-  app.setAsDefaultProtocolClient('http');
-  app.setAsDefaultProtocolClient('https');
+  // Register as default handler for http/https URLs (if not already and user hasn't declined)
+  const defaultBrowserPrefFile = path.join(profileDataPath, 'default-browser-pref.json');
+  let shouldPromptForDefault = true;
+
+  // Check if user has previously declined
+  try {
+    if (fs.existsSync(defaultBrowserPrefFile)) {
+      const pref = JSON.parse(fs.readFileSync(defaultBrowserPrefFile, 'utf8'));
+      if (pref.declined === true) {
+        shouldPromptForDefault = false;
+        console.log('User previously declined default browser prompt');
+      }
+    }
+  } catch (e) {
+    // Ignore errors reading pref file
+  }
+
+  // Only try to register if user hasn't declined and we're not already default
+  if (shouldPromptForDefault) {
+    const isDefaultHttp = app.isDefaultProtocolClient('http');
+    const isDefaultHttps = app.isDefaultProtocolClient('https');
+
+    if (!isDefaultHttp || !isDefaultHttps) {
+      console.log('Registering as default protocol client for http/https');
+      app.setAsDefaultProtocolClient('http');
+      app.setAsDefaultProtocolClient('https');
+
+      // Check if registration succeeded - if not, user likely declined
+      setTimeout(() => {
+        const nowDefaultHttp = app.isDefaultProtocolClient('http');
+        const nowDefaultHttps = app.isDefaultProtocolClient('https');
+        if (!nowDefaultHttp && !nowDefaultHttps) {
+          // User declined, save preference
+          console.log('User declined default browser, saving preference');
+          try {
+            fs.writeFileSync(defaultBrowserPrefFile, JSON.stringify({ declined: true, timestamp: Date.now() }));
+          } catch (e) {
+            console.error('Failed to save default browser preference:', e);
+          }
+        }
+      }, 2000);
+    } else {
+      console.log('Already default protocol client for http/https');
+    }
+  }
 
   // Handle CLI arguments (e.g., yarn start -- "https://example.com")
   const urlArg = process.argv.find(arg =>

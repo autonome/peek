@@ -124,6 +124,23 @@ const init = async () => {
     }
   });
 
+  // Handle URLs opened from external apps (e.g., when Peek is default browser)
+  api.subscribe('external:open-url', async (msg) => {
+    console.log('external:open-url', msg);
+    const { url, trackingSource, trackingSourceId } = msg;
+
+    try {
+      // Use URL as key to reuse existing windows
+      await windowManager.createWindow(url, {
+        key: url,
+        trackingSource,
+        trackingSourceId
+      });
+    } catch (error) {
+      console.error('Error opening external URL:', error);
+    }
+  });
+
   // Open settings window on startup if configured
   if (p.startupFeature == settingsAddress) {
     try {

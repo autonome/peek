@@ -474,8 +474,33 @@ const onReady = async () => {
     return;
   }
 
+  // Windows/Linux: handle URLs when another instance tries to open
+  app.on('second-instance', (event, argv) => {
+    const url = argv.find(arg =>
+      arg.startsWith('http://') || arg.startsWith('https://')
+    );
+    if (url) {
+      console.log('second-instance URL:', url);
+      handleExternalUrl(url, 'os');
+    }
+  });
+
   // handle peek://
   initAppProtocol();
+
+  // Register as default handler for http/https URLs
+  app.setAsDefaultProtocolClient('http');
+  app.setAsDefaultProtocolClient('https');
+
+  // Handle CLI arguments (e.g., yarn start -- "https://example.com")
+  const urlArg = process.argv.find(arg =>
+    arg.startsWith('http://') || arg.startsWith('https://')
+  );
+  if (urlArg) {
+    console.log('CLI URL argument:', urlArg);
+    // Defer until background app is ready
+    setTimeout(() => handleExternalUrl(urlArg, 'cli'), 1000);
+  }
 
   // listen for app prefs to configure ourself
   // TODO: kinda janky, needs rethink
@@ -514,6 +539,7 @@ const onReady = async () => {
   // Create a BrowserWindow directly for the core background process
   const winPrefs = {
     show: false,
+    // TODO: maybe not necessary now?
     key: 'background-core',
     webPreferences: {
       preload: preloadPath,
@@ -648,6 +674,27 @@ const onReady = async () => {
   _quitShortcut = strings.defaults.quitShortcut;
   registerShortcut(_quitShortcut, onQuit);
 };
+
+// ***** External URL Handler *****
+
+// Handle URLs opened from external apps (e.g., when Peek is default browser)
+const handleExternalUrl = (url, sourceId = 'os') => {
+  console.log('External URL received:', url, 'from:', sourceId);
+
+  // Note: Using trackingSource/trackingSourceId because preload.js overwrites msg.source
+  pubsub.publish(systemAddress, scopes.GLOBAL, 'external:open-url', {
+    url,
+    trackingSource: 'external',
+    trackingSourceId: sourceId,
+    timestamp: Date.now()
+  });
+};
+
+// macOS: handle open-url event (must be registered before app.whenReady)
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  handleExternalUrl(url, 'os');
+});
 
 app.whenReady().then(onReady);
 
@@ -1429,8 +1476,6 @@ const addEscHandler = bw => {
     }
   });
 };
-
-// Nothing here - removed old window handler code
 
 // show/configure devtools when/after a window is opened
 const winDevtoolsConfig = bw => {

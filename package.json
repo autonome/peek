@@ -39,7 +39,8 @@
     "electron": "^35.7.5"
   },
   "resolutions": {
-    "tmp": "^0.2.5"
+    "tmp": "^0.2.5",
+    "glob": "^11.1.0"
   },
   "packageManager": "yarn@4.10.3"
 }

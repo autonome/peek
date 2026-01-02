@@ -463,6 +463,13 @@ const initAppProtocol = () => {
 const onReady = async () => {
   console.log('onReady');
 
+  // Hide dock early to prevent flash in app switcher
+  // Will be shown later if showInDockAndSwitcher pref is true
+  if (app.dock && !DEBUG) {
+    console.log('hiding dock early (non-debug mode)');
+    app.dock.hide();
+  }
+
   // Initialize datastore with SQLite persistence
   await initDatastore(profileDataPath);
 
@@ -552,10 +559,15 @@ const onReady = async () => {
     // cache all prefs
     _prefs = msg.prefs;
 
-    // show/hide in dock and tab switcher
-    if (DEBUG == false || (app.dock && msg.prefs.showInDockAndSwitcher == false)) {
-      console.log('hiding dock');
-      app.dock.hide();
+    // show/hide in dock and tab switcher based on preference
+    if (app.dock) {
+      if (msg.prefs.showInDockAndSwitcher === true) {
+        console.log('showing dock (pref enabled)');
+        app.dock.show();
+      } else {
+        console.log('hiding dock (pref disabled)');
+        app.dock.hide();
+      }
     }
 
     // initialize system tray
@@ -715,13 +727,26 @@ const onReady = async () => {
   // Register default quit shortcut - will be updated when prefs arrive
   _quitShortcut = strings.defaults.quitShortcut;
   registerShortcut(_quitShortcut, onQuit);
+
+  // Mark app as ready and process any URLs that arrived during startup
+  _appReady = true;
+  processPendingUrls();
 };
 
 // ***** External URL Handler *****
 
+// Track if app is ready to handle URLs
+let _appReady = false;
+let _pendingUrls = [];
+
 // Handle URLs opened from external apps (e.g., when Peek is default browser)
 const handleExternalUrl = (url, sourceId = 'os') => {
   console.log('External URL received:', url, 'from:', sourceId);
+
+  if (!_appReady) {
+    _pendingUrls.push({ url, sourceId });
+    return;
+  }
 
   // Note: Using trackingSource/trackingSourceId because preload.js overwrites msg.source
   pubsub.publish(systemAddress, scopes.GLOBAL, 'external:open-url', {
@@ -730,6 +755,14 @@ const handleExternalUrl = (url, sourceId = 'os') => {
     trackingSourceId: sourceId,
     timestamp: Date.now()
   });
+};
+
+// Process any URLs that arrived before app was ready
+const processPendingUrls = () => {
+  _pendingUrls.forEach(({ url, sourceId }) => {
+    handleExternalUrl(url, sourceId);
+  });
+  _pendingUrls = [];
 };
 
 // macOS: handle open-url event (must be registered before app.whenReady)

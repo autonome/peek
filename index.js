@@ -890,6 +890,10 @@ ipcMain.handle('window-open', async (ev, msg) => {
 
   if (options.modal === true) {
     winOptions.frame = false;
+    // Use panel type on macOS to improve focus restoration when closed
+    if (process.platform === 'darwin') {
+      winOptions.type = 'panel';
+    }
   }
   
   console.log('Creating window with options:', winOptions);
@@ -1641,19 +1645,31 @@ const closeOrHideWindow = id => {
       console.log(`CLOSING settings window ${id}`);
       closeChildWindows(params.address);
       win.close();
+      // Hide app to return focus to previous app
+      if (process.platform === 'darwin') {
+        app.hide();
+      }
     }
     // Check if window should be hidden rather than closed
     // Either keepLive or modal parameter can trigger hiding behavior
     else if (params.keepLive === true || params.modal === true) {
       //console.log(`HIDING window ${id} (${params.address}) - modal: ${params.modal}, keepLive: ${params.keepLive}`);
       win.hide();
+      // Hide app to return focus to previous app
+      if (process.platform === 'darwin') {
+        app.hide();
+      }
     } else {
       // close any open windows this window opened
       closeChildWindows(params.address);
       console.log(`CLOSING window ${id} (${params.address})`);
       win.close();
+      // Hide app to return focus to previous app
+      if (process.platform === 'darwin') {
+        app.hide();
+      }
     }
-    
+
     console.log('closeOrHideWindow completed');
   } catch (error) {
     console.error('Error in closeOrHideWindow:', error);

@@ -1,5 +1,26 @@
 # Roadmap
 
+## v0.4 - Minimum viable web workbench
+
+- [ ] Multi-protocol architecture
+- [ ] Content publishing
+- [ ] Event model
+- [ ] Chaining
+
+## v0.3 - Personal daily driver
+
+- [ ] Design philosophy write-up w/ driving principles and characteristics
+- [ ] Datastore
+- [ ] Open URLs by default
+- [ ] Page model and user interface
+- [ ] Cmd bar adaptive matching and frecency
+- [ ] Tags + Groups
+- [ ] Notes (vim)
+- [ ] Images
+- [ ] Lists/feeds
+- [ ] Peek:// extensibility model
+- [ ] WebExtension integration for priority only
+
 ## v0.2 - MVCP (minimum viable concept preview)
 
 minimum viable concept preview.

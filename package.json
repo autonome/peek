@@ -15,6 +15,7 @@
     "debug": "DEBUG=1 electron-forge start",
     "hot-debug": "nodemon --exec DEBUG=1 electron-forge start",
     "package": "electron-forge package",
+    "package:install": "electron-forge package && rm -rf /Applications/Peek.app && cp -r out/Peek-darwin-arm64/Peek.app /Applications/Peek.app",
     "moveapp": "rm -rf ~/Applications/Peek.app && cp -r out/Peek-darwin-arm64/Peek.app ~/Applications/Peek.app",
     "make": "electron-forge make",
     "publish": "electron-forge publish",

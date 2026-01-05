@@ -1,0 +1,66 @@
+appId: com.peek.app
+productName: Peek
+copyright: Copyright © 2024 Dietrich Ayala
+
+# Directories
+directories:
+  output: out
+  buildResources: assets
+
+# Include only production dependencies
+npmRebuild: true
+nodeGypRebuild: false
+
+# Files to include/exclude
+files:
+  - "**/*"
+  - "assets/**/*"
+  - "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}"
+  - "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}"
+  - "!**/node_modules/*.d.ts"
+  - "!**/node_modules/.bin"
+  - "!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}"
+  - "!.editorconfig"
+  - "!**/._*"
+  - "!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,.gitignore,.gitattributes}"
+  - "!**/{__pycache__,thumbs.db,.flowconfig,.idea,.vs,.nyc_output}"
+  - "!**/{appveyor.yml,.travis.yml,circle.yml}"
+  - "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}"
+  - "!**/node_modules/*/{.github,docs}"
+  - "!forge.config.js"
+
+# ASAR packaging
+asar: true
+asarUnpack:
+  - "assets/tray/**/*"
+
+# macOS specific
+mac:
+  category: public.app-category.productivity
+  icon: assets/appicon.icns
+  identity: null  # Disable code signing
+  target:
+    - target: dir
+      arch: arm64
+  # Protocol handlers for http/https
+  extendInfo:
+    CFBundleURLTypes:
+      - CFBundleURLName: HTTP
+        CFBundleURLSchemes:
+          - http
+      - CFBundleURLName: HTTPS
+        CFBundleURLSchemes:
+          - https
+
+# Windows specific
+win:
+  icon: assets/appicon.ico
+  target:
+    - target: dir
+
+# Linux specific
+linux:
+  icon: assets/appicon.png
+  category: Network
+  target:
+    - target: dir

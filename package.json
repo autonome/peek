@@ -11,14 +11,12 @@
     "url": "https://github.com/autonome/peek"
   },
   "scripts": {
-    "start": "electron-forge start",
-    "debug": "DEBUG=1 electron-forge start",
-    "hot-debug": "nodemon --exec DEBUG=1 electron-forge start",
-    "package": "electron-forge package",
-    "package:install": "electron-forge package && rm -rf /Applications/Peek.app && cp -r out/Peek-darwin-arm64/Peek.app /Applications/Peek.app",
-    "moveapp": "rm -rf ~/Applications/Peek.app && cp -r out/Peek-darwin-arm64/Peek.app ~/Applications/Peek.app",
-    "make": "electron-forge make",
-    "publish": "electron-forge publish",
+    "start": "electron .",
+    "debug": "DEBUG=1 electron .",
+    "hot-debug": "nodemon --exec 'DEBUG=1 electron .'",
+    "package": "electron-builder --dir",
+    "package:install": "electron-builder --dir && rm -rf /Applications/Peek.app && cp -R out/mac-arm64/Peek.app /Applications/",
+    "make": "electron-builder",
     "lint": "echo \"No linting configured\"",
     "help": "electron --help"
   },
@@ -28,16 +26,9 @@
     "tinybase": "^6.7.2"
   },
   "devDependencies": {
-    "@electron-forge/cli": "^7.8.0",
-    "@electron-forge/maker-deb": "^7.8.0",
-    "@electron-forge/maker-rpm": "^7.8.0",
-    "@electron-forge/maker-squirrel": "^7.8.0",
-    "@electron-forge/maker-zip": "^7.8.0",
-    "@electron-forge/plugin-auto-unpack-natives": "^7.8.0",
-    "@electron-forge/plugin-fuses": "^7.8.0",
     "@electron/fuses": "^1.8.0",
-    "@electron/rebuild": "^4.0.2",
-    "electron": "^35.7.5"
+    "electron": "^35.7.5",
+    "electron-builder": "26.0.12"
   },
   "resolutions": {
     "tmp": "^0.2.5",

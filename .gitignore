@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Build output
+out/
+app/dist/
+
+# Claude Code local settings
+.claude/
+CLAUDE.md
+
+# Backup files
+*.bak
+
+# Experimental/unused files
+babel.config.json
+webpack.config.js
+debug.js
+package.js
+protocol-imports.diff
+test/

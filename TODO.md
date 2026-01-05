@@ -9,17 +9,23 @@
 
 ## v0.3 - Personal daily driver
 
-- [ ] Design philosophy write-up w/ driving principles and characteristics
-- [ ] Datastore
-- [ ] Open URLs by default
-- [ ] Page model and user interface
+- [x] Datastore
+- [x] Open URLs by default
 - [ ] Cmd bar adaptive matching and frecency
+- [ ] Page model and user interface
+- [ ] Peek:// extensibility model
+  - [ ] figure out background app vs other
+    - [ ] maybe cmd stays in core?
+    - [ ] is background runtime aware? eg mobile/extension/desktop
+    - [ ] background app separation from "feature" apps, is runtime aware
+- [ ] Notes in datastore
+- [ ] Editor app (in/out datastore)
+- [ ] App cmds (eg Editor -> cmd to edit note X)
 - [ ] Tags + Groups
-- [ ] Notes (vim)
 - [ ] Images
 - [ ] Lists/feeds
-- [ ] Peek:// extensibility model
 - [ ] WebExtension integration for priority only
+- [ ] Design philosophy write-up w/ driving principles and characteristics
 
 ## v0.2 - MVCP (minimum viable concept preview)
 

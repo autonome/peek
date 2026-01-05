@@ -6,6 +6,7 @@ import {
   globalShortcut,
   ipcMain,
   Menu,
+  nativeImage,
   nativeTheme,
   net,
   protocol,
@@ -394,20 +395,28 @@ const pubsub = (() => {
 
 // ***** Tray *****
 
-const ICON_RELATIVE_PATH = 'assets/icons/AppIcon.appiconset/Icon-App-20x20@2x.png';
-const ICON_PATH = path.join(__dirname, ICON_RELATIVE_PATH);
+const ICON_RELATIVE_PATH = 'assets/tray/tray@2x.png';
 
 let _tray = null;
 
 const initTray = () => {
   if (!_tray || _tray.isDestroyed()) {
-    _tray = new Tray(ICON_PATH);
-    _tray.setToolTip(labels.tray.tooltip);
-    _tray.on('click', () => {
-      pubsub.publish(webCoreAddress, scopes.GLOBAL, 'open', {
-        address: settingsAddress
+    const iconPath = path.join(__dirname, ICON_RELATIVE_PATH);
+    console.log('initTray: loading icon from', iconPath);
+
+    try {
+      _tray = new Tray(iconPath);
+      _tray.setToolTip(labels.tray.tooltip);
+      _tray.on('click', () => {
+        pubsub.publish(webCoreAddress, scopes.GLOBAL, 'open', {
+          address: settingsAddress
+        });
       });
-    });
+      console.log('initTray: tray created successfully');
+    } catch (err) {
+      console.error('initTray: failed to create tray:', err);
+      return null;
+    }
   }
   return _tray;
 };

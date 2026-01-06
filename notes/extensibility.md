@@ -18,12 +18,20 @@ Capabilities:
 - Hotkey registration
 - Pubsub messaging
 
-
 Open questions for later:
 
+- Dirty writes - add ext or sys as source. also ensure no direct writes, only api adds
+- Sharded space, in/outbox style too maybe
 - Trade off exfiltration-proof-ness for sensitive access, eg history?
-- How to provide authorship verification?
+- How to provide authorship verification? regular website + sigs
 - How to provide tamper detection?
 - How to do extension-specific settings? Manifest link to bundled settings UI? Or a api for placement into Settings app?
 - How to allow for maximal unloading vs always persistent
 - How to do remixes, eg take verified extension X, copy and hack
+
+Mobile:
+- open web pages
+- if calls a registration api, user can choose to add
+- permissions
+- expose peek api upon approval
+- also, preverification via sync

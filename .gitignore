@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# Yarn
+.yarn/install-state.gz
+
 # Build output
 out/
 app/dist/

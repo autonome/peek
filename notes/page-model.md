@@ -19,3 +19,4 @@ As a user, I need to:
 - Easily access website information, such as the URL
 - See extended information, such as the SSL cert info
 - See extended information, provided by extensions or customizations
+

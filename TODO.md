@@ -2,34 +2,73 @@
 
 ## v0.4 - Minimum viable web workbench
 
+- [ ] Design philosophy write-up w/ driving principles and characteristics
 - [ ] Multi-protocol architecture
 - [ ] Content publishing
 - [ ] Event model
 - [ ] Chaining
+- [ ] Images
+- [ ] Lists/feeds
+
+## v? - Editor & Notes
+
+Requires chaining and "activities"
+
+- [ ] Notes in datastore
+- [ ] Editor app (in/out datastore)
+
+## v? - Extensibility
+
+Peek extensions
+- [ ] figure out background app vs other
+- [ ] maybe cmd stays in core?
+- [ ] is background runtime aware? eg mobile/extension/desktop
+- [ ] background app separation from "feature" apps, is runtime aware
+
+Web extensions
+- [ ] WebExtension integration for priority only, on some platforms
+
+- [ ] App cmds (eg Editor -> cmd to edit note X)
+
 
 ## v? Portability
 
-- [ ] Abstraction of subset of core API to work in extension too
+- [ ] Common background runtime
+  - [ ] Datastore -> background
+  - [ ] API -> background
+- [ ] Define subset of core API for portability
+- [ ] Extension back-end
+- [ ] Mobile (webview) back-end
+- [ ] Tauri back-end
 
-## v0.3 - Personal daily driver
+## v? Pages, Tagging & Groups
+
+Opening pages
+- [x] Open page by default in cmd
+- [x] Open page from OS, other apps
+
+Page model & metadata
+- [ ] Basic overlay
+- [ ] Page embedding
+
+Tagging
+- [x] Cmd to tag current page
+
+Groups
+- [x] Groups based on tags, for now
+- [x] Untagged -> default group
+- [x] Cmd to open groups home
+
+- [ ] What does it mean for a group to be active/not
+- [ ] Open new empty page (in a group or not)
+
+Cmd
+- [ ] adaptive matching
+- [ ] frecency
+
+## V.0.3 - Datastore
 
 - [x] Datastore
-- [x] Open URLs by default
-- [ ] Cmd bar adaptive matching and frecency
-- [ ] Page model and user interface
-- [ ] Peek:// extensibility model
-  - [ ] figure out background app vs other
-    - [ ] maybe cmd stays in core?
-    - [ ] is background runtime aware? eg mobile/extension/desktop
-    - [ ] background app separation from "feature" apps, is runtime aware
-- [ ] Notes in datastore
-- [ ] Editor app (in/out datastore)
-- [ ] App cmds (eg Editor -> cmd to edit note X)
-- [ ] Tags + Groups
-- [ ] Images
-- [ ] Lists/feeds
-- [ ] WebExtension integration for priority only
-- [ ] Design philosophy write-up w/ driving principles and characteristics
 
 ## v0.2 - MVCP (minimum viable concept preview)
 

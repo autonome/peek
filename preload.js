@@ -273,6 +273,9 @@ api.datastore = {
   },
   getAddressesByTag: (tagId) => {
     return ipcRenderer.invoke('datastore-get-addresses-by-tag', { tagId });
+  },
+  getUntaggedAddresses: () => {
+    return ipcRenderer.invoke('datastore-get-untagged-addresses', {});
   }
 };
 

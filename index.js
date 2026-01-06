@@ -1718,6 +1718,36 @@ ipcMain.handle('datastore-get-addresses-by-tag', async (ev, data) => {
   }
 });
 
+// Get addresses that have no tags
+ipcMain.handle('datastore-get-untagged-addresses', async (ev, data) => {
+  try {
+    const addressTagsTable = datastoreStore.getTable('address_tags');
+    const addressesTable = datastoreStore.getTable('addresses');
+
+    // Get all address IDs that have at least one tag
+    const taggedAddressIds = new Set();
+    for (const [, link] of Object.entries(addressTagsTable)) {
+      taggedAddressIds.add(link.addressId);
+    }
+
+    // Get addresses that are NOT in the tagged set
+    const untaggedAddresses = [];
+    for (const [id, addr] of Object.entries(addressesTable)) {
+      if (!taggedAddressIds.has(id)) {
+        untaggedAddresses.push({ id, ...addr });
+      }
+    }
+
+    // Sort by visitCount descending
+    untaggedAddresses.sort((a, b) => (b.visitCount || 0) - (a.visitCount || 0));
+
+    return { success: true, data: untaggedAddresses };
+  } catch (error) {
+    console.error('datastore-get-untagged-addresses error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 const modWindow = (bw, params) => {
   if (params.action == 'close') {
     bw.close();

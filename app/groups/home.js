@@ -15,11 +15,21 @@ const debug = api.debug;
 const VIEW_GROUPS = 'groups';
 const VIEW_ADDRESSES = 'addresses';
 
+// Special pseudo-tag for untagged addresses
+const UNTAGGED_GROUP = {
+  id: '__untagged__',
+  name: 'Untagged',
+  color: '#666666',
+  frequency: 0,
+  isSpecial: true
+};
+
 let state = {
   view: VIEW_GROUPS,
   tags: [],
   currentTag: null,
-  addresses: []
+  addresses: [],
+  untaggedCount: 0
 };
 
 // Handle ESC - go back to groups view
@@ -46,7 +56,7 @@ const init = async () => {
 };
 
 /**
- * Load all tags sorted by frecency
+ * Load all tags sorted by frecency, and count untagged addresses
  */
 const loadTags = async () => {
   const result = await api.datastore.getTagsByFrecency();
@@ -56,6 +66,15 @@ const loadTags = async () => {
   } else {
     console.error('Failed to load tags:', result.error);
     state.tags = [];
+  }
+
+  // Get count of untagged addresses
+  const untaggedResult = await api.datastore.getUntaggedAddresses();
+  if (untaggedResult.success) {
+    state.untaggedCount = untaggedResult.data.length;
+    debug && console.log('Untagged addresses:', state.untaggedCount);
+  } else {
+    state.untaggedCount = 0;
   }
 };
 
@@ -109,7 +128,13 @@ const showGroups = async () => {
   const container = document.querySelector('.cards');
   container.innerHTML = '';
 
-  if (state.tags.length === 0) {
+  // Always show Untagged group first if there are untagged addresses
+  if (state.untaggedCount > 0) {
+    const untaggedCard = createGroupCard({ ...UNTAGGED_GROUP, frequency: state.untaggedCount });
+    container.appendChild(untaggedCard);
+  }
+
+  if (state.tags.length === 0 && state.untaggedCount === 0) {
     container.innerHTML = '<div class="empty-state">No groups yet. Create one to get started.</div>';
     return;
   }
@@ -127,8 +152,17 @@ const showAddresses = async (tag) => {
   state.view = VIEW_ADDRESSES;
   state.currentTag = tag;
 
-  // Load addresses for this tag
-  await loadAddressesForTag(tag.id);
+  // Load addresses - handle special untagged group
+  if (tag.isSpecial && tag.id === '__untagged__') {
+    const result = await api.datastore.getUntaggedAddresses();
+    if (result.success) {
+      state.addresses = result.data;
+    } else {
+      state.addresses = [];
+    }
+  } else {
+    await loadAddressesForTag(tag.id);
+  }
 
   // Update UI
   document.querySelector('.header-title').textContent = tag.name;
@@ -156,6 +190,9 @@ const showAddresses = async (tag) => {
 const createGroupCard = (tag) => {
   const card = document.createElement('div');
   card.className = 'card group-card';
+  if (tag.isSpecial) {
+    card.classList.add('special-group');
+  }
   card.dataset.tagId = tag.id;
 
   const colorDot = document.createElement('div');
@@ -171,7 +208,11 @@ const createGroupCard = (tag) => {
 
   const meta = document.createElement('div');
   meta.className = 'card-meta';
-  meta.textContent = `Used ${tag.frequency || 0} times`;
+  if (tag.isSpecial) {
+    meta.textContent = `${tag.frequency || 0} addresses`;
+  } else {
+    meta.textContent = `Used ${tag.frequency || 0} times`;
+  }
 
   content.appendChild(title);
   content.appendChild(meta);

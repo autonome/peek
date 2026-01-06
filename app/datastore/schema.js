@@ -96,7 +96,16 @@ export const schema = {
     metadata: { type: 'string', default: '{}' },
     createdAt: { type: 'number' },
     updatedAt: { type: 'number' },
-    usageCount: { type: 'number', default: 0 }
+    frequency: { type: 'number', default: 0 },
+    lastUsedAt: { type: 'number', default: 0 },
+    frecencyScore: { type: 'number', default: 0 }
+  },
+
+  // Join table for address-tag relationships
+  address_tags: {
+    addressId: { type: 'string' },
+    tagId: { type: 'string' },
+    createdAt: { type: 'number' }
   },
 
   blobs: {
@@ -203,6 +212,20 @@ export const indexes = {
   tags_byParent: {
     table: 'tags',
     on: 'parentId'
+  },
+  tags_byFrecency: {
+    table: 'tags',
+    on: 'frecencyScore'
+  },
+
+  // Address-tag join indexes
+  address_tags_byAddress: {
+    table: 'address_tags',
+    on: 'addressId'
+  },
+  address_tags_byTag: {
+    table: 'address_tags',
+    on: 'tagId'
   },
 
   // Blob indexes

@@ -1476,6 +1476,237 @@ ipcMain.handle('datastore-get-stats', async () => {
   }
 });
 
+// ***** Tag IPC Handlers *****
+
+// Calculate frecency score: frequency * 10 * decay_factor
+// decay_factor = 1 / (1 + days_since_use / 7)
+const calculateFrecency = (frequency, lastUsedAt) => {
+  const currentTime = Date.now();
+  const daysSinceUse = (currentTime - lastUsedAt) / (1000 * 60 * 60 * 24);
+  const decayFactor = 1 / (1 + daysSinceUse / 7);
+  return frequency * 10 * decayFactor;
+};
+
+// Get or create a tag by name
+ipcMain.handle('datastore-get-or-create-tag', async (ev, data) => {
+  try {
+    const { name } = data;
+    const slug = name.toLowerCase().trim().replace(/\s+/g, '-');
+    const timestamp = now();
+
+    // Look for existing tag by name
+    const tagsTable = datastoreStore.getTable('tags');
+    let existingTag = null;
+    let existingTagId = null;
+
+    for (const [id, tag] of Object.entries(tagsTable)) {
+      if (tag.name.toLowerCase() === name.toLowerCase()) {
+        existingTag = tag;
+        existingTagId = id;
+        break;
+      }
+    }
+
+    if (existingTag) {
+      return { success: true, data: { id: existingTagId, ...existingTag }, created: false };
+    }
+
+    // Create new tag
+    const tagId = generateId('tag');
+    const newTag = {
+      name: name.trim(),
+      slug,
+      color: '#999999',
+      parentId: '',
+      description: '',
+      metadata: '{}',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      frequency: 0,
+      lastUsedAt: 0,
+      frecencyScore: 0
+    };
+
+    datastoreStore.setRow('tags', tagId, newTag);
+    return { success: true, data: { id: tagId, ...newTag }, created: true };
+  } catch (error) {
+    console.error('datastore-get-or-create-tag error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Tag an address (create the link and update frecency)
+ipcMain.handle('datastore-tag-address', async (ev, data) => {
+  try {
+    const { addressId, tagId } = data;
+    const timestamp = now();
+
+    // Check if link already exists
+    const addressTagsTable = datastoreStore.getTable('address_tags');
+    for (const [id, link] of Object.entries(addressTagsTable)) {
+      if (link.addressId === addressId && link.tagId === tagId) {
+        return { success: true, data: { id, ...link }, alreadyExists: true };
+      }
+    }
+
+    // Create the link
+    const linkId = generateId('address_tag');
+    const newLink = {
+      addressId,
+      tagId,
+      createdAt: timestamp
+    };
+    datastoreStore.setRow('address_tags', linkId, newLink);
+
+    // Update tag frequency and frecency
+    const tag = datastoreStore.getRow('tags', tagId);
+    if (tag) {
+      const newFrequency = (tag.frequency || 0) + 1;
+      const frecencyScore = calculateFrecency(newFrequency, timestamp);
+      datastoreStore.setRow('tags', tagId, {
+        ...tag,
+        frequency: newFrequency,
+        lastUsedAt: timestamp,
+        frecencyScore,
+        updatedAt: timestamp
+      });
+    }
+
+    return { success: true, data: { id: linkId, ...newLink } };
+  } catch (error) {
+    console.error('datastore-tag-address error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Untag an address (remove the link)
+ipcMain.handle('datastore-untag-address', async (ev, data) => {
+  try {
+    const { addressId, tagId } = data;
+
+    // Find and remove the link
+    const addressTagsTable = datastoreStore.getTable('address_tags');
+    for (const [id, link] of Object.entries(addressTagsTable)) {
+      if (link.addressId === addressId && link.tagId === tagId) {
+        datastoreStore.delRow('address_tags', id);
+        return { success: true, removed: true };
+      }
+    }
+
+    return { success: true, removed: false };
+  } catch (error) {
+    console.error('datastore-untag-address error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get all tags sorted by frecency
+ipcMain.handle('datastore-get-tags-by-frecency', async (ev, data = {}) => {
+  try {
+    const { domain } = data || {};
+    const tagsTable = datastoreStore.getTable('tags');
+    let tags = Object.entries(tagsTable).map(([id, tag]) => ({ id, ...tag }));
+
+    // Recalculate frecency scores (they decay over time)
+    tags = tags.map(tag => ({
+      ...tag,
+      frecencyScore: calculateFrecency(tag.frequency || 0, tag.lastUsedAt || 0)
+    }));
+
+    // If domain provided, boost tags used on same-domain addresses
+    if (domain) {
+      const addressesTable = datastoreStore.getTable('addresses');
+      const addressTagsTable = datastoreStore.getTable('address_tags');
+
+      // Find addresses with matching domain
+      const domainAddressIds = new Set();
+      for (const [id, addr] of Object.entries(addressesTable)) {
+        if (addr.domain === domain) {
+          domainAddressIds.add(id);
+        }
+      }
+
+      // Find tags used on those addresses
+      const domainTagIds = new Set();
+      for (const [, link] of Object.entries(addressTagsTable)) {
+        if (domainAddressIds.has(link.addressId)) {
+          domainTagIds.add(link.tagId);
+        }
+      }
+
+      // Apply 2x boost
+      tags = tags.map(tag => ({
+        ...tag,
+        frecencyScore: domainTagIds.has(tag.id) ? tag.frecencyScore * 2 : tag.frecencyScore
+      }));
+    }
+
+    // Sort by frecency descending
+    tags.sort((a, b) => b.frecencyScore - a.frecencyScore);
+
+    return { success: true, data: tags };
+  } catch (error) {
+    console.error('datastore-get-tags-by-frecency error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get tags for a specific address
+ipcMain.handle('datastore-get-address-tags', async (ev, data) => {
+  try {
+    const { addressId } = data;
+    const addressTagsTable = datastoreStore.getTable('address_tags');
+    const tagsTable = datastoreStore.getTable('tags');
+
+    const tagIds = [];
+    for (const [, link] of Object.entries(addressTagsTable)) {
+      if (link.addressId === addressId) {
+        tagIds.push(link.tagId);
+      }
+    }
+
+    const tags = tagIds
+      .map(tagId => {
+        const tag = tagsTable[tagId];
+        return tag ? { id: tagId, ...tag } : null;
+      })
+      .filter(Boolean);
+
+    return { success: true, data: tags };
+  } catch (error) {
+    console.error('datastore-get-address-tags error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get addresses with a specific tag
+ipcMain.handle('datastore-get-addresses-by-tag', async (ev, data) => {
+  try {
+    const { tagId } = data;
+    const addressTagsTable = datastoreStore.getTable('address_tags');
+    const addressesTable = datastoreStore.getTable('addresses');
+
+    const addressIds = [];
+    for (const [, link] of Object.entries(addressTagsTable)) {
+      if (link.tagId === tagId) {
+        addressIds.push(link.addressId);
+      }
+    }
+
+    const addresses = addressIds
+      .map(addressId => {
+        const addr = addressesTable[addressId];
+        return addr ? { id: addressId, ...addr } : null;
+      })
+      .filter(Boolean);
+
+    return { success: true, data: addresses };
+  } catch (error) {
+    console.error('datastore-get-addresses-by-tag error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 const modWindow = (bw, params) => {
   if (params.action == 'close') {
     bw.close();
@@ -1621,6 +1852,33 @@ const closeWindow = (params, callback) => {
   }
 };
 
+// Only hide the app if there are no other visible windows (besides the one being closed/hidden)
+const maybeHideApp = (excludeId) => {
+  if (process.platform !== 'darwin') return;
+
+  // Check if there are any other visible windows
+  const visibleWindows = BrowserWindow.getAllWindows().filter(win => {
+    if (win.id === excludeId) return false;
+    if (win.isDestroyed()) return false;
+    if (!win.isVisible()) return false;
+
+    // Exclude the background window
+    const entry = windowManager.getWindow(win.id);
+    if (entry && entry.params.address === webCoreAddress) return false;
+
+    return true;
+  });
+
+  console.log('maybeHideApp: visible windows (excluding', excludeId + '):', visibleWindows.length);
+
+  if (visibleWindows.length === 0) {
+    console.log('No other visible windows, hiding app');
+    app.hide();
+  } else {
+    console.log('Other windows visible, not hiding app');
+  }
+};
+
 const closeOrHideWindow = id => {
   console.log('closeOrHideWindow called for ID:', id);
 
@@ -1654,29 +1912,23 @@ const closeOrHideWindow = id => {
       console.log(`CLOSING settings window ${id}`);
       closeChildWindows(params.address);
       win.close();
-      // Hide app to return focus to previous app
-      if (process.platform === 'darwin') {
-        app.hide();
-      }
+      // Hide app to return focus to previous app (only if no other visible windows)
+      maybeHideApp(id);
     }
     // Check if window should be hidden rather than closed
     // Either keepLive or modal parameter can trigger hiding behavior
     else if (params.keepLive === true || params.modal === true) {
       //console.log(`HIDING window ${id} (${params.address}) - modal: ${params.modal}, keepLive: ${params.keepLive}`);
       win.hide();
-      // Hide app to return focus to previous app
-      if (process.platform === 'darwin') {
-        app.hide();
-      }
+      // Hide app to return focus to previous app (only if no other visible windows)
+      maybeHideApp(id);
     } else {
       // close any open windows this window opened
       closeChildWindows(params.address);
       console.log(`CLOSING window ${id} (${params.address})`);
       win.close();
-      // Hide app to return focus to previous app
-      if (process.platform === 'darwin') {
-        app.hide();
-      }
+      // Hide app to return focus to previous app (only if no other visible windows)
+      maybeHideApp(id);
     }
 
     console.log('closeOrHideWindow completed');

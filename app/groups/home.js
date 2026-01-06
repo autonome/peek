@@ -1,276 +1,240 @@
-/*
+/**
+ * Groups - Tag-based grouping of addresses
+ *
+ * Groups are implemented using tags:
+ * - Each "group" is a tag
+ * - Addresses in a group are addresses tagged with that tag
+ * - Creating a new group creates a new tag
+ * - Viewing a group shows all addresses with that tag
+ */
 
-groups
-* there's always a default group
+const api = window.app;
+const debug = api.debug;
 
-managing storage
-* scaling to lots of pages/groups
-* collect all on startup
-* manage cache
-* what can change?
-  * new page in group
-  * page changes between groups
-  * page closed
-  * undo close page to a group that no longer exists (use current group)
+// View states
+const VIEW_GROUPS = 'groups';
+const VIEW_ADDRESSES = 'addresses';
 
-relevant page events
-  * new page
-    * add to current group
-  * activate (and switch active group)
-  * close page
-
-*/
-
-(async () => {
-
-// TODO: make extensible
-const VIEW_GROUPS = 1;
-const VIEW_TABS = 2;
-
-// keys for extension-level data
-const EXT_DATA_CONFIG_KEY = 'config';
-
-// keys for per-tab data
-const TAB_DATA_GROUP_KEY = 'groupId';
-
-// default strings
-// TODO: move to i18n
-const DEFAULT_GROUP_TITLE = 'Default Group';
-const DEFAULT_NEW_GROUP_TITLE = 'New Group';
-
-// Handle ESC
-document.onkeydown = function(evt) {
-  evt = evt || window.event;
-  var isEscape = evt.key == 'Escape';
-  if (isEscape && currentView == VIEW_TABS) {
-    showGroups();
-  }
+let state = {
+  view: VIEW_GROUPS,
+  tags: [],
+  currentTag: null,
+  addresses: []
 };
 
-var currentView = null;
-
-var config = null;
-
-const init = () => {
-  // Initialize storage - this loads groups, everything else
-  initStorage();
-
-  // Data loaded, start building UI
-  //populateUI();
-
-  // New group click handler
-  document.querySelector('.newgroup').addEventListener('click', function() {
-    newGroup();
-  });
-
-  // Listen for things that'll change state
-  initEventListeners();
-
-  // Populate groups with their pages
-  showCards();
-};
-
-const initStorage = () => {
-  let data = localStorage.getItem(EXT_DATA_CONFIG_KEY);
-
-  console.log('initStorage', data);
-
-  // Not first run!
-  if (data && data.config) {
-    config = data.config;
-  }
-  else {
-    // First run!
-
-    config = {};
-
-    // Set up group storage
-    config.groups = {};
-
-    // Create default group
-    const id = newGroup(DEFAULT_GROUP_TITLE);
-
-    // Storage default group id as last active group
-    config.lastGroupId = id;
-
-    // save on first run
-    updateStorage(EXT_DATA_CONFIG_KEY, config);
-  }
-
-  return config;
-}
-
-// Save changes to config to persistent storage
-// TODO: Temporary hack. Replace with proper evented solution.
-function updateStorage(key, data) {
-  localStorage.setItem(key, data);
-}
-
-function initEventListeners() {
-  /*
-  // add new tabs in this window to current group
-  browser.tabs.onCreated.addListener(tab => {
-    addCardToGroup(tab.id, config.lastGroupId);
-  });
-
-  // remove detached tabs from their group
-  browser.tabs.onDetached.addListener(tab => {
-    removeCardFromGroup(tab.id, config.lastGroupId);
-  });
-  
-  // remove removed tabs from their group
-  browser.tabs.onRemoved.addListener(tab => {
-    removeCardFromGroup(tab.id, config.lastGroupId);
-  });
-  */
-}
-
-function addCardToGroup(pageId, groupId) {
-  const index = config.groups[groupId].pages.indexOf(pageId);
-  if (index == -1) {
-    config.groups[groupId].pages.push(pageId);
-  }
-}
-
-function removeCardFromGroup(pageId, groupId) {
-  var index = config.groups[groupId].tabs.indexOf(pageId);
-  if (index > -1) {
-    config.groups[groupId].tabs.splice(index, 1);
-  }
-}
-
-function getGroupById(id) {
-  return config.groups[id];
-}
-
-function activateGroup(groupId) {
-  var group = getGroupById(groupId);
-  var lastGroup = getGroupById(config.lastGroupId);
-  if (group.tabs.length === 0) {
-    // New group?
-    browser.tabs.create({}).then(tab => {
-      addCardToGroup(tab.id, groupId);
-      browser.tabshideshow.show(group.tabs);
-      browser.tabshideshow.hide(lastGroup.tabs);
-      setLastActiveGroupId(groupId);
-    });
-  }
-  else {
-    browser.tabshideshow.show(group.tabs);
-    browser.tabshideshow.hide(lastGroup.tabs);
-    setLastActiveGroupId(groupId);
-  }
-}
-
-function getLastActiveGroupId() {
-  return config.lastGroupId;
-}
-
-function setLastActiveGroupId(id) {
-  config.lastGroupId = id;
-}
-
-function initializeGroupData() {
-  /*
-  return new Promise(function(resolve, reject) {
-    // Clear out old tab ids
-    for (let id in config.groups) {
-      config.groups[id].tabs = [];
+// Handle ESC - go back to groups view
+document.onkeydown = (evt) => {
+  if (evt.key === 'Escape') {
+    if (state.view === VIEW_ADDRESSES) {
+      showGroups();
     }
-    
-    browser.tabs.query({currentWindow: true}).then(tabs => {
-      tabs.forEach(tab => {
-        browser.sessions.getCardValue(tab.id, TAB_DATA_GROUP_KEY).then(groupId => {
-          if (groupId && config.groups[groupId]) {
-            config.groups[groupId].tabs.push(tab.id);
-          }
-          else {
-            // This should only happen on first run.
-            // Add all default tabs to default group.
-            var groupId = getLastActiveGroupId();
-            addCardToGroup(tab.id, groupId);
-          }
-        });
-      });
-      resolve();
-    });
-  });
-  */
-}
-
-function newGroup(title) {
-  var id = window.crypto.getRandomValues(new Uint32Array(1))[0];
-  var group = {
-    id: id,
-    title: title || 'New Group',
-    tabs: []
-  };
-  config.groups[id] = group;
-  showGroups();
-  updateStorage();
-  return id;
-}
-
-function showGroups() {
-  clearCards();
-  for (let id in config.groups) {
-    var group = config.groups[id];
-    var card = addCard();
-    card.querySelector('h1').innerText = group.title;
-    card.dataset.id = group.id;
-    card.addEventListener('click', e => {
-      var groupId = parseInt(card.dataset.id);
-      if (groupId != config.lastGroupId) {
-        activateGroup(groupId);
-      }
-    });
-    card.classList.add('group');
   }
-  currentView = VIEW_GROUPS;
-  document.querySelector('.controls').classList.add('groupsview');
-  document.querySelector('.controls').classList.remove('tabsview');
-}
+};
 
-function showCards() {
-  var group = getGroupById(config.lastGroupId);
-  clearCards();
+const init = async () => {
+  debug && console.log('Groups init');
 
-  group.pages.forEach(page => {
-    var card = addCard();
-    card.querySelector('h1').innerText = page.title;
-    card.dataset.id = page.id;
-    card.addEventListener('click', e => {
-      var pageId = parseInt(card.dataset.id);
-      browser.pages.update(pageId, { active: true });
-    });
+  // Load tags from datastore
+  await loadTags();
+
+  // Set up event listeners
+  document.querySelector('.new-group-btn').addEventListener('click', createNewGroup);
+  document.querySelector('.back-btn').addEventListener('click', showGroups);
+
+  // Show groups view
+  showGroups();
+};
+
+/**
+ * Load all tags sorted by frecency
+ */
+const loadTags = async () => {
+  const result = await api.datastore.getTagsByFrecency();
+  if (result.success) {
+    state.tags = result.data;
+    debug && console.log('Loaded tags:', state.tags.length);
+  } else {
+    console.error('Failed to load tags:', result.error);
+    state.tags = [];
+  }
+};
+
+/**
+ * Load addresses for a specific tag
+ */
+const loadAddressesForTag = async (tagId) => {
+  const result = await api.datastore.getAddressesByTag(tagId);
+  if (result.success) {
+    state.addresses = result.data;
+    debug && console.log('Loaded addresses for tag:', state.addresses.length);
+  } else {
+    console.error('Failed to load addresses:', result.error);
+    state.addresses = [];
+  }
+};
+
+/**
+ * Create a new group (tag)
+ */
+const createNewGroup = async () => {
+  const name = prompt('Enter group name:');
+  if (!name || !name.trim()) return;
+
+  const result = await api.datastore.getOrCreateTag(name.trim());
+  if (result.success) {
+    debug && console.log('Created tag:', result.data);
+    await loadTags();
+    showGroups();
+  } else {
+    console.error('Failed to create tag:', result.error);
+  }
+};
+
+/**
+ * Show the groups (tags) view
+ */
+const showGroups = async () => {
+  state.view = VIEW_GROUPS;
+  state.currentTag = null;
+
+  // Refresh tags
+  await loadTags();
+
+  // Update UI
+  document.querySelector('.header-title').textContent = 'Groups';
+  document.querySelector('.back-btn').style.display = 'none';
+  document.querySelector('.new-group-btn').style.display = 'block';
+
+  // Clear and populate cards
+  const container = document.querySelector('.cards');
+  container.innerHTML = '';
+
+  if (state.tags.length === 0) {
+    container.innerHTML = '<div class="empty-state">No groups yet. Create one to get started.</div>';
+    return;
+  }
+
+  state.tags.forEach(tag => {
+    const card = createGroupCard(tag);
+    container.appendChild(card);
   });
+};
 
-  currentView = VIEW_PAGES;
-  document.querySelector('.controls').classList.add('pagesview');
-  document.querySelector('.controls').classList.remove('groupsview');
-}
+/**
+ * Show addresses in a group (tag)
+ */
+const showAddresses = async (tag) => {
+  state.view = VIEW_ADDRESSES;
+  state.currentTag = tag;
 
-function clearCards() {
-  var container = document.querySelector('.cards');
-  Array.prototype.slice.call(container.children).forEach(child => {
-    child.parentNode.removeChild(child);
+  // Load addresses for this tag
+  await loadAddressesForTag(tag.id);
+
+  // Update UI
+  document.querySelector('.header-title').textContent = tag.name;
+  document.querySelector('.back-btn').style.display = 'block';
+  document.querySelector('.new-group-btn').style.display = 'none';
+
+  // Clear and populate cards
+  const container = document.querySelector('.cards');
+  container.innerHTML = '';
+
+  if (state.addresses.length === 0) {
+    container.innerHTML = '<div class="empty-state">No addresses in this group yet.</div>';
+    return;
+  }
+
+  state.addresses.forEach(address => {
+    const card = createAddressCard(address);
+    container.appendChild(card);
   });
-}
+};
 
-function addCard() {
-  var container = document.querySelector('.cards');
+/**
+ * Create a card element for a group (tag)
+ */
+const createGroupCard = (tag) => {
+  const card = document.createElement('div');
+  card.className = 'card group-card';
+  card.dataset.tagId = tag.id;
 
-  var cardTpl = document.querySelector('.tpl-card')
-  var cardClone = document.importNode(cardTpl.content, true);
-  container.appendChild(cardClone);
-  var card = container.lastElementChild;
-  card.classList.add('card');
+  const colorDot = document.createElement('div');
+  colorDot.className = 'color-dot';
+  colorDot.style.backgroundColor = tag.color || '#999';
+
+  const content = document.createElement('div');
+  content.className = 'card-content';
+
+  const title = document.createElement('h2');
+  title.className = 'card-title';
+  title.textContent = tag.name;
+
+  const meta = document.createElement('div');
+  meta.className = 'card-meta';
+  meta.textContent = `Used ${tag.frequency || 0} times`;
+
+  content.appendChild(title);
+  content.appendChild(meta);
+
+  card.appendChild(colorDot);
+  card.appendChild(content);
+
+  // Click to view addresses in this group
+  card.addEventListener('click', () => showAddresses(tag));
 
   return card;
-}
+};
 
-// Kick out the jams
+/**
+ * Create a card element for an address
+ */
+const createAddressCard = (address) => {
+  const card = document.createElement('div');
+  card.className = 'card address-card';
+  card.dataset.addressId = address.id;
+
+  const favicon = document.createElement('img');
+  favicon.className = 'card-favicon';
+  favicon.src = address.favicon || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🌐</text></svg>';
+  favicon.onerror = () => {
+    favicon.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🌐</text></svg>';
+  };
+
+  const content = document.createElement('div');
+  content.className = 'card-content';
+
+  const title = document.createElement('h2');
+  title.className = 'card-title';
+  title.textContent = address.title || address.uri;
+
+  const url = document.createElement('div');
+  url.className = 'card-url';
+  url.textContent = address.uri;
+
+  const meta = document.createElement('div');
+  meta.className = 'card-meta';
+  const lastVisit = address.lastVisitAt ? new Date(address.lastVisitAt).toLocaleDateString() : 'Never';
+  meta.textContent = `${address.visitCount || 0} visits · Last: ${lastVisit}`;
+
+  content.appendChild(title);
+  content.appendChild(url);
+  content.appendChild(meta);
+
+  card.appendChild(favicon);
+  card.appendChild(content);
+
+  // Click to open address
+  card.addEventListener('click', async () => {
+    debug && console.log('Opening address:', address.uri);
+    const result = await api.window.open(address.uri, {
+      width: 800,
+      height: 600
+    });
+    debug && console.log('Window opened:', result);
+  });
+
+  return card;
+};
+
+// Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', init);
-
-
-})();

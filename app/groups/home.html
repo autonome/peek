@@ -3,32 +3,18 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,user-scalable=no,initial-scale=1">
-
-    <title>ESCAPE</title>
-
-    <script src="home.js"></script>
-
+    <title>Groups</title>
     <link rel="stylesheet" type="text/css" href="home.css">
-
   </head>
   <body>
+    <header class="header">
+      <button class="back-btn" style="display: none;">Back</button>
+      <h1 class="header-title">Groups</h1>
+      <button class="new-group-btn">+ New Group</button>
+    </header>
 
-    <div class="controls tabsview">
-      <button class="newgroup">[+] new group</button>
-    </div>
+    <main class="cards"></main>
 
-    <div class="cards">
-    </div>
-
-    <template class="tpl-card">
-      <div class="card">
-        <div class="thumb" style="background-image: url();"></div>
-        <article>
-          <h1></h1>
-          <span></span>
-        </article>
-      </div>
-    </template>
-
+    <script type="module" src="home.js"></script>
   </body>
 </html>

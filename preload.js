@@ -248,6 +248,25 @@ api.datastore = {
   },
   getStats: () => {
     return ipcRenderer.invoke('datastore-get-stats');
+  },
+  // Tag operations
+  getOrCreateTag: (name) => {
+    return ipcRenderer.invoke('datastore-get-or-create-tag', { name });
+  },
+  tagAddress: (addressId, tagId) => {
+    return ipcRenderer.invoke('datastore-tag-address', { addressId, tagId });
+  },
+  untagAddress: (addressId, tagId) => {
+    return ipcRenderer.invoke('datastore-untag-address', { addressId, tagId });
+  },
+  getTagsByFrecency: (domain) => {
+    return ipcRenderer.invoke('datastore-get-tags-by-frecency', { domain });
+  },
+  getAddressTags: (addressId) => {
+    return ipcRenderer.invoke('datastore-get-address-tags', { addressId });
+  },
+  getAddressesByTag: (tagId) => {
+    return ipcRenderer.invoke('datastore-get-addresses-by-tag', { tagId });
   }
 };
 

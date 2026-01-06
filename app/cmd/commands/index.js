@@ -7,6 +7,7 @@ import modalCommand from './modal.js';
 import groupsModule from './groups.js';
 import noteModule from './note.js';
 import historyModule from './history.js';
+import tagModule from './tag.js';
 
 // Source commands (commented out as they need browser extension APIs)
 // These modules contain command sources that dynamically generate commands
@@ -27,7 +28,8 @@ const activeCommands = [
   modalCommand,
   ...groupsModule.commands,
   ...noteModule.commands,
-  ...historyModule.commands
+  ...historyModule.commands,
+  ...tagModule.commands
 ];
 
 // Inactive commands - these require browser extension APIs and are not loaded
@@ -49,7 +51,6 @@ const commands = [...activeCommands];
 
 // Source commands - these are modules that generate multiple commands dynamically
 const sources = [
-  groupsModule,
   historyModule
 ];
 

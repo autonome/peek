@@ -7,6 +7,10 @@
 - [ ] Event model
 - [ ] Chaining
 
+## v? Portability
+
+- [ ] Abstraction of subset of core API to work in extension too
+
 ## v0.3 - Personal daily driver
 
 - [x] Datastore

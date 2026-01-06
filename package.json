@@ -10,6 +10,18 @@
     "type": "git",
     "url": "https://github.com/autonome/peek"
   },
+  "build": {
+    "appId": "com.autonome.peek",
+    "productName": "Peek",
+    "mac": {
+      "icon": "assets/appicon.icns",
+      "category": "public.app-category.productivity",
+      "identity": null
+    },
+    "directories": {
+      "output": "out"
+    }
+  },
   "scripts": {
     "start": "electron .",
     "debug": "DEBUG=1 electron .",

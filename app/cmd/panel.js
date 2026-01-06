@@ -9,6 +9,7 @@ const debug = window.app.debug;
 const clear = false;
 
 const store = openStore(id, defaults, clear /* clear storage */);
+
 const api = window.app;
 
 // Storage keys for persistent adaptive matching
@@ -60,23 +61,9 @@ async function render() {
   commandInput.addEventListener('input', () => {
     state.typed = commandInput.value;
     if (state.typed) {
-      // Special case: if input contains a space, display matches but highlight the prefix
-      const spaceIndex = state.typed.indexOf(' ');
-      if (spaceIndex !== -1) {
-        const prefix = state.typed.substring(0, spaceIndex);
-        const temp = findMatchingCommands(prefix);
-        if (temp.length > 0) {
-          state.matches = temp;
-          state.matchIndex = 0;
-        } else {
-          state.matches = findMatchingCommands(state.typed);
-          state.matchIndex = 0;
-        }
-      } else {
-        // Regular case: update matches based on typed text
-        state.matches = findMatchingCommands(state.typed);
-        state.matchIndex = 0;
-      }
+      // Always pass full text to findMatchingCommands so it can detect parameters
+      state.matches = findMatchingCommands(state.typed);
+      state.matchIndex = 0;
     } else {
       state.matches = [];
       state.matchIndex = 0;
@@ -238,8 +225,9 @@ function buildExecutionContext(name, typed) {
  * Executes a command
  */
 async function execute(name, typed) {
+  api.log('execute() called with:', name, typed);
   if (state.commands[name]) {
-    debug && console.log('executing cmd', name, typed);
+    api.log('executing cmd', name, typed);
     const context = buildExecutionContext(name, typed);
     debug && console.log('execution context', context);
     state.commands[name].execute(context);
@@ -289,11 +277,20 @@ function findMatchingCommands(text) {
     }
   }
 
-  // Sort by adaptive score first, then by match count (frecency)
-  // Adaptive score takes priority - commands you've selected for this input pattern
-  // will float to the top based on reinforcement learning
+  // Sort by:
+  // 1. Exact match with parameters (highest priority)
+  // 2. Adaptive score
+  // 3. Match count (frecency)
   matches.sort(function(a, b) {
-    // First compare adaptive scores for this typed string
+    // If we have parameters, prioritize exact command match
+    if (hasParameters) {
+      const aExact = a.toLowerCase() === commandPart.toLowerCase();
+      const bExact = b.toLowerCase() === commandPart.toLowerCase();
+      if (aExact && !bExact) return -1;
+      if (bExact && !aExact) return 1;
+    }
+
+    // Then compare adaptive scores for this typed string
     const aAdaptive = getAdaptiveScore(commandPart, a);
     const bAdaptive = getAdaptiveScore(commandPart, b);
 

@@ -9,6 +9,8 @@ import noteModule from './note.js';
 import historyModule from './history.js';
 import tagModule from './tag.js';
 
+console.log('tagModule.commands:', tagModule.commands?.map(c => c.name));
+
 // Source commands (commented out as they need browser extension APIs)
 // These modules contain command sources that dynamically generate commands
 import bookmarkletsSource from './bookmarklets.js';
@@ -31,6 +33,8 @@ const activeCommands = [
   ...historyModule.commands,
   ...tagModule.commands
 ];
+
+console.log('activeCommands:', activeCommands.map(c => c.name));
 
 // Inactive commands - these require browser extension APIs and are not loaded
 const inactiveCommands = [

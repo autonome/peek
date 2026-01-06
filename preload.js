@@ -6,7 +6,8 @@ const {
 const src = 'preload';
 console.log(src, 'init', window);
 
-const DEBUG = process.env.DEBUG || false;
+const DEBUG = !!process.env.DEBUG;
+console.log('preload DEBUG:', process.env.DEBUG, '->', DEBUG);
 const DEBUG_LEVELS = {
   BASIC: 1,
   FIRST_RUN: 2
@@ -23,6 +24,11 @@ const sourceAddress = window.location.toString();
 const rndm = () => Math.random().toString(16).slice(2);
 
 let api = {};
+
+// Log to main process (shows in terminal)
+api.log = (...args) => {
+  ipcRenderer.send('renderer-log', { source: sourceAddress, args });
+};
 
 api.debug = DEBUG;
 api.debugLevels = DEBUG_LEVELS;

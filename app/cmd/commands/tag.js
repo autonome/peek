@@ -109,14 +109,16 @@ const commands = [
     description: 'Add tags to the active window URL',
     async execute(ctx) {
       // Get active window
+      api.log('tag command execute, ctx:', ctx);
       const activeWindow = await getActiveWindow();
+      api.log('tag command: activeWindow =', activeWindow);
       if (!activeWindow) {
-        console.log('No active window found');
+        api.log('No active window found');
         return { success: false, error: 'No active window' };
       }
 
       const url = activeWindow.url;
-      console.log('Tagging URL:', url);
+      api.log('Tagging URL:', url);
 
       // Find address in datastore
       let address = await findAddressByUri(url);
@@ -164,7 +166,9 @@ const commands = [
         }
         return { success: true, removed };
       } else {
+        api.log('Adding tags to address:', address.id, 'tags:', tagsToProcess);
         const results = await addTagsToAddress(address.id, tagsToProcess);
+        api.log('addTagsToAddress results:', results);
         const added = results.filter(r => !r.alreadyExists).map(r => r.tag.name);
         const existing = results.filter(r => r.alreadyExists).map(r => r.tag.name);
         if (added.length > 0) {

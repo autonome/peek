@@ -19,7 +19,7 @@ let commands = {};
  */
 function onCommandsUpdated() {
   window.dispatchEvent(new CustomEvent('cmd-update-commands', { detail: commands }));
-  console.log('main sending updated commands out', Object.keys(commands));
+  console.log('cmd-update-commands dispatched, commands:', Object.keys(commands));
 }
 
 /**
@@ -39,7 +39,9 @@ async function initializeCommandSources() {
 
   // Load commands from the commands module
   const moduleCommands = commandsModule.commands;
+  console.log('moduleCommands:', moduleCommands.map(c => c.name));
   moduleCommands.forEach(command => {
+    console.log('adding command:', command.name);
     addCommand(command);
   });
 

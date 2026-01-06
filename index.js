@@ -784,6 +784,12 @@ app.whenReady().then(onReady);
 
 // ***** API *****
 
+// Renderer log forwarding - prints renderer console.log to terminal
+ipcMain.on('renderer-log', (ev, msg) => {
+  const shortSource = msg.source.replace('peek://app/', '');
+  console.log(`[${shortSource}]`, ...msg.args);
+});
+
 ipcMain.on(strings.msgs.registerShortcut, (ev, msg) => {
   console.log('ipc register shortcut', msg);
 
@@ -1491,6 +1497,7 @@ const calculateFrecency = (frequency, lastUsedAt) => {
 ipcMain.handle('datastore-get-or-create-tag', async (ev, data) => {
   try {
     const { name } = data;
+    console.log('datastore-get-or-create-tag:', name);
     const slug = name.toLowerCase().trim().replace(/\s+/g, '-');
     const timestamp = now();
 
@@ -1508,6 +1515,7 @@ ipcMain.handle('datastore-get-or-create-tag', async (ev, data) => {
     }
 
     if (existingTag) {
+      console.log('  -> found existing tag:', existingTagId);
       return { success: true, data: { id: existingTagId, ...existingTag }, created: false };
     }
 
@@ -1528,6 +1536,7 @@ ipcMain.handle('datastore-get-or-create-tag', async (ev, data) => {
     };
 
     datastoreStore.setRow('tags', tagId, newTag);
+    console.log('  -> created new tag:', tagId);
     return { success: true, data: { id: tagId, ...newTag }, created: true };
   } catch (error) {
     console.error('datastore-get-or-create-tag error:', error);
@@ -1539,6 +1548,7 @@ ipcMain.handle('datastore-get-or-create-tag', async (ev, data) => {
 ipcMain.handle('datastore-tag-address', async (ev, data) => {
   try {
     const { addressId, tagId } = data;
+    console.log('datastore-tag-address:', { addressId, tagId });
     const timestamp = now();
 
     // Check if link already exists
@@ -1605,6 +1615,7 @@ ipcMain.handle('datastore-get-tags-by-frecency', async (ev, data = {}) => {
   try {
     const { domain } = data || {};
     const tagsTable = datastoreStore.getTable('tags');
+    console.log('datastore-get-tags-by-frecency: tagsTable has', Object.keys(tagsTable).length, 'tags');
     let tags = Object.entries(tagsTable).map(([id, tag]) => ({ id, ...tag }));
 
     // Recalculate frecency scores (they decay over time)
@@ -1800,7 +1811,9 @@ const addEscHandler = bw => {
 const winDevtoolsConfig = bw => {
   const windowData = windowManager.getWindow(bw.id);
   const params = windowData ? windowData.params : {};
-  
+
+  console.log('winDevtoolsConfig:', bw.id, 'openDevTools:', params.openDevTools, 'address:', params.address);
+
   // Check if devTools should be opened
   if (params.openDevTools === true) {
     const isDetached = params.detachedDevTools === true;
@@ -1812,14 +1825,22 @@ const winDevtoolsConfig = bw => {
     };
 
     console.log(`Opening DevTools for window ${bw.id} with options:`, devToolsOptions);
-    bw.webContents.openDevTools(devToolsOptions);
 
-    // when devtools completely open, ensure content window has focus
-    bw.webContents.once('devtools-opened', () => {
-      if (bw.isVisible()) {
-        bw.focus();
-      }
-    });
+    // Open DevTools after a slight delay to let the main window settle
+    setTimeout(() => {
+      bw.webContents.openDevTools(devToolsOptions);
+
+      // when devtools completely open, ensure content window has focus
+      bw.webContents.once('devtools-opened', () => {
+        // Re-focus the content window after devtools opens
+        setTimeout(() => {
+          if (bw.isVisible() && !bw.isDestroyed()) {
+            bw.focus();
+            bw.webContents.focus();
+          }
+        }, 100);
+      });
+    }, 50);
   }
 };
 

@@ -284,6 +284,24 @@ api.quit = () => {
   ipcRenderer.send('app-quit', { source: sourceAddress });
 };
 
+// Escape handling API
+// For windows with escapeMode: 'navigate' or 'auto'
+// Callback should return { handled: true } if escape was handled internally
+// or { handled: false } to let the window close
+api.escape = {
+  onEscape: (callback) => {
+    ipcRenderer.on('escape-pressed', async (event, data) => {
+      try {
+        const result = await callback();
+        ipcRenderer.send(data.responseChannel, result || { handled: false });
+      } catch (err) {
+        console.error('Error in escape handler:', err);
+        ipcRenderer.send(data.responseChannel, { handled: false });
+      }
+    });
+  }
+};
+
 // unused
 /*
 api.sendToWindow = (windowId, msg) => {

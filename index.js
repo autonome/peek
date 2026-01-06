@@ -919,13 +919,19 @@ ipcMain.handle('window-open', async (ev, msg) => {
   try {
     await win.loadURL(url);
 
+    // Determine if this is a transient window (opened while no Peek window was focused)
+    // Used for escapeMode: 'auto' to decide between navigate and close behavior
+    const focusedWindow = BrowserWindow.getFocusedWindow();
+    const isTransient = !focusedWindow || focusedWindow.isDestroyed();
+
     // Add to window manager with modal parameter
     const windowEntry = {
       id: win.id,
       source: msg.source,
       params: {
         ...options,
-        address: url
+        address: url,
+        transient: isTransient
       }
     };
     console.log('Adding window to manager:', windowEntry.id, 'modal:', windowEntry.params.modal, 'keepLive:', windowEntry.params.keepLive);
@@ -1810,29 +1816,71 @@ const unregisterShortcutsForAddress = (aAddress) => {
   }
 };
 
+// Ask renderer to handle escape, returns Promise<{ handled: boolean }>
+const askRendererToHandleEscape = (bw) => {
+  return new Promise((resolve) => {
+    const responseChannel = `escape-response-${bw.id}-${Date.now()}`;
+
+    // Timeout after 100ms - if renderer doesn't respond, assume not handled
+    const timeout = setTimeout(() => {
+      ipcMain.removeAllListeners(responseChannel);
+      resolve({ handled: false });
+    }, 100);
+
+    ipcMain.once(responseChannel, (event, response) => {
+      clearTimeout(timeout);
+      resolve(response || { handled: false });
+    });
+
+    bw.webContents.send('escape-pressed', { responseChannel });
+  });
+};
+
 // esc handler
-// TODO: make user-configurable
+// Supports escapeMode: 'close' (default), 'navigate', 'auto'
 const addEscHandler = bw => {
   console.log('adding esc handler to window:', bw.id);
-  bw.webContents.on('before-input-event', (e, i) => {
+  bw.webContents.on('before-input-event', async (e, i) => {
     if (i.key == 'Escape' && i.type == 'keyUp') {
-      // Get window info for better logging
+      // Get window info
       const entry = windowManager.getWindow(bw.id);
-      const isSettingsWindow = entry && entry.params && entry.params.address === settingsAddress;
-      
-      console.log('===== Escape key pressed =====');
-      console.log(`Window ID: ${bw.id}`);
-      console.log(`Is settings window: ${isSettingsWindow}`);
-      
-      if (entry && entry.params) {
-        console.log(`Window address: ${entry.params.address}`);
-        console.log(`Modal: ${entry.params.modal}, KeepLive: ${entry.params.keepLive}`);
+      const params = entry?.params || {};
+      const escapeMode = params.escapeMode || 'close';
+
+      console.log(`ESC pressed - window ${bw.id}, escapeMode: ${escapeMode}`);
+
+      // For 'navigate' mode, ask renderer first
+      if (escapeMode === 'navigate') {
+        const response = await askRendererToHandleEscape(bw);
+        console.log(`Renderer escape response:`, response);
+
+        if (response.handled) {
+          // Renderer handled the escape (internal navigation)
+          console.log('Renderer handled escape, not closing');
+          return;
+        }
       }
-      
-      // Always trigger close/hide on Escape
-      console.log('Calling closeOrHideWindow...');
+
+      // For 'auto' mode, check if transient (no focused window when opened)
+      if (escapeMode === 'auto') {
+        if (params.transient) {
+          // Transient mode - close immediately
+          console.log('Auto mode (transient) - closing');
+        } else {
+          // Active mode - ask renderer first
+          const response = await askRendererToHandleEscape(bw);
+          console.log(`Renderer escape response (auto/active):`, response);
+
+          if (response.handled) {
+            console.log('Renderer handled escape, not closing');
+            return;
+          }
+        }
+      }
+
+      // Close or hide the window
+      console.log('Closing/hiding window');
       closeOrHideWindow(bw.id);
-      console.log('===== Escape handling complete =====');
     }
   });
 };

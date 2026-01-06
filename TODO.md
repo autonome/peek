@@ -30,7 +30,6 @@ Web extensions
 
 - [ ] App cmds (eg Editor -> cmd to edit note X)
 
-
 ## v? Portability
 
 - [ ] Common background runtime
@@ -59,14 +58,23 @@ Groups
 - [x] Untagged -> default group
 - [x] Cmd to open groups home
 
-- [ ] What does it mean for a group to be active/not
-- [ ] Open new empty page (in a group or not)
+- [ ] Use escapeMode to open pages "in an active group" (maybe depends on page metadata api?)
+- [ ] Escape for navigating back up the group views, not closing window
+- [ ] Be able to open new empty page (in a group or not)
 
 Cmd
-- [ ] adaptive matching
-- [ ] frecency
+- [x] adaptive matching
+- [x] frecency
+
+## v? Windowing model
+
+- [ ] active vs transient modality
+- [ ] configurable escape behavior per-window
 
 ## V.0.3 - Datastore
+
+this needs a lot of work, but good enough for now.
+also, will be shaped as we move through the extensibility pieces.
 
 - [x] Datastore
 

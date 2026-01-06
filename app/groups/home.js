@@ -32,14 +32,18 @@ let state = {
   untaggedCount: 0
 };
 
-// Handle ESC - go back to groups view
-document.onkeydown = (evt) => {
-  if (evt.key === 'Escape') {
-    if (state.view === VIEW_ADDRESSES) {
-      showGroups();
-    }
+// Handle ESC - cooperative escape handling with window manager
+// Returns { handled: true } if we navigated internally
+// Returns { handled: false } if at root (groups list) and window should close
+api.escape.onEscape(() => {
+  if (state.view === VIEW_ADDRESSES) {
+    // Navigate back to groups list
+    showGroups();
+    return { handled: true };
   }
-};
+  // At root (groups list) - let window close
+  return { handled: false };
+});
 
 const init = async () => {
   debug && console.log('Groups init');

@@ -118,7 +118,8 @@ const commands = [
         width: 800,
         height: 600,
         trackingSource: 'cmd',
-        trackingSourceId: 'groups'
+        trackingSourceId: 'groups',
+        escapeMode: 'navigate'  // Allow internal navigation before closing
       });
     }
   },

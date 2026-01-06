@@ -65,6 +65,60 @@ Profile is determined automatically:
 
 Profile data stored in `{userData}/{PROFILE}/` directory.
 
+## Window API
+
+### Opening Windows
+
+```javascript
+import windows from './windows.js';
+
+// Modal window (closes on blur/ESC)
+windows.openModalWindow(url, options);
+
+// Regular window
+windows.createWindow(url, options);
+```
+
+### Window Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `width`, `height` | number | Window dimensions |
+| `x`, `y` | number | Window position |
+| `modal` | boolean | Frameless, closes on blur |
+| `key` | string | Unique ID for window reuse |
+| `keepLive` | boolean | Hide instead of close |
+| `escapeMode` | string | ESC behavior: `'close'`, `'navigate'`, `'auto'` |
+| `trackingSource` | string | Source for visit tracking |
+
+### Escape Handling
+
+Windows can control how ESC behaves using `escapeMode`:
+
+- **`'close'`** (default): ESC immediately closes/hides the window
+- **`'navigate'`**: Renderer handles ESC first; closes only when renderer signals root state
+- **`'auto'`**: Transient windows (opened via hotkey from another app) close immediately; active windows use navigate behavior
+
+#### Using escapeMode: 'navigate'
+
+1. Open window with `escapeMode: 'navigate'`:
+```javascript
+windows.createWindow(url, { escapeMode: 'navigate' });
+```
+
+2. Register escape handler in renderer:
+```javascript
+api.escape.onEscape(() => {
+  if (canNavigateBack) {
+    navigateBack();
+    return { handled: true };  // ESC was handled internally
+  }
+  return { handled: false };   // At root, let window close
+});
+```
+
+See `notes/escape-navigation.md` for full design details.
+
 ## App Icon Generation
 
 The macOS app icon is generated from a source PNG using ImageMagick. The process applies rounded corners and adds padding to match macOS icon guidelines.

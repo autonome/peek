@@ -138,9 +138,10 @@ const defaults = {
     { id: 'ef3bd271-d408-421f-9338-47b615571e43',
       name: 'Peeks',
       description: 'Peek at pages in a transient popup using keyboard shortcuts',
-      start_url: 'peek://app/peeks/background.html',
+      start_url: 'peek://ext/peeks/background.js',  // Extension
       enabled: false,
       settings_url: 'peek://app/peeks/settings.html',
+      extension: true,  // Mark as extension-based feature
     },
     { id: '30c25027-d367-4595-b37f-9db3de853c37',
       name: 'Scripts',
@@ -152,9 +153,10 @@ const defaults = {
     { id: '434108f3-18a6-437a-b507-2f998f693bb2',
       name: 'Slides',
       description: 'Open web pages as side/top/bottom bars',
-      start_url: 'peek://app/slides/background.html',
+      start_url: 'peek://ext/slides/background.js',  // Extension
       enabled: false,
       settings_url: 'peek://app/slides/settings.html',
+      extension: true,  // Mark as extension-based feature
     }
   ]
 };

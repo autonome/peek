@@ -20,9 +20,17 @@ export const builtinExtensions = [
     id: 'groups',
     path: 'peek://ext/groups',
     backgroundScript: 'background.js'
+  },
+  {
+    id: 'peeks',
+    path: 'peek://ext/peeks',
+    backgroundScript: 'background.js'
+  },
+  {
+    id: 'slides',
+    path: 'peek://ext/slides',
+    backgroundScript: 'background.js'
   }
-  // Future: { id: 'peeks', path: 'peek://ext/peeks', backgroundScript: 'background.js' }
-  // Future: { id: 'slides', path: 'peek://ext/slides', backgroundScript: 'background.js' }
 ];
 
 /**

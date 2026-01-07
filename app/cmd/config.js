@@ -33,7 +33,7 @@ const storageKeys = {
 
 const defaults = {
   prefs: {
-    shortcutKey: 'Control+Space'
+    shortcutKey: 'Option+Space'
   },
 };
 

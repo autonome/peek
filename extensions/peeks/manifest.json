@@ -1,0 +1,8 @@
+{
+  "id": "peeks",
+  "name": "Peeks",
+  "description": "Quick access modal windows for web pages via keyboard shortcuts",
+  "version": "1.0.0",
+  "background": "background.js",
+  "builtin": true
+}

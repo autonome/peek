@@ -587,8 +587,8 @@ const onReady = async () => {
   // Register built-in extensions
   // Built-in extensions live in ./extensions/ at the project root
   registerExtensionPath('groups', path.join(__dirname, 'extensions', 'groups'));
-  // Future: registerExtensionPath('peeks', path.join(__dirname, 'extensions', 'peeks'));
-  // Future: registerExtensionPath('slides', path.join(__dirname, 'extensions', 'slides'));
+  registerExtensionPath('peeks', path.join(__dirname, 'extensions', 'peeks'));
+  registerExtensionPath('slides', path.join(__dirname, 'extensions', 'slides'));
 
   // Register as default handler for http/https URLs (if not already and user hasn't declined)
   const defaultBrowserPrefFile = path.join(profileDataPath, 'default-browser-pref.json');
@@ -1876,12 +1876,11 @@ const modWindow = (bw, params) => {
 // ***** Helpers *****
 
 const registerShortcut = (shortcut, callback) => {
-  console.log('registerShortcut', shortcut)
+  console.log('registerShortcut', shortcut);
 
   if (globalShortcut.isRegistered(shortcut)) {
     console.error(strings.shortcuts.errorAlreadyRegistered, shortcut);
     globalShortcut.unregister(shortcut);
-    return new Error(strings.shortcuts.errorAlreadyRegisterd);
   }
 
   const ret = globalShortcut.register(shortcut, () => {
@@ -1889,8 +1888,8 @@ const registerShortcut = (shortcut, callback) => {
     callback();
   });
 
-  if (ret != true) {
-    console.error('Unable to register shortcut', shortcut);
+  if (ret !== true) {
+    console.error('registerShortcut FAILED:', shortcut);
     return new Error(strings.shortcuts.errorRegistrationFailed);
   }
 };
@@ -1900,7 +1899,7 @@ const unregisterShortcut = (shortcut, callback) => {
 
   if (!globalShortcut.isRegistered(shortcut)) {
     console.error('Unable to unregister shortcut because not registered or it is not us', shortcut);
-    return new Error("Failed in some way", { cause: err });
+    return new Error("Shortcut not registered: " + shortcut);
   }
 
   globalShortcut.unregister(shortcut, () => {

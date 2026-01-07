@@ -119,6 +119,20 @@ api.escape.onEscape(() => {
 
 See `notes/escape-navigation.md` for full design details.
 
+## Dock / App Switcher Visibility (macOS)
+
+The dock icon visibility is dynamic based on window state and user preference:
+
+- **Windows visible**: Dock icon shown (regardless of preference)
+- **No windows visible**: Dock icon hidden (unless preference enabled)
+
+The `showInDockAndSwitcher` preference controls whether to *always* show the dock icon, even when no windows are open. When disabled (default), the dock icon only appears while Peek windows are visible.
+
+This is implemented via:
+- `getVisibleWindowCount()` - counts non-background visible windows
+- `updateDockVisibility()` - shows/hides dock based on window count + pref
+- Called from: window-open, window-show, maybeHideApp, prefs change
+
 ## App Icon Generation
 
 The macOS app icon is generated from a source PNG using ImageMagick. The process applies rounded corners and adds padding to match macOS icon guidelines.

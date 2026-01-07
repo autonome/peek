@@ -473,9 +473,8 @@ const onReady = async () => {
   console.log('onReady');
 
   // Hide dock early to prevent flash in app switcher
-  // Will be shown later if showInDockAndSwitcher pref is true
-  if (app.dock && !DEBUG) {
-    console.log('hiding dock early (non-debug mode)');
+  // Will be shown/hidden properly once prefs are loaded
+  if (app.dock) {
     app.dock.hide();
   }
 
@@ -568,16 +567,8 @@ const onReady = async () => {
     // cache all prefs
     _prefs = msg.prefs;
 
-    // show/hide in dock and tab switcher based on preference
-    if (app.dock) {
-      if (msg.prefs.showInDockAndSwitcher === true) {
-        console.log('showing dock (pref enabled)');
-        app.dock.show();
-      } else {
-        console.log('hiding dock (pref disabled)');
-        app.dock.hide();
-      }
-    }
+    // Update dock visibility based on pref and visible windows
+    updateDockVisibility();
 
     // initialize system tray
     if (msg.prefs.showTrayIcon == true) {
@@ -951,6 +942,9 @@ ipcMain.handle('window-open', async (ev, msg) => {
       });
     }
 
+    // Show dock when window opens
+    updateDockVisibility();
+
     return { success: true, id: win.id };
   } catch (error) {
     console.error('Failed to open window:', error);
@@ -1031,6 +1025,7 @@ ipcMain.handle('window-show', async (ev, msg) => {
     }
 
     win.show();
+    updateDockVisibility();
     return { success: true };
   } catch (error) {
     console.error('Failed to show window:', error);
@@ -1951,13 +1946,12 @@ const closeWindow = (params, callback) => {
   }
 };
 
-// Only hide the app if there are no other visible windows (besides the one being closed/hidden)
-const maybeHideApp = (excludeId) => {
-  if (process.platform !== 'darwin') return;
-
-  // Check if there are any other visible windows
-  const visibleWindows = BrowserWindow.getAllWindows().filter(win => {
-    if (win.id === excludeId) return false;
+/**
+ * Get count of visible user windows (excluding background window)
+ */
+const getVisibleWindowCount = (excludeId = null) => {
+  return BrowserWindow.getAllWindows().filter(win => {
+    if (excludeId && win.id === excludeId) return false;
     if (win.isDestroyed()) return false;
     if (!win.isVisible()) return false;
 
@@ -1966,16 +1960,43 @@ const maybeHideApp = (excludeId) => {
     if (entry && entry.params.address === webCoreAddress) return false;
 
     return true;
-  });
+  }).length;
+};
 
-  console.log('maybeHideApp: visible windows (excluding', excludeId + '):', visibleWindows.length);
+/**
+ * Update dock visibility based on visible windows and pref
+ * Show dock if: visible windows exist OR pref is enabled
+ * Hide dock if: no visible windows AND pref is disabled
+ */
+const updateDockVisibility = (excludeId = null) => {
+  if (process.platform !== 'darwin' || !app.dock) return;
 
-  if (visibleWindows.length === 0) {
+  const visibleCount = getVisibleWindowCount(excludeId);
+  const prefShowDock = _prefs?.showInDockAndSwitcher === true;
+
+  if (visibleCount > 0 || prefShowDock) {
+    app.dock.show();
+  } else {
+    app.dock.hide();
+  }
+};
+
+// Only hide the app if there are no other visible windows (besides the one being closed/hidden)
+const maybeHideApp = (excludeId) => {
+  if (process.platform !== 'darwin') return;
+
+  const visibleCount = getVisibleWindowCount(excludeId);
+  console.log('maybeHideApp: visible windows (excluding', excludeId + '):', visibleCount);
+
+  if (visibleCount === 0) {
     console.log('No other visible windows, hiding app');
     app.hide();
   } else {
     console.log('Other windows visible, not hiding app');
   }
+
+  // Also update dock visibility
+  updateDockVisibility(excludeId);
 };
 
 const closeOrHideWindow = id => {

@@ -104,6 +104,8 @@ const renderCoreSettings = () => {
   const save = () => {
     store.set(storageKeys.PREFS, prefs);
     store.set(storageKeys.ITEMS, features);
+    // Notify main process of prefs change for live updates (quit shortcut, dock visibility, etc.)
+    api.publish('topic:core:prefs', { id, prefs }, api.scopes.SYSTEM);
   };
 
   // Preferences

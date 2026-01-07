@@ -40,7 +40,7 @@ const prefsSchema = {
       "default": true
     },
     "showInDockAndSwitcher": {
-      "description": "Whether to hide or show app in OS dock and app switcher",
+      "description": "Always show in dock/app switcher, even when no windows are open. When disabled, dock icon only appears while windows are visible.",
       "type": "boolean",
       "default": false
     },
@@ -117,7 +117,7 @@ const defaults = {
     width: 800,
     startupFeature: 'peek://app/settings/settings.html',
     showTrayIcon: true,
-    showInTrayAndSwitcher: false
+    showInDockAndSwitcher: false
   },
   items: [
     { id: 'cee1225d-40ac-41e5-a34c-e2edba69d599',

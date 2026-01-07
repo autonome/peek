@@ -565,6 +565,55 @@ db.prepare('INSERT INTO addresses VALUES (?, ?, ...)').run(id, ...values);
 // IPC handler updated, but api.datastore.addAddress() unchanged
 ```
 
+## URL Normalization
+
+URLs are normalized before storage to prevent duplicate entries for equivalent URLs.
+
+### Normalization Rules
+
+1. **Trailing slash on root paths**: URLs without a path get a trailing slash
+   - `https://example.com` → `https://example.com/`
+   - `http://localhost` → `http://localhost/`
+
+2. **Paths with content are unchanged**:
+   - `https://example.com/page` stays as-is
+   - `https://example.com/page/` stays as-is
+
+### Implementation
+
+Normalization is applied in two places:
+
+1. **Main process** (`index.js`): `normalizeUrl()` in `datastore-add-address` handler
+2. **Renderer** (`app/datastore/history.js`): `normalizeUrl()` in `trackNavigation()`
+
+```javascript
+const normalizeUrl = (uri) => {
+  try {
+    const url = new URL(uri);
+    if (!url.pathname || url.pathname === '') {
+      url.pathname = '/';
+    }
+    return url.toString();
+  } catch (error) {
+    return uri;
+  }
+};
+```
+
+### Migration
+
+Existing databases may have duplicate entries due to pre-normalization data. Run the migration script to merge duplicates:
+
+```bash
+node scripts/migrate-normalize-urls.mjs
+```
+
+The migration:
+- Finds addresses with the same normalized URL
+- Keeps the one with tags (if any), otherwise the normalized one, otherwise most visits
+- Merges visit counts and updates all visit references
+- Removes duplicates
+
 ## Benefits Realized
 
 1. **Clean Separation**: Storage logic completely isolated from UI code

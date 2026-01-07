@@ -34,6 +34,66 @@ Capabilities via injected API:
 - Hotkey registration
 - Pubsub messaging
 
+## Command API
+
+Extensions can register commands that appear in the cmd palette.
+
+### Registration
+
+```javascript
+// Register a command
+api.commands.register({
+  name: 'my command',           // Searchable name (required)
+  description: 'Description',   // Shown in palette (optional)
+  execute: async (ctx) => {     // Handler function (required)
+    // ctx contains: typed, name, params, search
+    console.log('Command executed:', ctx);
+  }
+});
+
+// Unregister when extension unloads
+api.commands.unregister('my command');
+```
+
+### Context Object
+
+The `execute` function receives a context object:
+
+```javascript
+{
+  typed: 'my command foo bar',  // Full typed string
+  name: 'my command',           // Matched command name
+  params: ['foo', 'bar'],       // Parameters after command
+  search: 'foo bar'             // Text after command (for search-style commands)
+}
+```
+
+### Implementation Details
+
+- Commands are registered via pubsub with GLOBAL scope (cross-window)
+- Execute handlers are stored locally (functions can't cross IPC)
+- The cmd background process maintains a registry of registered commands
+- The cmd panel queries the registry when opened
+- Execution requests are published back to the registering extension
+
+### Example: Groups Extension
+
+```javascript
+const init = () => {
+  api.commands.register({
+    name: 'groups',
+    description: 'Open the groups manager',
+    execute: async (ctx) => {
+      api.window.open('peek://ext/groups/home.html', { ... });
+    }
+  });
+};
+
+const uninit = () => {
+  api.commands.unregister('groups');
+};
+```
+
 Dev workflow:
 
 - User can open/close devtools for a given extension (via a cmd)

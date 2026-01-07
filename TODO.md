@@ -22,20 +22,14 @@ Requires chaining and "activities"
 ## v? - Extensibility
 
 Peek extensions
-- [ ] better name that "extension"
-- [ ] figure out background app vs other
-- [ ] maybe cmd stays in core?
-- [ ] is background runtime aware? eg mobile/extension/desktop
-- [ ] background app separation from "feature" apps, is runtime aware
-- [ ] annotate all data with source creator/editor (sys vs extension)
-- [ ] figure out in-extension settings vs jamming in global settings
-- [ ] syncable settings (extension decides)
-- [ ] App cmds (eg Editor -> cmd to edit note X)
+- [ ] see notes/extensibility.md
 
 Web extensions
 - [ ] WebExtension integration for priority only, on some platforms
 
 ## v? Portability
+
+does this need to be done before extensions?
 
 - [ ] Common background runtime
   - [ ] Datastore -> background

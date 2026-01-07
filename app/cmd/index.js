@@ -100,7 +100,7 @@ const openInputWindow = prefs => {
 const initShortcut = (prefs) => {
   api.shortcuts.register(prefs.shortcutKey, () => {
     openInputWindow(prefs);
-  });
+  }, { global: true });
 };
 
 const init = () => {

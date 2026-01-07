@@ -56,7 +56,7 @@ const initItems = (prefs, items) => {
 
       api.shortcuts.register(shortcut, () => {
         executeItem(item);
-      });
+      }, { global: true });
 
       registeredShortcuts.push(shortcut);
     }
@@ -70,7 +70,7 @@ const uninit = () => {
   console.log('peeks uninit - unregistering', registeredShortcuts.length, 'shortcuts');
 
   registeredShortcuts.forEach(shortcut => {
-    api.shortcuts.unregister(shortcut);
+    api.shortcuts.unregister(shortcut, { global: true });
   });
 
   registeredShortcuts = [];

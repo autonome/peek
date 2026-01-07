@@ -168,7 +168,7 @@ const initItems = (prefs, items) => {
 
       api.shortcuts.register(shortcut, () => {
         executeItem(item);
-      });
+      }, { global: true });
 
       registeredShortcuts.push(shortcut);
     }
@@ -183,7 +183,7 @@ const uninit = () => {
 
   // Unregister all shortcuts
   registeredShortcuts.forEach(shortcut => {
-    api.shortcuts.unregister(shortcut);
+    api.shortcuts.unregister(shortcut, { global: true });
   });
   registeredShortcuts = [];
 

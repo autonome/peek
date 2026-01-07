@@ -194,7 +194,7 @@ let registeredCommands = [];
 const initShortcut = shortcut => {
   api.shortcuts.register(shortcut, () => {
     openGroupsWindow();
-  });
+  }, { global: true });
   registeredShortcut = shortcut;
 };
 
@@ -225,7 +225,7 @@ const init = () => {
 const uninit = () => {
   console.log('[ext:groups] uninit');
   if (registeredShortcut) {
-    api.shortcuts.unregister(registeredShortcut);
+    api.shortcuts.unregister(registeredShortcut, { global: true });
     registeredShortcut = null;
   }
   uninitCommands();

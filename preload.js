@@ -35,16 +35,24 @@ api.debugLevels = DEBUG_LEVELS;
 api.debugLevel = DEBUG_LEVEL;
 
 api.shortcuts = {
-  register: (shortcut, cb) => {
-    console.log(src, 'registering ' + shortcut + ' for ' + window.location)
+  /**
+   * Register a keyboard shortcut
+   * @param {string} shortcut - The shortcut key combination (e.g., 'Alt+1', 'CommandOrControl+Q')
+   * @param {function} cb - Callback function when shortcut is triggered
+   * @param {object} options - Optional configuration
+   * @param {boolean} options.global - If true, shortcut works even when app doesn't have focus (default: false)
+   */
+  register: (shortcut, cb, options = {}) => {
+    const isGlobal = options.global === true;
+    console.log(src, `registering ${isGlobal ? 'global' : 'local'} shortcut ${shortcut} for ${window.location}`);
 
-    //const replyTopic = `${shortcut}:${window.location}`;
     const replyTopic = `${shortcut}${rndm()}`;
 
     ipcRenderer.send('registershortcut', {
       source: sourceAddress,
       shortcut,
-      replyTopic
+      replyTopic,
+      global: isGlobal
     });
 
     ipcRenderer.on(replyTopic, (ev, msg) => {
@@ -53,11 +61,19 @@ api.shortcuts = {
       console.log(src, 'shortcut execution reply done');
     });
   },
-  unregister: shortcut => {
-    console.log('unregistering', shortcut, 'for', window.location)
-    ipcRenderer.send('registershortcut', {
+  /**
+   * Unregister a keyboard shortcut
+   * @param {string} shortcut - The shortcut to unregister
+   * @param {object} options - Optional configuration (must match registration)
+   * @param {boolean} options.global - If true, unregisters a global shortcut (default: false)
+   */
+  unregister: (shortcut, options = {}) => {
+    const isGlobal = options.global === true;
+    console.log(`unregistering ${isGlobal ? 'global' : 'local'} shortcut`, shortcut, 'for', window.location);
+    ipcRenderer.send('unregistershortcut', {
       source: sourceAddress,
-      shortcut
+      shortcut,
+      global: isGlobal
     });
   }
 };

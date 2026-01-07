@@ -277,8 +277,12 @@ app.on('activate', () => {
 
 // ***** Caches *****
 
-// keyed on source address
+// keyed on shortcut string, value is source address (for global shortcuts)
 const shortcuts = new Map();
+
+// keyed on shortcut string, value is { source, callback, replyTopic }
+// Local shortcuts only work when app has focus
+const localShortcuts = new Map();
 
 // app global prefs configurable by user
 // populated during app init
@@ -290,13 +294,13 @@ let _quitShortcut = null;
 class WindowManager {
   constructor() {
     this.windows = new Map();
-    
+
     // Track window close events to clean up
     app.on('browser-window-created', (_, window) => {
       window.on('closed', () => {
         const windowId = window.id;
         const windowData = this.getWindow(windowId);
-        
+
         // Notify subscribers that window was closed
         if (windowData) {
           pubsub.publish(windowData.source, scopes.GLOBAL, 'window:closed', {
@@ -304,9 +308,16 @@ class WindowManager {
             source: windowData.source
           });
         }
-        
+
         // Remove from window manager
         this.removeWindow(windowId);
+      });
+
+      // Handle local shortcuts on all windows via before-input-event
+      window.webContents.on('before-input-event', (event, input) => {
+        if (handleLocalShortcut(input)) {
+          event.preventDefault();
+        }
       });
     });
   }
@@ -652,15 +663,15 @@ const onReady = async () => {
       initTray();
     }
 
-    // update quit shortcut if changed
+    // update quit shortcut if changed (local shortcut - only works when app has focus)
     const newQuitShortcut = msg.prefs.quitShortcut || strings.defaults.quitShortcut;
     if (newQuitShortcut !== _quitShortcut) {
       if (_quitShortcut) {
         console.log('unregistering old quit shortcut:', _quitShortcut);
-        globalShortcut.unregister(_quitShortcut);
+        unregisterLocalShortcut(_quitShortcut);
       }
       console.log('registering new quit shortcut:', newQuitShortcut);
-      registerShortcut(newQuitShortcut, onQuit);
+      registerLocalShortcut(newQuitShortcut, onQuit);
       _quitShortcut = newQuitShortcut;
     }
   });
@@ -804,9 +815,10 @@ const onReady = async () => {
     };
   });
 
-  // Register default quit shortcut - will be updated when prefs arrive
+  // Register default quit shortcut (local - only works when app has focus)
+  // Will be updated when prefs arrive
   _quitShortcut = strings.defaults.quitShortcut;
-  registerShortcut(_quitShortcut, onQuit);
+  registerLocalShortcut(_quitShortcut, onQuit);
 
   // Mark app as ready and process any URLs that arrived during startup
   _appReady = true;
@@ -862,23 +874,36 @@ ipcMain.on('renderer-log', (ev, msg) => {
 });
 
 ipcMain.on(strings.msgs.registerShortcut, (ev, msg) => {
-  console.log('ipc register shortcut', msg);
+  const isGlobal = msg.global === true;
+  console.log('ipc register shortcut', msg.shortcut, isGlobal ? '(global)' : '(local)');
 
-  // record source of shortcut
-  shortcuts.set(msg.shortcut, msg.source);
-
-  registerShortcut(msg.shortcut, () => {
-    console.log('on(registershortcut): shortcut executed', msg.shortcut, msg.replyTopic)
+  const callback = () => {
+    console.log('on(registershortcut): shortcut executed', msg.shortcut, msg.replyTopic);
     ev.reply(msg.replyTopic, { foo: 'bar' });
-  });
+  };
+
+  if (isGlobal) {
+    // Global shortcut (works even when app doesn't have focus)
+    shortcuts.set(msg.shortcut, msg.source);
+    registerShortcut(msg.shortcut, callback);
+  } else {
+    // Local shortcut (only works when app has focus)
+    const parsed = parseShortcut(msg.shortcut);
+    localShortcuts.set(msg.shortcut, { source: msg.source, parsed, callback });
+  }
 });
 
 ipcMain.on(strings.msgs.unregisterShortcut, (ev, msg) => {
-  console.log('ipc unregister shortcut', msg);
+  const isGlobal = msg.global === true;
+  console.log('ipc unregister shortcut', msg.shortcut, isGlobal ? '(global)' : '(local)');
 
-  unregisterShortcut(msg.shortcut, res => {
-    console.log('ipc unregister shortcut callback result:', res);
-  });
+  if (isGlobal) {
+    unregisterShortcut(msg.shortcut, res => {
+      console.log('ipc unregister global shortcut callback result:', res);
+    });
+  } else {
+    unregisterLocalShortcut(msg.shortcut);
+  }
 });
 
 ipcMain.on(strings.msgs.closeWindow, (ev, msg) => {
@@ -1892,10 +1917,140 @@ const unregisterShortcut = (shortcut, callback) => {
 const unregisterShortcutsForAddress = (aAddress) => {
   for (const [shortcut, address] of shortcuts) {
     if (address == aAddress) {
-      console.log('unregistering', shortcut, 'for', address);
+      console.log('unregistering global shortcut', shortcut, 'for', address);
       unregisterShortcut(shortcut);
     }
   }
+  // Also unregister local shortcuts for this address
+  for (const [shortcut, data] of localShortcuts) {
+    if (data.source === aAddress) {
+      console.log('unregistering local shortcut', shortcut, 'for', aAddress);
+      localShortcuts.delete(shortcut);
+    }
+  }
+};
+
+// Map key names to physical key codes (for before-input-event matching)
+// Electron's input.code follows the USB HID spec
+const keyToCode = {
+  // Letters
+  'a': 'KeyA', 'b': 'KeyB', 'c': 'KeyC', 'd': 'KeyD', 'e': 'KeyE',
+  'f': 'KeyF', 'g': 'KeyG', 'h': 'KeyH', 'i': 'KeyI', 'j': 'KeyJ',
+  'k': 'KeyK', 'l': 'KeyL', 'm': 'KeyM', 'n': 'KeyN', 'o': 'KeyO',
+  'p': 'KeyP', 'q': 'KeyQ', 'r': 'KeyR', 's': 'KeyS', 't': 'KeyT',
+  'u': 'KeyU', 'v': 'KeyV', 'w': 'KeyW', 'x': 'KeyX', 'y': 'KeyY',
+  'z': 'KeyZ',
+  // Numbers
+  '0': 'Digit0', '1': 'Digit1', '2': 'Digit2', '3': 'Digit3', '4': 'Digit4',
+  '5': 'Digit5', '6': 'Digit6', '7': 'Digit7', '8': 'Digit8', '9': 'Digit9',
+  // Punctuation
+  ',': 'Comma', '.': 'Period', '/': 'Slash', ';': 'Semicolon', "'": 'Quote',
+  '[': 'BracketLeft', ']': 'BracketRight', '\\': 'Backslash', '`': 'Backquote',
+  '-': 'Minus', '=': 'Equal',
+  // Special keys
+  'enter': 'Enter', 'return': 'Enter',
+  'tab': 'Tab',
+  'space': 'Space', ' ': 'Space',
+  'backspace': 'Backspace',
+  'delete': 'Delete',
+  'escape': 'Escape', 'esc': 'Escape',
+  'up': 'ArrowUp', 'down': 'ArrowDown', 'left': 'ArrowLeft', 'right': 'ArrowRight',
+  'arrowup': 'ArrowUp', 'arrowdown': 'ArrowDown', 'arrowleft': 'ArrowLeft', 'arrowright': 'ArrowRight',
+  'home': 'Home', 'end': 'End',
+  'pageup': 'PageUp', 'pagedown': 'PageDown',
+  // Function keys
+  'f1': 'F1', 'f2': 'F2', 'f3': 'F3', 'f4': 'F4', 'f5': 'F5', 'f6': 'F6',
+  'f7': 'F7', 'f8': 'F8', 'f9': 'F9', 'f10': 'F10', 'f11': 'F11', 'f12': 'F12',
+};
+
+// Parse shortcut string to match Electron's input event format
+// e.g., 'Alt+Q' -> { alt: true, code: 'KeyQ' }
+// e.g., 'CommandOrControl+Shift+P' -> { meta: true, shift: true, code: 'KeyP' } (on Mac)
+const parseShortcut = (shortcut) => {
+  const parts = shortcut.toLowerCase().split('+');
+  const result = {
+    ctrl: false,
+    alt: false,
+    shift: false,
+    meta: false,
+    code: ''
+  };
+
+  for (const part of parts) {
+    const p = part.trim();
+    if (p === 'ctrl' || p === 'control') {
+      result.ctrl = true;
+    } else if (p === 'alt' || p === 'option') {
+      result.alt = true;
+    } else if (p === 'shift') {
+      result.shift = true;
+    } else if (p === 'meta' || p === 'cmd' || p === 'command' || p === 'super') {
+      result.meta = true;
+    } else if (p === 'commandorcontrol' || p === 'cmdorctrl') {
+      // On Mac, use meta (Cmd), on others use ctrl
+      if (process.platform === 'darwin') {
+        result.meta = true;
+      } else {
+        result.ctrl = true;
+      }
+    } else {
+      // This is the key itself - convert to code
+      result.code = keyToCode[p] || p;
+    }
+  }
+
+  return result;
+};
+
+// Check if an input event matches a parsed shortcut
+const inputMatchesShortcut = (input, parsed) => {
+  // Check modifiers
+  if (input.alt !== parsed.alt) return false;
+  if (input.shift !== parsed.shift) return false;
+  if (input.meta !== parsed.meta) return false;
+  if (input.control !== parsed.ctrl) return false;
+
+  // Check physical key code (case-insensitive comparison)
+  return input.code.toLowerCase() === parsed.code.toLowerCase();
+};
+
+// Register a local (app-only) shortcut
+const registerLocalShortcut = (shortcut, callback) => {
+  console.log('registerLocalShortcut', shortcut);
+
+  if (localShortcuts.has(shortcut)) {
+    console.log('local shortcut already registered, replacing:', shortcut);
+  }
+
+  const parsed = parseShortcut(shortcut);
+  localShortcuts.set(shortcut, { parsed, callback });
+};
+
+// Unregister a local shortcut
+const unregisterLocalShortcut = (shortcut) => {
+  console.log('unregisterLocalShortcut', shortcut);
+
+  if (!localShortcuts.has(shortcut)) {
+    console.error('local shortcut not registered:', shortcut);
+    return;
+  }
+
+  localShortcuts.delete(shortcut);
+};
+
+// Handle local shortcuts from any focused window
+// Called from before-input-event handler
+const handleLocalShortcut = (input) => {
+  // Only handle keyDown events
+  if (input.type !== 'keyDown') return false;
+
+  for (const [shortcut, data] of localShortcuts) {
+    if (inputMatchesShortcut(input, data.parsed)) {
+      data.callback();
+      return true;
+    }
+  }
+  return false;
 };
 
 // Ask renderer to handle escape, returns Promise<{ handled: boolean }>

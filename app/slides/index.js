@@ -13,6 +13,9 @@ const store = openStore(id, defaults, clear /* clear storage */);
 // Map to track opened slides - key is slide key, value is window ID
 const slideWindows = new Map();
 
+// Track registered shortcuts for cleanup
+let registeredShortcuts = [];
+
 const executeItem = (item) => {
   const height = item.height || 600;
   const width = item.width || 800;
@@ -166,34 +169,58 @@ const initItems = (prefs, items) => {
       api.shortcuts.register(shortcut, () => {
         executeItem(item);
       });
+
+      registeredShortcuts.push(shortcut);
     }
   });
 };
 
 /**
- * Handle cleanup when the module is unloaded
+ * Unregister all shortcuts and clean up windows
  */
-const cleanup = () => {
-  console.log('Cleaning up slides module');
-  
+const uninit = () => {
+  console.log('slides uninit - unregistering', registeredShortcuts.length, 'shortcuts');
+
+  // Unregister all shortcuts
+  registeredShortcuts.forEach(shortcut => {
+    api.shortcuts.unregister(shortcut);
+  });
+  registeredShortcuts = [];
+
   // Close or hide all slide windows
   for (const [key, windowId] of slideWindows.entries()) {
     console.log('Closing slide window:', key);
     api.window.hide({ id: windowId }).catch(err => {
       console.error('Error hiding slide window:', err);
-      // Try to close it if hiding fails
       api.window.close({ id: windowId }).catch(err => {
         console.error('Error closing slide window:', err);
       });
     });
   }
-  
-  // Clear the map
   slideWindows.clear();
 };
 
+/**
+ * Reinitialize slides (called when settings change)
+ *
+ * TODO: This is inefficient - reinitializes all slides when any single
+ * property changes. A better approach would be to diff the old and new
+ * settings and only update the shortcuts that actually changed.
+ */
+const reinit = () => {
+  console.log('slides reinit');
+  uninit();
+
+  const prefs = store.get(storageKeys.PREFS);
+  const items = store.get(storageKeys.ITEMS);
+
+  if (items && items.length > 0) {
+    initItems(prefs, items);
+  }
+};
+
 const init = () => {
-  console.log('init');
+  console.log('slides init');
 
   const prefs = () => store.get(storageKeys.PREFS);
   const items = () => store.get(storageKeys.ITEMS);
@@ -209,20 +236,26 @@ const init = () => {
     }
   });
 
-  // initialize slides
+  // Initialize slides
   if (items().length > 0) {
     initItems(prefs(), items());
   }
-  
+
+  // Listen for settings changes to hot-reload
+  api.subscribe('slides:settings-changed', () => {
+    console.log('slides settings changed, reinitializing');
+    reinit();
+  });
+
   // Set up listener for app shutdown to clean up windows
-  api.subscribe('app:shutdown', cleanup);
+  api.subscribe('app:shutdown', uninit);
 };
 
 export default {
   defaults,
   id,
   init,
-  cleanup,
+  uninit,
   labels,
   schemas,
   storageKeys

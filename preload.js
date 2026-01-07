@@ -585,6 +585,81 @@ api.extensions = {
         resolve({ success: false, error: 'Timeout getting manifest' });
       }, 5000);
     });
+  },
+
+  // ===== Datastore-backed extension management (persisted) =====
+
+  /**
+   * Open folder picker dialog to select an extension folder
+   * @returns {Promise<{success: boolean, canceled?: boolean, data?: {path: string}, error?: string}>}
+   */
+  pickFolder: () => {
+    return ipcRenderer.invoke('extension-pick-folder');
+  },
+
+  /**
+   * Validate an extension folder (checks manifest.json)
+   * @param {string} folderPath - Path to extension folder
+   * @returns {Promise<{success: boolean, valid: boolean, errors?: string[], manifest?: object, error?: string}>}
+   */
+  validateFolder: (folderPath) => {
+    return ipcRenderer.invoke('extension-validate-folder', { folderPath });
+  },
+
+  /**
+   * Add extension to datastore (persisted)
+   * @param {string} folderPath - Path to extension folder
+   * @param {object} manifest - Parsed manifest (can be partial/invalid)
+   * @param {boolean} enabled - Whether to enable immediately
+   * @returns {Promise<{success: boolean, data?: {id: string}, error?: string}>}
+   */
+  add: (folderPath, manifest, enabled = false) => {
+    if (!api.extensions._hasPermission()) {
+      return Promise.resolve({ success: false, error: 'Permission denied' });
+    }
+    return ipcRenderer.invoke('extension-add', { folderPath, manifest, enabled });
+  },
+
+  /**
+   * Remove extension from datastore
+   * @param {string} id - Extension ID
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  remove: (id) => {
+    if (!api.extensions._hasPermission()) {
+      return Promise.resolve({ success: false, error: 'Permission denied' });
+    }
+    return ipcRenderer.invoke('extension-remove', { id });
+  },
+
+  /**
+   * Update extension in datastore (enable/disable, etc.)
+   * @param {string} id - Extension ID
+   * @param {object} updates - Fields to update
+   * @returns {Promise<{success: boolean, data?: object, error?: string}>}
+   */
+  update: (id, updates) => {
+    if (!api.extensions._hasPermission()) {
+      return Promise.resolve({ success: false, error: 'Permission denied' });
+    }
+    return ipcRenderer.invoke('extension-update', { id, updates });
+  },
+
+  /**
+   * Get all extensions from datastore (includes non-running)
+   * @returns {Promise<{success: boolean, data?: Array, error?: string}>}
+   */
+  getAll: () => {
+    return ipcRenderer.invoke('extension-get-all');
+  },
+
+  /**
+   * Get single extension from datastore
+   * @param {string} id - Extension ID
+   * @returns {Promise<{success: boolean, data?: object, error?: string}>}
+   */
+  get: (id) => {
+    return ipcRenderer.invoke('extension-get', { id });
   }
 };
 

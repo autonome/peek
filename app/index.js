@@ -223,7 +223,11 @@ const init = async () => {
   api.subscribe(topicFeatureToggle, async msg => {
     console.log('feature toggle', msg)
 
-    const f = features().find(f => f.id == msg.featureId);
+    // Find feature by ID (UUID) or by name (extension ID like "groups")
+    const f = features().find(f =>
+      f.id == msg.featureId ||
+      f.name.toLowerCase() === msg.featureId?.toLowerCase()
+    );
     if (f) {
       console.log('feature toggle', f);
 

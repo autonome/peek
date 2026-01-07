@@ -215,158 +215,419 @@ const renderCoreSettings = () => {
 const renderExtensionsSettings = async () => {
   const container = document.createElement('div');
 
-  // Loading state
-  const loading = document.createElement('div');
-  loading.className = 'help-text';
-  loading.textContent = 'Loading extensions...';
-  container.appendChild(loading);
+  // Add Extension button at top
+  const addSection = document.createElement('div');
+  addSection.className = 'form-section';
+  addSection.style.marginBottom = '24px';
 
-  try {
-    const result = await api.extensions.list();
+  const addBtn = document.createElement('button');
+  addBtn.textContent = '+ Add Extension';
+  addBtn.style.cssText = `
+    padding: 10px 16px;
+    font-size: 13px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
+    border-radius: 6px;
+    color: var(--text-primary);
+    cursor: pointer;
+    width: 100%;
+  `;
+  addBtn.addEventListener('mouseenter', () => {
+    addBtn.style.background = 'var(--bg-hover)';
+  });
+  addBtn.addEventListener('mouseleave', () => {
+    addBtn.style.background = 'var(--bg-tertiary)';
+  });
+  addBtn.addEventListener('click', async () => {
+    addBtn.textContent = 'Selecting folder...';
+    addBtn.disabled = true;
 
-    // Remove loading
-    loading.remove();
-
-    if (!result.success) {
-      const error = document.createElement('div');
-      error.className = 'help-text';
-      error.textContent = `Error: ${result.error}`;
-      container.appendChild(error);
-      return container;
-    }
-
-    const extensions = result.data || [];
-
-    if (extensions.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'help-text';
-      empty.textContent = 'No extensions loaded.';
-      container.appendChild(empty);
-      return container;
-    }
-
-    const extSection = document.createElement('div');
-    extSection.className = 'form-section';
-
-    const title = document.createElement('h3');
-    title.className = 'form-section-title';
-    title.textContent = 'Installed Extensions';
-    extSection.appendChild(title);
-
-    extensions.forEach(ext => {
-      const manifest = ext.manifest || {};
-
-      const card = document.createElement('div');
-      card.className = 'item-card';
-
-      const header = document.createElement('div');
-      header.className = 'item-card-header';
-
-      const cardTitle = document.createElement('div');
-      cardTitle.className = 'item-card-title';
-
-      const nameSpan = document.createElement('span');
-      nameSpan.textContent = manifest.name || ext.id;
-      cardTitle.appendChild(nameSpan);
-
-      if (manifest.version) {
-        const versionSpan = document.createElement('span');
-        versionSpan.className = 'extension-version';
-        versionSpan.textContent = `v${manifest.version}`;
-        versionSpan.style.cssText = 'margin-left: 8px; font-size: 11px; color: var(--text-tertiary);';
-        cardTitle.appendChild(versionSpan);
+    try {
+      // Open folder picker
+      const pickResult = await api.extensions.pickFolder();
+      if (!pickResult.success || pickResult.canceled) {
+        addBtn.textContent = '+ Add Extension';
+        addBtn.disabled = false;
+        return;
       }
 
-      if (manifest.builtin) {
-        const builtinBadge = document.createElement('span');
-        builtinBadge.className = 'extension-badge';
-        builtinBadge.textContent = 'built-in';
-        builtinBadge.style.cssText = 'margin-left: 8px; font-size: 10px; padding: 2px 6px; background: var(--bg-tertiary); border-radius: 4px; color: var(--text-tertiary);';
-        cardTitle.appendChild(builtinBadge);
+      const folderPath = pickResult.data.path;
+      addBtn.textContent = 'Validating...';
+
+      // Validate folder
+      const validateResult = await api.extensions.validateFolder(folderPath);
+
+      // Add even if invalid (disabled), so user can fix and retry
+      const manifest = validateResult.manifest || {};
+      const isValid = validateResult.valid === true;
+
+      addBtn.textContent = 'Adding...';
+
+      // Add to datastore (disabled if invalid)
+      const addResult = await api.extensions.add(folderPath, manifest, false);
+
+      if (addResult.success) {
+        addBtn.textContent = isValid ? 'Added!' : 'Added (disabled - has errors)';
+
+        // Refresh the list
+        setTimeout(() => {
+          addBtn.textContent = '+ Add Extension';
+          addBtn.disabled = false;
+          refreshExtensionsList();
+        }, 1500);
+      } else {
+        addBtn.textContent = `Error: ${addResult.error}`;
+        setTimeout(() => {
+          addBtn.textContent = '+ Add Extension';
+          addBtn.disabled = false;
+        }, 3000);
       }
+    } catch (err) {
+      console.error('Add extension error:', err);
+      addBtn.textContent = 'Error adding extension';
+      setTimeout(() => {
+        addBtn.textContent = '+ Add Extension';
+        addBtn.disabled = false;
+      }, 2000);
+    }
+  });
+  addSection.appendChild(addBtn);
+  container.appendChild(addSection);
 
-      header.appendChild(cardTitle);
+  // Extensions list container (for refresh)
+  const listContainer = document.createElement('div');
+  listContainer.id = 'extensions-list-container';
+  container.appendChild(listContainer);
 
-      // Actions (reload button)
-      const actions = document.createElement('div');
-      actions.className = 'extension-actions';
-      actions.style.cssText = 'display: flex; gap: 8px;';
+  // Function to refresh extensions list
+  const refreshExtensionsList = async () => {
+    listContainer.innerHTML = '';
 
-      const reloadBtn = document.createElement('button');
-      reloadBtn.textContent = 'Reload';
-      reloadBtn.style.cssText = `
-        padding: 4px 8px;
-        font-size: 11px;
-        background: var(--bg-tertiary);
-        border: 1px solid var(--border-primary);
-        border-radius: 4px;
-        color: var(--text-secondary);
-        cursor: pointer;
-      `;
-      reloadBtn.addEventListener('click', async () => {
-        reloadBtn.textContent = 'Reloading...';
-        reloadBtn.disabled = true;
-        try {
-          const reloadResult = await api.extensions.reload(ext.id);
-          if (reloadResult.success) {
-            reloadBtn.textContent = 'Reloaded!';
-            setTimeout(() => {
-              reloadBtn.textContent = 'Reload';
-              reloadBtn.disabled = false;
-            }, 1000);
-          } else {
-            reloadBtn.textContent = 'Error';
-            console.error('Reload failed:', reloadResult.error);
-            setTimeout(() => {
-              reloadBtn.textContent = 'Reload';
-              reloadBtn.disabled = false;
-            }, 2000);
-          }
-        } catch (err) {
-          console.error('Reload error:', err);
-          reloadBtn.textContent = 'Error';
-          setTimeout(() => {
-            reloadBtn.textContent = 'Reload';
-            reloadBtn.disabled = false;
-          }, 2000);
+    const loading = document.createElement('div');
+    loading.className = 'help-text';
+    loading.textContent = 'Loading extensions...';
+    listContainer.appendChild(loading);
+
+    try {
+      // Get features list to check enabled state for builtins
+      const store = openStore(appConfig.id, appConfig.defaults, false);
+      const features = store.get(appConfig.storageKeys.ITEMS) || [];
+
+      // Get both running extensions and datastore extensions
+      const [runningResult, datastoreResult] = await Promise.all([
+        api.extensions.list(),
+        api.extensions.getAll()
+      ]);
+
+      loading.remove();
+
+      const runningExts = runningResult.success ? runningResult.data || [] : [];
+      const datastoreExts = datastoreResult.success ? datastoreResult.data || [] : [];
+
+      // Merge: builtin running + datastore external
+      // Running extensions have manifest info, datastore has persisted info
+      const runningById = new Map(runningExts.map(e => [e.id, e]));
+
+      // Build combined list
+      const allExtensions = [];
+
+      // Get all builtin extension IDs from the loader
+      const builtinExtIds = ['groups', 'peeks', 'slides'];
+
+      // Add builtin extensions (whether running or not)
+      builtinExtIds.forEach(extId => {
+        const running = runningById.get(extId);
+        // Find matching feature to get enabled state
+        const feature = features.find(f => f.name.toLowerCase() === extId);
+        const isEnabled = feature ? feature.enabled : false;
+
+        if (running && running.manifest?.builtin) {
+          allExtensions.push({
+            ...running,
+            source: 'builtin',
+            isRunning: true,
+            enabled: isEnabled
+          });
+        } else {
+          // Extension not running - show it as disabled
+          allExtensions.push({
+            id: extId,
+            manifest: {
+              id: extId,
+              name: extId.charAt(0).toUpperCase() + extId.slice(1),
+              shortname: extId,
+              builtin: true
+            },
+            source: 'builtin',
+            isRunning: false,
+            enabled: isEnabled
+          });
         }
       });
-      actions.appendChild(reloadBtn);
 
-      header.appendChild(actions);
-      card.appendChild(header);
+      // Add datastore extensions (external)
+      datastoreExts.forEach(ext => {
+        const running = runningById.get(ext.id);
+        allExtensions.push({
+          id: ext.id,
+          manifest: {
+            id: ext.id,
+            name: ext.name,
+            shortname: JSON.parse(ext.metadata || '{}').shortname || ext.id,
+            description: ext.description,
+            version: ext.version,
+            builtin: ext.builtin === 1
+          },
+          path: ext.path,
+          source: 'datastore',
+          isRunning: !!running,
+          enabled: ext.enabled === 1,
+          status: ext.status,
+          lastError: ext.lastError
+        });
+      });
 
-      // Body with details
-      const body = document.createElement('div');
-      body.className = 'item-card-body';
-
-      if (manifest.description) {
-        const desc = document.createElement('div');
-        desc.className = 'help-text';
-        desc.style.marginBottom = '8px';
-        desc.textContent = manifest.description;
-        body.appendChild(desc);
+      if (allExtensions.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'help-text';
+        empty.textContent = 'No extensions installed. Click "Add Extension" to install one.';
+        listContainer.appendChild(empty);
+        return;
       }
 
-      // Show shortname/URL
-      const urlInfo = document.createElement('div');
-      urlInfo.className = 'help-text';
-      urlInfo.style.cssText = 'font-family: monospace; font-size: 11px;';
-      urlInfo.textContent = `peek://ext/${manifest.shortname || ext.id}/`;
-      body.appendChild(urlInfo);
+      const extSection = document.createElement('div');
+      extSection.className = 'form-section';
 
-      card.appendChild(body);
-      extSection.appendChild(card);
-    });
+      const title = document.createElement('h3');
+      title.className = 'form-section-title';
+      title.textContent = 'Installed Extensions';
+      extSection.appendChild(title);
 
-    container.appendChild(extSection);
-  } catch (err) {
-    loading.remove();
-    const error = document.createElement('div');
-    error.className = 'help-text';
-    error.textContent = `Error loading extensions: ${err.message}`;
-    container.appendChild(error);
-  }
+      allExtensions.forEach(ext => {
+        const manifest = ext.manifest || {};
+        const isBuiltin = manifest.builtin || ext.source === 'builtin';
+
+        const card = document.createElement('div');
+        card.className = 'item-card';
+
+        const header = document.createElement('div');
+        header.className = 'item-card-header';
+
+        // Left side: checkbox + name
+        const leftSide = document.createElement('div');
+        leftSide.style.cssText = 'display: flex; align-items: center; gap: 12px;';
+
+        // Enable/disable checkbox
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = ext.enabled;
+        checkbox.style.cssText = 'width: 16px; height: 16px; cursor: pointer;';
+        checkbox.addEventListener('change', async (e) => {
+          const newEnabled = e.target.checked;
+          checkbox.disabled = true;
+
+          if (isBuiltin) {
+            // Update features storage for persistence
+            const store = openStore(appConfig.id, appConfig.defaults, false);
+            const featuresList = store.get(appConfig.storageKeys.ITEMS) || [];
+            const featureIndex = featuresList.findIndex(f => f.name.toLowerCase() === ext.id);
+            if (featureIndex >= 0) {
+              featuresList[featureIndex].enabled = newEnabled;
+              store.set(appConfig.storageKeys.ITEMS, featuresList);
+            }
+
+            // Use the feature toggle mechanism to load/unload
+            // This triggers the core:feature:toggle handler in app/index.js
+            api.publish('core:feature:toggle', {
+              featureId: ext.id,
+              enabled: newEnabled
+            });
+          } else if (ext.source === 'datastore') {
+            // Update in datastore
+            await api.extensions.update(ext.id, {
+              enabled: newEnabled ? 1 : 0,
+              status: newEnabled ? 'installed' : 'disabled'
+            });
+
+            // Load or unload the extension
+            if (newEnabled) {
+              await api.extensions.load(ext.id);
+            } else {
+              await api.extensions.unload(ext.id);
+            }
+          }
+
+          checkbox.disabled = false;
+          // Small delay to let the extension load/unload
+          setTimeout(refreshExtensionsList, 500);
+        });
+        leftSide.appendChild(checkbox);
+
+        const cardTitle = document.createElement('div');
+        cardTitle.className = 'item-card-title';
+        cardTitle.style.margin = '0';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = manifest.name || ext.id;
+        cardTitle.appendChild(nameSpan);
+
+        if (manifest.version) {
+          const versionSpan = document.createElement('span');
+          versionSpan.style.cssText = 'margin-left: 8px; font-size: 11px; color: var(--text-tertiary);';
+          versionSpan.textContent = `v${manifest.version}`;
+          cardTitle.appendChild(versionSpan);
+        }
+
+        if (isBuiltin) {
+          const badge = document.createElement('span');
+          badge.style.cssText = 'margin-left: 8px; font-size: 10px; padding: 2px 6px; background: var(--bg-tertiary); border-radius: 4px; color: var(--text-tertiary);';
+          badge.textContent = 'built-in';
+          cardTitle.appendChild(badge);
+        }
+
+        // Status indicator: running or stopped
+        const statusBadge = document.createElement('span');
+        if (ext.isRunning) {
+          statusBadge.style.cssText = 'margin-left: 8px; font-size: 10px; padding: 2px 6px; background: #22c55e; border-radius: 4px; color: white;';
+          statusBadge.textContent = 'running';
+        } else {
+          statusBadge.style.cssText = 'margin-left: 8px; font-size: 10px; padding: 2px 6px; background: #6b7280; border-radius: 4px; color: white;';
+          statusBadge.textContent = 'stopped';
+        }
+        cardTitle.appendChild(statusBadge);
+
+        leftSide.appendChild(cardTitle);
+        header.appendChild(leftSide);
+
+        // Right side: actions
+        const actions = document.createElement('div');
+        actions.style.cssText = 'display: flex; gap: 8px; align-items: center;';
+
+        // Reload button (only when running)
+        if (ext.isRunning) {
+          const reloadBtn = document.createElement('button');
+          reloadBtn.textContent = 'Reload';
+          reloadBtn.style.cssText = `
+            padding: 4px 8px;
+            font-size: 11px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-primary);
+            border-radius: 4px;
+            color: var(--text-secondary);
+            cursor: pointer;
+          `;
+          reloadBtn.addEventListener('click', async () => {
+            reloadBtn.textContent = '...';
+            reloadBtn.disabled = true;
+            try {
+              const result = await api.extensions.reload(ext.id);
+              reloadBtn.textContent = result.success ? '✓' : '✗';
+            } catch (err) {
+              reloadBtn.textContent = '✗';
+            }
+            setTimeout(() => {
+              reloadBtn.textContent = 'Reload';
+              reloadBtn.disabled = false;
+              refreshExtensionsList();
+            }, 1000);
+          });
+          actions.appendChild(reloadBtn);
+        }
+
+        // Remove button (only for external extensions)
+        if (!isBuiltin) {
+          const removeBtn = document.createElement('button');
+          removeBtn.textContent = 'Remove';
+          removeBtn.style.cssText = `
+            padding: 4px 8px;
+            font-size: 11px;
+            background: var(--bg-tertiary);
+            border: 1px solid #ef4444;
+            border-radius: 4px;
+            color: #ef4444;
+            cursor: pointer;
+          `;
+          removeBtn.addEventListener('click', async () => {
+            if (!confirm(`Remove extension "${manifest.name || ext.id}"?`)) return;
+
+            removeBtn.textContent = '...';
+            removeBtn.disabled = true;
+
+            // Unload if running
+            if (ext.isRunning) {
+              await api.extensions.unload(ext.id);
+            }
+
+            // Remove from datastore
+            const result = await api.extensions.remove(ext.id);
+            if (result.success) {
+              refreshExtensionsList();
+            } else {
+              removeBtn.textContent = 'Error';
+              setTimeout(() => {
+                removeBtn.textContent = 'Remove';
+                removeBtn.disabled = false;
+              }, 2000);
+            }
+          });
+          actions.appendChild(removeBtn);
+        }
+
+        header.appendChild(actions);
+        card.appendChild(header);
+
+        // Body
+        const body = document.createElement('div');
+        body.className = 'item-card-body';
+
+        if (manifest.description) {
+          const desc = document.createElement('div');
+          desc.className = 'help-text';
+          desc.style.marginBottom = '8px';
+          desc.textContent = manifest.description;
+          body.appendChild(desc);
+        }
+
+        // Show path for external extensions
+        if (ext.path && !isBuiltin) {
+          const pathInfo = document.createElement('div');
+          pathInfo.className = 'help-text';
+          pathInfo.style.cssText = 'font-family: monospace; font-size: 11px; margin-bottom: 4px;';
+          pathInfo.textContent = ext.path;
+          body.appendChild(pathInfo);
+        }
+
+        // Show URL
+        const urlInfo = document.createElement('div');
+        urlInfo.className = 'help-text';
+        urlInfo.style.cssText = 'font-family: monospace; font-size: 11px;';
+        urlInfo.textContent = `peek://ext/${manifest.shortname || ext.id}/`;
+        body.appendChild(urlInfo);
+
+        // Show error if any
+        if (ext.lastError) {
+          const errorInfo = document.createElement('div');
+          errorInfo.style.cssText = 'margin-top: 8px; padding: 8px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; font-size: 12px; color: #dc2626;';
+          errorInfo.textContent = `Error: ${ext.lastError}`;
+          body.appendChild(errorInfo);
+        }
+
+        card.appendChild(body);
+        extSection.appendChild(card);
+      });
+
+      listContainer.appendChild(extSection);
+    } catch (err) {
+      loading.remove();
+      const error = document.createElement('div');
+      error.className = 'help-text';
+      error.textContent = `Error loading extensions: ${err.message}`;
+      listContainer.appendChild(error);
+    }
+  };
+
+  // Initial load
+  await refreshExtensionsList();
 
   return container;
 };

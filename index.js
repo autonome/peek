@@ -3,6 +3,7 @@
 import {
   app,
   BrowserWindow,
+  dialog,
   globalShortcut,
   ipcMain,
   Menu,
@@ -20,6 +21,15 @@ import { createStore, createIndexes, createRelationships, createMetrics } from '
 import { createSqlite3Persister } from 'tinybase/persisters/persister-sqlite3';
 import sqlite3 from 'sqlite3';
 import { schema, indexes, relationships, metrics } from './app/datastore/schema.js';
+import unhandled from 'electron-unhandled';
+
+// Catch unhandled errors and promise rejections without showing alert dialogs
+unhandled({
+  showDialog: false,
+  logger: (error) => {
+    console.error('Unhandled error:', error);
+  }
+});
 
 const __dirname = import.meta.dirname;
 
@@ -471,8 +481,34 @@ const registerExtensionPath = (id, fsPath) => {
 };
 
 // Get extension filesystem path by ID
+// First checks built-in extensions, then datastore for external extensions
 const getExtensionPath = (id) => {
-  return extensionPaths.get(id);
+  // Check built-in extensions first
+  const builtinPath = extensionPaths.get(id);
+  if (builtinPath) return builtinPath;
+
+  // Check datastore for external extensions
+  if (datastoreStore) {
+    const ext = datastoreStore.getRow('extensions', id);
+    if (ext && ext.path) {
+      return ext.path;
+    }
+
+    // Also check by shortname (stored in metadata)
+    const allExts = datastoreStore.getTable('extensions');
+    for (const [extId, extData] of Object.entries(allExts)) {
+      try {
+        const metadata = JSON.parse(extData.metadata || '{}');
+        if (metadata.shortname === id && extData.path) {
+          return extData.path;
+        }
+      } catch (e) {
+        // Ignore JSON parse errors
+      }
+    }
+  }
+
+  return null;
 };
 
 // TODO: unhack all this trash fire
@@ -1860,6 +1896,206 @@ ipcMain.handle('datastore-get-untagged-addresses', async (ev, data) => {
     return { success: false, error: error.message };
   }
 });
+
+// ==================== Extension Management ====================
+
+// Open folder picker dialog for adding an extension
+ipcMain.handle('extension-pick-folder', async (ev) => {
+  try {
+    const result = await dialog.showOpenDialog({
+      properties: ['openDirectory'],
+      title: 'Select Extension Folder',
+      message: 'Select a folder containing a Peek extension (must have manifest.json)'
+    });
+
+    if (result.canceled || !result.filePaths.length) {
+      return { success: false, canceled: true };
+    }
+
+    const folderPath = result.filePaths[0];
+    return { success: true, data: { path: folderPath } };
+  } catch (error) {
+    console.error('extension-pick-folder error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Validate an extension folder (check for manifest.json and parse it)
+ipcMain.handle('extension-validate-folder', async (ev, data) => {
+  const { folderPath } = data;
+
+  try {
+    const manifestPath = path.join(folderPath, 'manifest.json');
+
+    // Check if manifest exists
+    if (!fs.existsSync(manifestPath)) {
+      return {
+        success: false,
+        valid: false,
+        error: 'No manifest.json found in folder'
+      };
+    }
+
+    // Read and parse manifest
+    const manifestContent = fs.readFileSync(manifestPath, 'utf-8');
+    let manifest;
+    try {
+      manifest = JSON.parse(manifestContent);
+    } catch (parseError) {
+      return {
+        success: true,
+        valid: false,
+        error: `Invalid JSON in manifest.json: ${parseError.message}`,
+        manifest: null
+      };
+    }
+
+    // Validate required fields
+    const errors = [];
+    if (!manifest.id) errors.push('Missing required field: id');
+    if (!manifest.shortname) errors.push('Missing required field: shortname');
+    if (!manifest.name) errors.push('Missing required field: name');
+
+    // Check shortname format
+    if (manifest.shortname && !/^[a-z0-9-]+$/.test(manifest.shortname)) {
+      errors.push('Invalid shortname format: must be lowercase alphanumeric with hyphens');
+    }
+
+    // Check for background script
+    const backgroundScript = manifest.background || 'background.js';
+    const backgroundPath = path.join(folderPath, backgroundScript);
+    if (!fs.existsSync(backgroundPath)) {
+      errors.push(`Background script not found: ${backgroundScript}`);
+    }
+
+    return {
+      success: true,
+      valid: errors.length === 0,
+      errors: errors.length > 0 ? errors : null,
+      manifest
+    };
+  } catch (error) {
+    console.error('extension-validate-folder error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Add extension to datastore
+ipcMain.handle('extension-add', async (ev, data) => {
+  const { folderPath, manifest, enabled = false } = data;
+
+  try {
+    const now = Date.now();
+    const id = manifest?.id || `ext-${now}`;
+
+    // Check if extension with this ID already exists
+    const existing = datastoreStore.getRow('extensions', id);
+    if (existing && Object.keys(existing).length > 0) {
+      return { success: false, error: `Extension with ID '${id}' already exists` };
+    }
+
+    // Add to extensions table
+    datastoreStore.setRow('extensions', id, {
+      name: manifest?.name || path.basename(folderPath),
+      description: manifest?.description || '',
+      version: manifest?.version || '0.0.0',
+      path: folderPath,
+      backgroundUrl: `peek://ext/${manifest?.shortname || id}/background.js`,
+      settingsUrl: manifest?.settings_url || '',
+      iconPath: manifest?.icon || '',
+      builtin: 0,
+      enabled: enabled ? 1 : 0,
+      status: enabled ? 'installed' : 'disabled',
+      installedAt: now,
+      updatedAt: now,
+      lastErrorAt: 0,
+      lastError: '',
+      metadata: JSON.stringify({ shortname: manifest?.shortname || id })
+    });
+
+    console.log(`Extension added: ${id} at ${folderPath}`);
+    return { success: true, data: { id } };
+  } catch (error) {
+    console.error('extension-add error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Remove extension from datastore
+ipcMain.handle('extension-remove', async (ev, data) => {
+  const { id } = data;
+
+  try {
+    const existing = datastoreStore.getRow('extensions', id);
+    if (!existing || Object.keys(existing).length === 0) {
+      return { success: false, error: `Extension '${id}' not found` };
+    }
+
+    // Don't allow removing builtin extensions
+    if (existing.builtin === 1) {
+      return { success: false, error: 'Cannot remove built-in extensions' };
+    }
+
+    datastoreStore.delRow('extensions', id);
+    console.log(`Extension removed: ${id}`);
+    return { success: true };
+  } catch (error) {
+    console.error('extension-remove error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Update extension (enable/disable, update error status, etc.)
+ipcMain.handle('extension-update', async (ev, data) => {
+  const { id, updates } = data;
+
+  try {
+    const existing = datastoreStore.getRow('extensions', id);
+    if (!existing || Object.keys(existing).length === 0) {
+      return { success: false, error: `Extension '${id}' not found` };
+    }
+
+    // Apply updates
+    const updatedRow = { ...existing, ...updates, updatedAt: Date.now() };
+    datastoreStore.setRow('extensions', id, updatedRow);
+
+    console.log(`Extension updated: ${id}`, updates);
+    return { success: true, data: updatedRow };
+  } catch (error) {
+    console.error('extension-update error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get all extensions from datastore
+ipcMain.handle('extension-get-all', async (ev) => {
+  try {
+    const table = datastoreStore.getTable('extensions');
+    const extensions = Object.entries(table).map(([id, row]) => ({ id, ...row }));
+    return { success: true, data: extensions };
+  } catch (error) {
+    console.error('extension-get-all error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get single extension from datastore
+ipcMain.handle('extension-get', async (ev, data) => {
+  const { id } = data;
+
+  try {
+    const row = datastoreStore.getRow('extensions', id);
+    if (!row || Object.keys(row).length === 0) {
+      return { success: false, error: `Extension '${id}' not found` };
+    }
+    return { success: true, data: { id, ...row } };
+  } catch (error) {
+    console.error('extension-get error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// ==================== End Extension Management ====================
 
 const modWindow = (bw, params) => {
   if (params.action == 'close') {

@@ -33,6 +33,7 @@
     "help": "electron --help"
   },
   "dependencies": {
+    "electron-unhandled": "^5.0.0",
     "lil-gui": "^0.19.2",
     "sqlite3": "^5.1.7",
     "tinybase": "^6.7.2"

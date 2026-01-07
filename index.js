@@ -223,6 +223,21 @@ const parseUrl = (uri) => {
   }
 };
 
+// Normalize URL by ensuring root paths have trailing slash
+// e.g., https://example.com -> https://example.com/
+const normalizeUrl = (uri) => {
+  try {
+    const url = new URL(uri);
+    // If pathname is empty, set it to /
+    if (!url.pathname || url.pathname === '') {
+      url.pathname = '/';
+    }
+    return url.toString();
+  } catch (error) {
+    return uri;
+  }
+};
+
 // ***** Features / Strings *****
 
 const labels = {
@@ -1264,12 +1279,13 @@ ipcMain.handle('window-list', async (ev, msg) => {
 ipcMain.handle('datastore-add-address', async (ev, data) => {
   try {
     const { uri, options = {} } = data;
-    const parsed = parseUrl(uri);
+    const normalizedUri = normalizeUrl(uri);
+    const parsed = parseUrl(normalizedUri);
     const addressId = generateId('addr');
     const timestamp = now();
 
     const row = {
-      uri,
+      uri: normalizedUri,
       protocol: options.protocol || parsed.protocol,
       domain: options.domain || parsed.domain,
       path: options.path || parsed.path,

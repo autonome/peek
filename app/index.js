@@ -3,8 +3,7 @@ import { openStore } from "./utils.js";
 import windowManager from "./windows.js";
 import api from './api.js';
 import fc from './features.js';
-// Use absolute peek:// URL since relative paths stay within the app host
-import extensionLoader from 'peek://extensions/loader.js';
+import extensionLoader from './extensions/loader.js';
 
 const { id, labels, schemas, storageKeys, defaults } = appConfig;
 

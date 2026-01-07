@@ -1,6 +1,20 @@
 // Navigation history tracking helper
 import api from '../api.js';
 
+// Normalize URL by ensuring root paths have trailing slash
+// Matches normalization in main process
+const normalizeUrl = (uri) => {
+  try {
+    const url = new URL(uri);
+    if (!url.pathname || url.pathname === '') {
+      url.pathname = '/';
+    }
+    return url.toString();
+  } catch (error) {
+    return uri;
+  }
+};
+
 /**
  * Track a navigation event
  * @param {string} uri - The URL navigated to
@@ -13,6 +27,9 @@ import api from '../api.js';
  */
 export const trackNavigation = async (uri, options = {}) => {
   try {
+    // Normalize URI for consistent lookups
+    const normalizedUri = normalizeUrl(uri);
+
     // Get or create address
     let addressId;
     const addressesResult = await api.datastore.queryAddresses({});
@@ -22,13 +39,13 @@ export const trackNavigation = async (uri, options = {}) => {
     }
 
     const addresses = addressesResult.data;
-    const existing = addresses.find(addr => addr.uri === uri);
+    const existing = addresses.find(addr => addr.uri === normalizedUri);
 
     if (existing) {
       addressId = existing.id;
     } else {
-      // Create new address
-      const addResult = await api.datastore.addAddress(uri, {
+      // Create new address (using normalized URI)
+      const addResult = await api.datastore.addAddress(normalizedUri, {
         title: options.title || '',
         mimeType: options.mimeType || 'text/html'
       });
@@ -39,7 +56,7 @@ export const trackNavigation = async (uri, options = {}) => {
       }
 
       addressId = addResult.id;
-      console.log('Created new address:', addressId, uri);
+      console.log('Created new address:', addressId, normalizedUri);
     }
 
     // Add visit
@@ -61,7 +78,7 @@ export const trackNavigation = async (uri, options = {}) => {
     console.log('Tracked navigation:', {
       visitId: visitResult.id,
       addressId,
-      uri,
+      uri: normalizedUri,
       source: options.source
     });
 

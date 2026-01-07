@@ -219,9 +219,14 @@ const renderFeatureSettings = (feature) => {
 
   const container = document.createElement('div');
 
+  // Topic for notifying feature of settings changes (e.g., 'peeks:settings-changed')
+  const settingsChangedTopic = `${labels.name.toLowerCase()}:settings-changed`;
+
   const save = () => {
     store.set(storageKeys.PREFS, prefs);
     store.set(storageKeys.ITEMS, items);
+    // Notify feature to hot-reload with new settings
+    api.publish(settingsChangedTopic, {}, api.scopes.GLOBAL);
   };
 
   // Preferences

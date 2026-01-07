@@ -24,6 +24,7 @@ Peek extensions
 - [ ] maybe cmd stays in core?
 - [ ] is background runtime aware? eg mobile/extension/desktop
 - [ ] background app separation from "feature" apps, is runtime aware
+- [ ] annotate all data with source creator/editor (sys vs extension)
 
 Web extensions
 - [ ] WebExtension integration for priority only, on some platforms
@@ -58,9 +59,11 @@ Groups
 - [x] Untagged -> default group
 - [x] Cmd to open groups home
 
-- [ ] Use escapeMode to open pages "in an active group" (maybe depends on page metadata api?)
-- [ ] Escape for navigating back up the group views, not closing window
-- [ ] Be able to open new empty page (in a group or not)
+- [x] Escape for navigating back up the group views, not closing window
+- [ ] Visually communicate group-active
+- [ ] Determine which new-page routes qualify for staying in group vs not
+- [ ] When group-active, qualifying new pages are automatically tagged as in the group
+- [ ] Determine how/when to exit group for new pages opened (eg from external app)
 
 Cmd
 - [x] adaptive matching

@@ -29,7 +29,8 @@ let state = {
   tags: [],
   currentTag: null,
   addresses: [],
-  untaggedCount: 0
+  untaggedCount: 0,
+  selectedIndex: 0
 };
 
 // Handle ESC - cooperative escape handling with window manager
@@ -45,6 +46,103 @@ api.escape.onEscape(() => {
   return { handled: false };
 });
 
+/**
+ * Get all cards in the current view
+ */
+const getCards = () => {
+  return Array.from(document.querySelectorAll('.cards .card'));
+};
+
+/**
+ * Update visual selection on cards
+ */
+const updateSelection = () => {
+  const cards = getCards();
+  cards.forEach((card, i) => {
+    card.classList.toggle('selected', i === state.selectedIndex);
+  });
+
+  // Scroll selected card into view
+  const selected = cards[state.selectedIndex];
+  if (selected) {
+    selected.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+};
+
+/**
+ * Activate the currently selected card
+ */
+const activateSelected = () => {
+  const cards = getCards();
+  const selected = cards[state.selectedIndex];
+  if (selected) {
+    selected.click();
+  }
+};
+
+/**
+ * Get number of columns in the grid based on card positions
+ */
+const getGridColumns = (cards) => {
+  if (cards.length < 2) return 1;
+  const firstTop = cards[0].getBoundingClientRect().top;
+  for (let i = 1; i < cards.length; i++) {
+    if (cards[i].getBoundingClientRect().top !== firstTop) {
+      return i;
+    }
+  }
+  return cards.length; // All on one row
+};
+
+/**
+ * Handle keyboard navigation (vim-style hjkl for grid movement)
+ */
+const handleKeydown = (e) => {
+  const cards = getCards();
+  if (cards.length === 0) return;
+
+  const cols = getGridColumns(cards);
+
+  switch (e.key) {
+    case 'j':
+    case 'ArrowDown':
+      e.preventDefault();
+      if (state.selectedIndex + cols < cards.length) {
+        state.selectedIndex += cols;
+        updateSelection();
+      }
+      break;
+    case 'k':
+    case 'ArrowUp':
+      e.preventDefault();
+      if (state.selectedIndex - cols >= 0) {
+        state.selectedIndex -= cols;
+        updateSelection();
+      }
+      break;
+    case 'h':
+    case 'ArrowLeft':
+      e.preventDefault();
+      if (state.selectedIndex > 0) {
+        state.selectedIndex--;
+        updateSelection();
+      }
+      break;
+    case 'l':
+    case 'ArrowRight':
+      e.preventDefault();
+      if (state.selectedIndex < cards.length - 1) {
+        state.selectedIndex++;
+        updateSelection();
+      }
+      break;
+    case 'Enter':
+      e.preventDefault();
+      activateSelected();
+      break;
+  }
+};
+
 const init = async () => {
   debug && console.log('Groups init');
 
@@ -54,6 +152,9 @@ const init = async () => {
   // Set up event listeners
   document.querySelector('.new-group-btn').addEventListener('click', createNewGroup);
   document.querySelector('.back-btn').addEventListener('click', showGroups);
+
+  // Keyboard navigation
+  document.addEventListener('keydown', handleKeydown);
 
   // Show groups view
   showGroups();
@@ -147,6 +248,10 @@ const showGroups = async () => {
     const card = createGroupCard(tag);
     container.appendChild(card);
   });
+
+  // Reset selection
+  state.selectedIndex = 0;
+  updateSelection();
 };
 
 /**
@@ -186,6 +291,10 @@ const showAddresses = async (tag) => {
     const card = createAddressCard(address);
     container.appendChild(card);
   });
+
+  // Reset selection
+  state.selectedIndex = 0;
+  updateSelection();
 };
 
 /**

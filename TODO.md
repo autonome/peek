@@ -1,6 +1,6 @@
 # Roadmap
 
-## v0.4 - Minimum viable web workbench
+## v? - Minimum viable web workbench
 
 - [ ] Design philosophy write-up w/ driving principles and characteristics
 - [ ] Multi-protocol architecture
@@ -16,6 +16,8 @@ Requires chaining and "activities"
 
 - [ ] Notes in datastore
 - [ ] Editor app (in/out datastore)
+- [ ] Vim mode
+- [ ] List editor
 
 ## v? - Extensibility
 
@@ -28,11 +30,10 @@ Peek extensions
 - [ ] annotate all data with source creator/editor (sys vs extension)
 - [ ] figure out in-extension settings vs jamming in global settings
 - [ ] syncable settings (extension decides)
+- [ ] App cmds (eg Editor -> cmd to edit note X)
 
 Web extensions
 - [ ] WebExtension integration for priority only, on some platforms
-
-- [ ] App cmds (eg Editor -> cmd to edit note X)
 
 ## v? Portability
 

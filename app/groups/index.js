@@ -19,7 +19,8 @@ const openGroupsWindow = () => {
   const params = {
     key: address,
     height,
-    width
+    width,
+    escapeMode: 'navigate'  // Allow internal navigation before closing
   };
 
   // Use the window creation API

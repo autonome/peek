@@ -153,6 +153,25 @@ export const schema = {
     updatedAt: { type: 'number' },
     lastFetchedAt: { type: 'number', default: 0 },
     enabled: { type: 'number', default: 1 }
+  },
+
+  // Extensions registry
+  extensions: {
+    name: { type: 'string' },
+    description: { type: 'string', default: '' },
+    version: { type: 'string', default: '1.0.0' },
+    path: { type: 'string' },                        // Filesystem path to extension folder
+    backgroundUrl: { type: 'string', default: '' },  // peek://ext/{id}/background.js
+    settingsUrl: { type: 'string', default: '' },    // peek://ext/{id}/settings.html
+    iconPath: { type: 'string', default: '' },
+    builtin: { type: 'number', default: 0 },         // 1 if built-in extension
+    enabled: { type: 'number', default: 1 },
+    status: { type: 'string', default: 'installed' }, // installed, running, suspended, error
+    installedAt: { type: 'number' },
+    updatedAt: { type: 'number' },
+    lastErrorAt: { type: 'number', default: 0 },
+    lastError: { type: 'string', default: '' },
+    metadata: { type: 'string', default: '{}' }
   }
 };
 
@@ -256,6 +275,20 @@ export const indexes = {
   feeds_byEnabled: {
     table: 'feeds',
     on: 'enabled'
+  },
+
+  // Extension indexes
+  extensions_byEnabled: {
+    table: 'extensions',
+    on: 'enabled'
+  },
+  extensions_byStatus: {
+    table: 'extensions',
+    on: 'status'
+  },
+  extensions_byBuiltin: {
+    table: 'extensions',
+    on: 'builtin'
   }
 };
 

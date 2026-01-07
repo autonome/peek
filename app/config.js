@@ -130,9 +130,10 @@ const defaults = {
     { id: '82de735f-a4b7-4fe6-a458-ec29939ae00d',
       name: 'Groups',
       description: 'View your web in groups',
-      start_url: 'peek://app/groups/background.html',
+      start_url: 'peek://ext/groups/background.js',  // Extension
       enabled: false,
-      settings_url: 'peek://app/groups/settings.html',
+      settings_url: 'peek://ext/groups/settings.html',
+      extension: true,  // Mark as extension-based feature
     },
     { id: 'ef3bd271-d408-421f-9338-47b615571e43',
       name: 'Peeks',

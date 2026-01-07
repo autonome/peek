@@ -435,6 +435,20 @@ protocol.registerSchemesAsPrivileged([{
   }
 }]);
 
+// Extension path cache: extensionId -> filesystem path
+const extensionPaths = new Map();
+
+// Register a built-in extension path
+const registerExtensionPath = (id, fsPath) => {
+  extensionPaths.set(id, fsPath);
+  DEBUG && console.log('Registered extension path:', id, fsPath);
+};
+
+// Get extension filesystem path by ID
+const getExtensionPath = (id) => {
+  return extensionPaths.get(id);
+};
+
 // TODO: unhack all this trash fire
 const initAppProtocol = () => {
   protocol.handle(APP_SCHEME, req => {
@@ -445,6 +459,47 @@ const initAppProtocol = () => {
 
     // trim trailing slash
     pathname = pathname.replace(/^\//, '');
+
+    // Handle extension content: peek://ext/{ext-id}/{path}
+    if (host === 'ext') {
+      const parts = pathname.split('/');
+      const extId = parts[0];
+      const extPath = parts.slice(1).join('/') || 'index.html';
+
+      const extBasePath = getExtensionPath(extId);
+      if (!extBasePath) {
+        DEBUG && console.log('Extension not found:', extId);
+        return new Response('Extension not found', { status: 404 });
+      }
+
+      const absolutePath = path.resolve(extBasePath, extPath);
+
+      // Security: ensure path stays within extension folder
+      const normalizedBase = path.normalize(extBasePath);
+      if (!absolutePath.startsWith(normalizedBase)) {
+        console.error('Path traversal attempt blocked:', absolutePath);
+        return new Response('Forbidden', { status: 403 });
+      }
+
+      const fileURL = pathToFileURL(absolutePath).toString();
+      return net.fetch(fileURL);
+    }
+
+    // Handle extensions infrastructure: peek://extensions/{path}
+    // This serves the extension loader and other shared extension code
+    if (host === 'extensions') {
+      const absolutePath = path.resolve(__dirname, 'extensions', pathname);
+
+      // Security: ensure path stays within extensions folder
+      const extensionsBase = path.resolve(__dirname, 'extensions');
+      if (!absolutePath.startsWith(extensionsBase)) {
+        console.error('Path traversal attempt blocked:', absolutePath);
+        return new Response('Forbidden', { status: 403 });
+      }
+
+      const fileURL = pathToFileURL(absolutePath).toString();
+      return net.fetch(fileURL);
+    }
 
     let relativePath = pathname;
 
@@ -502,6 +557,12 @@ const onReady = async () => {
 
   // handle peek://
   initAppProtocol();
+
+  // Register built-in extensions
+  // Built-in extensions live in ./extensions/ at the project root
+  registerExtensionPath('groups', path.join(__dirname, 'extensions', 'groups'));
+  // Future: registerExtensionPath('peeks', path.join(__dirname, 'extensions', 'peeks'));
+  // Future: registerExtensionPath('slides', path.join(__dirname, 'extensions', 'slides'));
 
   // Register as default handler for http/https URLs (if not already and user hasn't declined)
   const defaultBrowserPrefFile = path.join(profileDataPath, 'default-browser-pref.json');
@@ -703,12 +764,16 @@ const onReady = async () => {
           // Set up DevTools if requested
           winDevtoolsConfig(newWin);
           
-          // Set up modal behavior
+          // Set up modal behavior with delay to avoid focus race condition
           if (featuresMap.modal === true) {
-            newWin.on('blur', () => {
-              console.log('Modal window lost focus:', details.url);
-              closeOrHideWindow(newWin.id);
-            });
+            setTimeout(() => {
+              if (!newWin.isDestroyed()) {
+                newWin.on('blur', () => {
+                  console.log('Modal window lost focus:', details.url);
+                  closeOrHideWindow(newWin.id);
+                });
+              }
+            }, 100);
           }
         }
       });
@@ -935,11 +1000,17 @@ ipcMain.handle('window-open', async (ev, msg) => {
     winDevtoolsConfig(win);
     
     // Set up modal behavior if requested
+    // Delay blur handler attachment to avoid race condition where focus events
+    // are still settling after window creation (can cause immediate close)
     if (options.modal === true) {
-      win.on('blur', () => {
-        console.log('window-open: blur for modal window', url);
-        closeOrHideWindow(win.id);
-      });
+      setTimeout(() => {
+        if (!win.isDestroyed()) {
+          win.on('blur', () => {
+            console.log('window-open: blur for modal window', url);
+            closeOrHideWindow(win.id);
+          });
+        }
+      }, 100);
     }
 
     // Show dock when window opens

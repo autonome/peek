@@ -3,6 +3,8 @@ import { openStore } from "./utils.js";
 import windowManager from "./windows.js";
 import api from './api.js';
 import fc from './features.js';
+// Use absolute peek:// URL since relative paths stay within the app host
+import extensionLoader from 'peek://extensions/loader.js';
 
 const { id, labels, schemas, storageKeys, defaults } = appConfig;
 
@@ -69,6 +71,18 @@ const initSettingsShortcut = (prefs) => {
 
 const initFeature = f => {
   if (!f.enabled) {
+    return;
+  }
+
+  // Skip extension-based features (they're loaded by the extension loader)
+  if (f.extension) {
+    debug && console.log('skipping extension-based feature:', f.name);
+    return;
+  }
+
+  // Check if feature exists in the features collection
+  if (!fc[f.id]) {
+    console.log('feature not found in collection:', f.name, f.id);
     return;
   }
 
@@ -151,29 +165,58 @@ const init = async () => {
   }
 
   // feature enable/disable
-  api.subscribe(topicFeatureToggle, msg => {
+  api.subscribe(topicFeatureToggle, async msg => {
     console.log('feature toggle', msg)
 
     const f = features().find(f => f.id == msg.featureId);
     if (f) {
       console.log('feature toggle', f);
+
+      // Check if this feature is backed by an extension
+      const extId = f.name.toLowerCase();
+      const isExtension = extensionLoader.builtinExtensions.some(e => e.id === extId);
+
       if (msg.enabled == false) {
         console.log('disabling', f.name);
-        uninitFeature(f);
+        if (isExtension) {
+          await extensionLoader.unloadExtension(extId);
+        } else {
+          uninitFeature(f);
+        }
       }
       else if (msg.enabled == true) {
         console.log('enabling', f.name);
-        initFeature(f);
+        if (isExtension) {
+          const ext = extensionLoader.builtinExtensions.find(e => e.id === extId);
+          if (ext) {
+            await extensionLoader.loadExtension(ext);
+          }
+        } else {
+          initFeature(f);
+        }
       }
     }
     else {
-      console.log('feature toggle - no feature found for', f.name);
+      console.log('feature toggle - no feature found for', msg.featureId);
     }
   });
 
   initSettingsShortcut(p);
 
   features().forEach(initFeature);
+
+  // Load extensions
+  // Helper to check if an extension (by name) is enabled in features
+  const isExtensionEnabled = (extId) => {
+    const featureList = features();
+    // Match extension ID to feature name (case-insensitive)
+    const feature = featureList.find(f =>
+      f.name.toLowerCase() === extId.toLowerCase()
+    );
+    return feature ? feature.enabled : false;
+  };
+
+  await extensionLoader.loadBuiltinExtensions(isExtensionEnabled);
 
   //features.forEach(initIframeFeature);
 

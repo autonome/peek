@@ -18,6 +18,7 @@ Implementation
   - Enable/disable
   - Activate/suspend/reload
   - Click to access settings
+- Peeks, Slides and Groups as built-in but disable-able extensions
 
 Note: The implementation will also instigate another shift, moving as much logic into the background web app as possible, vs in node.js space, so we can eventually move to other back-ends than Electron.
 

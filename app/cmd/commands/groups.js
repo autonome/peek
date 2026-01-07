@@ -5,7 +5,7 @@
 import windows from '../../windows.js';
 import api from '../../api.js';
 
-const GROUPS_ADDRESS = 'peek://app/groups/home.html';
+const GROUPS_ADDRESS = 'peek://ext/groups/home.html';
 
 /**
  * Helper to get or create an address for a URI

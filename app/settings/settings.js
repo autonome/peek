@@ -211,6 +211,166 @@ const renderCoreSettings = () => {
   return container;
 };
 
+// Render extensions settings
+const renderExtensionsSettings = async () => {
+  const container = document.createElement('div');
+
+  // Loading state
+  const loading = document.createElement('div');
+  loading.className = 'help-text';
+  loading.textContent = 'Loading extensions...';
+  container.appendChild(loading);
+
+  try {
+    const result = await api.extensions.list();
+
+    // Remove loading
+    loading.remove();
+
+    if (!result.success) {
+      const error = document.createElement('div');
+      error.className = 'help-text';
+      error.textContent = `Error: ${result.error}`;
+      container.appendChild(error);
+      return container;
+    }
+
+    const extensions = result.data || [];
+
+    if (extensions.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'help-text';
+      empty.textContent = 'No extensions loaded.';
+      container.appendChild(empty);
+      return container;
+    }
+
+    const extSection = document.createElement('div');
+    extSection.className = 'form-section';
+
+    const title = document.createElement('h3');
+    title.className = 'form-section-title';
+    title.textContent = 'Installed Extensions';
+    extSection.appendChild(title);
+
+    extensions.forEach(ext => {
+      const manifest = ext.manifest || {};
+
+      const card = document.createElement('div');
+      card.className = 'item-card';
+
+      const header = document.createElement('div');
+      header.className = 'item-card-header';
+
+      const cardTitle = document.createElement('div');
+      cardTitle.className = 'item-card-title';
+
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = manifest.name || ext.id;
+      cardTitle.appendChild(nameSpan);
+
+      if (manifest.version) {
+        const versionSpan = document.createElement('span');
+        versionSpan.className = 'extension-version';
+        versionSpan.textContent = `v${manifest.version}`;
+        versionSpan.style.cssText = 'margin-left: 8px; font-size: 11px; color: var(--text-tertiary);';
+        cardTitle.appendChild(versionSpan);
+      }
+
+      if (manifest.builtin) {
+        const builtinBadge = document.createElement('span');
+        builtinBadge.className = 'extension-badge';
+        builtinBadge.textContent = 'built-in';
+        builtinBadge.style.cssText = 'margin-left: 8px; font-size: 10px; padding: 2px 6px; background: var(--bg-tertiary); border-radius: 4px; color: var(--text-tertiary);';
+        cardTitle.appendChild(builtinBadge);
+      }
+
+      header.appendChild(cardTitle);
+
+      // Actions (reload button)
+      const actions = document.createElement('div');
+      actions.className = 'extension-actions';
+      actions.style.cssText = 'display: flex; gap: 8px;';
+
+      const reloadBtn = document.createElement('button');
+      reloadBtn.textContent = 'Reload';
+      reloadBtn.style.cssText = `
+        padding: 4px 8px;
+        font-size: 11px;
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border-primary);
+        border-radius: 4px;
+        color: var(--text-secondary);
+        cursor: pointer;
+      `;
+      reloadBtn.addEventListener('click', async () => {
+        reloadBtn.textContent = 'Reloading...';
+        reloadBtn.disabled = true;
+        try {
+          const reloadResult = await api.extensions.reload(ext.id);
+          if (reloadResult.success) {
+            reloadBtn.textContent = 'Reloaded!';
+            setTimeout(() => {
+              reloadBtn.textContent = 'Reload';
+              reloadBtn.disabled = false;
+            }, 1000);
+          } else {
+            reloadBtn.textContent = 'Error';
+            console.error('Reload failed:', reloadResult.error);
+            setTimeout(() => {
+              reloadBtn.textContent = 'Reload';
+              reloadBtn.disabled = false;
+            }, 2000);
+          }
+        } catch (err) {
+          console.error('Reload error:', err);
+          reloadBtn.textContent = 'Error';
+          setTimeout(() => {
+            reloadBtn.textContent = 'Reload';
+            reloadBtn.disabled = false;
+          }, 2000);
+        }
+      });
+      actions.appendChild(reloadBtn);
+
+      header.appendChild(actions);
+      card.appendChild(header);
+
+      // Body with details
+      const body = document.createElement('div');
+      body.className = 'item-card-body';
+
+      if (manifest.description) {
+        const desc = document.createElement('div');
+        desc.className = 'help-text';
+        desc.style.marginBottom = '8px';
+        desc.textContent = manifest.description;
+        body.appendChild(desc);
+      }
+
+      // Show shortname/URL
+      const urlInfo = document.createElement('div');
+      urlInfo.className = 'help-text';
+      urlInfo.style.cssText = 'font-family: monospace; font-size: 11px;';
+      urlInfo.textContent = `peek://ext/${manifest.shortname || ext.id}/`;
+      body.appendChild(urlInfo);
+
+      card.appendChild(body);
+      extSection.appendChild(card);
+    });
+
+    container.appendChild(extSection);
+  } catch (err) {
+    loading.remove();
+    const error = document.createElement('div');
+    error.className = 'help-text';
+    error.textContent = `Error loading extensions: ${err.message}`;
+    container.appendChild(error);
+  }
+
+  return container;
+};
+
 // Render feature settings (Peeks, Slides, etc.)
 const renderFeatureSettings = (feature) => {
   const { id, labels, schemas, storageKeys, defaults } = feature;
@@ -426,6 +586,31 @@ const init = () => {
     const section = createSection(sectionId, name, () => renderFeatureSettings(feature));
     contentArea.appendChild(section);
   }
+
+  // Add Extensions section
+  const extNav = document.createElement('a');
+  extNav.className = 'nav-item';
+  extNav.textContent = 'Extensions';
+  extNav.dataset.section = 'extensions';
+  extNav.addEventListener('click', () => showSection('extensions'));
+  sidebarNav.appendChild(extNav);
+
+  // Create extensions section with async content
+  const extSection = document.createElement('div');
+  extSection.className = 'section';
+  extSection.id = 'section-extensions';
+
+  const extTitle = document.createElement('h2');
+  extTitle.className = 'section-title';
+  extTitle.textContent = 'Extensions';
+  extSection.appendChild(extTitle);
+
+  // Load extensions content async
+  renderExtensionsSettings().then(content => {
+    extSection.appendChild(content);
+  });
+
+  contentArea.appendChild(extSection);
 
   // Add Datastore link
   const datastoreNav = document.createElement('a');

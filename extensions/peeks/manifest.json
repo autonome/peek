@@ -1,5 +1,6 @@
 {
   "id": "peeks",
+  "shortname": "peeks",
   "name": "Peeks",
   "description": "Quick access modal windows for web pages via keyboard shortcuts",
   "version": "1.0.0",

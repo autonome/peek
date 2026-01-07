@@ -1,5 +1,6 @@
 {
   "id": "groups",
+  "shortname": "groups",
   "name": "Groups",
   "description": "Tag-based grouping of addresses",
   "version": "1.0.0",

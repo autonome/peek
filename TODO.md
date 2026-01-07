@@ -1,5 +1,14 @@
 # Roadmap
 
+## v? - Entity centrism (NER streams)
+
+- [ ] Entity catalog definition
+- [ ] Datastore support
+- [ ] Basic NER
+- [ ] Page metadata viz
+- [ ] Entity search/browse
+- [ ] ML NER
+
 ## v? - Minimum viable web workbench
 
 - [ ] Design philosophy write-up w/ driving principles and characteristics
@@ -21,8 +30,28 @@ Requires chaining and "activities"
 
 ## v? - Extensibility
 
+Status quo
+- [ ] browser extensions (limited, mostly get a couple popular ones working)
+- [ ] opensearch
+- [ ] quicksearch
+- [ ] bookmarklets
+- [ ] userscripts
+- [ ] language packs
+
+
 Peek extensions
 - [ ] see notes/extensibility.md
+- [ ] poke at remote loading + provenance
+- [ ] window manager views (bad name, but what Peek "features" are now)
+- [ ] commands (eg Quicksilver, Ubiquity, Raycast style)
+- [ ] transformers
+- [ ] pipelines/chains
+- [ ] chaining requires something like activities/intents/applets for inputs/outputs
+- [ ] some kind of theming (https://github.com/AgregoreWeb/agregore-browser/pull/291)
+
+Search
+- [ ] Local
+- [ ] OpenSearch
 
 Web extensions
 - [ ] WebExtension integration for priority only, on some platforms

@@ -377,6 +377,217 @@ api.commands = {
   }
 };
 
+// Extension management API
+// Only available to core app (peek://app/...) and builtin extensions
+// Uses pubsub to communicate with the extension loader in background.html
+api.extensions = {
+  /**
+   * Check if caller has permission to manage extensions
+   * Permission is denied for external extensions (non-builtin)
+   * @returns {boolean}
+   */
+  _hasPermission: () => {
+    // Core app always has permission
+    if (sourceAddress.startsWith('peek://app/')) {
+      return true;
+    }
+    // External extensions are not allowed to manage extensions
+    // (builtin extensions run from peek://ext/ but are loaded by core)
+    return false;
+  },
+
+  /**
+   * Get list of running extensions (read-only, no permission check)
+   * @returns {Promise<{success: boolean, data?: Array, error?: string}>}
+   */
+  list: () => {
+    return new Promise((resolve) => {
+      const replyTopic = `ext:list:reply:${rndm()}`;
+
+      // One-time subscription for reply
+      ipcRenderer.send('subscribe', {
+        source: sourceAddress,
+        scope: 1, // SYSTEM
+        topic: replyTopic,
+        replyTopic: replyTopic
+      });
+
+      const handler = (ev, msg) => {
+        ipcRenderer.removeListener(replyTopic, handler);
+        resolve(msg);
+      };
+      ipcRenderer.on(replyTopic, handler);
+
+      // Request list
+      ipcRenderer.send('publish', {
+        source: sourceAddress,
+        scope: 1,
+        topic: 'ext:list',
+        data: { replyTopic }
+      });
+
+      // Timeout after 5s
+      setTimeout(() => {
+        ipcRenderer.removeListener(replyTopic, handler);
+        resolve({ success: false, error: 'Timeout waiting for extension list' });
+      }, 5000);
+    });
+  },
+
+  /**
+   * Load an extension (permission required)
+   * @param {string} id - Extension ID to load
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  load: (id) => {
+    if (!api.extensions._hasPermission()) {
+      return Promise.resolve({ success: false, error: 'Permission denied: only core app can manage extensions' });
+    }
+    return new Promise((resolve) => {
+      const replyTopic = `ext:load:reply:${rndm()}`;
+
+      ipcRenderer.send('subscribe', {
+        source: sourceAddress,
+        scope: 1,
+        topic: replyTopic,
+        replyTopic: replyTopic
+      });
+
+      const handler = (ev, msg) => {
+        ipcRenderer.removeListener(replyTopic, handler);
+        resolve(msg);
+      };
+      ipcRenderer.on(replyTopic, handler);
+
+      ipcRenderer.send('publish', {
+        source: sourceAddress,
+        scope: 1,
+        topic: 'ext:load',
+        data: { id, replyTopic }
+      });
+
+      setTimeout(() => {
+        ipcRenderer.removeListener(replyTopic, handler);
+        resolve({ success: false, error: 'Timeout loading extension' });
+      }, 10000);
+    });
+  },
+
+  /**
+   * Unload an extension (permission required)
+   * @param {string} id - Extension ID to unload
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  unload: (id) => {
+    if (!api.extensions._hasPermission()) {
+      return Promise.resolve({ success: false, error: 'Permission denied: only core app can manage extensions' });
+    }
+    return new Promise((resolve) => {
+      const replyTopic = `ext:unload:reply:${rndm()}`;
+
+      ipcRenderer.send('subscribe', {
+        source: sourceAddress,
+        scope: 1,
+        topic: replyTopic,
+        replyTopic: replyTopic
+      });
+
+      const handler = (ev, msg) => {
+        ipcRenderer.removeListener(replyTopic, handler);
+        resolve(msg);
+      };
+      ipcRenderer.on(replyTopic, handler);
+
+      ipcRenderer.send('publish', {
+        source: sourceAddress,
+        scope: 1,
+        topic: 'ext:unload',
+        data: { id, replyTopic }
+      });
+
+      setTimeout(() => {
+        ipcRenderer.removeListener(replyTopic, handler);
+        resolve({ success: false, error: 'Timeout unloading extension' });
+      }, 10000);
+    });
+  },
+
+  /**
+   * Reload an extension (permission required)
+   * @param {string} id - Extension ID to reload
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  reload: (id) => {
+    if (!api.extensions._hasPermission()) {
+      return Promise.resolve({ success: false, error: 'Permission denied: only core app can manage extensions' });
+    }
+    return new Promise((resolve) => {
+      const replyTopic = `ext:reload:reply:${rndm()}`;
+
+      ipcRenderer.send('subscribe', {
+        source: sourceAddress,
+        scope: 1,
+        topic: replyTopic,
+        replyTopic: replyTopic
+      });
+
+      const handler = (ev, msg) => {
+        ipcRenderer.removeListener(replyTopic, handler);
+        resolve(msg);
+      };
+      ipcRenderer.on(replyTopic, handler);
+
+      ipcRenderer.send('publish', {
+        source: sourceAddress,
+        scope: 1,
+        topic: 'ext:reload',
+        data: { id, replyTopic }
+      });
+
+      setTimeout(() => {
+        ipcRenderer.removeListener(replyTopic, handler);
+        resolve({ success: false, error: 'Timeout reloading extension' });
+      }, 10000);
+    });
+  },
+
+  /**
+   * Get manifest for a running extension (read-only, no permission check)
+   * @param {string} id - Extension ID
+   * @returns {Promise<{success: boolean, data?: object, error?: string}>}
+   */
+  getManifest: (id) => {
+    return new Promise((resolve) => {
+      const replyTopic = `ext:manifest:reply:${rndm()}`;
+
+      ipcRenderer.send('subscribe', {
+        source: sourceAddress,
+        scope: 1,
+        topic: replyTopic,
+        replyTopic: replyTopic
+      });
+
+      const handler = (ev, msg) => {
+        ipcRenderer.removeListener(replyTopic, handler);
+        resolve(msg);
+      };
+      ipcRenderer.on(replyTopic, handler);
+
+      ipcRenderer.send('publish', {
+        source: sourceAddress,
+        scope: 1,
+        topic: 'ext:manifest',
+        data: { id, replyTopic }
+      });
+
+      setTimeout(() => {
+        ipcRenderer.removeListener(replyTopic, handler);
+        resolve({ success: false, error: 'Timeout getting manifest' });
+      }, 5000);
+    });
+  }
+};
+
 // Escape handling API
 // For windows with escapeMode: 'navigate' or 'auto'
 // Callback should return { handled: true } if escape was handled internally

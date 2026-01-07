@@ -2,31 +2,149 @@
 
 Balance minimal install/development/distribution barriers with web-level safety at runtime.
 
-Key bits:
+## Current Implementation
 
-- Extensions are a folder with a PWA manifest and web content files
+### Extension Structure
+
+Extensions live in `./extensions/{name}/` with:
+
+```
+extensions/
+├── groups/
+│   ├── manifest.json      # Extension metadata
+│   ├── background.js      # Main logic (ES module)
+│   ├── config.js          # Configuration
+│   ├── home.html          # UI pages
+│   └── ...
+├── peeks/
+│   └── ...
+└── slides/
+    └── ...
+```
+
+### Manifest Format
+
+```json
+{
+  "id": "groups",
+  "shortname": "groups",
+  "name": "Groups",
+  "description": "Tag-based grouping of addresses",
+  "version": "1.0.0",
+  "background": "background.js",
+  "builtin": true
+}
+```
+
+**Required fields:**
+- `id` - Unique extension identifier
+- `shortname` - URL path segment (lowercase alphanumeric + hyphens)
+- `name` - Display name
+- `background` - Background script filename
+
+**Optional fields:**
+- `description` - Extension description
+- `version` - Semver version string
+- `builtin` - If true, has full API access (default: false)
+
+### Extension URLs
+
+Extensions are accessed via the `peek://ext/` protocol:
+
+```
+peek://ext/{shortname}/{file}
+```
+
+Examples:
+- `peek://ext/groups/home.html`
+- `peek://ext/peeks/settings.html`
+- `peek://ext/slides/background.js`
+
+**Reserved shortnames** (cannot be used):
+- `app`, `ext`, `extensions`, `settings`, `system`
+
+### Extension Loader
+
+Located at `app/extensions/loader.js`, handles:
+
+- **Loading**: Fetches manifest, validates, registers shortname, imports background script
+- **Unloading**: Calls uninit(), unregisters shortname, removes from registry
+- **Reloading**: Unload + load cycle
+- **Conflict detection**: Rejects extensions with duplicate shortnames
+
+Built-in extensions are registered in the loader:
+```javascript
+export const builtinExtensions = [
+  { id: 'groups', path: 'peek://ext/groups', backgroundScript: 'background.js' },
+  { id: 'peeks', path: 'peek://ext/peeks', backgroundScript: 'background.js' },
+  { id: 'slides', path: 'peek://ext/slides', backgroundScript: 'background.js' }
+];
+```
+
+### Permissions Model
+
+**Coarse permission levels:**
+- `builtin: true` → Full API access including extension management
+- `builtin: false` → Restricted from `api.extensions` management APIs
+
+**Permission check:** Only `peek://app/...` addresses can manage extensions.
+
+### Extension Management API
+
+```javascript
+// List running extensions (no permission required)
+const result = await api.extensions.list();
+// { success: true, data: [{ id, shortname, manifest, ... }] }
+
+// Get extension manifest (no permission required)
+const result = await api.extensions.getManifest('groups');
+// { success: true, data: { id, shortname, name, ... } }
+
+// Load/unload/reload (permission required - core app only)
+await api.extensions.load('groups');
+await api.extensions.unload('groups');
+await api.extensions.reload('groups');
+```
+
+### Background Script Pattern
+
+```javascript
+// extensions/myext/background.js
+import { openStore } from 'peek://app/utils.js';
+import appConfig from './config.js';
+
+const api = window.app;
+const { id, defaults, storageKeys } = appConfig;
+const store = openStore(id, defaults);
+
+const init = () => {
+  // Register shortcuts, commands, subscriptions
+  api.shortcuts.register('Option+x', handleShortcut, { global: true });
+  api.commands.register({ name: 'my command', execute: handler });
+};
+
+const uninit = () => {
+  // Clean up
+  api.shortcuts.unregister('Option+x', { global: true });
+  api.commands.unregister('my command');
+};
+
+export default { id, init, uninit };
+```
+
+---
+
+## Design Goals
+
+- Extensions are a folder with a manifest and web content files
 - They're opened under the peek:// protocol, each in a web content process
 - Their main window is hidden, like the Peek background content process
-- Extensions are run directly from their local folder (wherever the user selected)
-- Extensions are managed in the main settings app, eg add/remove, enable/disable
+- Extensions are run directly from their local folder
+- Extensions are managed in the settings app (add/remove, enable/disable)
 
-Implementation
+Note: The implementation shifts logic into the background web app vs node.js space, enabling future non-Electron backends.
 
-- New table in datastore for extensions
-- New section in settings app, where users can:
-  - Add/remove
-  - Enable/disable
-  - Activate/suspend/reload
-  - Click to access settings
-- Peeks, Slides and Groups as built-in but disable-able extensions
-- Command registration moves to API, so extensions can call it
-- Extension related commands like the groups ones are moved to the extension
-- Coarse permissions flag: built-in extensions get full access to api, others are restricted from using the extensions management api (to start)
-- Extensions need to register a shortname for use in the peek:// address, conflicts are rejected at install time
-
-Note: The implementation will also instigate another shift, moving as much logic into the background web app as possible, vs in node.js space, so we can eventually move to other back-ends than Electron.
-
-Capabilities via injected API:
+## Capabilities via Injected API
 
 - Window management
 - Datastore access

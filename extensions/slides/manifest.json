@@ -1,5 +1,6 @@
 {
   "id": "slides",
+  "shortname": "slides",
   "name": "Slides",
   "description": "Edge-anchored slide-in panels triggered by keyboard shortcuts",
   "version": "1.0.0",

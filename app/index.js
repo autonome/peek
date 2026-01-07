@@ -114,6 +114,62 @@ const initIframeFeature = file => {
 const prefs = () => store.get(storageKeys.PREFS);
 const features = () => store.get(storageKeys.ITEMS);
 
+// Register extension management commands for cmd palette
+const registerExtensionCommands = () => {
+  // Reload extension command
+  api.commands.register({
+    name: 'extension reload',
+    description: 'Reload an extension by name',
+    execute: async (ctx) => {
+      const extName = ctx.search?.trim();
+      if (!extName) {
+        console.log('extension reload: no extension name provided');
+        return;
+      }
+
+      // Find extension by name or id (case-insensitive)
+      const extensions = extensionLoader.getRunningExtensions();
+      const ext = extensions.find(e =>
+        e.id.toLowerCase() === extName.toLowerCase() ||
+        (e.manifest?.name || '').toLowerCase() === extName.toLowerCase()
+      );
+
+      if (!ext) {
+        console.log(`extension reload: extension not found: ${extName}`);
+        return;
+      }
+
+      console.log(`Reloading extension: ${ext.id}`);
+      const result = await extensionLoader.reloadExtension(ext.id);
+      if (result.success) {
+        console.log(`Extension reloaded: ${ext.id}`);
+      } else {
+        console.error(`Failed to reload extension: ${result.error}`);
+      }
+    }
+  });
+
+  // List extensions command
+  api.commands.register({
+    name: 'extensions',
+    description: 'List running extensions',
+    execute: async (ctx) => {
+      const extensions = extensionLoader.getRunningExtensions();
+      console.log('Running extensions:');
+      extensions.forEach(ext => {
+        const manifest = ext.manifest || {};
+        console.log(`  - ${manifest.name || ext.id} (${ext.id}) v${manifest.version || '?'}`);
+      });
+
+      // Open settings to Extensions section
+      const p = prefs();
+      await openSettingsWindow(p);
+    }
+  });
+
+  console.log('Extension commands registered');
+};
+
 const init = async () => {
   console.log('init');
 
@@ -216,6 +272,9 @@ const init = async () => {
   };
 
   await extensionLoader.loadBuiltinExtensions(isExtensionEnabled);
+
+  // Register extension dev commands
+  registerExtensionCommands();
 
   //features.forEach(initIframeFeature);
 

@@ -32,6 +32,18 @@ function addCommand(command) {
 }
 
 /**
+ * Removes a command from the registry
+ * @param {string} name - The command name to remove
+ */
+function removeCommand(name) {
+  if (commands[name]) {
+    delete commands[name];
+    onCommandsUpdated();
+    console.log('Command removed:', name);
+  }
+}
+
+/**
  * Initializes all command sources and registers them
  */
 async function initializeCommandSources() {
@@ -56,6 +68,60 @@ async function initializeCommandSources() {
 
 // Initialize commands when the DOM is loaded
 window.addEventListener('DOMContentLoaded', () => initializeCommandSources());
+
+/**
+ * Create a proxy command that publishes execution back to the registering extension
+ */
+function createProxyCommand(cmdData) {
+  return {
+    name: cmdData.name,
+    description: cmdData.description || '',
+    source: cmdData.source,
+    execute: async (ctx) => {
+      // Publish execution request to the extension that registered this command
+      // Use GLOBAL scope so it reaches the extension in background.html
+      api.publish(`cmd:execute:${cmdData.name}`, ctx, api.scopes.GLOBAL);
+    }
+  };
+}
+
+/**
+ * Subscribe to dynamic command registration from extensions
+ */
+function initializeCommandRegistration() {
+  // Listen for response to our query
+  api.subscribe('cmd:query-commands-response', (msg) => {
+    console.log('cmd:query-commands-response received', msg.commands?.length, 'commands');
+    if (msg.commands) {
+      msg.commands.forEach(cmdData => {
+        const command = createProxyCommand(cmdData);
+        addCommand(command);
+      });
+    }
+  }, api.scopes.GLOBAL);
+
+  // Also listen for new registrations while panel is open
+  api.subscribe('cmd:register', (msg) => {
+    console.log('cmd:register received (live)', msg);
+    const command = createProxyCommand(msg);
+    addCommand(command);
+  }, api.scopes.GLOBAL);
+
+  // Listen for unregistrations while panel is open
+  api.subscribe('cmd:unregister', (msg) => {
+    console.log('cmd:unregister received', msg);
+    removeCommand(msg.name);
+  }, api.scopes.GLOBAL);
+
+  // Query the background process for currently registered commands
+  console.log('Querying for registered commands...');
+  api.publish('cmd:query-commands', {}, api.scopes.GLOBAL);
+
+  console.log('Command registration listeners initialized');
+}
+
+// Initialize command registration listeners
+initializeCommandRegistration();
 
 /**
  * Helper function for notifications (currently unused)

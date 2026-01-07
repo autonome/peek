@@ -1,10 +1,10 @@
 /**
  * Commands module - exports all available commands
+ * Note: groups commands are now provided by the groups extension
  */
 import openCommand from './open.js';
 import debugCommand from './debug.js';
 import modalCommand from './modal.js';
-import groupsModule from './groups.js';
 import noteModule from './note.js';
 import historyModule from './history.js';
 import tagModule from './tag.js';
@@ -24,11 +24,11 @@ import bookmarkCommand from './bookmark.js';
 import emailCommand from './email.js';
 
 // Active commands - only these will be loaded
+// Note: groups commands are dynamically registered by the groups extension
 const activeCommands = [
   openCommand,
   debugCommand,
   modalCommand,
-  ...groupsModule.commands,
   ...noteModule.commands,
   ...historyModule.commands,
   ...tagModule.commands

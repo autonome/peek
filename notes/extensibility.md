@@ -19,6 +19,10 @@ Implementation
   - Activate/suspend/reload
   - Click to access settings
 - Peeks, Slides and Groups as built-in but disable-able extensions
+- Command registration moves to API, so extensions can call it
+- Extension related commands like the groups ones are moved to the extension
+- Coarse permissions flag: built-in extensions get full access to api, others are restricted from using the extensions management api (to start)
+- Extensions need to register a shortname for use in the peek:// address, conflicts are rejected at install time
 
 Note: The implementation will also instigate another shift, moving as much logic into the background web app as possible, vs in node.js space, so we can eventually move to other back-ends than Electron.
 

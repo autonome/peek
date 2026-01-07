@@ -124,7 +124,7 @@ const defaults = {
       name: 'Cmd',
       description: 'Command entry',
       start_url: 'peek://app/cmd/background.html',
-      enabled: false,
+      enabled: true,
       settings_url: 'peek://app/cmd/settings.html',
     },
     { id: '82de735f-a4b7-4fe6-a458-ec29939ae00d',

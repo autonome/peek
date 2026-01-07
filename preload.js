@@ -284,6 +284,83 @@ api.quit = () => {
   ipcRenderer.send('app-quit', { source: sourceAddress });
 };
 
+// Command registration API for extensions
+// Commands are registered via pubsub since cmd runs in renderer
+api.commands = {
+  /**
+   * Register a command with the cmd palette
+   * @param {Object} command - Command object with name, description, execute
+   */
+  register: (command) => {
+    if (!command.name || !command.execute) {
+      console.error('commands.register: name and execute are required');
+      return;
+    }
+
+    // Store the execute handler locally (can't serialize functions via pubsub)
+    window._cmdHandlers = window._cmdHandlers || {};
+    window._cmdHandlers[command.name] = command.execute;
+
+    // Register the command metadata via pubsub (GLOBAL scope for cross-window)
+    ipcRenderer.send('publish', {
+      source: sourceAddress,
+      scope: 3, // GLOBAL - so cmd panel in separate window receives it
+      topic: 'cmd:register',
+      data: {
+        name: command.name,
+        description: command.description || '',
+        source: sourceAddress
+      }
+    });
+
+    // Subscribe to execution requests for this command (GLOBAL scope)
+    const execTopic = `cmd:execute:${command.name}`;
+    const replyTopic = `${execTopic}:${rndm()}`;
+
+    ipcRenderer.send('subscribe', {
+      source: sourceAddress,
+      scope: 3,
+      topic: execTopic,
+      replyTopic
+    });
+
+    ipcRenderer.on(replyTopic, async (ev, msg) => {
+      console.log('cmd:execute', command.name, msg);
+      const handler = window._cmdHandlers?.[command.name];
+      if (handler) {
+        try {
+          await handler(msg);
+        } catch (err) {
+          console.error('Error executing command', command.name, err);
+        }
+      }
+    });
+
+    console.log('commands.register:', command.name);
+  },
+
+  /**
+   * Unregister a command from the cmd palette
+   * @param {string} name - Command name to unregister
+   */
+  unregister: (name) => {
+    // Remove local handler
+    if (window._cmdHandlers) {
+      delete window._cmdHandlers[name];
+    }
+
+    // Notify cmd to remove the command (GLOBAL scope for cross-window)
+    ipcRenderer.send('publish', {
+      source: sourceAddress,
+      scope: 3,
+      topic: 'cmd:unregister',
+      data: { name }
+    });
+
+    console.log('commands.unregister:', name);
+  }
+};
+
 // Escape handling API
 // For windows with escapeMode: 'navigate' or 'auto'
 // Callback should return { handled: true } if escape was handled internally

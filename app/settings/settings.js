@@ -154,8 +154,10 @@ const renderCoreSettings = () => {
     container.appendChild(prefsSection);
   }
 
-  // Features
-  if (features && features.length > 0) {
+  // Features (core only - extensions are managed in Extensions section)
+  const extensionNames = ['groups', 'peeks', 'slides'];
+  const coreFeatures = features ? features.filter(f => !extensionNames.includes(f.name.toLowerCase())) : [];
+  if (coreFeatures.length > 0) {
     const featuresSection = document.createElement('div');
     featuresSection.className = 'form-section';
 
@@ -164,7 +166,10 @@ const renderCoreSettings = () => {
     title.textContent = 'Features';
     featuresSection.appendChild(title);
 
-    features.forEach((feature, i) => {
+    coreFeatures.forEach((feature) => {
+      // Find original index for saving
+      const i = features.findIndex(f => f.id === feature.id);
+
       const item = document.createElement('div');
       item.className = 'feature-item';
 
@@ -341,15 +346,22 @@ const renderExtensionsSettings = async () => {
         const feature = features.find(f => f.name.toLowerCase() === extId);
         const isEnabled = feature ? feature.enabled : false;
 
-        if (running && running.manifest?.builtin) {
+        if (running) {
+          // Extension is running
           allExtensions.push({
             ...running,
+            manifest: running.manifest || {
+              id: extId,
+              name: extId.charAt(0).toUpperCase() + extId.slice(1),
+              shortname: extId,
+              builtin: true
+            },
             source: 'builtin',
             isRunning: true,
             enabled: isEnabled
           });
         } else {
-          // Extension not running - show it as disabled
+          // Extension not running - show it as stopped
           allExtensions.push({
             id: extId,
             manifest: {
@@ -626,8 +638,13 @@ const renderExtensionsSettings = async () => {
     }
   };
 
-  // Initial load
+  // Initial load (may be incomplete if extensions still loading)
   await refreshExtensionsList();
+
+  // Reactively update when extensions finish loading
+  api.subscribe('ext:all-loaded', () => {
+    refreshExtensionsList();
+  }, api.scopes.GLOBAL);
 
   return container;
 };
@@ -640,11 +657,56 @@ const renderFeatureSettings = (feature) => {
   // Use extension shortname for datastore key (e.g., 'peeks', 'slides', 'groups')
   const extId = labels.name.toLowerCase();
 
-  // For now, still use localStorage as fallback (will be migrated)
+  // Read from localStorage (legacy source)
   const store = openStore(id, defaults, clear);
 
   let prefs = store.get(storageKeys.PREFS);
   let items = store.get(storageKeys.ITEMS);
+
+  // Migrate localStorage to datastore if datastore is empty
+  // This ensures extensions (which read from datastore) get the user's settings
+  const migrateToDatastore = async () => {
+    try {
+      const rowIdPrefs = `${extId}:prefs`;
+      const tableResult = await api.datastore.getTable('extension_settings');
+      const table = tableResult.success ? (tableResult.data || {}) : {};
+
+      // Check if this extension already has prefs in datastore
+      const hasPrefs = Object.values(table).some(row => row.extensionId === extId && row.key === 'prefs');
+
+      // If datastore doesn't have prefs yet, migrate from localStorage
+      if (!hasPrefs) {
+        console.log(`[settings] Migrating ${extId} settings to datastore`);
+        const now = Date.now();
+
+        await api.datastore.setRow('extension_settings', rowIdPrefs, {
+          extensionId: extId,
+          key: 'prefs',
+          value: JSON.stringify(prefs),
+          updatedAt: now
+        });
+
+        if (items) {
+          const rowIdItems = `${extId}:items`;
+          await api.datastore.setRow('extension_settings', rowIdItems, {
+            extensionId: extId,
+            key: 'items',
+            value: JSON.stringify(items),
+            updatedAt: now
+          });
+        }
+
+        // Notify extension to reload settings
+        const settingsChangedTopic = `${extId}:settings-changed`;
+        api.publish(settingsChangedTopic, {}, api.scopes.GLOBAL);
+      }
+    } catch (err) {
+      console.error(`[settings] Migration error for ${extId}:`, err);
+    }
+  };
+
+  // Run migration async (don't block UI)
+  migrateToDatastore();
 
   const container = document.createElement('div');
 

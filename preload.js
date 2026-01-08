@@ -415,37 +415,7 @@ api.extensions = {
    * @returns {Promise<{success: boolean, data?: Array, error?: string}>}
    */
   list: () => {
-    return new Promise((resolve) => {
-      const replyTopic = `ext:list:reply:${rndm()}`;
-
-      // One-time subscription for reply
-      ipcRenderer.send('subscribe', {
-        source: sourceAddress,
-        scope: 1, // SYSTEM
-        topic: replyTopic,
-        replyTopic: replyTopic
-      });
-
-      const handler = (ev, msg) => {
-        ipcRenderer.removeListener(replyTopic, handler);
-        resolve(msg);
-      };
-      ipcRenderer.on(replyTopic, handler);
-
-      // Request list
-      ipcRenderer.send('publish', {
-        source: sourceAddress,
-        scope: 1,
-        topic: 'ext:list',
-        data: { replyTopic }
-      });
-
-      // Timeout after 5s
-      setTimeout(() => {
-        ipcRenderer.removeListener(replyTopic, handler);
-        resolve({ success: false, error: 'Timeout waiting for extension list' });
-      }, 5000);
-    });
+    return ipcRenderer.invoke('extension-window-list');
   },
 
   /**

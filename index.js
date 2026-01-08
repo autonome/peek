@@ -673,6 +673,11 @@ const loadEnabledExtensions = async () => {
   }
 
   console.log(`[ext:win] Loaded ${extensionWindows.size} extensions`);
+
+  // Signal that all extensions are loaded (GLOBAL so Settings can receive it)
+  pubsub.publish('system', scopes.GLOBAL, 'ext:all-loaded', {
+    count: extensionWindows.size
+  });
 };
 
 // TODO: unhack all this trash fire
@@ -2346,6 +2351,7 @@ ipcMain.handle('extension-window-reload', async (ev, data) => {
 ipcMain.handle('extension-window-list', async (ev) => {
   try {
     const running = getRunningExtensions();
+    console.log('extension-window-list:', running.map(e => e.id));
     return { success: true, data: running };
   } catch (error) {
     console.error('extension-window-list error:', error);

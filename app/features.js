@@ -22,6 +22,7 @@ import scripts from './scripts/index.js';
 // Extension schemas (for Settings UI only - extensions run in isolated processes)
 import peeks from './peeks/index.js';
 import slides from './slides/index.js';
+import groups from './groups/index.js';
 
 const fc = {};
 
@@ -32,5 +33,6 @@ fc[scripts.id] = scripts;
 // Extension schemas for Settings UI
 fc[peeks.id] = peeks;
 fc[slides.id] = slides;
+fc[groups.id] = groups;
 
 export default fc;

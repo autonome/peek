@@ -172,6 +172,14 @@ export const schema = {
     lastErrorAt: { type: 'number', default: 0 },
     lastError: { type: 'string', default: '' },
     metadata: { type: 'string', default: '{}' }
+  },
+
+  // Extension settings storage (replaces localStorage for cross-origin access)
+  extension_settings: {
+    extensionId: { type: 'string' },                 // Extension ID (e.g., 'peeks', 'slides')
+    key: { type: 'string' },                         // Setting key (e.g., 'prefs', 'items')
+    value: { type: 'string' },                       // JSON stringified value
+    updatedAt: { type: 'number' }
   }
 };
 
@@ -289,6 +297,12 @@ export const indexes = {
   extensions_byBuiltin: {
     table: 'extensions',
     on: 'builtin'
+  },
+
+  // Extension settings indexes
+  extension_settings_byExtension: {
+    table: 'extension_settings',
+    on: 'extensionId'
   }
 };
 

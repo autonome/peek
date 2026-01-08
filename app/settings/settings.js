@@ -633,8 +633,14 @@ const renderExtensionsSettings = async () => {
 };
 
 // Render feature settings (Peeks, Slides, etc.)
+// Now reads/writes from datastore extension_settings table for isolated extensions
 const renderFeatureSettings = (feature) => {
   const { id, labels, schemas, storageKeys, defaults } = feature;
+
+  // Use extension shortname for datastore key (e.g., 'peeks', 'slides', 'groups')
+  const extId = labels.name.toLowerCase();
+
+  // For now, still use localStorage as fallback (will be migrated)
   const store = openStore(id, defaults, clear);
 
   let prefs = store.get(storageKeys.PREFS);
@@ -645,10 +651,33 @@ const renderFeatureSettings = (feature) => {
   // Topic for notifying feature of settings changes (e.g., 'peeks:settings-changed')
   const settingsChangedTopic = `${labels.name.toLowerCase()}:settings-changed`;
 
-  const save = () => {
+  const save = async () => {
+    // Save to localStorage (legacy)
     store.set(storageKeys.PREFS, prefs);
     store.set(storageKeys.ITEMS, items);
-    // Notify feature to hot-reload with new settings
+
+    // Also save to datastore for isolated extensions
+    const rowIdPrefs = `${extId}:prefs`;
+    const rowIdItems = `${extId}:items`;
+    const now = Date.now();
+
+    await api.datastore.setRow('extension_settings', rowIdPrefs, {
+      extensionId: extId,
+      key: 'prefs',
+      value: JSON.stringify(prefs),
+      updatedAt: now
+    });
+
+    if (items) {
+      await api.datastore.setRow('extension_settings', rowIdItems, {
+        extensionId: extId,
+        key: 'items',
+        value: JSON.stringify(items),
+        updatedAt: now
+      });
+    }
+
+    // Notify feature to hot-reload with new settings (GLOBAL for cross-process)
     api.publish(settingsChangedTopic, {}, api.scopes.GLOBAL);
   };
 
@@ -812,6 +841,14 @@ const showSection = (sectionId) => {
   }
 };
 
+// Helper to check if a feature is enabled
+const isFeatureEnabled = (featureName) => {
+  const store = openStore(appConfig.id, appConfig.defaults, false);
+  const features = store.get(appConfig.storageKeys.ITEMS) || [];
+  const feature = features.find(f => f.name.toLowerCase() === featureName.toLowerCase());
+  return feature ? feature.enabled : false;
+};
+
 // Initialize
 const init = () => {
   const sidebarNav = document.getElementById('sidebarNav');
@@ -829,24 +866,49 @@ const init = () => {
   coreSection.classList.add('active');
   contentArea.appendChild(coreSection);
 
-  // Add feature sections
+  // Track feature nav items and sections for dynamic updates
+  const featureElements = new Map();
+
+  // Add feature sections (only show enabled ones, but create all for hot-reload)
   for (const i in fc) {
     const feature = fc[i];
     const name = feature.labels.name;
     const sectionId = name.toLowerCase().replace(/\s+/g, '-');
+    const enabled = isFeatureEnabled(name);
 
     // Add nav item
     const navItem = document.createElement('a');
     navItem.className = 'nav-item';
     navItem.textContent = name;
     navItem.dataset.section = sectionId;
+    navItem.dataset.featureName = name;
     navItem.addEventListener('click', () => showSection(sectionId));
+    if (!enabled) navItem.style.display = 'none';
     sidebarNav.appendChild(navItem);
 
     // Add section
     const section = createSection(sectionId, name, () => renderFeatureSettings(feature));
+    if (!enabled) section.style.display = 'none';
     contentArea.appendChild(section);
+
+    featureElements.set(name.toLowerCase(), { navItem, section });
   }
+
+  // Listen for feature toggle events to update sidebar
+  api.subscribe('core:feature:toggle', (msg) => {
+    const featureName = msg.featureId?.toLowerCase();
+    const elements = featureElements.get(featureName);
+    if (elements) {
+      const display = msg.enabled ? '' : 'none';
+      elements.navItem.style.display = display;
+      elements.section.style.display = display;
+
+      // If currently viewing a disabled section, switch to Core
+      if (!msg.enabled && elements.section.classList.contains('active')) {
+        showSection('core');
+      }
+    }
+  });
 
   // Add Extensions section
   const extNav = document.createElement('a');

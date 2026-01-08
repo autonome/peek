@@ -23,6 +23,20 @@ const sourceAddress = window.location.toString();
 
 const rndm = () => Math.random().toString(16).slice(2);
 
+// Context detection for permission tiers
+const isCore = sourceAddress.startsWith('peek://app/');
+const isExtension = sourceAddress.startsWith('peek://ext/');
+
+/**
+ * Get the extension ID from the current context
+ * @returns {string|null} Extension ID or null if not in an extension context
+ */
+const getExtensionId = () => {
+  if (!isExtension) return null;
+  const match = sourceAddress.match(/peek:\/\/ext\/([^/]+)/);
+  return match ? match[1] : null;
+};
+
 let api = {};
 
 // Log to main process (shows in terminal)
@@ -660,6 +674,64 @@ api.extensions = {
    */
   get: (id) => {
     return ipcRenderer.invoke('extension-get', { id });
+  }
+};
+
+// Extension settings API (for isolated extension processes)
+// Extensions can only access their own settings via datastore
+api.settings = {
+  /**
+   * Get settings for the current extension
+   * Only works from extension context (peek://ext/{id}/...)
+   * @returns {Promise<{success: boolean, data?: object, error?: string}>}
+   */
+  get: () => {
+    const extId = getExtensionId();
+    if (!extId) {
+      return Promise.resolve({ success: false, error: 'Not an extension context' });
+    }
+    return ipcRenderer.invoke('extension-settings-get', { extId });
+  },
+
+  /**
+   * Save settings for the current extension
+   * Only works from extension context (peek://ext/{id}/...)
+   * @param {object} settings - Settings object to save (keys: prefs, items, etc.)
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  set: (settings) => {
+    const extId = getExtensionId();
+    if (!extId) {
+      return Promise.resolve({ success: false, error: 'Not an extension context' });
+    }
+    return ipcRenderer.invoke('extension-settings-set', { extId, settings });
+  },
+
+  /**
+   * Get a single setting key for the current extension
+   * @param {string} key - Setting key (e.g., 'prefs', 'items')
+   * @returns {Promise<{success: boolean, data?: any, error?: string}>}
+   */
+  getKey: (key) => {
+    const extId = getExtensionId();
+    if (!extId) {
+      return Promise.resolve({ success: false, error: 'Not an extension context' });
+    }
+    return ipcRenderer.invoke('extension-settings-get-key', { extId, key });
+  },
+
+  /**
+   * Set a single setting key for the current extension
+   * @param {string} key - Setting key
+   * @param {any} value - Value to set (will be JSON stringified)
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  setKey: (key, value) => {
+    const extId = getExtensionId();
+    if (!extId) {
+      return Promise.resolve({ success: false, error: 'Not an extension context' });
+    }
+    return ipcRenderer.invoke('extension-settings-set-key', { extId, key, value });
   }
 };
 

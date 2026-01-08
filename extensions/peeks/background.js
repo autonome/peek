@@ -2,23 +2,56 @@
  * Peeks Extension Background Script
  *
  * Quick access modal windows for web pages via keyboard shortcuts (Option+0-9)
+ *
+ * Runs in isolated extension process (peek://ext/peeks/background.html)
+ * Uses api.settings for datastore-backed settings storage
  */
 
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { openStore } from 'peek://app/utils.js';
-import windows from 'peek://app/windows.js';
 
 const api = window.app;
 const debug = api.debug;
 
 console.log('[ext:peeks] background', labels.name);
 
-const clear = false;
-const store = openStore(id, defaults, clear /* clear storage */);
-
 // Track registered shortcuts for cleanup
 let registeredShortcuts = [];
 
+// In-memory settings cache (loaded from datastore on init)
+let currentSettings = {
+  prefs: defaults.prefs,
+  items: defaults.items
+};
+
+/**
+ * Load settings from datastore
+ * @returns {Promise<{prefs: object, items: array}>}
+ */
+const loadSettings = async () => {
+  const result = await api.settings.get();
+  if (result.success && result.data) {
+    return {
+      prefs: result.data.prefs || defaults.prefs,
+      items: result.data.items || defaults.items
+    };
+  }
+  return { prefs: defaults.prefs, items: defaults.items };
+};
+
+/**
+ * Save settings to datastore
+ * @param {object} settings - Settings object with prefs and items
+ */
+const saveSettings = async (settings) => {
+  const result = await api.settings.set(settings);
+  if (!result.success) {
+    console.error('[ext:peeks] Failed to save settings:', result.error);
+  }
+};
+
+/**
+ * Open a peek window for the given item
+ */
 const executeItem = (item) => {
   console.log('[ext:peeks] executeItem', item);
   const height = item.height || 600;
@@ -29,6 +62,10 @@ const executeItem = (item) => {
     height,
     width,
 
+    // modal behavior
+    modal: true,
+    type: 'panel',
+
     // peek
     feature: labels.name,
     keepLive: item.keepLive || false,
@@ -37,13 +74,13 @@ const executeItem = (item) => {
     // Create a unique key for this peek using its address
     key: `peek:${item.address}`,
 
-    // tracking (handled automatically by windows API)
+    // tracking
     trackingSource: 'peek',
     trackingSourceId: item.keyNum ? `peek_${item.keyNum}` : 'peek',
     title: item.title || ''
   };
 
-  windows.openModalWindow(item.address, params)
+  api.window.open(item.address, params)
     .then(result => {
       console.log('[ext:peeks] Peek window opened:', result);
     })
@@ -52,11 +89,14 @@ const executeItem = (item) => {
     });
 };
 
+/**
+ * Initialize shortcuts for enabled items
+ */
 const initItems = (prefs, items) => {
   const cmdPrefix = prefs.shortcutKeyPrefix;
 
   items.forEach(item => {
-    if (item.enabled == true && item.address.length > 0) {
+    if (item.enabled == true && item.address && item.address.length > 0) {
       const shortcut = `${cmdPrefix}${item.keyNum}`;
 
       api.shortcuts.register(shortcut, () => {
@@ -83,39 +123,37 @@ const uninit = () => {
 
 /**
  * Reinitialize peeks (called when settings change)
- *
- * TODO: This is inefficient - reinitializes all peeks when any single
- * property changes. A better approach would be to diff the old and new
- * settings and only update the shortcuts that actually changed.
  */
-const reinit = () => {
+const reinit = async () => {
   console.log('[ext:peeks] reinit');
   uninit();
 
-  const prefs = store.get(storageKeys.PREFS);
-  const items = store.get(storageKeys.ITEMS);
+  currentSettings = await loadSettings();
 
-  if (items && items.length > 0) {
-    initItems(prefs, items);
+  if (currentSettings.items && currentSettings.items.length > 0) {
+    initItems(currentSettings.prefs, currentSettings.items);
   }
 };
 
-const init = () => {
+/**
+ * Initialize the extension
+ */
+const init = async () => {
   console.log('[ext:peeks] init');
 
-  const prefs = () => store.get(storageKeys.PREFS);
-  const items = () => store.get(storageKeys.ITEMS);
+  // Load settings from datastore
+  currentSettings = await loadSettings();
 
-  // Initialize peeks
-  if (items().length > 0) {
-    initItems(prefs(), items());
+  // Initialize peeks if we have items
+  if (currentSettings.items && currentSettings.items.length > 0) {
+    initItems(currentSettings.prefs, currentSettings.items);
   }
 
-  // Listen for settings changes to hot-reload
+  // Listen for settings changes to hot-reload (GLOBAL scope for cross-process)
   api.subscribe('peeks:settings-changed', () => {
     console.log('[ext:peeks] settings changed, reinitializing');
     reinit();
-  });
+  }, api.scopes.GLOBAL);
 };
 
 export default {

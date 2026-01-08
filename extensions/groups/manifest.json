@@ -4,6 +4,16 @@
   "name": "Groups",
   "description": "Tag-based grouping of addresses",
   "version": "1.0.0",
-  "background": "background.js",
-  "builtin": true
+  "background": "background.html",
+  "builtin": true,
+  "settings": {
+    "prefs": {
+      "shortcutKey": {
+        "type": "string",
+        "label": "Shortcut",
+        "description": "Global OS hotkey to open groups manager",
+        "default": "Option+g"
+      }
+    }
+  }
 }

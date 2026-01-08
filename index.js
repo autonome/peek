@@ -401,6 +401,7 @@ const pubsub = (() => {
     publish: (source, scope, topic, msg) => {
       //console.log('ps.pub', topic);
 
+      // Route to traditional subscribers (via IPC callbacks)
       if (topics.has(topic)) {
 
         const t = topics.get(topic);
@@ -411,6 +412,23 @@ const pubsub = (() => {
             cb(msg);
           }
         };
+      }
+
+      // Route to extension windows (GLOBAL scope only)
+      // This enables cross-origin communication to isolated extension processes
+      if (scope === scopes.GLOBAL && extensionWindows) {
+        for (const [extId, entry] of extensionWindows) {
+          if (entry.win && !entry.win.isDestroyed() && entry.status === 'running') {
+            // Don't send back to the source extension
+            const extOrigin = `peek://ext/${extId}/`;
+            if (!source.startsWith(extOrigin)) {
+              entry.win.webContents.send(`pubsub:${topic}`, {
+                ...msg,
+                source
+              });
+            }
+          }
+        }
       }
     },
     subscribe: (source, scope, topic, cb) => {
@@ -509,6 +527,152 @@ const getExtensionPath = (id) => {
   }
 
   return null;
+};
+
+// ***** Extension Window Management *****
+// Each extension runs in its own isolated BrowserWindow at peek://ext/{id}/background.html
+
+const extensionWindows = new Map(); // extId -> { win, manifest, status }
+
+const createExtensionWindow = async (extId) => {
+  if (extensionWindows.has(extId)) {
+    console.log(`[ext:win] Extension ${extId} already has a window`);
+    return extensionWindows.get(extId).win;
+  }
+
+  const extPath = getExtensionPath(extId);
+  if (!extPath) {
+    console.error(`[ext:win] Extension path not found: ${extId}`);
+    return null;
+  }
+
+  console.log(`[ext:win] Creating window for extension: ${extId}`);
+
+  const win = new BrowserWindow({
+    show: false,
+    webPreferences: {
+      preload: preloadPath
+    }
+  });
+
+  // Forward console logs from extension to main process stdout
+  win.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    const levelStr = ['debug', 'info', 'warn', 'error'][level] || 'log';
+    console.log(`[ext:${extId}] ${message}`);
+  });
+
+  // Track crash events
+  win.webContents.on('crashed', (event, killed) => {
+    console.error(`[ext:win] Extension ${extId} crashed (killed: ${killed})`);
+    const entry = extensionWindows.get(extId);
+    if (entry) {
+      entry.status = 'crashed';
+    }
+    // Optionally auto-restart: createExtensionWindow(extId);
+  });
+
+  // Track close events
+  win.on('closed', () => {
+    console.log(`[ext:win] Extension ${extId} window closed`);
+    extensionWindows.delete(extId);
+  });
+
+  // Store before loading to handle async issues
+  extensionWindows.set(extId, { win, manifest: null, status: 'loading' });
+
+  try {
+    await win.loadURL(`peek://ext/${extId}/background.html`);
+    console.log(`[ext:win] Extension ${extId} loaded successfully`);
+    const entry = extensionWindows.get(extId);
+    if (entry) {
+      entry.status = 'running';
+    }
+    return win;
+  } catch (error) {
+    console.error(`[ext:win] Failed to load extension ${extId}:`, error);
+    extensionWindows.delete(extId);
+    win.destroy();
+    return null;
+  }
+};
+
+const destroyExtensionWindow = (extId) => {
+  const entry = extensionWindows.get(extId);
+  if (!entry) {
+    console.log(`[ext:win] No window to destroy for: ${extId}`);
+    return false;
+  }
+
+  console.log(`[ext:win] Destroying window for: ${extId}`);
+
+  // Notify extension of shutdown before destroying
+  if (entry.win && !entry.win.isDestroyed()) {
+    entry.win.webContents.send('pubsub:app:shutdown', {});
+    // Give it a moment to clean up, then destroy
+    setTimeout(() => {
+      if (!entry.win.isDestroyed()) {
+        entry.win.destroy();
+      }
+    }, 100);
+  }
+
+  extensionWindows.delete(extId);
+  return true;
+};
+
+const getExtensionWindow = (extId) => {
+  const entry = extensionWindows.get(extId);
+  return entry ? entry.win : null;
+};
+
+const getRunningExtensions = () => {
+  const running = [];
+  for (const [extId, entry] of extensionWindows) {
+    if (entry.status === 'running') {
+      running.push({
+        id: extId,
+        manifest: entry.manifest,
+        status: entry.status
+      });
+    }
+  }
+  return running;
+};
+
+// Load enabled extensions on startup
+const loadEnabledExtensions = async () => {
+  // Built-in extensions
+  const builtinExtensions = ['groups', 'peeks', 'slides'];
+
+  // Check which are enabled from datastore/localStorage
+  // For now, load all builtins; actual enable/disable can be added later
+  for (const extId of builtinExtensions) {
+    // Check if enabled in extension_settings or extensions table
+    let enabled = true; // Default to enabled for builtins
+
+    if (datastoreStore) {
+      // Check extension_settings for enabled state
+      const settingsTable = datastoreStore.getTable('extension_settings') || {};
+      for (const [rowId, row] of Object.entries(settingsTable)) {
+        if (row.extensionId === extId && row.key === 'enabled') {
+          try {
+            enabled = JSON.parse(row.value) !== false;
+          } catch (e) {
+            enabled = true;
+          }
+        }
+      }
+    }
+
+    if (enabled) {
+      console.log(`[ext:win] Loading enabled extension: ${extId}`);
+      await createExtensionWindow(extId);
+    } else {
+      console.log(`[ext:win] Skipping disabled extension: ${extId}`);
+    }
+  }
+
+  console.log(`[ext:win] Loaded ${extensionWindows.size} extensions`);
 };
 
 // TODO: unhack all this trash fire
@@ -682,9 +846,12 @@ const onReady = async () => {
     setTimeout(() => handleExternalUrl(urlArg, 'cli'), 1000);
   }
 
+  // Track if extensions have been loaded (only load once)
+  let extensionsLoaded = false;
+
   // listen for app prefs to configure ourself
   // TODO: kinda janky, needs rethink
-  pubsub.subscribe(systemAddress, scopes.SYSTEM, strings.topics.prefs, msg => {
+  pubsub.subscribe(systemAddress, scopes.SYSTEM, strings.topics.prefs, async msg => {
     console.log('PREFS', msg);
 
     // cache all prefs
@@ -709,6 +876,13 @@ const onReady = async () => {
       console.log('registering new quit shortcut:', newQuitShortcut);
       registerLocalShortcut(newQuitShortcut, onQuit);
       _quitShortcut = newQuitShortcut;
+    }
+
+    // Load extensions after core app is ready (only once)
+    if (!extensionsLoaded) {
+      extensionsLoaded = true;
+      console.log('[ext:win] Core app ready, loading extensions...');
+      await loadEnabledExtensions();
     }
   });
 
@@ -2095,6 +2269,209 @@ ipcMain.handle('extension-get', async (ev, data) => {
   }
 });
 
+// ==================== Extension Window Management ====================
+
+// Load extension (create window) - permission check in preload.js
+ipcMain.handle('extension-window-load', async (ev, data) => {
+  const { extId } = data;
+  const url = ev.sender.getURL();
+
+  // Permission check: only core app can manage extension windows
+  if (!url.startsWith('peek://app/')) {
+    console.warn(`[ext:win] Permission denied for extension load from: ${url}`);
+    return { success: false, error: 'Permission denied' };
+  }
+
+  try {
+    const win = await createExtensionWindow(extId);
+    if (win) {
+      return { success: true, data: { extId } };
+    } else {
+      return { success: false, error: 'Failed to create extension window' };
+    }
+  } catch (error) {
+    console.error('extension-window-load error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Unload extension (destroy window) - permission check in preload.js
+ipcMain.handle('extension-window-unload', async (ev, data) => {
+  const { extId } = data;
+  const url = ev.sender.getURL();
+
+  // Permission check: only core app can manage extension windows
+  if (!url.startsWith('peek://app/')) {
+    console.warn(`[ext:win] Permission denied for extension unload from: ${url}`);
+    return { success: false, error: 'Permission denied' };
+  }
+
+  try {
+    const result = destroyExtensionWindow(extId);
+    return { success: true, data: { wasRunning: result } };
+  } catch (error) {
+    console.error('extension-window-unload error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Reload extension (destroy and recreate window)
+ipcMain.handle('extension-window-reload', async (ev, data) => {
+  const { extId } = data;
+  const url = ev.sender.getURL();
+
+  // Permission check: only core app can manage extension windows
+  if (!url.startsWith('peek://app/')) {
+    console.warn(`[ext:win] Permission denied for extension reload from: ${url}`);
+    return { success: false, error: 'Permission denied' };
+  }
+
+  try {
+    destroyExtensionWindow(extId);
+    // Small delay to ensure cleanup
+    await new Promise(resolve => setTimeout(resolve, 200));
+    const win = await createExtensionWindow(extId);
+    if (win) {
+      return { success: true, data: { extId } };
+    } else {
+      return { success: false, error: 'Failed to reload extension window' };
+    }
+  } catch (error) {
+    console.error('extension-window-reload error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// List running extension windows
+ipcMain.handle('extension-window-list', async (ev) => {
+  try {
+    const running = getRunningExtensions();
+    return { success: true, data: running };
+  } catch (error) {
+    console.error('extension-window-list error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// ==================== Extension Settings (Cross-Origin Storage) ====================
+
+// Get extension settings from datastore
+ipcMain.handle('extension-settings-get', async (ev, data) => {
+  const { extId } = data;
+
+  try {
+    const table = datastoreStore.getTable('extension_settings') || {};
+    const settings = {};
+
+    for (const [rowId, row] of Object.entries(table)) {
+      if (row.extensionId === extId) {
+        try {
+          settings[row.key] = JSON.parse(row.value);
+        } catch (e) {
+          settings[row.key] = row.value;
+        }
+      }
+    }
+
+    return { success: true, data: settings };
+  } catch (error) {
+    console.error('extension-settings-get error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Set extension settings in datastore
+ipcMain.handle('extension-settings-set', async (ev, data) => {
+  const { extId, settings } = data;
+
+  try {
+    const now = Date.now();
+
+    for (const [key, value] of Object.entries(settings)) {
+      const rowId = `${extId}:${key}`;
+      datastoreStore.setRow('extension_settings', rowId, {
+        extensionId: extId,
+        key,
+        value: JSON.stringify(value),
+        updatedAt: now
+      });
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('extension-settings-set error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get a single setting key for an extension
+ipcMain.handle('extension-settings-get-key', async (ev, data) => {
+  const { extId, key } = data;
+
+  try {
+    const rowId = `${extId}:${key}`;
+    const row = datastoreStore.getRow('extension_settings', rowId);
+
+    if (!row || Object.keys(row).length === 0) {
+      return { success: true, data: null };
+    }
+
+    try {
+      return { success: true, data: JSON.parse(row.value) };
+    } catch (e) {
+      return { success: true, data: row.value };
+    }
+  } catch (error) {
+    console.error('extension-settings-get-key error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Set a single setting key for an extension
+ipcMain.handle('extension-settings-set-key', async (ev, data) => {
+  const { extId, key, value } = data;
+
+  try {
+    const rowId = `${extId}:${key}`;
+    datastoreStore.setRow('extension_settings', rowId, {
+      extensionId: extId,
+      key,
+      value: JSON.stringify(value),
+      updatedAt: Date.now()
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error('extension-settings-set-key error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get extension manifest from filesystem
+ipcMain.handle('extension-manifest-get', async (ev, data) => {
+  const { extId } = data;
+
+  try {
+    const extPath = getExtensionPath(extId);
+    if (!extPath) {
+      return { success: false, error: 'Extension not found' };
+    }
+
+    const manifestPath = path.join(extPath, 'manifest.json');
+    if (!fs.existsSync(manifestPath)) {
+      return { success: false, error: 'manifest.json not found' };
+    }
+
+    const manifestContent = fs.readFileSync(manifestPath, 'utf-8');
+    const manifest = JSON.parse(manifestContent);
+
+    return { success: true, data: manifest };
+  } catch (error) {
+    console.error('extension-manifest-get error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 // ==================== End Extension Management ====================
 
 const modWindow = (bw, params) => {
@@ -2451,9 +2828,13 @@ const updateDockVisibility = (excludeId = null) => {
   const visibleCount = getVisibleWindowCount(excludeId);
   const prefShowDock = _prefs?.showInDockAndSwitcher === true;
 
+  console.log('updateDockVisibility:', { visibleCount, prefShowDock, excludeId });
+
   if (visibleCount > 0 || prefShowDock) {
+    console.log('Showing dock');
     app.dock.show();
   } else {
+    console.log('Hiding dock');
     app.dock.hide();
   }
 };

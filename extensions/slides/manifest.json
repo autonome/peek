@@ -4,6 +4,65 @@
   "name": "Slides",
   "description": "Edge-anchored slide-in panels triggered by keyboard shortcuts",
   "version": "1.0.0",
-  "background": "background.js",
-  "builtin": true
+  "background": "background.html",
+  "builtin": true,
+  "settings": {
+    "prefs": {
+      "shortcutKeyPrefix": {
+        "type": "string",
+        "label": "Shortcut prefix",
+        "description": "Global OS hotkey prefix to trigger slides - followed by arrow keys",
+        "default": "Option+"
+      }
+    },
+    "items": {
+      "type": "array",
+      "maxItems": 4,
+      "itemSchema": {
+        "screenEdge": {
+          "type": "string",
+          "label": "Screen edge",
+          "description": "Edge of screen to slide from",
+          "enum": ["Up", "Down", "Left", "Right"]
+        },
+        "title": {
+          "type": "string",
+          "label": "Title",
+          "description": "Name of the slide"
+        },
+        "address": {
+          "type": "string",
+          "label": "URL",
+          "description": "URL to load"
+        },
+        "height": {
+          "type": "integer",
+          "label": "Height",
+          "default": 600
+        },
+        "width": {
+          "type": "integer",
+          "label": "Width",
+          "default": 800
+        },
+        "persistState": {
+          "type": "boolean",
+          "label": "Persist state",
+          "description": "Persist local state between sessions",
+          "default": false
+        },
+        "keepLive": {
+          "type": "boolean",
+          "label": "Keep live",
+          "description": "Keep page alive in background",
+          "default": false
+        },
+        "enabled": {
+          "type": "boolean",
+          "label": "Enabled",
+          "default": false
+        }
+      }
+    }
+  }
 }

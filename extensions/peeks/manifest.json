@@ -4,6 +4,66 @@
   "name": "Peeks",
   "description": "Quick access modal windows for web pages via keyboard shortcuts",
   "version": "1.0.0",
-  "background": "background.js",
-  "builtin": true
+  "background": "background.html",
+  "builtin": true,
+  "settings": {
+    "prefs": {
+      "shortcutKeyPrefix": {
+        "type": "string",
+        "label": "Shortcut prefix",
+        "description": "Global OS hotkey prefix to trigger peeks - followed by 0-9",
+        "default": "Option+"
+      }
+    },
+    "items": {
+      "type": "array",
+      "maxItems": 10,
+      "itemSchema": {
+        "keyNum": {
+          "type": "integer",
+          "label": "Key number",
+          "description": "Number key (0-9) to trigger this peek",
+          "minimum": 0,
+          "maximum": 9
+        },
+        "title": {
+          "type": "string",
+          "label": "Title",
+          "description": "Name of the peek"
+        },
+        "address": {
+          "type": "string",
+          "label": "URL",
+          "description": "URL to load"
+        },
+        "height": {
+          "type": "integer",
+          "label": "Height",
+          "default": 600
+        },
+        "width": {
+          "type": "integer",
+          "label": "Width",
+          "default": 800
+        },
+        "persistState": {
+          "type": "boolean",
+          "label": "Persist state",
+          "description": "Persist local state between sessions",
+          "default": false
+        },
+        "keepLive": {
+          "type": "boolean",
+          "label": "Keep live",
+          "description": "Keep page alive in background",
+          "default": false
+        },
+        "enabled": {
+          "type": "boolean",
+          "label": "Enabled",
+          "default": false
+        }
+      }
+    }
+  }
 }

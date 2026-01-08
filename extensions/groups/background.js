@@ -1,19 +1,51 @@
-// Groups extension background script
-// This runs in the core background context and registers the extension
+/**
+ * Groups Extension Background Script
+ *
+ * Tag-based grouping of addresses
+ *
+ * Runs in isolated extension process (peek://ext/groups/background.html)
+ * Uses api.settings for datastore-backed settings storage
+ */
 
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-// Use absolute peek:// URLs since relative paths stay within the ext host
-import { openStore } from "peek://app/utils.js";
-import windows from "peek://app/windows.js";
 
 const api = window.app;
 const debug = api.debug;
-const clear = false;
 
-const store = openStore(id, defaults, clear /* clear storage */);
+console.log('[ext:groups] background', labels.name);
 
 // Extension content is served from peek://ext/groups/
 const address = 'peek://ext/groups/home.html';
+
+// In-memory settings cache (loaded from datastore on init)
+let currentSettings = {
+  prefs: defaults.prefs
+};
+
+/**
+ * Load settings from datastore
+ * @returns {Promise<{prefs: object}>}
+ */
+const loadSettings = async () => {
+  const result = await api.settings.get();
+  if (result.success && result.data) {
+    return {
+      prefs: result.data.prefs || defaults.prefs
+    };
+  }
+  return { prefs: defaults.prefs };
+};
+
+/**
+ * Save settings to datastore
+ * @param {object} settings - Settings object with prefs
+ */
+const saveSettings = async (settings) => {
+  const result = await api.settings.set(settings);
+  if (!result.success) {
+    console.error('[ext:groups] Failed to save settings:', result.error);
+  }
+};
 
 const openGroupsWindow = () => {
   const height = 600;
@@ -23,21 +55,21 @@ const openGroupsWindow = () => {
     key: address,
     height,
     width,
-    escapeMode: 'navigate',  // Allow internal navigation before closing
+    escapeMode: 'navigate',
     trackingSource: 'cmd',
     trackingSourceId: 'groups'
   };
 
-  windows.createWindow(address, params)
+  api.window.open(address, params)
     .then(window => {
-      debug && console.log('Groups window opened:', window);
+      debug && console.log('[ext:groups] Groups window opened:', window);
     })
     .catch(error => {
-      console.error('Failed to open groups window:', error);
+      console.error('[ext:groups] Failed to open groups window:', error);
     });
 };
 
-// ===== Command helpers (moved from app/cmd/commands/groups.js) =====
+// ===== Command helpers =====
 
 /**
  * Helper to get or create an address for a URI
@@ -49,7 +81,6 @@ const getOrCreateAddress = async (uri) => {
   const existing = result.data.find(addr => addr.uri === uri);
   if (existing) return existing;
 
-  // Create new address
   const addResult = await api.datastore.addAddress(uri, {});
   if (!addResult.success) return null;
 
@@ -71,7 +102,6 @@ const getAllGroups = async () => {
 const saveToGroup = async (groupName) => {
   console.log('[ext:groups] Saving to group:', groupName);
 
-  // Get or create the tag
   const tagResult = await api.datastore.getOrCreateTag(groupName);
   if (!tagResult.success) {
     console.error('[ext:groups] Failed to get/create tag:', tagResult.error);
@@ -80,7 +110,6 @@ const saveToGroup = async (groupName) => {
 
   const tagId = tagResult.data.id;
 
-  // Get all open windows (excluding internal peek:// URLs)
   const listResult = await api.window.list({ includeInternal: false });
   if (!listResult.success || listResult.windows.length === 0) {
     console.log('[ext:groups] No windows to save');
@@ -109,7 +138,6 @@ const saveToGroup = async (groupName) => {
 const openGroup = async (groupName) => {
   console.log('[ext:groups] Opening group:', groupName);
 
-  // Find the tag by name
   const tagsResult = await api.datastore.getTagsByFrecency();
   if (!tagsResult.success) {
     return { success: false, error: 'Failed to get tags' };
@@ -121,7 +149,6 @@ const openGroup = async (groupName) => {
     return { success: false, error: 'Group not found' };
   }
 
-  // Get addresses with this tag
   const addressesResult = await api.datastore.getAddressesByTag(tag.id);
   if (!addressesResult.success || addressesResult.data.length === 0) {
     console.log('[ext:groups] No addresses in group:', groupName);
@@ -129,7 +156,7 @@ const openGroup = async (groupName) => {
   }
 
   for (const addr of addressesResult.data) {
-    await windows.createWindow(addr.uri, {
+    await api.window.open(addr.uri, {
       trackingSource: 'cmd',
       trackingSourceId: `group:${groupName}`
     });
@@ -173,7 +200,6 @@ const commandDefinitions = [
         const groupName = ctx.search.trim();
         await openGroup(groupName);
       } else {
-        // Show available groups
         const groups = await getAllGroups();
         if (groups.length === 0) {
           console.log('[ext:groups] No groups saved yet. Use "save group <name>" to create one.');
@@ -191,7 +217,7 @@ const commandDefinitions = [
 let registeredShortcut = null;
 let registeredCommands = [];
 
-const initShortcut = shortcut => {
+const initShortcut = (shortcut) => {
   api.shortcuts.register(shortcut, () => {
     openGroupsWindow();
   }, { global: true });
@@ -214,12 +240,23 @@ const uninitCommands = () => {
   console.log('[ext:groups] Unregistered commands');
 };
 
-const init = () => {
+const init = async () => {
   console.log('[ext:groups] init');
 
-  const prefs = () => store.get(storageKeys.PREFS);
-  initShortcut(prefs().shortcutKey);
+  // Load settings from datastore
+  currentSettings = await loadSettings();
+
+  initShortcut(currentSettings.prefs.shortcutKey);
   initCommands();
+
+  // Listen for settings changes to hot-reload (GLOBAL scope for cross-process)
+  api.subscribe('groups:settings-changed', async () => {
+    console.log('[ext:groups] settings changed, reinitializing');
+    uninit();
+    currentSettings = await loadSettings();
+    initShortcut(currentSettings.prefs.shortcutKey);
+    initCommands();
+  }, api.scopes.GLOBAL);
 };
 
 const uninit = () => {

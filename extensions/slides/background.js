@@ -2,25 +2,55 @@
  * Slides Extension Background Script
  *
  * Edge-anchored slide-in panels triggered by keyboard shortcuts (Option+Arrow)
+ *
+ * Runs in isolated extension process (peek://ext/slides/background.html)
+ * Uses api.settings for datastore-backed settings storage
  */
 
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { openStore } from 'peek://app/utils.js';
-import windows from 'peek://app/windows.js';
 
 const api = window.app;
 const debug = api.debug;
 
 console.log('[ext:slides] background', labels.name);
 
-const clear = false;
-const store = openStore(id, defaults, clear /* clear storage */);
-
 // Map to track opened slides - key is slide key, value is window ID
 const slideWindows = new Map();
 
 // Track registered shortcuts for cleanup
 let registeredShortcuts = [];
+
+// In-memory settings cache (loaded from datastore on init)
+let currentSettings = {
+  prefs: defaults.prefs,
+  items: defaults.items
+};
+
+/**
+ * Load settings from datastore
+ * @returns {Promise<{prefs: object, items: array}>}
+ */
+const loadSettings = async () => {
+  const result = await api.settings.get();
+  if (result.success && result.data) {
+    return {
+      prefs: result.data.prefs || defaults.prefs,
+      items: result.data.items || defaults.items
+    };
+  }
+  return { prefs: defaults.prefs, items: defaults.items };
+};
+
+/**
+ * Save settings to datastore
+ * @param {object} settings - Settings object with prefs and items
+ */
+const saveSettings = async (settings) => {
+  const result = await api.settings.set(settings);
+  if (!result.success) {
+    console.error('[ext:slides] Failed to save settings:', result.error);
+  }
+};
 
 const executeItem = (item) => {
   const height = item.height || 600;
@@ -35,53 +65,20 @@ const executeItem = (item) => {
 
   switch(item.screenEdge) {
     case 'Up':
-      // horizontally center
       x = (screen.width - width) / 2;
-
-      // y starts at screen top and stays there
       y = 0;
-
-      //width = item.width;
-      //height = 1;
       break;
     case 'Down':
-      // horizonally center
       x = (screen.width - item.width) / 2;
-
-      // y ends up at window height from bottom
-      //
-      // eg: y = screen.height - item.height;
-      //
-      // but starts at screen bottom
       y = screen.height;
-
-      //width = item.width;
-      //height = 1;
       break;
     case 'Left':
-      // x starts and ends at at left screen edge
-      // at left edge
       x = 0;
-
-      // vertically center
       y = (screen.height - item.height) / 2;
-
-      //width = 1;
-      //height = item.height;
       break;
     case 'Right':
-      // x ends at at right screen edge - window size
-      //
-      // eg: x = screen.width - item.width;
-      //
-      // but starts at screen right edge, will animate in
       x = screen.width;
-
-      // vertically center
       y = (screen.height - item.height) / 2;
-
-      //width = 1;
-      //height = item.height;
       break;
     default:
       center = true;
@@ -94,14 +91,11 @@ const executeItem = (item) => {
 
   // Check if this slide is already open
   if (slideWindows.has(key)) {
-    // Get the window ID for the existing slide
     const windowId = slideWindows.get(key);
     console.log('[ext:slides] Slide already open, verifying window exists with ID:', windowId);
 
-    // First check if window exists
     api.window.exists({ id: windowId }).then(existsResult => {
       if (existsResult.exists) {
-        // Window exists, try to show it
         api.window.show({ id: windowId }).then(result => {
           if (result.success) {
             console.log('[ext:slides] Successfully showed existing slide:', key);
@@ -136,6 +130,10 @@ const executeItem = (item) => {
       width,
       key,
 
+      // modal behavior
+      modal: true,
+      type: 'panel',
+
       feature: labels.name,
       keepLive: item.keepLive || false,
       persistState: item.persistState || false,
@@ -143,31 +141,28 @@ const executeItem = (item) => {
       x,
       y,
 
-      // tracking (handled automatically by windows API)
+      // tracking
       trackingSource: 'slide',
       trackingSourceId: item.screenEdge ? `slide_${item.screenEdge}` : 'slide',
       title: item.title || ''
     };
 
-    // Open the window
-    windows.openModalWindow(item.address, params).then(result => {
+    api.window.open(item.address, params).then(result => {
       if (result.success) {
         console.log('[ext:slides] Successfully opened slide with ID:', result.id);
-        // Store the window ID for future reference
         slideWindows.set(key, result.id);
       } else {
         console.error('[ext:slides] Failed to open slide:', result.error);
       }
     });
   }
-
 };
 
 const initItems = (prefs, items) => {
   const cmdPrefix = prefs.shortcutKeyPrefix;
 
   items.forEach(item => {
-    if (item.enabled == true && item.address.length > 0) {
+    if (item.enabled == true && item.address && item.address.length > 0) {
       const shortcut = `${cmdPrefix}${item.screenEdge}`;
 
       api.shortcuts.register(shortcut, () => {
@@ -185,7 +180,6 @@ const initItems = (prefs, items) => {
 const uninit = () => {
   console.log('[ext:slides] uninit - unregistering', registeredShortcuts.length, 'shortcuts');
 
-  // Unregister all shortcuts
   registeredShortcuts.forEach(shortcut => {
     api.shortcuts.unregister(shortcut, { global: true });
   });
@@ -206,53 +200,44 @@ const uninit = () => {
 
 /**
  * Reinitialize slides (called when settings change)
- *
- * TODO: This is inefficient - reinitializes all slides when any single
- * property changes. A better approach would be to diff the old and new
- * settings and only update the shortcuts that actually changed.
  */
-const reinit = () => {
+const reinit = async () => {
   console.log('[ext:slides] reinit');
   uninit();
 
-  const prefs = store.get(storageKeys.PREFS);
-  const items = store.get(storageKeys.ITEMS);
+  currentSettings = await loadSettings();
 
-  if (items && items.length > 0) {
-    initItems(prefs, items);
+  if (currentSettings.items && currentSettings.items.length > 0) {
+    initItems(currentSettings.prefs, currentSettings.items);
   }
 };
 
-const init = () => {
+const init = async () => {
   console.log('[ext:slides] init');
 
-  const prefs = () => store.get(storageKeys.PREFS);
-  const items = () => store.get(storageKeys.ITEMS);
+  // Load settings from datastore
+  currentSettings = await loadSettings();
 
   // Add global window closed handler
   api.subscribe('window:closed', (data) => {
-    // Check all slide windows to see if any match the closed window ID
     for (const [key, windowId] of slideWindows.entries()) {
       if (data.id === windowId) {
         console.log('[ext:slides] Slide window was closed externally:', key);
         slideWindows.delete(key);
       }
     }
-  });
+  }, api.scopes.GLOBAL);
 
   // Initialize slides
-  if (items().length > 0) {
-    initItems(prefs(), items());
+  if (currentSettings.items && currentSettings.items.length > 0) {
+    initItems(currentSettings.prefs, currentSettings.items);
   }
 
-  // Listen for settings changes to hot-reload
+  // Listen for settings changes to hot-reload (GLOBAL scope for cross-process)
   api.subscribe('slides:settings-changed', () => {
     console.log('[ext:slides] settings changed, reinitializing');
     reinit();
-  });
-
-  // Set up listener for app shutdown to clean up windows
-  api.subscribe('app:shutdown', uninit);
+  }, api.scopes.GLOBAL);
 };
 
 export default {

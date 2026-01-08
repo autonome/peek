@@ -3,7 +3,7 @@ import { openStore } from "./utils.js";
 import windowManager from "./windows.js";
 import api from './api.js';
 import fc from './features.js';
-import extensionLoader from './extensions/loader.js';
+import migrations from './migrations/index.js';
 
 const { id, labels, schemas, storageKeys, defaults } = appConfig;
 
@@ -28,6 +28,9 @@ const settingsAddress = 'peek://app/settings/settings.html';
 const topicCorePrefs = 'topic:core:prefs';
 const topicFeatureToggle = 'core:feature:toggle';
 
+// Built-in extensions (now loaded by main process ExtensionManager)
+const builtinExtensions = ['groups', 'peeks', 'slides'];
+
 let _settingsWin = null;
 
 const openSettingsWindow = async (prefs) => {
@@ -46,14 +49,14 @@ const openSettingsWindow = async (prefs) => {
   };
 
   console.log('Opening settings window with params:', params);
-  
+
   try {
     // Use the window creation API from windows.js
     const windowController = await windowManager.createWindow(settingsAddress, params);
-    
+
     console.log('Settings window opened successfully with controller:', windowController);
     _settingsWin = windowController;
-    
+
     // Focus the window to bring it to front
     await windowController.focus();
   } catch (error) {
@@ -73,9 +76,10 @@ const initFeature = f => {
     return;
   }
 
-  // Skip extension-based features (they're loaded by the extension loader)
-  if (f.extension) {
-    debug && console.log('skipping extension-based feature:', f.name);
+  // Skip extension-based features (they're loaded by main process ExtensionManager)
+  const extId = f.name.toLowerCase();
+  if (builtinExtensions.includes(extId)) {
+    debug && console.log('skipping extension-based feature (loaded by main process):', f.name);
     return;
   }
 
@@ -116,7 +120,7 @@ const features = () => store.get(storageKeys.ITEMS);
 
 // Register extension management commands for cmd palette
 const registerExtensionCommands = () => {
-  // Reload extension command
+  // Reload extension command (uses main process IPC)
   api.commands.register({
     name: 'extension reload',
     description: 'Reload an extension by name',
@@ -127,39 +131,31 @@ const registerExtensionCommands = () => {
         return;
       }
 
-      // Find extension by name or id (case-insensitive)
-      const extensions = extensionLoader.getRunningExtensions();
-      const ext = extensions.find(e =>
-        e.id.toLowerCase() === extName.toLowerCase() ||
-        (e.manifest?.name || '').toLowerCase() === extName.toLowerCase()
-      );
-
-      if (!ext) {
-        console.log(`extension reload: extension not found: ${extName}`);
-        return;
-      }
-
-      console.log(`Reloading extension: ${ext.id}`);
-      const result = await extensionLoader.reloadExtension(ext.id);
+      console.log(`Reloading extension: ${extName}`);
+      const result = await api.extensions.reload(extName.toLowerCase());
       if (result.success) {
-        console.log(`Extension reloaded: ${ext.id}`);
+        console.log(`Extension reloaded: ${extName}`);
       } else {
         console.error(`Failed to reload extension: ${result.error}`);
       }
     }
   });
 
-  // List extensions command
+  // List extensions command (uses main process IPC)
   api.commands.register({
     name: 'extensions',
     description: 'List running extensions',
     execute: async (ctx) => {
-      const extensions = extensionLoader.getRunningExtensions();
-      console.log('Running extensions:');
-      extensions.forEach(ext => {
-        const manifest = ext.manifest || {};
-        console.log(`  - ${manifest.name || ext.id} (${ext.id}) v${manifest.version || '?'}`);
-      });
+      const listResult = await api.extensions.list();
+      if (listResult.success && listResult.data) {
+        console.log('Running extensions:');
+        listResult.data.forEach(ext => {
+          const manifest = ext.manifest || {};
+          console.log(`  - ${manifest.name || ext.id} (${ext.id}) v${manifest.version || '?'}`);
+        });
+      } else {
+        console.log('No extensions running');
+      }
 
       // Open settings to Extensions section
       const p = prefs();
@@ -210,16 +206,15 @@ const init = async () => {
     }
   });
 
-  // Open settings window on startup if configured
-  if (p.startupFeature == settingsAddress) {
-    try {
-      await openSettingsWindow(p);
-    } catch (error) {
-      console.error('Error opening startup settings window:', error);
-    }
+  // Always open settings window on startup
+  try {
+    await openSettingsWindow(p);
+  } catch (error) {
+    console.error('Error opening startup settings window:', error);
   }
 
-  // feature enable/disable
+  // Feature enable/disable handler
+  // Extensions are now managed by main process ExtensionManager via IPC
   api.subscribe(topicFeatureToggle, async msg => {
     console.log('feature toggle', msg)
 
@@ -233,12 +228,13 @@ const init = async () => {
 
       // Check if this feature is backed by an extension
       const extId = f.name.toLowerCase();
-      const isExtension = extensionLoader.builtinExtensions.some(e => e.id === extId);
+      const isExtension = builtinExtensions.includes(extId);
 
       if (msg.enabled == false) {
         console.log('disabling', f.name);
         if (isExtension) {
-          await extensionLoader.unloadExtension(extId);
+          // Use main process IPC to unload extension
+          await api.extensions.unload(extId);
         } else {
           uninitFeature(f);
         }
@@ -246,10 +242,8 @@ const init = async () => {
       else if (msg.enabled == true) {
         console.log('enabling', f.name);
         if (isExtension) {
-          const ext = extensionLoader.builtinExtensions.find(e => e.id === extId);
-          if (ext) {
-            await extensionLoader.loadExtension(ext);
-          }
+          // Use main process IPC to load extension
+          await api.extensions.load(extId);
         } else {
           initFeature(f);
         }
@@ -262,45 +256,18 @@ const init = async () => {
 
   initSettingsShortcut(p);
 
+  // Run any pending migrations (e.g., localStorage -> datastore)
+  await migrations.runMigrations();
+
+  // Initialize core features (non-extension features only)
   features().forEach(initFeature);
 
-  // Load extensions
-  // Helper to check if an extension (by name) is enabled in features
-  const isExtensionEnabled = (extId) => {
-    const featureList = features();
-    // Match extension ID to feature name (case-insensitive)
-    const feature = featureList.find(f =>
-      f.name.toLowerCase() === extId.toLowerCase()
-    );
-    return feature ? feature.enabled : false;
-  };
-
-  await extensionLoader.loadBuiltinExtensions(isExtensionEnabled);
+  // Extensions are now loaded by main process ExtensionManager
+  // It receives the 'core:ready' signal and calls loadEnabledExtensions()
+  console.log('Core features initialized. Extensions loaded by main process.');
 
   // Register extension dev commands
   registerExtensionCommands();
-
-  //features.forEach(initIframeFeature);
-
-  /*
-  // Example of using the new windows.js API:
-  const addy = 'http://localhost';
-  const params = {
-    debug,
-    key: addy,
-    height: 300,
-    width: 300
-  };
-
-  windowManager.createWindow(addy, params)
-    .then(windowController => {
-      // Can use windowController to interact with the window
-      windowController.hide();
-    })
-    .catch(error => {
-      console.error('Error opening example window:', error);
-    });
-  */
 };
 
 window.addEventListener('load', () => {
@@ -308,33 +275,3 @@ window.addEventListener('load', () => {
     console.error('Error during application initialization:', error);
   });
 });
-
-/*
-const odiff = (a, b) => Object.entries(b).reduce((c, [k, v]) => Object.assign(c, a[k] ? {} : { [k]: v }), {});
-
-const onStorageChange = (e) => {
-  const old = JSON.parse(e.oldValue);
-  const now = JSON.parse(e.newValue);
-
-  const featureKey = `${id}+${storageKeys.ITEMS}`;
-  //console.log('onStorageChane', e.key, featureKey)
-  if (e.key == featureKey) {
-    //console.log('STORAGE CHANGE', e.key, old[0].enabled, now[0].enabled);
-    features().forEach((feat, i) => {
-      console.log(feat.title, i, feat.enabled, old[i].enabled, now[i].enabled);
-      // disabled, so unload
-      if (old[i].enabled == true && now[i].enabled == false) {
-        // TODO
-        console.log('TODO: add unloading of features', feat)
-      }
-      // enabled, so load
-      else if (old[i].enabled == false && now[i].enabled == true) {
-        initFeature(feat);
-      }
-    });
-  }
-	//JSON.stringify(e.storageArea);
-};
-
-window.addEventListener('storage', onStorageChange);
-*/

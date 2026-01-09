@@ -32,7 +32,11 @@
     "package:install": "electron-builder --dir && rm -rf /Applications/Peek.app && cp -R out/mac-arm64/Peek.app /Applications/",
     "make": "electron-builder",
     "lint": "echo \"No linting configured\"",
-    "help": "electron --help"
+    "help": "electron --help",
+    "test": "npx playwright test",
+    "test:smoke": "npx playwright test tests/smoke.spec.ts",
+    "test:headed": "npx playwright test --headed",
+    "test:debug": "npx playwright test --debug"
   },
   "dependencies": {
     "better-sqlite3": "^12.5.0",
@@ -42,10 +46,12 @@
   "devDependencies": {
     "@electron/fuses": "^1.8.0",
     "@electron/rebuild": "^4.0.2",
+    "@playwright/test": "^1.57.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.0.3",
     "electron": "^35.7.5",
     "electron-builder": "26.0.12",
+    "playwright": "^1.57.0",
     "typescript": "^5.9.3"
   },
   "resolutions": {

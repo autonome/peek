@@ -778,8 +778,14 @@ const onReady = async () => {
   }
 
   // Register as default handler for http/https URLs (if not already and user hasn't declined)
+  // Skip for test profiles to avoid system dialogs during automated testing
+  const isTestProfile = PROFILE.startsWith('test');
+  if (isTestProfile) {
+    console.log('Skipping default browser check for test profile:', PROFILE);
+  }
+
   const defaultBrowserPrefFile = path.join(profileDataPath, 'default-browser-pref.json');
-  let shouldPromptForDefault = true;
+  let shouldPromptForDefault = !isTestProfile;
 
   // Check if user has previously declined
   try {

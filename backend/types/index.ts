@@ -1,0 +1,142 @@
+/**
+ * Shared data types used by both the API and backend implementations
+ */
+
+// ==================== Datastore Entity Types ====================
+
+export interface Address {
+  id: string;
+  uri: string;
+  protocol: string;
+  domain: string;
+  path: string;
+  title: string;
+  mimeType: string;
+  favicon: string;
+  description: string;
+  tags: string;
+  metadata: string;
+  createdAt: number;
+  updatedAt: number;
+  lastVisitAt: number;
+  visitCount: number;
+  starred: number;
+  archived: number;
+}
+
+export interface Visit {
+  id: string;
+  addressId: string;
+  timestamp: number;
+  duration: number;
+  source: string;
+  sourceId: string;
+  windowType: string;
+  metadata: string;
+  scrollDepth: number;
+  interacted: number;
+}
+
+export interface Content {
+  id: string;
+  title: string;
+  content: string;
+  mimeType: string;
+  contentType: string;
+  language: string;
+  encoding: string;
+  tags: string;
+  addressRefs: string;
+  parentId: string;
+  metadata: string;
+  createdAt: number;
+  updatedAt: number;
+  syncPath: string;
+  synced: number;
+  starred: number;
+  archived: number;
+}
+
+export interface Tag {
+  id: string;
+  name: string;
+  slug: string;
+  color: string;
+  parentId: string;
+  description: string;
+  metadata: string;
+  createdAt: number;
+  updatedAt: number;
+  frequency: number;
+  lastUsedAt: number;
+  frecencyScore: number;
+}
+
+export interface AddressTag {
+  id: string;
+  addressId: string;
+  tagId: string;
+  createdAt: number;
+}
+
+export interface Extension {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  path: string;
+  backgroundUrl: string;
+  settingsUrl: string;
+  iconPath: string;
+  builtin: number;
+  enabled: number;
+  status: string;
+  installedAt: number;
+  updatedAt: number;
+  lastErrorAt: number;
+  lastError: string;
+  metadata: string;
+}
+
+export interface ExtensionSetting {
+  id: string;
+  extensionId: string;
+  key: string;
+  value: string;
+  updatedAt: number;
+}
+
+export interface DatastoreStats {
+  totalAddresses: number;
+  totalVisits: number;
+  avgVisitDuration: number;
+  totalContent: number;
+  syncedContent: number;
+}
+
+// ==================== Table Names ====================
+
+export type TableName =
+  | 'addresses'
+  | 'visits'
+  | 'content'
+  | 'tags'
+  | 'address_tags'
+  | 'blobs'
+  | 'scripts_data'
+  | 'feeds'
+  | 'extensions'
+  | 'extension_settings';
+
+export const tableNames: TableName[] = [
+  'addresses',
+  'visits',
+  'content',
+  'tags',
+  'address_tags',
+  'blobs',
+  'scripts_data',
+  'feeds',
+  'extensions',
+  'extension_settings'
+];

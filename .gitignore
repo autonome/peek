@@ -9,6 +9,10 @@ out/
 app/dist/
 dist/
 
+# Test output
+test-results/
+playwright-report/
+
 # Claude Code local settings
 .claude/
 CLAUDE.md

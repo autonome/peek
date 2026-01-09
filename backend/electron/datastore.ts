@@ -1,0 +1,378 @@
+/**
+ * Electron backend - SQLite datastore
+ *
+ * Simple module with database functions for Electron's main process.
+ * Uses better-sqlite3 for synchronous SQLite access.
+ */
+
+import Database from 'better-sqlite3';
+import type { TableName } from '../types/index.js';
+import { tableNames } from '../types/index.js';
+
+// SQL Schema
+const createTableStatements = `
+  CREATE TABLE IF NOT EXISTS addresses (
+    id TEXT PRIMARY KEY,
+    uri TEXT NOT NULL,
+    protocol TEXT DEFAULT 'https',
+    domain TEXT,
+    path TEXT DEFAULT '',
+    title TEXT DEFAULT '',
+    mimeType TEXT DEFAULT 'text/html',
+    favicon TEXT DEFAULT '',
+    description TEXT DEFAULT '',
+    tags TEXT DEFAULT '',
+    metadata TEXT DEFAULT '{}',
+    createdAt INTEGER,
+    updatedAt INTEGER,
+    lastVisitAt INTEGER DEFAULT 0,
+    visitCount INTEGER DEFAULT 0,
+    starred INTEGER DEFAULT 0,
+    archived INTEGER DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS idx_addresses_uri ON addresses(uri);
+  CREATE INDEX IF NOT EXISTS idx_addresses_domain ON addresses(domain);
+  CREATE INDEX IF NOT EXISTS idx_addresses_protocol ON addresses(protocol);
+  CREATE INDEX IF NOT EXISTS idx_addresses_lastVisitAt ON addresses(lastVisitAt);
+  CREATE INDEX IF NOT EXISTS idx_addresses_visitCount ON addresses(visitCount);
+  CREATE INDEX IF NOT EXISTS idx_addresses_starred ON addresses(starred);
+
+  CREATE TABLE IF NOT EXISTS visits (
+    id TEXT PRIMARY KEY,
+    addressId TEXT,
+    timestamp INTEGER,
+    duration INTEGER DEFAULT 0,
+    source TEXT DEFAULT 'direct',
+    sourceId TEXT DEFAULT '',
+    windowType TEXT DEFAULT 'main',
+    metadata TEXT DEFAULT '{}',
+    scrollDepth INTEGER DEFAULT 0,
+    interacted INTEGER DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS idx_visits_addressId ON visits(addressId);
+  CREATE INDEX IF NOT EXISTS idx_visits_timestamp ON visits(timestamp);
+  CREATE INDEX IF NOT EXISTS idx_visits_source ON visits(source);
+
+  CREATE TABLE IF NOT EXISTS content (
+    id TEXT PRIMARY KEY,
+    title TEXT DEFAULT 'Untitled',
+    content TEXT DEFAULT '',
+    mimeType TEXT DEFAULT 'text/plain',
+    contentType TEXT DEFAULT 'plain',
+    language TEXT DEFAULT '',
+    encoding TEXT DEFAULT 'utf-8',
+    tags TEXT DEFAULT '',
+    addressRefs TEXT DEFAULT '',
+    parentId TEXT DEFAULT '',
+    metadata TEXT DEFAULT '{}',
+    createdAt INTEGER,
+    updatedAt INTEGER,
+    syncPath TEXT DEFAULT '',
+    synced INTEGER DEFAULT 0,
+    starred INTEGER DEFAULT 0,
+    archived INTEGER DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS idx_content_contentType ON content(contentType);
+  CREATE INDEX IF NOT EXISTS idx_content_mimeType ON content(mimeType);
+  CREATE INDEX IF NOT EXISTS idx_content_synced ON content(synced);
+  CREATE INDEX IF NOT EXISTS idx_content_updatedAt ON content(updatedAt);
+
+  CREATE TABLE IF NOT EXISTS tags (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    slug TEXT,
+    color TEXT DEFAULT '#999999',
+    parentId TEXT DEFAULT '',
+    description TEXT DEFAULT '',
+    metadata TEXT DEFAULT '{}',
+    createdAt INTEGER,
+    updatedAt INTEGER,
+    frequency INTEGER DEFAULT 0,
+    lastUsedAt INTEGER DEFAULT 0,
+    frecencyScore INTEGER DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
+  CREATE INDEX IF NOT EXISTS idx_tags_slug ON tags(slug);
+  CREATE INDEX IF NOT EXISTS idx_tags_parentId ON tags(parentId);
+  CREATE INDEX IF NOT EXISTS idx_tags_frecencyScore ON tags(frecencyScore);
+
+  CREATE TABLE IF NOT EXISTS address_tags (
+    id TEXT PRIMARY KEY,
+    addressId TEXT NOT NULL,
+    tagId TEXT NOT NULL,
+    createdAt INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_address_tags_addressId ON address_tags(addressId);
+  CREATE INDEX IF NOT EXISTS idx_address_tags_tagId ON address_tags(tagId);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_address_tags_unique ON address_tags(addressId, tagId);
+
+  CREATE TABLE IF NOT EXISTS blobs (
+    id TEXT PRIMARY KEY,
+    filename TEXT,
+    mimeType TEXT,
+    mediaType TEXT,
+    size INTEGER,
+    hash TEXT,
+    extension TEXT,
+    path TEXT,
+    addressId TEXT DEFAULT '',
+    contentId TEXT DEFAULT '',
+    tags TEXT DEFAULT '',
+    metadata TEXT DEFAULT '{}',
+    createdAt INTEGER,
+    width INTEGER DEFAULT 0,
+    height INTEGER DEFAULT 0,
+    duration INTEGER DEFAULT 0,
+    thumbnail TEXT DEFAULT ''
+  );
+  CREATE INDEX IF NOT EXISTS idx_blobs_mediaType ON blobs(mediaType);
+  CREATE INDEX IF NOT EXISTS idx_blobs_mimeType ON blobs(mimeType);
+  CREATE INDEX IF NOT EXISTS idx_blobs_addressId ON blobs(addressId);
+  CREATE INDEX IF NOT EXISTS idx_blobs_contentId ON blobs(contentId);
+
+  CREATE TABLE IF NOT EXISTS scripts_data (
+    id TEXT PRIMARY KEY,
+    scriptId TEXT,
+    scriptName TEXT,
+    addressId TEXT,
+    selector TEXT,
+    content TEXT,
+    contentType TEXT DEFAULT 'text',
+    metadata TEXT DEFAULT '{}',
+    extractedAt INTEGER,
+    previousValue TEXT DEFAULT '',
+    changed INTEGER DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS idx_scripts_data_scriptId ON scripts_data(scriptId);
+  CREATE INDEX IF NOT EXISTS idx_scripts_data_addressId ON scripts_data(addressId);
+  CREATE INDEX IF NOT EXISTS idx_scripts_data_changed ON scripts_data(changed);
+
+  CREATE TABLE IF NOT EXISTS feeds (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    description TEXT DEFAULT '',
+    type TEXT,
+    query TEXT DEFAULT '',
+    schedule TEXT DEFAULT '',
+    source TEXT DEFAULT 'internal',
+    tags TEXT DEFAULT '',
+    metadata TEXT DEFAULT '{}',
+    createdAt INTEGER,
+    updatedAt INTEGER,
+    lastFetchedAt INTEGER DEFAULT 0,
+    enabled INTEGER DEFAULT 1
+  );
+  CREATE INDEX IF NOT EXISTS idx_feeds_type ON feeds(type);
+  CREATE INDEX IF NOT EXISTS idx_feeds_enabled ON feeds(enabled);
+
+  CREATE TABLE IF NOT EXISTS extensions (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    description TEXT DEFAULT '',
+    version TEXT DEFAULT '1.0.0',
+    path TEXT,
+    backgroundUrl TEXT DEFAULT '',
+    settingsUrl TEXT DEFAULT '',
+    iconPath TEXT DEFAULT '',
+    builtin INTEGER DEFAULT 0,
+    enabled INTEGER DEFAULT 1,
+    status TEXT DEFAULT 'installed',
+    installedAt INTEGER,
+    updatedAt INTEGER,
+    lastErrorAt INTEGER DEFAULT 0,
+    lastError TEXT DEFAULT '',
+    metadata TEXT DEFAULT '{}'
+  );
+  CREATE INDEX IF NOT EXISTS idx_extensions_enabled ON extensions(enabled);
+  CREATE INDEX IF NOT EXISTS idx_extensions_status ON extensions(status);
+  CREATE INDEX IF NOT EXISTS idx_extensions_builtin ON extensions(builtin);
+
+  CREATE TABLE IF NOT EXISTS extension_settings (
+    id TEXT PRIMARY KEY,
+    extensionId TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT,
+    updatedAt INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_extension_settings_extensionId ON extension_settings(extensionId);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_extension_settings_unique ON extension_settings(extensionId, key);
+`;
+
+// Module state
+let db: Database.Database | null = null;
+
+// ==================== Lifecycle ====================
+
+export function initDatabase(dbPath: string): Database.Database {
+  console.log('main', 'initializing database at:', dbPath);
+
+  db = new Database(dbPath);
+  db.pragma('journal_mode = WAL');
+  db.exec(createTableStatements);
+
+  migrateTinyBaseData();
+
+  console.log('main', 'database initialized successfully');
+  return db;
+}
+
+export function closeDatabase(): void {
+  if (db) {
+    db.close();
+    db = null;
+    console.log('main', 'database closed');
+  }
+}
+
+export function getDb(): Database.Database {
+  if (!db) {
+    throw new Error('Database not initialized');
+  }
+  return db;
+}
+
+// ==================== Helpers ====================
+
+export function generateId(prefix = 'id'): string {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+export function now(): number {
+  return Date.now();
+}
+
+export function parseUrl(uri: string): { protocol: string; domain: string; path: string } {
+  try {
+    const url = new URL(uri);
+    return {
+      protocol: url.protocol.replace(':', ''),
+      domain: url.hostname,
+      path: url.pathname + url.search + url.hash,
+    };
+  } catch {
+    return {
+      protocol: 'unknown',
+      domain: uri,
+      path: '',
+    };
+  }
+}
+
+export function normalizeUrl(uri: string): string {
+  if (!uri) return uri;
+
+  try {
+    const url = new URL(uri);
+
+    // Remove trailing slash from path (except for root)
+    if (url.pathname !== '/' && url.pathname.endsWith('/')) {
+      url.pathname = url.pathname.slice(0, -1);
+    }
+
+    // Remove default ports
+    if ((url.protocol === 'http:' && url.port === '80') || (url.protocol === 'https:' && url.port === '443')) {
+      url.port = '';
+    }
+
+    // Sort query parameters for consistency
+    if (url.search) {
+      const params = new URLSearchParams(url.search);
+      const sortedParams = new URLSearchParams([...params.entries()].sort());
+      url.search = sortedParams.toString();
+    }
+
+    return url.toString();
+  } catch {
+    return uri;
+  }
+}
+
+export function isValidTable(tableName: string): tableName is TableName {
+  return (tableNames as readonly string[]).includes(tableName);
+}
+
+export function calculateFrecency(frequency: number, lastUsedAt: number): number {
+  const currentTime = Date.now();
+  const daysSinceUse = (currentTime - lastUsedAt) / (1000 * 60 * 60 * 24);
+  const decayFactor = 1 / (1 + daysSinceUse / 7);
+  return Math.round(frequency * 10 * decayFactor);
+}
+
+// ==================== Migration ====================
+
+function migrateTinyBaseData(): void {
+  if (!db) return;
+
+  // Check if tinybase table exists
+  const tinybaseExists = db
+    .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='tinybase'`)
+    .get();
+
+  if (!tinybaseExists) {
+    return;
+  }
+
+  // Check if we already migrated
+  const existingData = db.prepare('SELECT COUNT(*) as count FROM addresses').get() as { count: number };
+  if (existingData.count > 0) {
+    console.log('main', 'TinyBase data already migrated, skipping');
+    return;
+  }
+
+  console.log('main', 'Migrating TinyBase data to direct tables...');
+
+  try {
+    const tinybaseRow = db.prepare('SELECT * FROM tinybase').get() as Record<string, unknown> | undefined;
+    if (!tinybaseRow) {
+      console.log('main', 'No TinyBase data found');
+      return;
+    }
+
+    const rawData = Object.values(tinybaseRow)[1] as string;
+    if (!rawData) {
+      console.log('main', 'TinyBase data is empty');
+      return;
+    }
+
+    const [tables] = JSON.parse(rawData) as [Record<string, Record<string, Record<string, unknown>>>];
+    if (!tables) {
+      console.log('main', 'No tables in TinyBase data');
+      return;
+    }
+
+    const tablesToMigrate = [
+      'addresses', 'visits', 'tags', 'address_tags', 'extension_settings',
+      'extensions', 'content', 'blobs', 'scripts_data', 'feeds',
+    ];
+
+    for (const tableName of tablesToMigrate) {
+      const tableData = tables[tableName];
+      if (!tableData || typeof tableData !== 'object') continue;
+
+      const entries = Object.entries(tableData);
+      if (entries.length === 0) continue;
+
+      console.log('main', `  Migrating ${entries.length} rows from ${tableName}`);
+
+      for (const [id, row] of entries) {
+        try {
+          const fullRow = { id, ...row } as Record<string, unknown>;
+          const columns = Object.keys(fullRow);
+          const placeholders = columns.map(() => '?').join(', ');
+          const values = columns.map((col) => fullRow[col]);
+
+          db.prepare(
+            `INSERT OR IGNORE INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders})`
+          ).run(...values);
+        } catch (err) {
+          console.error('main', `  Error migrating row ${id} in ${tableName}:`, (err as Error).message);
+        }
+      }
+    }
+
+    db.exec('DROP TABLE IF EXISTS tinybase');
+    console.log('main', 'TinyBase migration complete, removed tinybase table');
+  } catch (error) {
+    console.error('main', 'TinyBase migration failed:', (error as Error).message);
+  }
+}

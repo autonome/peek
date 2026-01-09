@@ -534,6 +534,42 @@ const getExtensionPath = (id) => {
   return null;
 };
 
+/**
+ * Scan a directory for valid extensions (folders with manifest.json)
+ * @param {string} basePath - Directory to scan
+ * @returns {Array<{id: string, path: string, manifest: object}>}
+ */
+const discoverExtensions = (basePath) => {
+  const extensions = [];
+
+  if (!fs.existsSync(basePath)) return extensions;
+
+  const entries = fs.readdirSync(basePath, { withFileTypes: true });
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+
+    const extPath = path.join(basePath, entry.name);
+    const manifestPath = path.join(extPath, 'manifest.json');
+
+    if (!fs.existsSync(manifestPath)) continue;
+
+    try {
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+
+      // Use manifest.id or folder name as fallback
+      const id = manifest.id || manifest.shortname || entry.name;
+
+      extensions.push({ id, path: extPath, manifest });
+
+    } catch (err) {
+      console.error(`[ext:discovery] Failed to load ${entry.name}:`, err.message);
+    }
+  }
+
+  return extensions;
+};
+
 // ***** Extension Window Management *****
 // Each extension runs in its own isolated BrowserWindow at peek://ext/{id}/background.html
 
@@ -669,12 +705,11 @@ const getRunningExtensions = () => {
 
 // Load enabled extensions on startup
 const loadEnabledExtensions = async () => {
-  // Built-in extensions
-  const builtinExtensions = ['groups', 'peeks', 'slides'];
+  // Get all discovered extensions (registered via discoverExtensions)
+  const builtinExtIds = Array.from(extensionPaths.keys());
 
   // Check which are enabled from datastore/localStorage
-  // For now, load all builtins; actual enable/disable can be added later
-  for (const extId of builtinExtensions) {
+  for (const extId of builtinExtIds) {
     // Check if enabled in extension_settings or extensions table
     let enabled = true; // Default to enabled for builtins
 
@@ -841,12 +876,13 @@ const onReady = async () => {
   // handle peek://
   initAppProtocol();
 
-  // Register built-in extensions
-  // Built-in extensions live in ./extensions/ at the project root
-  registerExtensionPath('groups', path.join(__dirname, 'extensions', 'groups'));
-  registerExtensionPath('peeks', path.join(__dirname, 'extensions', 'peeks'));
-  registerExtensionPath('slides', path.join(__dirname, 'extensions', 'slides'));
-  registerExtensionPath('example', path.join(__dirname, 'extensions', 'example'));
+  // Discover and register built-in extensions from extensions/ folder
+  const discoveredExtensions = discoverExtensions(path.join(__dirname, 'extensions'));
+  console.log(`[ext:discovery] Found ${discoveredExtensions.length} extensions:`, discoveredExtensions.map(e => e.id).join(', '));
+
+  for (const ext of discoveredExtensions) {
+    registerExtensionPath(ext.id, ext.path);
+  }
 
   // Register as default handler for http/https URLs (if not already and user hasn't declined)
   const defaultBrowserPrefFile = path.join(profileDataPath, 'default-browser-pref.json');

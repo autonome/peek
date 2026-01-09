@@ -65,6 +65,86 @@ export type {
 
 export { tableNames } from '../types/index.js';
 
+// Protocol handling
+export {
+  APP_SCHEME,
+  APP_PROTOCOL,
+  registerScheme,
+  registerExtensionPath,
+  getExtensionPath,
+  getRegisteredExtensionIds,
+  initProtocol,
+} from './protocol.js';
+
+// Extension management
+export {
+  discoverExtensions,
+  loadExtensionManifest,
+  isBuiltinExtensionEnabled,
+  getExternalExtensions,
+} from './extensions.js';
+
+export type {
+  ExtensionManifest,
+  DiscoveredExtension,
+} from './extensions.js';
+
+// System tray
+export {
+  initTray,
+  getTray,
+  destroyTray,
+} from './tray.js';
+
+export type { TrayOptions } from './tray.js';
+
+// Shortcuts
+export {
+  parseShortcut,
+  inputMatchesShortcut,
+  registerGlobalShortcut,
+  unregisterGlobalShortcut,
+  registerLocalShortcut,
+  unregisterLocalShortcut,
+  handleLocalShortcut,
+  unregisterShortcutsForAddress,
+  getGlobalShortcutSource,
+  isGlobalShortcutRegistered,
+} from './shortcuts.js';
+
+export type { InputEvent } from './shortcuts.js';
+
+// PubSub messaging
+export {
+  scopes,
+  publish,
+  subscribe,
+  unsubscribe,
+  unsubscribeAll,
+  setExtensionBroadcaster,
+  getSystemAddress,
+} from './pubsub.js';
+
+export type { Scope } from './pubsub.js';
+
+// Main process orchestration
+export {
+  configure,
+  initialize,
+  discoverBuiltinExtensions,
+  createExtensionWindow,
+  loadEnabledExtensions,
+  getRunningExtensions,
+  destroyExtensionWindow,
+  getExtensionWindow,
+  registerWindow,
+  getWindowInfo,
+  findWindowByKey,
+  shutdown,
+} from './main.js';
+
+export type { AppConfig } from './main.js';
+
 // Re-export frontend API types (the contract that preload.js implements)
 export type {
   IPeekApi,

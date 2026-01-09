@@ -4,23 +4,31 @@ import {
   app,
   BrowserWindow,
   dialog,
-  globalShortcut,
   ipcMain,
   Menu,
   nativeImage,
   nativeTheme,
-  net,
-  protocol,
-  Tray
 } from 'electron';
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'url';
+
 // Import from compiled TypeScript backend
 import {
-  initDatabase,
-  closeDatabase,
+  // Main process orchestration
+  configure,
+  initialize,
+  discoverBuiltinExtensions,
+  createExtensionWindow,
+  loadEnabledExtensions,
+  getRunningExtensions,
+  destroyExtensionWindow,
+  getExtensionWindow,
+  registerWindow,
+  getWindowInfo,
+  findWindowByKey,
+  shutdown,
+  // Database
   getDb,
   isValidTable,
   // Datastore operations
@@ -42,6 +50,25 @@ import {
   getTable,
   setRow,
   getStats,
+  // Protocol
+  APP_SCHEME,
+  APP_PROTOCOL,
+  registerExtensionPath,
+  getExtensionPath,
+  loadExtensionManifest,
+  // Tray
+  initTray,
+  // Shortcuts
+  registerGlobalShortcut,
+  unregisterGlobalShortcut,
+  registerLocalShortcut,
+  unregisterLocalShortcut,
+  unregisterShortcutsForAddress,
+  // PubSub
+  scopes,
+  publish as pubsubPublish,
+  subscribe as pubsubSubscribe,
+  getSystemAddress,
 } from './dist/backend/electron/index.js';
 import unhandled from 'electron-unhandled';
 
@@ -68,8 +95,6 @@ const DEBUG_LEVEL = DEBUG_LEVELS.BASIC;
 // script loaded into every app window
 const preloadPath = path.join(__dirname, 'preload.js');
 
-const APP_SCHEME = 'peek';
-const APP_PROTOCOL = `${APP_SCHEME}:`;
 const APP_CORE_PATH = 'app';
 
 const APP_DEF_WIDTH = 1024;
@@ -80,7 +105,7 @@ const APP_DEF_HEIGHT = 768;
 const webCoreAddress = 'peek://app/background.html';
 //const webCoreAddress = 'peek://test/index.html';
 
-const systemAddress = 'peek://system/';
+const systemAddress = getSystemAddress();
 const settingsAddress = 'peek://app/settings/settings.html';
 
 const strings = {
@@ -154,11 +179,6 @@ app.setPath('sessionData', sessionDataPath);
 // Note: getDb, generateId, now, parseUrl, normalizeUrl, calculateFrecency, isValidTable
 // are imported directly from backend/electron
 
-const initDatastore = async (userDataPath) => {
-  const dbPath = path.join(userDataPath, 'datastore.sqlite');
-  return initDatabase(dbPath);
-};
-
 // ***** Features / Strings *****
 
 const labels = {
@@ -172,9 +192,6 @@ const labels = {
 };
 
 // ***** System / OS / Theme *****
-
-// Use system theme by default
-nativeTheme.themeSource = 'system';
 
 // system dark mode handling
 ipcMain.handle('dark-mode:toggle', () => {
@@ -200,13 +217,6 @@ app.on('activate', () => {
 });
 
 // ***** Caches *****
-
-// keyed on shortcut string, value is source address (for global shortcuts)
-const shortcuts = new Map();
-
-// keyed on shortcut string, value is { source, callback, replyTopic }
-// Local shortcuts only work when app has focus
-const localShortcuts = new Map();
 
 // app global prefs configurable by user
 // populated during app init
@@ -284,473 +294,16 @@ class WindowManager {
 const windowManager = new WindowManager();
 
 // ***** pubsub *****
-
-const getPseudoHost = str => str.split('/')[2];
-
-const scopes = {
-  SYSTEM: 1,
-  SELF: 2,
-  GLOBAL: 3
+// Wrapper object for backend pubsub functions
+const pubsub = {
+  publish: pubsubPublish,
+  subscribe: pubsubSubscribe
 };
-
-const pubsub = (() => {
-
-  const topics = new Map();
-
-  const scopeCheck = (pubSource, subSource, scope) => {
-    //console.log('scopeCheck', subSource, pubSource, scope);
-    if (subSource == systemAddress) {
-      return true
-    }
-    if (scope == scopes.GLOBAL) {
-      return true;
-    }
-    if (getPseudoHost(subSource) == getPseudoHost(pubSource)) {
-      return true;
-    }
-    return false;
-  };
-
-  return {
-    publish: (source, scope, topic, msg) => {
-      //console.log('ps.pub', topic);
-
-      // Route to traditional subscribers (via IPC callbacks)
-      if (topics.has(topic)) {
-
-        const t = topics.get(topic);
-
-        for (const [subSource, cb] of t) {
-          if (scopeCheck(source, subSource, scope)) {
-            //console.log('FOUND ONE!', subSource);
-            cb(msg);
-          }
-        };
-      }
-
-      // Route to extension windows (GLOBAL scope only)
-      // This enables cross-origin communication to isolated extension processes
-      if (scope === scopes.GLOBAL && extensionWindows) {
-        for (const [extId, entry] of extensionWindows) {
-          if (entry.win && !entry.win.isDestroyed() && entry.status === 'running') {
-            // Don't send back to the source extension
-            const extOrigin = `peek://ext/${extId}/`;
-            if (!source.startsWith(extOrigin)) {
-              entry.win.webContents.send(`pubsub:${topic}`, {
-                ...msg,
-                source
-              });
-            }
-          }
-        }
-      }
-    },
-    subscribe: (source, scope, topic, cb) => {
-      //console.log('ps.sub', source, scope, topic);
-
-      if (!topics.has(topic)) {
-        topics.set(topic, new Map([ [source, cb] ]));
-      }
-      else {
-        const subscribers = topics.get(topic);
-        subscribers.set(source, cb);
-        topics.set(topic, subscribers);
-      }
-    },
-  };
-
-})();
 
 // ***** Command Registry *****
 // Stores commands registered via cmd:register topic
 // This enables cmd app to query commands registered before it started
 const commandRegistry = new Map();
-
-// ***** Tray *****
-
-const ICON_RELATIVE_PATH = 'assets/tray/tray@2x.png';
-
-let _tray = null;
-
-const initTray = () => {
-  if (!_tray || _tray.isDestroyed()) {
-    const iconPath = path.join(__dirname, ICON_RELATIVE_PATH);
-    console.log('initTray: loading icon from', iconPath);
-
-    try {
-      _tray = new Tray(iconPath);
-      _tray.setToolTip(labels.tray.tooltip);
-      _tray.on('click', () => {
-        pubsub.publish(webCoreAddress, scopes.GLOBAL, 'open', {
-          address: settingsAddress
-        });
-      });
-      console.log('initTray: tray created successfully');
-    } catch (err) {
-      console.error('initTray: failed to create tray:', err);
-      return null;
-    }
-  }
-  return _tray;
-};
-
-// ***** protocol handling
-
-protocol.registerSchemesAsPrivileged([{
-  scheme: APP_SCHEME,
-  privileges: {
-    standard: true,
-    secure: true,
-    supportFetchAPI: true,
-    bypassCSP: true,
-    corsEnabled: true,
-    allowServiceWorkers: false
-  }
-}]);
-
-// Extension path cache: extensionId -> filesystem path
-const extensionPaths = new Map();
-
-// Register a built-in extension path
-const registerExtensionPath = (id, fsPath) => {
-  extensionPaths.set(id, fsPath);
-  DEBUG && console.log('Registered extension path:', id, fsPath);
-};
-
-// Get extension filesystem path by ID
-// First checks built-in extensions, then datastore for external extensions
-const getExtensionPath = (id) => {
-  // Check built-in extensions first
-  const builtinPath = extensionPaths.get(id);
-  if (builtinPath) return builtinPath;
-
-  // Check datastore for external extensions
-  try {
-    const db = getDb();
-    const ext = db.prepare('SELECT * FROM extensions WHERE id = ?').get(id);
-    if (ext && ext.path) {
-      return ext.path;
-    }
-
-    // Also check by shortname (stored in metadata)
-    const allExts = db.prepare('SELECT * FROM extensions').all();
-    for (const extData of allExts) {
-      try {
-        const metadata = JSON.parse(extData.metadata || '{}');
-        if (metadata.shortname === id && extData.path) {
-          return extData.path;
-        }
-      } catch (e) {
-        // Ignore JSON parse errors
-      }
-    }
-  } catch {
-    // Database not initialized yet
-  }
-
-  return null;
-};
-
-/**
- * Scan a directory for valid extensions (folders with manifest.json)
- * @param {string} basePath - Directory to scan
- * @returns {Array<{id: string, path: string, manifest: object}>}
- */
-const discoverExtensions = (basePath) => {
-  const extensions = [];
-
-  if (!fs.existsSync(basePath)) return extensions;
-
-  const entries = fs.readdirSync(basePath, { withFileTypes: true });
-
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-
-    const extPath = path.join(basePath, entry.name);
-    const manifestPath = path.join(extPath, 'manifest.json');
-
-    if (!fs.existsSync(manifestPath)) continue;
-
-    try {
-      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
-
-      // Use manifest.id or folder name as fallback
-      const id = manifest.id || manifest.shortname || entry.name;
-
-      extensions.push({ id, path: extPath, manifest });
-
-    } catch (err) {
-      console.error(`[ext:discovery] Failed to load ${entry.name}:`, err.message);
-    }
-  }
-
-  return extensions;
-};
-
-// ***** Extension Window Management *****
-// Each extension runs in its own isolated BrowserWindow at peek://ext/{id}/background.html
-
-const extensionWindows = new Map(); // extId -> { win, manifest, status }
-
-const createExtensionWindow = async (extId) => {
-  if (extensionWindows.has(extId)) {
-    console.log(`[ext:win] Extension ${extId} already has a window`);
-    return extensionWindows.get(extId).win;
-  }
-
-  const extPath = getExtensionPath(extId);
-  if (!extPath) {
-    console.error(`[ext:win] Extension path not found: ${extId}`);
-    return null;
-  }
-
-  // Load manifest and settings schema
-  let manifest = null;
-  try {
-    const manifestPath = path.join(extPath, 'manifest.json');
-    if (fs.existsSync(manifestPath)) {
-      manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
-
-      // Load settings schema if specified
-      if (manifest.settingsSchema) {
-        const schemaPath = path.join(extPath, manifest.settingsSchema);
-        if (fs.existsSync(schemaPath)) {
-          const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf-8'));
-          // Merge schema fields into manifest for Settings UI
-          manifest.schemas = { prefs: schema.prefs, item: schema.item };
-          manifest.storageKeys = schema.storageKeys;
-          manifest.defaults = schema.defaults;
-        }
-      }
-    }
-  } catch (err) {
-    console.error(`[ext:win] Failed to load manifest for ${extId}:`, err);
-  }
-
-  console.log(`[ext:win] Creating window for extension: ${extId}`);
-
-  const win = new BrowserWindow({
-    show: false,
-    webPreferences: {
-      preload: preloadPath
-    }
-  });
-
-  // Forward console logs from extension to main process stdout
-  win.webContents.on('console-message', (event, level, message, line, sourceId) => {
-    const levelStr = ['debug', 'info', 'warn', 'error'][level] || 'log';
-    console.log(`[ext:${extId}] ${message}`);
-  });
-
-  // Track crash events
-  win.webContents.on('crashed', (event, killed) => {
-    console.error(`[ext:win] Extension ${extId} crashed (killed: ${killed})`);
-    const entry = extensionWindows.get(extId);
-    if (entry) {
-      entry.status = 'crashed';
-    }
-    // Optionally auto-restart: createExtensionWindow(extId);
-  });
-
-  // Track close events
-  win.on('closed', () => {
-    console.log(`[ext:win] Extension ${extId} window closed`);
-    extensionWindows.delete(extId);
-  });
-
-  // Store before loading to handle async issues
-  extensionWindows.set(extId, { win, manifest, status: 'loading' });
-
-  try {
-    await win.loadURL(`peek://ext/${extId}/background.html`);
-    console.log(`[ext:win] Extension ${extId} loaded successfully`);
-    const entry = extensionWindows.get(extId);
-    if (entry) {
-      entry.status = 'running';
-    }
-    return win;
-  } catch (error) {
-    console.error(`[ext:win] Failed to load extension ${extId}:`, error);
-    extensionWindows.delete(extId);
-    win.destroy();
-    return null;
-  }
-};
-
-const destroyExtensionWindow = (extId) => {
-  const entry = extensionWindows.get(extId);
-  if (!entry) {
-    console.log(`[ext:win] No window to destroy for: ${extId}`);
-    return false;
-  }
-
-  console.log(`[ext:win] Destroying window for: ${extId}`);
-
-  // Notify extension of shutdown before destroying
-  if (entry.win && !entry.win.isDestroyed()) {
-    entry.win.webContents.send('pubsub:app:shutdown', {});
-    // Give it a moment to clean up, then destroy
-    setTimeout(() => {
-      if (!entry.win.isDestroyed()) {
-        entry.win.destroy();
-      }
-    }, 100);
-  }
-
-  extensionWindows.delete(extId);
-  return true;
-};
-
-const getExtensionWindow = (extId) => {
-  const entry = extensionWindows.get(extId);
-  return entry ? entry.win : null;
-};
-
-const getRunningExtensions = () => {
-  const running = [];
-  for (const [extId, entry] of extensionWindows) {
-    if (entry.status === 'running') {
-      running.push({
-        id: extId,
-        manifest: entry.manifest,
-        status: entry.status
-      });
-    }
-  }
-  return running;
-};
-
-// Load enabled extensions on startup
-const loadEnabledExtensions = async () => {
-  // Get all discovered extensions (registered via discoverExtensions)
-  const builtinExtIds = Array.from(extensionPaths.keys());
-
-  // Check which are enabled from datastore/localStorage
-  const db = getDb();
-  for (const extId of builtinExtIds) {
-    // Check if enabled in extension_settings or extensions table
-    let enabled = true; // Default to enabled for builtins
-
-    // Check extension_settings for enabled state
-    const setting = db.prepare('SELECT * FROM extension_settings WHERE extensionId = ? AND key = ?').get(extId, 'enabled');
-    if (setting) {
-      try {
-        enabled = JSON.parse(setting.value) !== false;
-      } catch (e) {
-        enabled = true;
-      }
-    }
-
-    if (enabled) {
-      console.log(`[ext:win] Loading enabled extension: ${extId}`);
-      await createExtensionWindow(extId);
-    } else {
-      console.log(`[ext:win] Skipping disabled extension: ${extId}`);
-    }
-  }
-
-  // Load external extensions from datastore
-  const externalExts = db.prepare('SELECT * FROM extensions').all();
-  for (const extData of externalExts) {
-    const extId = extData.id;
-    // Skip if already loaded (shouldn't happen but be safe)
-    if (extensionWindows.has(extId)) continue;
-
-    // Skip if not enabled
-    if (extData.enabled !== 1) {
-      console.log(`[ext:win] Skipping disabled external extension: ${extId}`);
-      continue;
-    }
-
-    // Need a path to load from
-    if (!extData.path) {
-      console.log(`[ext:win] Skipping external extension without path: ${extId}`);
-      continue;
-    }
-
-    console.log(`[ext:win] Loading enabled external extension: ${extId}`);
-    await createExtensionWindow(extId);
-  }
-
-  console.log(`[ext:win] Loaded ${extensionWindows.size} extensions`);
-
-  // Signal that all extensions are loaded (GLOBAL so Settings can receive it)
-  pubsub.publish('system', scopes.GLOBAL, 'ext:all-loaded', {
-    count: extensionWindows.size
-  });
-};
-
-// TODO: unhack all this trash fire
-const initAppProtocol = () => {
-  protocol.handle(APP_SCHEME, req => {
-    //console.log('PROTOCOL', req.url);
-
-    let { host, pathname } = new URL(req.url);
-    //console.log('host, pathname', host, pathname);
-
-    // trim trailing slash
-    pathname = pathname.replace(/^\//, '');
-
-    // Handle extension content: peek://ext/{ext-id}/{path}
-    if (host === 'ext') {
-      const parts = pathname.split('/');
-      const extId = parts[0];
-      const extPath = parts.slice(1).join('/') || 'index.html';
-
-      const extBasePath = getExtensionPath(extId);
-      if (!extBasePath) {
-        DEBUG && console.log('Extension not found:', extId);
-        return new Response('Extension not found', { status: 404 });
-      }
-
-      const absolutePath = path.resolve(extBasePath, extPath);
-
-      // Security: ensure path stays within extension folder
-      const normalizedBase = path.normalize(extBasePath);
-      if (!absolutePath.startsWith(normalizedBase)) {
-        console.error('Path traversal attempt blocked:', absolutePath);
-        return new Response('Forbidden', { status: 403 });
-      }
-
-      const fileURL = pathToFileURL(absolutePath).toString();
-      return net.fetch(fileURL);
-    }
-
-    // Handle extensions infrastructure: peek://extensions/{path}
-    // This serves the extension loader and other shared extension code
-    if (host === 'extensions') {
-      const absolutePath = path.resolve(__dirname, 'extensions', pathname);
-
-      // Security: ensure path stays within extensions folder
-      const extensionsBase = path.resolve(__dirname, 'extensions');
-      if (!absolutePath.startsWith(extensionsBase)) {
-        console.error('Path traversal attempt blocked:', absolutePath);
-        return new Response('Forbidden', { status: 403 });
-      }
-
-      const fileURL = pathToFileURL(absolutePath).toString();
-      return net.fetch(fileURL);
-    }
-
-    let relativePath = pathname;
-
-    // Ugh, handle node_modules paths
-    // does this even work in packaged build?
-    const isNode = pathname.indexOf('node_modules') > -1;
-
-    if (!isNode) {
-      relativePath = path.join(host, pathname);
-    }
-
-    const absolutePath = path.resolve(__dirname, relativePath);
-    //console.log('ABSOLUTE PATH', absolutePath);
-
-    const fileURL = pathToFileURL(absolutePath).toString();
-    //console.log('FILE URL', fileURL);
-
-    return net.fetch(fileURL);
-  });
-};
 
 // ***** init *****
 
@@ -764,8 +317,8 @@ const onReady = async () => {
     app.dock.hide();
   }
 
-  // Initialize datastore with SQLite persistence
-  await initDatastore(profileDataPath);
+  // Initialize backend (database, protocol handler, pubsub broadcaster)
+  await initialize();
 
   //https://stackoverflow.com/questions/35916158/how-to-prevent-multiple-instances-in-electron
   const gotTheLock = app.requestSingleInstanceLock();
@@ -786,16 +339,8 @@ const onReady = async () => {
     }
   });
 
-  // handle peek://
-  initAppProtocol();
-
   // Discover and register built-in extensions from extensions/ folder
-  const discoveredExtensions = discoverExtensions(path.join(__dirname, 'extensions'));
-  console.log(`[ext:discovery] Found ${discoveredExtensions.length} extensions:`, discoveredExtensions.map(e => e.id).join(', '));
-
-  for (const ext of discoveredExtensions) {
-    registerExtensionPath(ext.id, ext.path);
-  }
+  discoverBuiltinExtensions(path.join(__dirname, 'extensions'));
 
   // Register as default handler for http/https URLs (if not already and user hasn't declined)
   // Skip for test profiles to avoid system dialogs during automated testing
@@ -876,7 +421,14 @@ const onReady = async () => {
     // initialize system tray
     if (msg.prefs.showTrayIcon == true) {
       console.log('showing tray');
-      initTray();
+      initTray(__dirname, {
+        tooltip: labels.tray.tooltip,
+        onClick: () => {
+          pubsub.publish(webCoreAddress, scopes.GLOBAL, 'open', {
+            address: settingsAddress
+          });
+        }
+      });
     }
 
     // update quit shortcut if changed (local shortcut - only works when app has focus)
@@ -887,7 +439,7 @@ const onReady = async () => {
         unregisterLocalShortcut(_quitShortcut);
       }
       console.log('registering new quit shortcut:', newQuitShortcut);
-      registerLocalShortcut(newQuitShortcut, onQuit);
+      registerLocalShortcut(newQuitShortcut, 'system', onQuit);
       _quitShortcut = newQuitShortcut;
     }
 
@@ -1041,7 +593,7 @@ const onReady = async () => {
   // Register default quit shortcut (local - only works when app has focus)
   // Will be updated when prefs arrive
   _quitShortcut = strings.defaults.quitShortcut;
-  registerLocalShortcut(_quitShortcut, onQuit);
+  registerLocalShortcut(_quitShortcut, 'system', onQuit);
 
   // Mark app as ready and process any URLs that arrived during startup
   _appReady = true;
@@ -1086,6 +638,16 @@ app.on('open-url', (event, url) => {
   handleExternalUrl(url, 'os');
 });
 
+// Configure app before ready (registers protocol scheme, sets theme)
+configure({
+  rootDir: __dirname,
+  preloadPath: preloadPath,
+  userDataPath: defaultUserDataPath,
+  profile: PROFILE,
+  isDev: DEBUG,
+  isTest: PROFILE.startsWith('test')
+});
+
 app.whenReady().then(onReady);
 
 // ***** API *****
@@ -1106,13 +668,9 @@ ipcMain.on(strings.msgs.registerShortcut, (ev, msg) => {
   };
 
   if (isGlobal) {
-    // Global shortcut (works even when app doesn't have focus)
-    shortcuts.set(msg.shortcut, msg.source);
-    registerShortcut(msg.shortcut, callback);
+    registerGlobalShortcut(msg.shortcut, msg.source, callback);
   } else {
-    // Local shortcut (only works when app has focus)
-    const parsed = parseShortcut(msg.shortcut);
-    localShortcuts.set(msg.shortcut, { source: msg.source, parsed, callback });
+    registerLocalShortcut(msg.shortcut, msg.source, callback);
   }
 });
 
@@ -1121,9 +679,10 @@ ipcMain.on(strings.msgs.unregisterShortcut, (ev, msg) => {
   console.log('ipc unregister shortcut', msg.shortcut, isGlobal ? '(global)' : '(local)');
 
   if (isGlobal) {
-    unregisterShortcut(msg.shortcut, res => {
-      console.log('ipc unregister global shortcut callback result:', res);
-    });
+    const err = unregisterGlobalShortcut(msg.shortcut);
+    if (err) {
+      console.log('ipc unregister global shortcut error:', err.message);
+    }
   } else {
     unregisterLocalShortcut(msg.shortcut);
   }
@@ -2231,183 +1790,6 @@ const modWindow = (bw, params) => {
 };
 
 // ***** Helpers *****
-
-const registerShortcut = (shortcut, callback) => {
-  console.log('registerShortcut', shortcut);
-
-  if (globalShortcut.isRegistered(shortcut)) {
-    console.error(strings.shortcuts.errorAlreadyRegistered, shortcut);
-    globalShortcut.unregister(shortcut);
-  }
-
-  const ret = globalShortcut.register(shortcut, () => {
-    console.log('shortcut executed', shortcut);
-    callback();
-  });
-
-  if (ret !== true) {
-    console.error('registerShortcut FAILED:', shortcut);
-    return new Error(strings.shortcuts.errorRegistrationFailed);
-  }
-};
-
-const unregisterShortcut = (shortcut, callback) => {
-  console.log('unregisterShortcut', shortcut)
-
-  if (!globalShortcut.isRegistered(shortcut)) {
-    console.error('Unable to unregister shortcut because not registered or it is not us', shortcut);
-    return new Error("Shortcut not registered: " + shortcut);
-  }
-
-  globalShortcut.unregister(shortcut, () => {
-    console.log('shortcut unregistered', shortcut);
-
-    // delete from cache
-    shortcuts.delete(shortcut);
-    callback();
-  });
-};
-
-// unregister any shortcuts this address registered
-// and delete entry from cache
-const unregisterShortcutsForAddress = (aAddress) => {
-  for (const [shortcut, address] of shortcuts) {
-    if (address == aAddress) {
-      console.log('unregistering global shortcut', shortcut, 'for', address);
-      unregisterShortcut(shortcut);
-    }
-  }
-  // Also unregister local shortcuts for this address
-  for (const [shortcut, data] of localShortcuts) {
-    if (data.source === aAddress) {
-      console.log('unregistering local shortcut', shortcut, 'for', aAddress);
-      localShortcuts.delete(shortcut);
-    }
-  }
-};
-
-// Map key names to physical key codes (for before-input-event matching)
-// Electron's input.code follows the USB HID spec
-const keyToCode = {
-  // Letters
-  'a': 'KeyA', 'b': 'KeyB', 'c': 'KeyC', 'd': 'KeyD', 'e': 'KeyE',
-  'f': 'KeyF', 'g': 'KeyG', 'h': 'KeyH', 'i': 'KeyI', 'j': 'KeyJ',
-  'k': 'KeyK', 'l': 'KeyL', 'm': 'KeyM', 'n': 'KeyN', 'o': 'KeyO',
-  'p': 'KeyP', 'q': 'KeyQ', 'r': 'KeyR', 's': 'KeyS', 't': 'KeyT',
-  'u': 'KeyU', 'v': 'KeyV', 'w': 'KeyW', 'x': 'KeyX', 'y': 'KeyY',
-  'z': 'KeyZ',
-  // Numbers
-  '0': 'Digit0', '1': 'Digit1', '2': 'Digit2', '3': 'Digit3', '4': 'Digit4',
-  '5': 'Digit5', '6': 'Digit6', '7': 'Digit7', '8': 'Digit8', '9': 'Digit9',
-  // Punctuation
-  ',': 'Comma', '.': 'Period', '/': 'Slash', ';': 'Semicolon', "'": 'Quote',
-  '[': 'BracketLeft', ']': 'BracketRight', '\\': 'Backslash', '`': 'Backquote',
-  '-': 'Minus', '=': 'Equal',
-  // Special keys
-  'enter': 'Enter', 'return': 'Enter',
-  'tab': 'Tab',
-  'space': 'Space', ' ': 'Space',
-  'backspace': 'Backspace',
-  'delete': 'Delete',
-  'escape': 'Escape', 'esc': 'Escape',
-  'up': 'ArrowUp', 'down': 'ArrowDown', 'left': 'ArrowLeft', 'right': 'ArrowRight',
-  'arrowup': 'ArrowUp', 'arrowdown': 'ArrowDown', 'arrowleft': 'ArrowLeft', 'arrowright': 'ArrowRight',
-  'home': 'Home', 'end': 'End',
-  'pageup': 'PageUp', 'pagedown': 'PageDown',
-  // Function keys
-  'f1': 'F1', 'f2': 'F2', 'f3': 'F3', 'f4': 'F4', 'f5': 'F5', 'f6': 'F6',
-  'f7': 'F7', 'f8': 'F8', 'f9': 'F9', 'f10': 'F10', 'f11': 'F11', 'f12': 'F12',
-};
-
-// Parse shortcut string to match Electron's input event format
-// e.g., 'Alt+Q' -> { alt: true, code: 'KeyQ' }
-// e.g., 'CommandOrControl+Shift+P' -> { meta: true, shift: true, code: 'KeyP' } (on Mac)
-const parseShortcut = (shortcut) => {
-  const parts = shortcut.toLowerCase().split('+');
-  const result = {
-    ctrl: false,
-    alt: false,
-    shift: false,
-    meta: false,
-    code: ''
-  };
-
-  for (const part of parts) {
-    const p = part.trim();
-    if (p === 'ctrl' || p === 'control') {
-      result.ctrl = true;
-    } else if (p === 'alt' || p === 'option') {
-      result.alt = true;
-    } else if (p === 'shift') {
-      result.shift = true;
-    } else if (p === 'meta' || p === 'cmd' || p === 'command' || p === 'super') {
-      result.meta = true;
-    } else if (p === 'commandorcontrol' || p === 'cmdorctrl') {
-      // On Mac, use meta (Cmd), on others use ctrl
-      if (process.platform === 'darwin') {
-        result.meta = true;
-      } else {
-        result.ctrl = true;
-      }
-    } else {
-      // This is the key itself - convert to code
-      result.code = keyToCode[p] || p;
-    }
-  }
-
-  return result;
-};
-
-// Check if an input event matches a parsed shortcut
-const inputMatchesShortcut = (input, parsed) => {
-  // Check modifiers
-  if (input.alt !== parsed.alt) return false;
-  if (input.shift !== parsed.shift) return false;
-  if (input.meta !== parsed.meta) return false;
-  if (input.control !== parsed.ctrl) return false;
-
-  // Check physical key code (case-insensitive comparison)
-  return input.code.toLowerCase() === parsed.code.toLowerCase();
-};
-
-// Register a local (app-only) shortcut
-const registerLocalShortcut = (shortcut, callback) => {
-  console.log('registerLocalShortcut', shortcut);
-
-  if (localShortcuts.has(shortcut)) {
-    console.log('local shortcut already registered, replacing:', shortcut);
-  }
-
-  const parsed = parseShortcut(shortcut);
-  localShortcuts.set(shortcut, { parsed, callback });
-};
-
-// Unregister a local shortcut
-const unregisterLocalShortcut = (shortcut) => {
-  console.log('unregisterLocalShortcut', shortcut);
-
-  if (!localShortcuts.has(shortcut)) {
-    console.error('local shortcut not registered:', shortcut);
-    return;
-  }
-
-  localShortcuts.delete(shortcut);
-};
-
-// Handle local shortcuts from any focused window
-// Called from before-input-event handler
-const handleLocalShortcut = (input) => {
-  // Only handle keyDown events
-  if (input.type !== 'keyDown') return false;
-
-  for (const [shortcut, data] of localShortcuts) {
-    if (inputMatchesShortcut(input, data.parsed)) {
-      data.callback();
-      return true;
-    }
-  }
-  return false;
-};
 
 // Ask renderer to handle escape, returns Promise<{ handled: boolean }>
 const askRendererToHandleEscape = (bw) => {

@@ -700,6 +700,30 @@ const loadEnabledExtensions = async () => {
     }
   }
 
+  // Load external extensions from datastore
+  if (datastoreStore) {
+    const extensionsTable = datastoreStore.getTable('extensions') || {};
+    for (const [extId, extData] of Object.entries(extensionsTable)) {
+      // Skip if already loaded (shouldn't happen but be safe)
+      if (extensionWindows.has(extId)) continue;
+
+      // Skip if not enabled
+      if (extData.enabled !== 1) {
+        console.log(`[ext:win] Skipping disabled external extension: ${extId}`);
+        continue;
+      }
+
+      // Need a path to load from
+      if (!extData.path) {
+        console.log(`[ext:win] Skipping external extension without path: ${extId}`);
+        continue;
+      }
+
+      console.log(`[ext:win] Loading enabled external extension: ${extId}`);
+      await createExtensionWindow(extId);
+    }
+  }
+
   console.log(`[ext:win] Loaded ${extensionWindows.size} extensions`);
 
   // Signal that all extensions are loaded (GLOBAL so Settings can receive it)
@@ -822,6 +846,7 @@ const onReady = async () => {
   registerExtensionPath('groups', path.join(__dirname, 'extensions', 'groups'));
   registerExtensionPath('peeks', path.join(__dirname, 'extensions', 'peeks'));
   registerExtensionPath('slides', path.join(__dirname, 'extensions', 'slides'));
+  registerExtensionPath('example', path.join(__dirname, 'extensions', 'example'));
 
   // Register as default handler for http/https URLs (if not already and user hasn't declined)
   const defaultBrowserPrefFile = path.join(profileDataPath, 'default-browser-pref.json');
@@ -1274,6 +1299,14 @@ ipcMain.handle('window-open', async (ev, msg) => {
   
   // Create new window
   const win = new BrowserWindow(winOptions);
+
+  // Forward console logs from window to main process stdout (for debugging)
+  win.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    // Only forward for peek:// URLs to avoid noise
+    if (url.startsWith('peek://')) {
+      console.log(`[${url.replace('peek://', '')}] ${message}`);
+    }
+  });
 
   try {
     await win.loadURL(url);
@@ -2399,7 +2432,6 @@ ipcMain.handle('extension-window-reload', async (ev, data) => {
 ipcMain.handle('extension-window-list', async (ev) => {
   try {
     const running = getRunningExtensions();
-    console.log('extension-window-list:', running.map(e => e.id));
     return { success: true, data: running };
   } catch (error) {
     console.error('extension-window-list error:', error);

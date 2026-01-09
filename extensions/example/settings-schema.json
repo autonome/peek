@@ -1,0 +1,20 @@
+{
+  "prefs": {
+    "type": "object",
+    "properties": {
+      "greeting": {
+        "type": "string",
+        "description": "Custom greeting message",
+        "default": "Hello World"
+      }
+    }
+  },
+  "storageKeys": {
+    "PREFS": "prefs"
+  },
+  "defaults": {
+    "prefs": {
+      "greeting": "Hello World"
+    }
+  }
+}

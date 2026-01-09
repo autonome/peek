@@ -1,0 +1,9 @@
+{
+  "id": "example",
+  "shortname": "example",
+  "name": "Example",
+  "description": "A hello world example extension",
+  "version": "1.0.0",
+  "background": "background.html",
+  "settingsSchema": "./settings-schema.json"
+}

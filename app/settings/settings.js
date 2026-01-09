@@ -641,10 +641,8 @@ const renderExtensionsSettings = async () => {
   // Initial load (may be incomplete if extensions still loading)
   await refreshExtensionsList();
 
-  // Reactively update when extensions finish loading
-  api.subscribe('ext:all-loaded', () => {
-    refreshExtensionsList();
-  }, api.scopes.GLOBAL);
+  // Store refresh function for external access (ext:all-loaded is subscribed once in main init)
+  window._refreshExtensionsList = refreshExtensionsList;
 
   return container;
 };
@@ -1072,8 +1070,13 @@ const init = async () => {
   await loadExtensionSettings();
 
   // Listen for all extensions loaded event to catch any we missed
+  // NOTE: Only ONE ext:all-loaded subscription per source - pubsub overwrites duplicates
   api.subscribe('ext:all-loaded', () => {
     loadExtensionSettings();
+    // Also refresh the Extensions list if it's been rendered
+    if (window._refreshExtensionsList) {
+      window._refreshExtensionsList();
+    }
   }, api.scopes.GLOBAL);
 
   // Add Datastore link

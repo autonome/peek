@@ -238,6 +238,47 @@ const init = async () => {
     console.log('[ext:slides] settings changed, reinitializing');
     reinit();
   }, api.scopes.GLOBAL);
+
+  // Listen for settings updates from Settings UI
+  // Settings UI sends proposed changes, we validate and save
+  api.subscribe('slides:settings-update', async (msg) => {
+    console.log('[ext:slides] settings-update received:', msg);
+
+    try {
+      // Apply the update based on what was sent
+      if (msg.data) {
+        // Full data object sent
+        currentSettings = {
+          prefs: msg.data.prefs || currentSettings.prefs,
+          items: msg.data.items || currentSettings.items
+        };
+      } else if (msg.key === 'prefs' && msg.path) {
+        // Single pref field update
+        const field = msg.path.split('.')[1];
+        if (field) {
+          currentSettings.prefs = { ...currentSettings.prefs, [field]: msg.value };
+        }
+      } else if (msg.key === 'items' && msg.index !== undefined) {
+        // Item field update
+        const items = [...currentSettings.items];
+        if (items[msg.index]) {
+          items[msg.index] = { ...items[msg.index], [msg.field]: msg.value };
+          currentSettings.items = items;
+        }
+      }
+
+      // Save to datastore
+      await saveSettings(currentSettings);
+
+      // Reinitialize with new settings
+      await reinit();
+
+      // Confirm change back to Settings UI
+      api.publish('slides:settings-changed', currentSettings, api.scopes.GLOBAL);
+    } catch (err) {
+      console.error('[ext:slides] settings-update error:', err);
+    }
+  }, api.scopes.GLOBAL);
 };
 
 export default {

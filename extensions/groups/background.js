@@ -257,6 +257,41 @@ const init = async () => {
     initShortcut(currentSettings.prefs.shortcutKey);
     initCommands();
   }, api.scopes.GLOBAL);
+
+  // Listen for settings updates from Settings UI
+  // Settings UI sends proposed changes, we validate and save
+  api.subscribe('groups:settings-update', async (msg) => {
+    console.log('[ext:groups] settings-update received:', msg);
+
+    try {
+      // Apply the update based on what was sent
+      if (msg.data) {
+        // Full data object sent
+        currentSettings = {
+          prefs: msg.data.prefs || currentSettings.prefs
+        };
+      } else if (msg.key === 'prefs' && msg.path) {
+        // Single pref field update
+        const field = msg.path.split('.')[1];
+        if (field) {
+          currentSettings.prefs = { ...currentSettings.prefs, [field]: msg.value };
+        }
+      }
+
+      // Save to datastore
+      await saveSettings(currentSettings);
+
+      // Reinitialize with new settings
+      uninit();
+      initShortcut(currentSettings.prefs.shortcutKey);
+      initCommands();
+
+      // Confirm change back to Settings UI
+      api.publish('groups:settings-changed', currentSettings, api.scopes.GLOBAL);
+    } catch (err) {
+      console.error('[ext:groups] settings-update error:', err);
+    }
+  }, api.scopes.GLOBAL);
 };
 
 const uninit = () => {

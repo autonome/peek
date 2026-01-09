@@ -388,6 +388,20 @@ api.commands = {
     });
 
     console.log('commands.unregister:', name);
+  },
+
+  /**
+   * Get all registered commands from the main process registry
+   * This queries the authoritative registry, not pubsub subscriptions
+   * @returns {Promise<Array>} Array of command objects
+   */
+  getAll: async () => {
+    const result = await ipcRenderer.invoke('get-registered-commands');
+    if (result.success) {
+      return result.data;
+    }
+    console.error('commands.getAll failed:', result);
+    return [];
   }
 };
 
@@ -644,6 +658,16 @@ api.extensions = {
    */
   get: (id) => {
     return ipcRenderer.invoke('extension-get', { id });
+  },
+
+  /**
+   * Get settings schema for an extension
+   * Reads schema from file specified in manifest.settingsSchema
+   * @param {string} extId - Extension ID
+   * @returns {Promise<{success: boolean, data?: {extId, name, schema}, error?: string}>}
+   */
+  getSettingsSchema: (extId) => {
+    return ipcRenderer.invoke('extension-settings-schema', { extId });
   }
 };
 

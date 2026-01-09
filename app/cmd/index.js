@@ -22,8 +22,16 @@ const dynamicCommands = new Map();
  * Initialize command registration listeners
  * Extensions publish cmd:register to add commands, cmd:unregister to remove
  */
-const initCommandRegistry = () => {
-  // Listen for command registrations from extensions
+const initCommandRegistry = async () => {
+  // Query already-registered commands from main process
+  // This catches commands registered before cmd started (race condition fix)
+  const existingCommands = await api.commands.getAll();
+  console.log('[cmd] Loaded', existingCommands.length, 'existing commands from registry');
+  existingCommands.forEach(cmd => {
+    dynamicCommands.set(cmd.name, cmd);
+  });
+
+  // Listen for command registrations from extensions (for live updates)
   api.subscribe('cmd:register', (msg) => {
     console.log('[cmd] cmd:register received:', msg.name);
     dynamicCommands.set(msg.name, {
@@ -103,13 +111,13 @@ const initShortcut = (prefs) => {
   }, { global: true });
 };
 
-const init = () => {
+const init = async () => {
   console.log('init');
 
   const prefs = () => store.get(storageKeys.PREFS);
 
   // Initialize command registry before shortcuts so extensions can register
-  initCommandRegistry();
+  await initCommandRegistry();
 
   initShortcut(prefs());
 };

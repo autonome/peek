@@ -6,64 +6,90 @@
   "version": "1.0.0",
   "background": "background.html",
   "builtin": true,
-  "settings": {
+  "schemas": {
     "prefs": {
-      "shortcutKeyPrefix": {
-        "type": "string",
-        "label": "Shortcut prefix",
-        "description": "Global OS hotkey prefix to trigger peeks - followed by 0-9",
-        "default": "Option+"
+      "type": "object",
+      "properties": {
+        "shortcutKeyPrefix": {
+          "type": "string",
+          "description": "Global OS hotkey prefix to trigger peeks - followed by 0-9",
+          "default": "Option+"
+        }
       }
     },
-    "items": {
-      "type": "array",
-      "maxItems": 10,
-      "itemSchema": {
+    "item": {
+      "title": "Peeks",
+      "type": "object",
+      "properties": {
         "keyNum": {
           "type": "integer",
-          "label": "Key number",
           "description": "Number key (0-9) to trigger this peek",
           "minimum": 0,
-          "maximum": 9
+          "maximum": 9,
+          "default": 0
         },
         "title": {
           "type": "string",
-          "label": "Title",
-          "description": "Name of the peek"
+          "description": "Name of the peek",
+          "default": "New Peek"
         },
         "address": {
           "type": "string",
-          "label": "URL",
-          "description": "URL to load"
+          "description": "URL to load",
+          "default": "https://example.com"
         },
         "height": {
           "type": "integer",
-          "label": "Height",
+          "description": "Window height",
           "default": 600
         },
         "width": {
           "type": "integer",
-          "label": "Width",
+          "description": "Window width",
           "default": 800
         },
         "persistState": {
           "type": "boolean",
-          "label": "Persist state",
           "description": "Persist local state between sessions",
           "default": false
         },
         "keepLive": {
           "type": "boolean",
-          "label": "Keep live",
           "description": "Keep page alive in background",
+          "default": false
+        },
+        "allowSound": {
+          "type": "boolean",
+          "description": "Allow the page to emit sound",
           "default": false
         },
         "enabled": {
           "type": "boolean",
-          "label": "Enabled",
+          "description": "Whether this peek is enabled",
           "default": false
         }
       }
     }
+  },
+  "storageKeys": {
+    "PREFS": "prefs",
+    "ITEMS": "items"
+  },
+  "defaults": {
+    "prefs": {
+      "shortcutKeyPrefix": "Option+"
+    },
+    "items": [
+      { "keyNum": 0, "title": "Peek key 0", "address": "https://example.com/", "persistState": false, "keepLive": false, "allowSound": false, "height": 600, "width": 800, "enabled": true },
+      { "keyNum": 1, "title": "Peek key 1", "address": "", "persistState": false, "keepLive": false, "allowSound": false, "height": 600, "width": 800, "enabled": false },
+      { "keyNum": 2, "title": "Peek key 2", "address": "", "persistState": false, "keepLive": false, "allowSound": false, "height": 600, "width": 800, "enabled": false },
+      { "keyNum": 3, "title": "Peek key 3", "address": "", "persistState": false, "keepLive": false, "allowSound": false, "height": 600, "width": 800, "enabled": false },
+      { "keyNum": 4, "title": "Peek key 4", "address": "", "persistState": false, "keepLive": false, "allowSound": false, "height": 600, "width": 800, "enabled": false },
+      { "keyNum": 5, "title": "Peek key 5", "address": "", "persistState": false, "keepLive": false, "allowSound": false, "height": 600, "width": 800, "enabled": false },
+      { "keyNum": 6, "title": "Peek key 6", "address": "", "persistState": false, "keepLive": false, "allowSound": false, "height": 600, "width": 800, "enabled": false },
+      { "keyNum": 7, "title": "Peek key 7", "address": "", "persistState": false, "keepLive": false, "allowSound": false, "height": 600, "width": 800, "enabled": false },
+      { "keyNum": 8, "title": "Peek key 8", "address": "", "persistState": false, "keepLive": false, "allowSound": false, "height": 600, "width": 800, "enabled": false },
+      { "keyNum": 9, "title": "Peek key 9", "address": "", "persistState": false, "keepLive": false, "allowSound": false, "height": 600, "width": 800, "enabled": false }
+    ]
   }
 }

@@ -6,14 +6,24 @@
   "version": "1.0.0",
   "background": "background.html",
   "builtin": true,
-  "settings": {
+  "schemas": {
     "prefs": {
-      "shortcutKey": {
-        "type": "string",
-        "label": "Shortcut",
-        "description": "Global OS hotkey to open groups manager",
-        "default": "Option+g"
+      "type": "object",
+      "properties": {
+        "shortcutKey": {
+          "type": "string",
+          "description": "Global OS hotkey to open groups manager",
+          "default": "Option+g"
+        }
       }
+    }
+  },
+  "storageKeys": {
+    "PREFS": "prefs"
+  },
+  "defaults": {
+    "prefs": {
+      "shortcutKey": "Option+g"
     }
   }
 }

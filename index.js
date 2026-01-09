@@ -447,6 +447,11 @@ const pubsub = (() => {
 
 })();
 
+// ***** Command Registry *****
+// Stores commands registered via cmd:register topic
+// This enables cmd app to query commands registered before it started
+const commandRegistry = new Map();
+
 // ***** Tray *****
 
 const ICON_RELATIVE_PATH = 'assets/tray/tray@2x.png';
@@ -546,6 +551,17 @@ const createExtensionWindow = async (extId) => {
     return null;
   }
 
+  // Load manifest
+  let manifest = null;
+  try {
+    const manifestPath = path.join(extPath, 'manifest.json');
+    if (fs.existsSync(manifestPath)) {
+      manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+    }
+  } catch (err) {
+    console.error(`[ext:win] Failed to load manifest for ${extId}:`, err);
+  }
+
   console.log(`[ext:win] Creating window for extension: ${extId}`);
 
   const win = new BrowserWindow({
@@ -578,7 +594,7 @@ const createExtensionWindow = async (extId) => {
   });
 
   // Store before loading to handle async issues
-  extensionWindows.set(extId, { win, manifest: null, status: 'loading' });
+  extensionWindows.set(extId, { win, manifest, status: 'loading' });
 
   try {
     await win.loadURL(`peek://ext/${extId}/background.html`);
@@ -1134,6 +1150,19 @@ ipcMain.on(strings.msgs.closeWindow, (ev, msg) => {
 ipcMain.on(strings.msgs.publish, (ev, msg) => {
   console.log('ipc:publish', msg);
 
+  // Intercept command registration to store in registry
+  if (msg.topic === 'cmd:register' && msg.data) {
+    commandRegistry.set(msg.data.name, {
+      name: msg.data.name,
+      description: msg.data.description || '',
+      source: msg.data.source
+    });
+    console.log('[cmd-registry] Registered command:', msg.data.name);
+  } else if (msg.topic === 'cmd:unregister' && msg.data) {
+    commandRegistry.delete(msg.data.name);
+    console.log('[cmd-registry] Unregistered command:', msg.data.name);
+  }
+
   pubsub.publish(msg.source, msg.scope, msg.topic, msg.data);
 });
 
@@ -1144,6 +1173,13 @@ ipcMain.on(strings.msgs.subscribe, (ev, msg) => {
     console.log('ipc:subscribe:notification', msg);
     ev.reply(msg.replyTopic, data);
   });
+});
+
+// Query all registered commands from the registry
+ipcMain.handle('get-registered-commands', async () => {
+  const commands = Array.from(commandRegistry.values());
+  console.log('[cmd-registry] Query returned', commands.length, 'commands');
+  return { success: true, data: commands };
 });
 
 ipcMain.on(strings.msgs.console, (ev, msg) => {
@@ -2474,6 +2510,53 @@ ipcMain.handle('extension-manifest-get', async (ev, data) => {
     return { success: true, data: manifest };
   } catch (error) {
     console.error('extension-manifest-get error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Get extension settings schema from filesystem
+// Reads the schema file path from manifest.settingsSchema
+ipcMain.handle('extension-settings-schema', async (ev, data) => {
+  const { extId } = data;
+
+  try {
+    const extPath = getExtensionPath(extId);
+    if (!extPath) {
+      return { success: false, error: 'Extension not found' };
+    }
+
+    const manifestPath = path.join(extPath, 'manifest.json');
+    if (!fs.existsSync(manifestPath)) {
+      return { success: false, error: 'manifest.json not found' };
+    }
+
+    const manifestContent = fs.readFileSync(manifestPath, 'utf-8');
+    const manifest = JSON.parse(manifestContent);
+
+    // Check if extension has a settings schema
+    if (!manifest.settingsSchema) {
+      return { success: true, data: null }; // No settings schema defined
+    }
+
+    // Resolve schema path relative to extension directory
+    const schemaPath = path.join(extPath, manifest.settingsSchema);
+    if (!fs.existsSync(schemaPath)) {
+      return { success: false, error: `Settings schema not found: ${manifest.settingsSchema}` };
+    }
+
+    const schemaContent = fs.readFileSync(schemaPath, 'utf-8');
+    const schema = JSON.parse(schemaContent);
+
+    return {
+      success: true,
+      data: {
+        extId: manifest.id || extId,
+        name: manifest.name,
+        schema
+      }
+    };
+  } catch (error) {
+    console.error('extension-settings-schema error:', error);
     return { success: false, error: error.message };
   }
 });

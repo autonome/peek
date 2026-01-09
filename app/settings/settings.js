@@ -912,7 +912,7 @@ const isFeatureEnabled = (featureName) => {
 };
 
 // Initialize
-const init = () => {
+const init = async () => {
   const sidebarNav = document.getElementById('sidebarNav');
   const contentArea = document.getElementById('settingsContent');
 
@@ -931,7 +931,7 @@ const init = () => {
   // Track feature nav items and sections for dynamic updates
   const featureElements = new Map();
 
-  // Add feature sections (only show enabled ones, but create all for hot-reload)
+  // Add CORE feature sections (cmd, scripts - features that run in peek://app context)
   for (const i in fc) {
     const feature = fc[i];
     const name = feature.labels.name;
@@ -956,7 +956,7 @@ const init = () => {
     featureElements.set(name.toLowerCase(), { navItem, section });
   }
 
-  // Listen for feature toggle events to update sidebar
+  // Listen for feature toggle events to update sidebar (core features only)
   api.subscribe('core:feature:toggle', (msg) => {
     const featureName = msg.featureId?.toLowerCase();
     const elements = featureElements.get(featureName);
@@ -972,7 +972,7 @@ const init = () => {
     }
   });
 
-  // Add Extensions section
+  // Add Extensions management section (must be created before loading extension settings)
   const extNav = document.createElement('a');
   extNav.className = 'nav-item';
   extNav.textContent = 'Extensions';
@@ -996,6 +996,78 @@ const init = () => {
   });
 
   contentArea.appendChild(extSection);
+
+  // Add EXTENSION settings sections (peeks, slides, groups - run in isolated peek://ext contexts)
+  // Load schemas dynamically from extension manifests
+  // Track which extensions we've already added to avoid duplicates
+  const addedExtensions = new Set();
+
+  const loadExtensionSettings = async () => {
+    try {
+      const result = await api.extensions.list();
+      if (result.success && result.data) {
+        for (const ext of result.data) {
+          // Only show extensions that have schemas defined
+          if (!ext.manifest?.schemas) continue;
+
+          // Skip if already added
+          const extName = ext.manifest.name.toLowerCase();
+          if (addedExtensions.has(extName)) continue;
+          addedExtensions.add(extName);
+
+          // Construct feature-like object from manifest
+          const feature = {
+            id: ext.manifest.id,
+            labels: { name: ext.manifest.name },
+            schemas: ext.manifest.schemas,
+            storageKeys: ext.manifest.storageKeys || { PREFS: 'prefs', ITEMS: 'items' },
+            defaults: ext.manifest.defaults || {}
+          };
+
+          const name = feature.labels.name;
+          const sectionId = name.toLowerCase().replace(/\s+/g, '-');
+
+          // Add nav item (insert before Extensions nav item)
+          const navItem = document.createElement('a');
+          navItem.className = 'nav-item';
+          navItem.textContent = name;
+          navItem.dataset.section = sectionId;
+          navItem.dataset.featureName = name;
+          navItem.dataset.isExtension = 'true';
+          navItem.addEventListener('click', () => showSection(sectionId));
+
+          // Insert before the Extensions section in nav
+          const extNavItem = sidebarNav.querySelector('[data-section="extensions"]');
+          if (extNavItem) {
+            sidebarNav.insertBefore(navItem, extNavItem);
+          } else {
+            sidebarNav.appendChild(navItem);
+          }
+
+          // Add section (insert before extensions section)
+          const section = createSection(sectionId, name, () => renderFeatureSettings(feature));
+          const extSectionEl = document.getElementById('section-extensions');
+          if (extSectionEl) {
+            contentArea.insertBefore(section, extSectionEl);
+          } else {
+            contentArea.appendChild(section);
+          }
+
+          featureElements.set(name.toLowerCase(), { navItem, section });
+        }
+      }
+    } catch (err) {
+      console.error('[settings] Failed to load extension schemas:', err);
+    }
+  };
+
+  // Load extensions that are already running
+  await loadExtensionSettings();
+
+  // Listen for all extensions loaded event to catch any we missed
+  api.subscribe('ext:all-loaded', () => {
+    loadExtensionSettings();
+  }, api.scopes.GLOBAL);
 
   // Add Datastore link
   const datastoreNav = document.createElement('a');

@@ -6,63 +6,82 @@
   "version": "1.0.0",
   "background": "background.html",
   "builtin": true,
-  "settings": {
+  "schemas": {
     "prefs": {
-      "shortcutKeyPrefix": {
-        "type": "string",
-        "label": "Shortcut prefix",
-        "description": "Global OS hotkey prefix to trigger slides - followed by arrow keys",
-        "default": "Option+"
+      "type": "object",
+      "properties": {
+        "shortcutKeyPrefix": {
+          "type": "string",
+          "description": "Global OS hotkey prefix to trigger slides - followed by arrow keys",
+          "default": "Option+"
+        }
       }
     },
-    "items": {
-      "type": "array",
-      "maxItems": 4,
-      "itemSchema": {
+    "item": {
+      "title": "Slides",
+      "type": "object",
+      "properties": {
         "screenEdge": {
           "type": "string",
-          "label": "Screen edge",
-          "description": "Edge of screen to slide from",
-          "enum": ["Up", "Down", "Left", "Right"]
+          "description": "Edge of screen to slide from (Up/Down/Left/Right)",
+          "default": "Right"
         },
         "title": {
           "type": "string",
-          "label": "Title",
-          "description": "Name of the slide"
+          "description": "Name of the slide",
+          "default": "New Slide"
         },
         "address": {
           "type": "string",
-          "label": "URL",
-          "description": "URL to load"
+          "description": "URL to load",
+          "default": "https://example.com"
         },
         "height": {
           "type": "integer",
-          "label": "Height",
+          "description": "Window height",
           "default": 600
         },
         "width": {
           "type": "integer",
-          "label": "Width",
+          "description": "Window width",
           "default": 800
         },
         "persistState": {
           "type": "boolean",
-          "label": "Persist state",
           "description": "Persist local state between sessions",
           "default": false
         },
         "keepLive": {
           "type": "boolean",
-          "label": "Keep live",
           "description": "Keep page alive in background",
+          "default": false
+        },
+        "allowSound": {
+          "type": "boolean",
+          "description": "Allow the page to emit sound",
           "default": false
         },
         "enabled": {
           "type": "boolean",
-          "label": "Enabled",
+          "description": "Whether this slide is enabled",
           "default": false
         }
       }
     }
+  },
+  "storageKeys": {
+    "PREFS": "prefs",
+    "ITEMS": "items"
+  },
+  "defaults": {
+    "prefs": {
+      "shortcutKeyPrefix": "Option+"
+    },
+    "items": [
+      { "screenEdge": "Up", "title": "Slide from top", "address": "http://localhost/", "persistState": false, "keepLive": false, "allowSound": false, "height": 600, "width": 800, "enabled": true },
+      { "screenEdge": "Down", "title": "Slide from bottom", "address": "", "persistState": false, "keepLive": false, "allowSound": false, "height": 600, "width": 800, "enabled": false },
+      { "screenEdge": "Left", "title": "Slide from left", "address": "", "persistState": false, "keepLive": false, "allowSound": false, "height": 600, "width": 800, "enabled": false },
+      { "screenEdge": "Right", "title": "Slide from right", "address": "", "persistState": false, "keepLive": false, "allowSound": false, "height": 600, "width": 800, "enabled": false }
+    ]
   }
 }

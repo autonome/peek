@@ -6,7 +6,21 @@
  */
 
 import Database from 'better-sqlite3';
-import type { TableName } from '../types/index.js';
+import type {
+  TableName,
+  Address,
+  Visit,
+  Content,
+  Tag,
+  AddressTag,
+  DatastoreStats,
+  AddressFilter,
+  VisitFilter,
+  ContentFilter,
+  AddressOptions,
+  VisitOptions,
+  ContentOptions,
+} from '../types/index.js';
 import { tableNames } from '../types/index.js';
 
 // SQL Schema
@@ -375,4 +389,355 @@ function migrateTinyBaseData(): void {
   } catch (error) {
     console.error('main', 'TinyBase migration failed:', (error as Error).message);
   }
+}
+
+// ==================== Address Operations ====================
+
+export function addAddress(uri: string, options: AddressOptions = {}): { id: string } {
+  const normalizedUri = normalizeUrl(uri);
+  const parsed = parseUrl(normalizedUri);
+  const addressId = generateId('addr');
+  const timestamp = now();
+
+  getDb().prepare(`
+    INSERT INTO addresses (id, uri, protocol, domain, path, title, mimeType, favicon, description, tags, metadata, createdAt, updatedAt, lastVisitAt, visitCount, starred, archived)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    addressId,
+    normalizedUri,
+    options.protocol || parsed.protocol,
+    options.domain || parsed.domain,
+    options.path || parsed.path,
+    options.title || '',
+    options.mimeType || 'text/html',
+    options.favicon || '',
+    options.description || '',
+    options.tags || '',
+    options.metadata || '{}',
+    timestamp,
+    timestamp,
+    options.lastVisitAt || 0,
+    options.visitCount || 0,
+    options.starred || 0,
+    options.archived || 0
+  );
+
+  return { id: addressId };
+}
+
+export function getAddress(id: string): Address | undefined {
+  return getDb().prepare('SELECT * FROM addresses WHERE id = ?').get(id) as Address | undefined;
+}
+
+export function updateAddress(id: string, updates: Partial<Address>): Address | undefined {
+  const existing = getAddress(id);
+  if (!existing) return undefined;
+
+  const updated = { ...existing, ...updates, updatedAt: now() };
+  const columns = Object.keys(updated).filter(k => k !== 'id');
+  const setClause = columns.map(col => `${col} = ?`).join(', ');
+  const values = columns.map(col => updated[col as keyof Address]);
+
+  getDb().prepare(`UPDATE addresses SET ${setClause} WHERE id = ?`).run(...values, id);
+  return updated as Address;
+}
+
+export function queryAddresses(filter: AddressFilter = {}): Address[] {
+  let sql = 'SELECT * FROM addresses WHERE 1=1';
+  const params: (string | number)[] = [];
+
+  if (filter.domain) {
+    sql += ' AND domain = ?';
+    params.push(filter.domain);
+  }
+  if (filter.protocol) {
+    sql += ' AND protocol = ?';
+    params.push(filter.protocol);
+  }
+  if (filter.starred !== undefined) {
+    sql += ' AND starred = ?';
+    params.push(filter.starred);
+  }
+  if (filter.tag) {
+    sql += ' AND tags LIKE ?';
+    params.push(`%${filter.tag}%`);
+  }
+
+  const sortMap: Record<string, string> = {
+    lastVisit: 'lastVisitAt DESC',
+    visitCount: 'visitCount DESC',
+    created: 'createdAt DESC'
+  };
+  sql += ` ORDER BY ${sortMap[filter.sortBy || ''] || 'updatedAt DESC'}`;
+
+  if (filter.limit) {
+    sql += ' LIMIT ?';
+    params.push(filter.limit);
+  }
+
+  return getDb().prepare(sql).all(...params) as Address[];
+}
+
+// ==================== Visit Operations ====================
+
+export function addVisit(addressId: string, options: VisitOptions = {}): { id: string } {
+  const visitId = generateId('visit');
+  const timestamp = now();
+
+  getDb().prepare(`
+    INSERT INTO visits (id, addressId, timestamp, duration, source, sourceId, windowType, metadata, scrollDepth, interacted)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    visitId,
+    addressId,
+    options.timestamp || timestamp,
+    options.duration || 0,
+    options.source || 'direct',
+    options.sourceId || '',
+    options.windowType || 'main',
+    options.metadata || '{}',
+    options.scrollDepth || 0,
+    options.interacted || 0
+  );
+
+  // Update address visit stats
+  getDb().prepare(`
+    UPDATE addresses SET lastVisitAt = ?, visitCount = visitCount + 1, updatedAt = ?
+    WHERE id = ?
+  `).run(timestamp, timestamp, addressId);
+
+  return { id: visitId };
+}
+
+export function queryVisits(filter: VisitFilter = {}): Visit[] {
+  let sql = 'SELECT * FROM visits WHERE 1=1';
+  const params: (string | number)[] = [];
+
+  if (filter.addressId) {
+    sql += ' AND addressId = ?';
+    params.push(filter.addressId);
+  }
+  if (filter.source) {
+    sql += ' AND source = ?';
+    params.push(filter.source);
+  }
+  if (filter.since) {
+    sql += ' AND timestamp >= ?';
+    params.push(filter.since);
+  }
+
+  sql += ' ORDER BY timestamp DESC';
+
+  if (filter.limit) {
+    sql += ' LIMIT ?';
+    params.push(filter.limit);
+  }
+
+  return getDb().prepare(sql).all(...params) as Visit[];
+}
+
+// ==================== Content Operations ====================
+
+export function addContent(options: ContentOptions = {}): { id: string } {
+  const contentId = generateId('content');
+  const timestamp = now();
+
+  getDb().prepare(`
+    INSERT INTO content (id, title, content, mimeType, contentType, language, encoding, tags, addressRefs, parentId, metadata, createdAt, updatedAt, syncPath, synced, starred, archived)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    contentId,
+    options.title || 'Untitled',
+    options.content || '',
+    options.mimeType || 'text/plain',
+    options.contentType || 'plain',
+    options.language || '',
+    options.encoding || 'utf-8',
+    options.tags || '',
+    options.addressRefs || '',
+    options.parentId || '',
+    options.metadata || '{}',
+    timestamp,
+    timestamp,
+    options.syncPath || '',
+    options.synced || 0,
+    options.starred || 0,
+    options.archived || 0
+  );
+
+  return { id: contentId };
+}
+
+export function queryContent(filter: ContentFilter = {}): Content[] {
+  let sql = 'SELECT * FROM content WHERE 1=1';
+  const params: (string | number)[] = [];
+
+  if (filter.contentType) {
+    sql += ' AND contentType = ?';
+    params.push(filter.contentType);
+  }
+  if (filter.mimeType) {
+    sql += ' AND mimeType = ?';
+    params.push(filter.mimeType);
+  }
+  if (filter.synced !== undefined) {
+    sql += ' AND synced = ?';
+    params.push(filter.synced);
+  }
+  if (filter.starred !== undefined) {
+    sql += ' AND starred = ?';
+    params.push(filter.starred);
+  }
+  if (filter.tag) {
+    sql += ' AND tags LIKE ?';
+    params.push(`%${filter.tag}%`);
+  }
+
+  const sortMap: Record<string, string> = {
+    updated: 'updatedAt DESC',
+    created: 'createdAt DESC'
+  };
+  sql += ` ORDER BY ${sortMap[filter.sortBy || ''] || 'updatedAt DESC'}`;
+
+  if (filter.limit) {
+    sql += ' LIMIT ?';
+    params.push(filter.limit);
+  }
+
+  return getDb().prepare(sql).all(...params) as Content[];
+}
+
+// ==================== Tag Operations ====================
+
+export function getOrCreateTag(name: string): { tag: Tag; created: boolean } {
+  const slug = name.toLowerCase().trim().replace(/\s+/g, '-');
+  const timestamp = now();
+
+  const existingTag = getDb().prepare('SELECT * FROM tags WHERE LOWER(name) = LOWER(?)').get(name) as Tag | undefined;
+  if (existingTag) {
+    return { tag: existingTag, created: false };
+  }
+
+  const tagId = generateId('tag');
+  getDb().prepare(`
+    INSERT INTO tags (id, name, slug, color, parentId, description, metadata, createdAt, updatedAt, frequency, lastUsedAt, frecencyScore)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(tagId, name.trim(), slug, '#999999', '', '', '{}', timestamp, timestamp, 0, 0, 0);
+
+  const newTag = getDb().prepare('SELECT * FROM tags WHERE id = ?').get(tagId) as Tag;
+  return { tag: newTag, created: true };
+}
+
+export function tagAddress(addressId: string, tagId: string): { link: AddressTag; alreadyExists: boolean } {
+  const timestamp = now();
+
+  const existingLink = getDb().prepare('SELECT * FROM address_tags WHERE addressId = ? AND tagId = ?').get(addressId, tagId) as AddressTag | undefined;
+  if (existingLink) {
+    return { link: existingLink, alreadyExists: true };
+  }
+
+  const linkId = generateId('address_tag');
+  getDb().prepare('INSERT INTO address_tags (id, addressId, tagId, createdAt) VALUES (?, ?, ?, ?)').run(linkId, addressId, tagId, timestamp);
+
+  // Update tag frequency and frecency
+  const tag = getDb().prepare('SELECT * FROM tags WHERE id = ?').get(tagId) as Tag | undefined;
+  if (tag) {
+    const newFrequency = (tag.frequency || 0) + 1;
+    const frecencyScore = calculateFrecency(newFrequency, timestamp);
+    getDb().prepare('UPDATE tags SET frequency = ?, lastUsedAt = ?, frecencyScore = ?, updatedAt = ? WHERE id = ?')
+      .run(newFrequency, timestamp, frecencyScore, timestamp, tagId);
+  }
+
+  const newLink = getDb().prepare('SELECT * FROM address_tags WHERE id = ?').get(linkId) as AddressTag;
+  return { link: newLink, alreadyExists: false };
+}
+
+export function untagAddress(addressId: string, tagId: string): boolean {
+  const result = getDb().prepare('DELETE FROM address_tags WHERE addressId = ? AND tagId = ?').run(addressId, tagId);
+  return result.changes > 0;
+}
+
+export function getTagsByFrecency(domain?: string): Tag[] {
+  let tags = getDb().prepare('SELECT * FROM tags').all() as Tag[];
+
+  // Recalculate frecency scores
+  tags = tags.map(tag => ({
+    ...tag,
+    frecencyScore: calculateFrecency(tag.frequency || 0, tag.lastUsedAt || 0)
+  }));
+
+  // If domain provided, boost tags used on same-domain addresses
+  if (domain) {
+    const domainTagIds = new Set(
+      (getDb().prepare(`
+        SELECT DISTINCT at.tagId FROM address_tags at
+        JOIN addresses a ON at.addressId = a.id
+        WHERE a.domain = ?
+      `).all(domain) as { tagId: string }[]).map(row => row.tagId)
+    );
+
+    tags = tags.map(tag => ({
+      ...tag,
+      frecencyScore: domainTagIds.has(tag.id) ? tag.frecencyScore * 2 : tag.frecencyScore
+    }));
+  }
+
+  tags.sort((a, b) => b.frecencyScore - a.frecencyScore);
+  return tags;
+}
+
+export function getAddressTags(addressId: string): Tag[] {
+  return getDb().prepare(`
+    SELECT t.* FROM tags t
+    JOIN address_tags at ON t.id = at.tagId
+    WHERE at.addressId = ?
+  `).all(addressId) as Tag[];
+}
+
+export function getAddressesByTag(tagId: string): Address[] {
+  return getDb().prepare(`
+    SELECT a.* FROM addresses a
+    JOIN address_tags at ON a.id = at.addressId
+    WHERE at.tagId = ?
+  `).all(tagId) as Address[];
+}
+
+export function getUntaggedAddresses(): Address[] {
+  return getDb().prepare(`
+    SELECT a.* FROM addresses a
+    LEFT JOIN address_tags at ON a.id = at.addressId
+    WHERE at.id IS NULL
+    ORDER BY a.visitCount DESC
+  `).all() as Address[];
+}
+
+// ==================== Generic Table Operations ====================
+
+export function getTable(tableName: TableName): Record<string, Record<string, unknown>> {
+  const rows = getDb().prepare(`SELECT * FROM ${tableName}`).all() as Array<{ id: string } & Record<string, unknown>>;
+  const table: Record<string, Record<string, unknown>> = {};
+  for (const row of rows) {
+    table[row.id] = row;
+  }
+  return table;
+}
+
+export function setRow(tableName: TableName, rowId: string, rowData: Record<string, unknown>): void {
+  const row: Record<string, unknown> = { id: rowId, ...rowData };
+  const columns = Object.keys(row);
+  const placeholders = columns.map(() => '?').join(', ');
+  const values = columns.map(col => row[col]);
+
+  getDb().prepare(`INSERT OR REPLACE INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders})`).run(...values);
+}
+
+export function getStats(): DatastoreStats {
+  const d = getDb();
+  return {
+    totalAddresses: (d.prepare('SELECT COUNT(*) as count FROM addresses').get() as { count: number }).count,
+    totalVisits: (d.prepare('SELECT COUNT(*) as count FROM visits').get() as { count: number }).count,
+    avgVisitDuration: (d.prepare('SELECT AVG(duration) as avg FROM visits').get() as { avg: number | null }).avg || 0,
+    totalContent: (d.prepare('SELECT COUNT(*) as count FROM content').get() as { count: number }).count,
+    syncedContent: (d.prepare('SELECT COUNT(*) as count FROM content WHERE synced = 1').get() as { count: number }).count
+  };
 }

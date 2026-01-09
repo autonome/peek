@@ -4,7 +4,7 @@
  * Exports database functions and types for the Electron main process.
  */
 
-// Database functions
+// Database lifecycle and helpers
 export {
   initDatabase,
   closeDatabase,
@@ -15,6 +15,33 @@ export {
   normalizeUrl,
   isValidTable,
   calculateFrecency,
+} from './datastore.js';
+
+// Datastore operations
+export {
+  // Addresses
+  addAddress,
+  getAddress,
+  updateAddress,
+  queryAddresses,
+  // Visits
+  addVisit,
+  queryVisits,
+  // Content
+  addContent,
+  queryContent,
+  // Tags
+  getOrCreateTag,
+  tagAddress,
+  untagAddress,
+  getTagsByFrecency,
+  getAddressTags,
+  getAddressesByTag,
+  getUntaggedAddresses,
+  // Generic
+  getTable,
+  setRow,
+  getStats,
 } from './datastore.js';
 
 // Re-export shared data types
@@ -28,6 +55,12 @@ export type {
   ExtensionSetting,
   DatastoreStats,
   TableName,
+  AddressFilter,
+  VisitFilter,
+  ContentFilter,
+  AddressOptions,
+  VisitOptions,
+  ContentOptions,
 } from '../types/index.js';
 
 export { tableNames } from '../types/index.js';

@@ -22,12 +22,26 @@ import {
   initDatabase,
   closeDatabase,
   getDb,
-  generateId,
-  now,
-  parseUrl,
-  normalizeUrl,
   isValidTable,
-  calculateFrecency,
+  // Datastore operations
+  addAddress,
+  getAddress,
+  updateAddress,
+  queryAddresses,
+  addVisit,
+  queryVisits,
+  addContent,
+  queryContent,
+  getOrCreateTag,
+  tagAddress,
+  untagAddress,
+  getTagsByFrecency,
+  getAddressTags,
+  getAddressesByTag,
+  getUntaggedAddresses,
+  getTable,
+  setRow,
+  getStats,
 } from './dist/backend/electron/index.js';
 import unhandled from 'electron-unhandled';
 
@@ -102,6 +116,9 @@ const PROFILE = profileIsLegit(process.env.PROFILE)
 
 console.log('PROFILE', PROFILE, app.isPackaged ? '(packaged)' : '(source)');
 
+// Test profiles skip certain behaviors (devtools, dialogs, etc.)
+const isTestProfile = PROFILE.startsWith('test');
+
 // Profile dirs are subdir of userData dir
 // ..................................... ↓ we set this per profile
 //
@@ -155,6 +172,9 @@ const labels = {
 };
 
 // ***** System / OS / Theme *****
+
+// Use system theme by default
+nativeTheme.themeSource = 'system';
 
 // system dark mode handling
 ipcMain.handle('dark-mode:toggle', () => {
@@ -897,8 +917,8 @@ const onReady = async () => {
   const win = new BrowserWindow(winPrefs);
   win.loadURL(webCoreAddress);
   
-  // Setup devtools for the background window (always open in debug mode)
-  if (DEBUG) {
+  // Setup devtools for the background window (debug mode, but not in tests)
+  if (DEBUG && !isTestProfile) {
     win.webContents.openDevTools({ mode: 'detach', activate: false });
   }
   
@@ -1535,38 +1555,8 @@ ipcMain.handle('window-list', async (ev, msg) => {
 ipcMain.handle('datastore-add-address', async (ev, data) => {
   try {
     const { uri, options = {} } = data;
-    const normalizedUri = normalizeUrl(uri);
-    const parsed = parseUrl(normalizedUri);
-    const addressId = generateId('addr');
-    const timestamp = now();
-    const db = getDb();
-
-    const stmt = db.prepare(`
-      INSERT INTO addresses (id, uri, protocol, domain, path, title, mimeType, favicon, description, tags, metadata, createdAt, updatedAt, lastVisitAt, visitCount, starred, archived)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    stmt.run(
-      addressId,
-      normalizedUri,
-      options.protocol || parsed.protocol,
-      options.domain || parsed.domain,
-      options.path || parsed.path,
-      options.title || '',
-      options.mimeType || 'text/html',
-      options.favicon || '',
-      options.description || '',
-      options.tags || '',
-      options.metadata || '{}',
-      timestamp,
-      timestamp,
-      options.lastVisitAt || 0,
-      options.visitCount || 0,
-      options.starred || 0,
-      options.archived || 0
-    );
-
-    return { success: true, id: addressId };
+    const result = addAddress(uri, options);
+    return { success: true, id: result.id };
   } catch (error) {
     console.error('datastore-add-address error:', error);
     return { success: false, error: error.message };
@@ -1576,8 +1566,7 @@ ipcMain.handle('datastore-add-address', async (ev, data) => {
 ipcMain.handle('datastore-get-address', async (ev, data) => {
   try {
     const { id } = data;
-    const db = getDb();
-    const row = db.prepare('SELECT * FROM addresses WHERE id = ?').get(id);
+    const row = getAddress(id);
     return { success: true, data: row || {} };
   } catch (error) {
     console.error('datastore-get-address error:', error);
@@ -1588,19 +1577,11 @@ ipcMain.handle('datastore-get-address', async (ev, data) => {
 ipcMain.handle('datastore-update-address', async (ev, data) => {
   try {
     const { id, updates } = data;
-    const db = getDb();
-    const existing = db.prepare('SELECT * FROM addresses WHERE id = ?').get(id);
-    if (!existing) {
+    const updated = updateAddress(id, updates);
+    if (!updated) {
       return { success: false, error: 'Address not found' };
     }
-
-    const updated = { ...existing, ...updates, updatedAt: now() };
-    const columns = Object.keys(updated).filter(k => k !== 'id');
-    const setClause = columns.map(col => `${col} = ?`).join(', ');
-    const values = columns.map(col => updated[col]);
-
-    db.prepare(`UPDATE addresses SET ${setClause} WHERE id = ?`).run(...values, id);
-    return { success: true, data: { id, ...updated } };
+    return { success: true, data: updated };
   } catch (error) {
     console.error('datastore-update-address error:', error);
     return { success: false, error: error.message };
@@ -1610,43 +1591,7 @@ ipcMain.handle('datastore-update-address', async (ev, data) => {
 ipcMain.handle('datastore-query-addresses', async (ev, data) => {
   try {
     const { filter = {} } = data;
-    const db = getDb();
-
-    let sql = 'SELECT * FROM addresses WHERE 1=1';
-    const params = [];
-
-    if (filter.domain) {
-      sql += ' AND domain = ?';
-      params.push(filter.domain);
-    }
-    if (filter.protocol) {
-      sql += ' AND protocol = ?';
-      params.push(filter.protocol);
-    }
-    if (filter.starred !== undefined) {
-      sql += ' AND starred = ?';
-      params.push(filter.starred);
-    }
-    if (filter.tag) {
-      sql += ' AND tags LIKE ?';
-      params.push(`%${filter.tag}%`);
-    }
-
-    // Sort
-    const sortMap = {
-      lastVisit: 'lastVisitAt DESC',
-      visitCount: 'visitCount DESC',
-      created: 'createdAt DESC'
-    };
-    sql += ` ORDER BY ${sortMap[filter.sortBy] || 'updatedAt DESC'}`;
-
-    // Limit
-    if (filter.limit) {
-      sql += ' LIMIT ?';
-      params.push(filter.limit);
-    }
-
-    const results = db.prepare(sql).all(...params);
+    const results = queryAddresses(filter);
     return { success: true, data: results };
   } catch (error) {
     console.error('datastore-query-addresses error:', error);
@@ -1657,33 +1602,8 @@ ipcMain.handle('datastore-query-addresses', async (ev, data) => {
 ipcMain.handle('datastore-add-visit', async (ev, data) => {
   try {
     const { addressId, options = {} } = data;
-    const visitId = generateId('visit');
-    const timestamp = now();
-    const db = getDb();
-
-    db.prepare(`
-      INSERT INTO visits (id, addressId, timestamp, duration, source, sourceId, windowType, metadata, scrollDepth, interacted)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      visitId,
-      addressId,
-      options.timestamp || timestamp,
-      options.duration || 0,
-      options.source || 'direct',
-      options.sourceId || '',
-      options.windowType || 'main',
-      options.metadata || '{}',
-      options.scrollDepth || 0,
-      options.interacted || 0
-    );
-
-    // Update address visit stats
-    db.prepare(`
-      UPDATE addresses SET lastVisitAt = ?, visitCount = visitCount + 1, updatedAt = ?
-      WHERE id = ?
-    `).run(timestamp, timestamp, addressId);
-
-    return { success: true, id: visitId };
+    const result = addVisit(addressId, options);
+    return { success: true, id: result.id };
   } catch (error) {
     console.error('datastore-add-visit error:', error);
     return { success: false, error: error.message };
@@ -1693,33 +1613,7 @@ ipcMain.handle('datastore-add-visit', async (ev, data) => {
 ipcMain.handle('datastore-query-visits', async (ev, data) => {
   try {
     const { filter = {} } = data;
-    const db = getDb();
-
-    let sql = 'SELECT * FROM visits WHERE 1=1';
-    const params = [];
-
-    if (filter.addressId) {
-      sql += ' AND addressId = ?';
-      params.push(filter.addressId);
-    }
-    if (filter.source) {
-      sql += ' AND source = ?';
-      params.push(filter.source);
-    }
-    if (filter.since) {
-      const since = typeof filter.since === 'number' ? filter.since : now() - filter.since;
-      sql += ' AND timestamp >= ?';
-      params.push(since);
-    }
-
-    sql += ' ORDER BY timestamp DESC';
-
-    if (filter.limit) {
-      sql += ' LIMIT ?';
-      params.push(filter.limit);
-    }
-
-    const results = db.prepare(sql).all(...params);
+    const results = queryVisits(filter);
     return { success: true, data: results };
   } catch (error) {
     console.error('datastore-query-visits error:', error);
@@ -1730,33 +1624,8 @@ ipcMain.handle('datastore-query-visits', async (ev, data) => {
 ipcMain.handle('datastore-add-content', async (ev, data) => {
   try {
     const { options = {} } = data;
-    const contentId = generateId('content');
-    const timestamp = now();
-    const db = getDb();
-
-    db.prepare(`
-      INSERT INTO content (id, title, content, mimeType, contentType, language, encoding, tags, addressRefs, parentId, metadata, createdAt, updatedAt, syncPath, synced, starred, archived)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      contentId,
-      options.title || 'Untitled',
-      options.content || '',
-      options.mimeType || 'text/plain',
-      options.contentType || 'plain',
-      options.language || '',
-      options.encoding || 'utf-8',
-      options.tags || '',
-      options.addressRefs || '',
-      options.parentId || '',
-      options.metadata || '{}',
-      timestamp,
-      timestamp,
-      options.syncPath || '',
-      options.synced || 0,
-      options.starred || 0,
-      options.archived || 0
-    );
-    return { success: true, id: contentId };
+    const result = addContent(options);
+    return { success: true, id: result.id };
   } catch (error) {
     console.error('datastore-add-content error:', error);
     return { success: false, error: error.message };
@@ -1766,45 +1635,7 @@ ipcMain.handle('datastore-add-content', async (ev, data) => {
 ipcMain.handle('datastore-query-content', async (ev, data) => {
   try {
     const { filter = {} } = data;
-    const db = getDb();
-
-    let sql = 'SELECT * FROM content WHERE 1=1';
-    const params = [];
-
-    if (filter.contentType) {
-      sql += ' AND contentType = ?';
-      params.push(filter.contentType);
-    }
-    if (filter.mimeType) {
-      sql += ' AND mimeType = ?';
-      params.push(filter.mimeType);
-    }
-    if (filter.synced !== undefined) {
-      sql += ' AND synced = ?';
-      params.push(filter.synced);
-    }
-    if (filter.starred !== undefined) {
-      sql += ' AND starred = ?';
-      params.push(filter.starred);
-    }
-    if (filter.tag) {
-      sql += ' AND tags LIKE ?';
-      params.push(`%${filter.tag}%`);
-    }
-
-    // Sort
-    const sortMap = {
-      updated: 'updatedAt DESC',
-      created: 'createdAt DESC'
-    };
-    sql += ` ORDER BY ${sortMap[filter.sortBy] || 'updatedAt DESC'}`;
-
-    if (filter.limit) {
-      sql += ' LIMIT ?';
-      params.push(filter.limit);
-    }
-
-    const results = db.prepare(sql).all(...params);
+    const results = queryContent(filter);
     return { success: true, data: results };
   } catch (error) {
     console.error('datastore-query-content error:', error);
@@ -1815,18 +1646,10 @@ ipcMain.handle('datastore-query-content', async (ev, data) => {
 ipcMain.handle('datastore-get-table', async (ev, data) => {
   try {
     const { tableName } = data;
-    const db = getDb();
-    // Validate table name against known tables
-    const validTables = ['addresses', 'visits', 'content', 'tags', 'address_tags', 'blobs', 'scripts_data', 'feeds', 'extensions', 'extension_settings'];
-    if (!validTables.includes(tableName)) {
+    if (!isValidTable(tableName)) {
       return { success: false, error: `Invalid table name: ${tableName}` };
     }
-    const rows = db.prepare(`SELECT * FROM ${tableName}`).all();
-    // Convert to object keyed by id for compatibility
-    const table = {};
-    for (const row of rows) {
-      table[row.id] = row;
-    }
+    const table = getTable(tableName);
     return { success: true, data: table };
   } catch (error) {
     console.error('datastore-get-table error:', error);
@@ -1837,18 +1660,10 @@ ipcMain.handle('datastore-get-table', async (ev, data) => {
 ipcMain.handle('datastore-set-row', async (ev, data) => {
   try {
     const { tableName, rowId, rowData } = data;
-    const db = getDb();
-    // Validate table name against known tables
-    const validTables = ['addresses', 'visits', 'content', 'tags', 'address_tags', 'blobs', 'scripts_data', 'feeds', 'extensions', 'extension_settings'];
-    if (!validTables.includes(tableName)) {
+    if (!isValidTable(tableName)) {
       return { success: false, error: `Invalid table name: ${tableName}` };
     }
-    const row = { id: rowId, ...rowData };
-    const columns = Object.keys(row);
-    const placeholders = columns.map(() => '?').join(', ');
-    const values = columns.map(col => row[col]);
-
-    db.prepare(`INSERT OR REPLACE INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders})`).run(...values);
+    setRow(tableName, rowId, rowData);
     return { success: true };
   } catch (error) {
     console.error('datastore-set-row error:', error);
@@ -1858,14 +1673,7 @@ ipcMain.handle('datastore-set-row', async (ev, data) => {
 
 ipcMain.handle('datastore-get-stats', async () => {
   try {
-    const db = getDb();
-    const stats = {
-      totalAddresses: db.prepare('SELECT COUNT(*) as count FROM addresses').get().count,
-      totalVisits: db.prepare('SELECT COUNT(*) as count FROM visits').get().count,
-      avgVisitDuration: db.prepare('SELECT AVG(duration) as avg FROM visits').get().avg || 0,
-      totalContent: db.prepare('SELECT COUNT(*) as count FROM content').get().count,
-      syncedContent: db.prepare('SELECT COUNT(*) as count FROM content WHERE synced = 1').get().count
-    };
+    const stats = getStats();
     return { success: true, data: stats };
   } catch (error) {
     console.error('datastore-get-stats error:', error);
@@ -1875,123 +1683,43 @@ ipcMain.handle('datastore-get-stats', async () => {
 
 // ***** Tag IPC Handlers *****
 
-// Get or create a tag by name
 ipcMain.handle('datastore-get-or-create-tag', async (ev, data) => {
   try {
     const { name } = data;
-    console.log('datastore-get-or-create-tag:', name);
-    const slug = name.toLowerCase().trim().replace(/\s+/g, '-');
-    const timestamp = now();
-    const db = getDb();
-
-    // Look for existing tag by name (case-insensitive)
-    const existingTag = db.prepare('SELECT * FROM tags WHERE LOWER(name) = LOWER(?)').get(name);
-
-    if (existingTag) {
-      console.log('  -> found existing tag:', existingTag.id);
-      return { success: true, data: existingTag, created: false };
-    }
-
-    // Create new tag
-    const tagId = generateId('tag');
-    db.prepare(`
-      INSERT INTO tags (id, name, slug, color, parentId, description, metadata, createdAt, updatedAt, frequency, lastUsedAt, frecencyScore)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(tagId, name.trim(), slug, '#999999', '', '', '{}', timestamp, timestamp, 0, 0, 0);
-
-    const newTag = db.prepare('SELECT * FROM tags WHERE id = ?').get(tagId);
-    console.log('  -> created new tag:', tagId);
-    return { success: true, data: newTag, created: true };
+    const result = getOrCreateTag(name);
+    return { success: true, data: result.tag, created: result.created };
   } catch (error) {
     console.error('datastore-get-or-create-tag error:', error);
     return { success: false, error: error.message };
   }
 });
 
-// Tag an address (create the link and update frecency)
 ipcMain.handle('datastore-tag-address', async (ev, data) => {
   try {
     const { addressId, tagId } = data;
-    console.log('datastore-tag-address:', { addressId, tagId });
-    const timestamp = now();
-    const db = getDb();
-
-    // Check if link already exists
-    const existingLink = db.prepare('SELECT * FROM address_tags WHERE addressId = ? AND tagId = ?').get(addressId, tagId);
-    if (existingLink) {
-      return { success: true, data: existingLink, alreadyExists: true };
-    }
-
-    // Create the link
-    const linkId = generateId('address_tag');
-    db.prepare('INSERT INTO address_tags (id, addressId, tagId, createdAt) VALUES (?, ?, ?, ?)').run(linkId, addressId, tagId, timestamp);
-
-    // Update tag frequency and frecency
-    const tag = db.prepare('SELECT * FROM tags WHERE id = ?').get(tagId);
-    if (tag) {
-      const newFrequency = (tag.frequency || 0) + 1;
-      const frecencyScore = calculateFrecency(newFrequency, timestamp);
-      db.prepare('UPDATE tags SET frequency = ?, lastUsedAt = ?, frecencyScore = ?, updatedAt = ? WHERE id = ?')
-        .run(newFrequency, timestamp, frecencyScore, timestamp, tagId);
-    }
-
-    const newLink = db.prepare('SELECT * FROM address_tags WHERE id = ?').get(linkId);
-    return { success: true, data: newLink };
+    const result = tagAddress(addressId, tagId);
+    return { success: true, data: result.link, alreadyExists: result.alreadyExists };
   } catch (error) {
     console.error('datastore-tag-address error:', error);
     return { success: false, error: error.message };
   }
 });
 
-// Untag an address (remove the link)
 ipcMain.handle('datastore-untag-address', async (ev, data) => {
   try {
     const { addressId, tagId } = data;
-    const db = getDb();
-
-    const result = db.prepare('DELETE FROM address_tags WHERE addressId = ? AND tagId = ?').run(addressId, tagId);
-    return { success: true, removed: result.changes > 0 };
+    const removed = untagAddress(addressId, tagId);
+    return { success: true, removed };
   } catch (error) {
     console.error('datastore-untag-address error:', error);
     return { success: false, error: error.message };
   }
 });
 
-// Get all tags sorted by frecency
 ipcMain.handle('datastore-get-tags-by-frecency', async (ev, data = {}) => {
   try {
     const { domain } = data || {};
-    const db = getDb();
-    let tags = db.prepare('SELECT * FROM tags').all();
-    console.log('datastore-get-tags-by-frecency: tags table has', tags.length, 'tags');
-
-    // Recalculate frecency scores (they decay over time)
-    tags = tags.map(tag => ({
-      ...tag,
-      frecencyScore: calculateFrecency(tag.frequency || 0, tag.lastUsedAt || 0)
-    }));
-
-    // If domain provided, boost tags used on same-domain addresses
-    if (domain) {
-      // Find tag IDs used on addresses with matching domain using JOIN
-      const domainTagIds = new Set(
-        db.prepare(`
-          SELECT DISTINCT at.tagId FROM address_tags at
-          JOIN addresses a ON at.addressId = a.id
-          WHERE a.domain = ?
-        `).all(domain).map(row => row.tagId)
-      );
-
-      // Apply 2x boost
-      tags = tags.map(tag => ({
-        ...tag,
-        frecencyScore: domainTagIds.has(tag.id) ? tag.frecencyScore * 2 : tag.frecencyScore
-      }));
-    }
-
-    // Sort by frecency descending
-    tags.sort((a, b) => b.frecencyScore - a.frecencyScore);
-
+    const tags = getTagsByFrecency(domain);
     return { success: true, data: tags };
   } catch (error) {
     console.error('datastore-get-tags-by-frecency error:', error);
@@ -1999,19 +1727,10 @@ ipcMain.handle('datastore-get-tags-by-frecency', async (ev, data = {}) => {
   }
 });
 
-// Get tags for a specific address
 ipcMain.handle('datastore-get-address-tags', async (ev, data) => {
   try {
     const { addressId } = data;
-    const db = getDb();
-
-    // Use JOIN to get tags directly
-    const tags = db.prepare(`
-      SELECT t.* FROM tags t
-      JOIN address_tags at ON t.id = at.tagId
-      WHERE at.addressId = ?
-    `).all(addressId);
-
+    const tags = getAddressTags(addressId);
     return { success: true, data: tags };
   } catch (error) {
     console.error('datastore-get-address-tags error:', error);
@@ -2019,19 +1738,10 @@ ipcMain.handle('datastore-get-address-tags', async (ev, data) => {
   }
 });
 
-// Get addresses with a specific tag
 ipcMain.handle('datastore-get-addresses-by-tag', async (ev, data) => {
   try {
     const { tagId } = data;
-    const db = getDb();
-
-    // Use JOIN to get addresses directly
-    const addresses = db.prepare(`
-      SELECT a.* FROM addresses a
-      JOIN address_tags at ON a.id = at.addressId
-      WHERE at.tagId = ?
-    `).all(tagId);
-
+    const addresses = getAddressesByTag(tagId);
     return { success: true, data: addresses };
   } catch (error) {
     console.error('datastore-get-addresses-by-tag error:', error);
@@ -2039,18 +1749,9 @@ ipcMain.handle('datastore-get-addresses-by-tag', async (ev, data) => {
   }
 });
 
-// Get addresses that have no tags
 ipcMain.handle('datastore-get-untagged-addresses', async (ev, data) => {
   try {
-    const db = getDb();
-    // Use LEFT JOIN + NULL check to find untagged addresses
-    const addresses = db.prepare(`
-      SELECT a.* FROM addresses a
-      LEFT JOIN address_tags at ON a.id = at.addressId
-      WHERE at.id IS NULL
-      ORDER BY a.visitCount DESC
-    `).all();
-
+    const addresses = getUntaggedAddresses();
     return { success: true, data: addresses };
   } catch (error) {
     console.error('datastore-get-untagged-addresses error:', error);
@@ -2784,8 +2485,8 @@ const winDevtoolsConfig = bw => {
 
   console.log('winDevtoolsConfig:', bw.id, 'openDevTools:', params.openDevTools, 'address:', params.address);
 
-  // Check if devTools should be opened
-  if (params.openDevTools === true) {
+  // Check if devTools should be opened (never in test profiles)
+  if (params.openDevTools === true && !isTestProfile) {
     const isDetached = params.detachedDevTools === true;
     // Determine if detached mode should be used
     // activate: false prevents devtools from stealing focus (only works with detach/undocked)

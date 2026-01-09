@@ -114,6 +114,78 @@ export interface DatastoreStats {
   syncedContent: number;
 }
 
+// ==================== Filter Types ====================
+
+export interface AddressFilter {
+  domain?: string;
+  protocol?: string;
+  starred?: number;
+  tag?: string;
+  sortBy?: 'lastVisit' | 'visitCount' | 'created';
+  limit?: number;
+}
+
+export interface VisitFilter {
+  addressId?: string;
+  source?: string;
+  since?: number;
+  limit?: number;
+}
+
+export interface ContentFilter {
+  contentType?: string;
+  mimeType?: string;
+  synced?: number;
+  starred?: number;
+  tag?: string;
+  sortBy?: 'updated' | 'created';
+  limit?: number;
+}
+
+export interface AddressOptions {
+  protocol?: string;
+  domain?: string;
+  path?: string;
+  title?: string;
+  mimeType?: string;
+  favicon?: string;
+  description?: string;
+  tags?: string;
+  metadata?: string;
+  lastVisitAt?: number;
+  visitCount?: number;
+  starred?: number;
+  archived?: number;
+}
+
+export interface VisitOptions {
+  timestamp?: number;
+  duration?: number;
+  source?: string;
+  sourceId?: string;
+  windowType?: string;
+  metadata?: string;
+  scrollDepth?: number;
+  interacted?: number;
+}
+
+export interface ContentOptions {
+  title?: string;
+  content?: string;
+  mimeType?: string;
+  contentType?: string;
+  language?: string;
+  encoding?: string;
+  tags?: string;
+  addressRefs?: string;
+  parentId?: string;
+  metadata?: string;
+  syncPath?: string;
+  synced?: number;
+  starred?: number;
+  archived?: number;
+}
+
 // ==================== Table Names ====================
 
 export type TableName =

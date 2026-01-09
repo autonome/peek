@@ -33,13 +33,13 @@
     "help": "electron --help"
   },
   "dependencies": {
+    "better-sqlite3": "^12.5.0",
     "electron-unhandled": "^5.0.0",
-    "lil-gui": "^0.19.2",
-    "sqlite3": "^5.1.7",
-    "tinybase": "^6.7.2"
+    "lil-gui": "^0.19.2"
   },
   "devDependencies": {
     "@electron/fuses": "^1.8.0",
+    "@electron/rebuild": "^4.0.2",
     "electron": "^35.7.5",
     "electron-builder": "26.0.12"
   },

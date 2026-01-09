@@ -17,10 +17,21 @@ import {
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'url';
-import { createStore, createIndexes, createRelationships, createMetrics } from 'tinybase';
-import { createSqlite3Persister } from 'tinybase/persisters/persister-sqlite3';
-import sqlite3 from 'sqlite3';
-import { schema, indexes, relationships, metrics } from './app/datastore/schema.js';
+import {
+  initDatabase,
+  closeDatabase,
+  getDb,
+  generateId,
+  now,
+  parseUrl,
+  normalizeUrl,
+  getTableAsObject,
+  getRow,
+  setRow,
+  deleteRow,
+  isValidTable,
+  tableNames
+} from './app/datastore/db.js';
 import unhandled from 'electron-unhandled';
 
 // Catch unhandled errors and promise rejections without showing alert dialogs
@@ -126,126 +137,22 @@ app.setPath('sessionData', sessionDataPath);
 
 // ***** Datastore *****
 
-let datastoreStore = null;
-let datastoreIndexes = null;
-let datastoreRelationships = null;
-let datastoreMetrics = null;
-let datastorePersister = null;
+// Database reference (set during init)
+let db = null;
 
-// Initialize datastore with SQLite persistence
-let datastoreDb = null;  // SQLite database instance
-
-const initDatastore = async (userDataPath) => {
-  console.log('main', 'initializing datastore');
-
-  try {
-    // Create the store with schema
-    datastoreStore = createStore();
-    datastoreStore.setTablesSchema(schema);
-
-    // Set up SQLite persistence
-    const dbPath = path.join(userDataPath, 'datastore.sqlite');
-    console.log('main', 'datastore path:', dbPath);
-
-    // Create SQLite database
-    datastoreDb = new sqlite3.Database(dbPath);
-
-    // Create persister with SQLite
-    datastorePersister = createSqlite3Persister(datastoreStore, datastoreDb);
-
-    // Load existing data
-    await datastorePersister.load();
-    console.log('main', 'datastore loaded from SQLite');
-
-    // Start auto-save
-    await datastorePersister.startAutoSave();
-    console.log('main', 'datastore auto-save enabled');
-
-    // Create indexes
-    datastoreIndexes = createIndexes(datastoreStore);
-    Object.entries(indexes).forEach(([indexName, indexConfig]) => {
-      datastoreIndexes.setIndexDefinition(
-        indexName,
-        indexConfig.table,
-        indexConfig.on
-      );
-    });
-
-    // Create relationships
-    datastoreRelationships = createRelationships(datastoreStore);
-    Object.entries(relationships).forEach(([relName, relConfig]) => {
-      datastoreRelationships.setRelationshipDefinition(
-        relName,
-        relConfig.localTableId,
-        relConfig.remoteTableId,
-        relConfig.relationshipId
-      );
-    });
-
-    // Create metrics
-    datastoreMetrics = createMetrics(datastoreStore);
-    Object.entries(metrics).forEach(([metricName, metricConfig]) => {
-      if (metricConfig.metric) {
-        datastoreMetrics.setMetricDefinition(
-          metricName,
-          metricConfig.table,
-          metricConfig.aggregate,
-          metricConfig.metric
-        );
-      } else {
-        datastoreMetrics.setMetricDefinition(
-          metricName,
-          metricConfig.table,
-          'count'
-        );
-      }
-    });
-
-    console.log('main', 'datastore initialized successfully');
-    return true;
-  } catch (error) {
-    console.error('main', 'datastore initialization failed:', error);
-    return false;
-  }
+const initDatastore = (userDataPath) => {
+  const dbPath = path.join(userDataPath, 'datastore.sqlite');
+  db = initDatabase(dbPath);
+  return db !== null;
 };
 
-// Helper functions for datastore operations
-const generateId = (prefix = 'id') => {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-};
-
-const now = () => Date.now();
-
-const parseUrl = (uri) => {
-  try {
-    const url = new URL(uri);
-    return {
-      protocol: url.protocol.replace(':', ''),
-      domain: url.hostname,
-      path: url.pathname + url.search + url.hash
-    };
-  } catch (error) {
-    return {
-      protocol: '',
-      domain: '',
-      path: uri
-    };
-  }
-};
-
-// Normalize URL by ensuring root paths have trailing slash
-// e.g., https://example.com -> https://example.com/
-const normalizeUrl = (uri) => {
-  try {
-    const url = new URL(uri);
-    // If pathname is empty, set it to /
-    if (!url.pathname || url.pathname === '') {
-      url.pathname = '/';
-    }
-    return url.toString();
-  } catch (error) {
-    return uri;
-  }
+// Calculate frecency score: frequency * 10 * decay_factor
+// decay_factor = 1 / (1 + days_since_use / 7)
+const calculateFrecency = (frequency, lastUsedAt) => {
+  const currentTime = Date.now();
+  const daysSinceUse = (currentTime - lastUsedAt) / (1000 * 60 * 60 * 24);
+  const decayFactor = 1 / (1 + daysSinceUse / 7);
+  return Math.round(frequency * 10 * decayFactor);
 };
 
 // ***** Features / Strings *****
@@ -511,15 +418,15 @@ const getExtensionPath = (id) => {
   if (builtinPath) return builtinPath;
 
   // Check datastore for external extensions
-  if (datastoreStore) {
-    const ext = datastoreStore.getRow('extensions', id);
+  if (db) {
+    const ext = db.prepare('SELECT * FROM extensions WHERE id = ?').get(id);
     if (ext && ext.path) {
       return ext.path;
     }
 
     // Also check by shortname (stored in metadata)
-    const allExts = datastoreStore.getTable('extensions');
-    for (const [extId, extData] of Object.entries(allExts)) {
+    const allExts = db.prepare('SELECT * FROM extensions').all();
+    for (const extData of allExts) {
       try {
         const metadata = JSON.parse(extData.metadata || '{}');
         if (metadata.shortname === id && extData.path) {
@@ -713,16 +620,14 @@ const loadEnabledExtensions = async () => {
     // Check if enabled in extension_settings or extensions table
     let enabled = true; // Default to enabled for builtins
 
-    if (datastoreStore) {
+    if (db) {
       // Check extension_settings for enabled state
-      const settingsTable = datastoreStore.getTable('extension_settings') || {};
-      for (const [rowId, row] of Object.entries(settingsTable)) {
-        if (row.extensionId === extId && row.key === 'enabled') {
-          try {
-            enabled = JSON.parse(row.value) !== false;
-          } catch (e) {
-            enabled = true;
-          }
+      const setting = db.prepare('SELECT * FROM extension_settings WHERE extensionId = ? AND key = ?').get(extId, 'enabled');
+      if (setting) {
+        try {
+          enabled = JSON.parse(setting.value) !== false;
+        } catch (e) {
+          enabled = true;
         }
       }
     }
@@ -736,9 +641,10 @@ const loadEnabledExtensions = async () => {
   }
 
   // Load external extensions from datastore
-  if (datastoreStore) {
-    const extensionsTable = datastoreStore.getTable('extensions') || {};
-    for (const [extId, extData] of Object.entries(extensionsTable)) {
+  if (db) {
+    const externalExts = db.prepare('SELECT * FROM extensions').all();
+    for (const extData of externalExts) {
+      const extId = extData.id;
       // Skip if already loaded (shouldn't happen but be safe)
       if (extensionWindows.has(extId)) continue;
 
@@ -1641,26 +1547,31 @@ ipcMain.handle('datastore-add-address', async (ev, data) => {
     const addressId = generateId('addr');
     const timestamp = now();
 
-    const row = {
-      uri: normalizedUri,
-      protocol: options.protocol || parsed.protocol,
-      domain: options.domain || parsed.domain,
-      path: options.path || parsed.path,
-      title: options.title || '',
-      mimeType: options.mimeType || 'text/html',
-      favicon: options.favicon || '',
-      description: options.description || '',
-      tags: options.tags || '',
-      metadata: options.metadata || '{}',
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      lastVisitAt: options.lastVisitAt || 0,
-      visitCount: options.visitCount || 0,
-      starred: options.starred || 0,
-      archived: options.archived || 0
-    };
+    const stmt = db.prepare(`
+      INSERT INTO addresses (id, uri, protocol, domain, path, title, mimeType, favicon, description, tags, metadata, createdAt, updatedAt, lastVisitAt, visitCount, starred, archived)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
 
-    datastoreStore.setRow('addresses', addressId, row);
+    stmt.run(
+      addressId,
+      normalizedUri,
+      options.protocol || parsed.protocol,
+      options.domain || parsed.domain,
+      options.path || parsed.path,
+      options.title || '',
+      options.mimeType || 'text/html',
+      options.favicon || '',
+      options.description || '',
+      options.tags || '',
+      options.metadata || '{}',
+      timestamp,
+      timestamp,
+      options.lastVisitAt || 0,
+      options.visitCount || 0,
+      options.starred || 0,
+      options.archived || 0
+    );
+
     return { success: true, id: addressId };
   } catch (error) {
     console.error('datastore-add-address error:', error);
@@ -1671,8 +1582,8 @@ ipcMain.handle('datastore-add-address', async (ev, data) => {
 ipcMain.handle('datastore-get-address', async (ev, data) => {
   try {
     const { id } = data;
-    const row = datastoreStore.getRow('addresses', id);
-    return { success: true, data: row };
+    const row = db.prepare('SELECT * FROM addresses WHERE id = ?').get(id);
+    return { success: true, data: row || {} };
   } catch (error) {
     console.error('datastore-get-address error:', error);
     return { success: false, error: error.message };
@@ -1682,19 +1593,18 @@ ipcMain.handle('datastore-get-address', async (ev, data) => {
 ipcMain.handle('datastore-update-address', async (ev, data) => {
   try {
     const { id, updates } = data;
-    const existing = datastoreStore.getRow('addresses', id);
+    const existing = db.prepare('SELECT * FROM addresses WHERE id = ?').get(id);
     if (!existing) {
       return { success: false, error: 'Address not found' };
     }
 
-    const updated = {
-      ...existing,
-      ...updates,
-      updatedAt: now()
-    };
+    const updated = { ...existing, ...updates, updatedAt: now() };
+    const columns = Object.keys(updated).filter(k => k !== 'id');
+    const setClause = columns.map(col => `${col} = ?`).join(', ');
+    const values = columns.map(col => updated[col]);
 
-    datastoreStore.setRow('addresses', id, updated);
-    return { success: true, data: updated };
+    db.prepare(`UPDATE addresses SET ${setClause} WHERE id = ?`).run(...values, id);
+    return { success: true, data: { id, ...updated } };
   } catch (error) {
     console.error('datastore-update-address error:', error);
     return { success: false, error: error.message };
@@ -1704,37 +1614,42 @@ ipcMain.handle('datastore-update-address', async (ev, data) => {
 ipcMain.handle('datastore-query-addresses', async (ev, data) => {
   try {
     const { filter = {} } = data;
-    const table = datastoreStore.getTable('addresses');
-    let results = Object.entries(table).map(([id, row]) => ({ id, ...row }));
 
-    // Apply filters
+    let sql = 'SELECT * FROM addresses WHERE 1=1';
+    const params = [];
+
     if (filter.domain) {
-      results = results.filter(addr => addr.domain === filter.domain);
+      sql += ' AND domain = ?';
+      params.push(filter.domain);
     }
     if (filter.protocol) {
-      results = results.filter(addr => addr.protocol === filter.protocol);
+      sql += ' AND protocol = ?';
+      params.push(filter.protocol);
     }
     if (filter.starred !== undefined) {
-      results = results.filter(addr => addr.starred === filter.starred);
+      sql += ' AND starred = ?';
+      params.push(filter.starred);
     }
     if (filter.tag) {
-      results = results.filter(addr => addr.tags.includes(filter.tag));
+      sql += ' AND tags LIKE ?';
+      params.push(`%${filter.tag}%`);
     }
 
     // Sort
-    if (filter.sortBy === 'lastVisit') {
-      results.sort((a, b) => b.lastVisitAt - a.lastVisitAt);
-    } else if (filter.sortBy === 'visitCount') {
-      results.sort((a, b) => b.visitCount - a.visitCount);
-    } else if (filter.sortBy === 'created') {
-      results.sort((a, b) => b.createdAt - a.createdAt);
-    }
+    const sortMap = {
+      lastVisit: 'lastVisitAt DESC',
+      visitCount: 'visitCount DESC',
+      created: 'createdAt DESC'
+    };
+    sql += ` ORDER BY ${sortMap[filter.sortBy] || 'updatedAt DESC'}`;
 
     // Limit
     if (filter.limit) {
-      results = results.slice(0, filter.limit);
+      sql += ' LIMIT ?';
+      params.push(filter.limit);
     }
 
+    const results = db.prepare(sql).all(...params);
     return { success: true, data: results };
   } catch (error) {
     console.error('datastore-query-addresses error:', error);
@@ -1748,31 +1663,27 @@ ipcMain.handle('datastore-add-visit', async (ev, data) => {
     const visitId = generateId('visit');
     const timestamp = now();
 
-    const row = {
+    db.prepare(`
+      INSERT INTO visits (id, addressId, timestamp, duration, source, sourceId, windowType, metadata, scrollDepth, interacted)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      visitId,
       addressId,
-      timestamp: options.timestamp || timestamp,
-      duration: options.duration || 0,
-      source: options.source || 'direct',
-      sourceId: options.sourceId || '',
-      windowType: options.windowType || 'main',
-      metadata: options.metadata || '{}',
-      scrollDepth: options.scrollDepth || 0,
-      interacted: options.interacted || 0
-    };
-
-    datastoreStore.setRow('visits', visitId, row);
+      options.timestamp || timestamp,
+      options.duration || 0,
+      options.source || 'direct',
+      options.sourceId || '',
+      options.windowType || 'main',
+      options.metadata || '{}',
+      options.scrollDepth || 0,
+      options.interacted || 0
+    );
 
     // Update address visit stats
-    const address = datastoreStore.getRow('addresses', addressId);
-    if (address) {
-      const updated = {
-        ...address,
-        lastVisitAt: timestamp,
-        visitCount: address.visitCount + 1,
-        updatedAt: timestamp
-      };
-      datastoreStore.setRow('addresses', addressId, updated);
-    }
+    db.prepare(`
+      UPDATE addresses SET lastVisitAt = ?, visitCount = visitCount + 1, updatedAt = ?
+      WHERE id = ?
+    `).run(timestamp, timestamp, addressId);
 
     return { success: true, id: visitId };
   } catch (error) {
@@ -1784,29 +1695,32 @@ ipcMain.handle('datastore-add-visit', async (ev, data) => {
 ipcMain.handle('datastore-query-visits', async (ev, data) => {
   try {
     const { filter = {} } = data;
-    const table = datastoreStore.getTable('visits');
-    let results = Object.entries(table).map(([id, row]) => ({ id, ...row }));
 
-    // Apply filters
+    let sql = 'SELECT * FROM visits WHERE 1=1';
+    const params = [];
+
     if (filter.addressId) {
-      results = results.filter(visit => visit.addressId === filter.addressId);
+      sql += ' AND addressId = ?';
+      params.push(filter.addressId);
     }
     if (filter.source) {
-      results = results.filter(visit => visit.source === filter.source);
+      sql += ' AND source = ?';
+      params.push(filter.source);
     }
     if (filter.since) {
       const since = typeof filter.since === 'number' ? filter.since : now() - filter.since;
-      results = results.filter(visit => visit.timestamp >= since);
+      sql += ' AND timestamp >= ?';
+      params.push(since);
     }
 
-    // Sort by timestamp (most recent first)
-    results.sort((a, b) => b.timestamp - a.timestamp);
+    sql += ' ORDER BY timestamp DESC';
 
-    // Limit
     if (filter.limit) {
-      results = results.slice(0, filter.limit);
+      sql += ' LIMIT ?';
+      params.push(filter.limit);
     }
 
+    const results = db.prepare(sql).all(...params);
     return { success: true, data: results };
   } catch (error) {
     console.error('datastore-query-visits error:', error);
@@ -1820,26 +1734,28 @@ ipcMain.handle('datastore-add-content', async (ev, data) => {
     const contentId = generateId('content');
     const timestamp = now();
 
-    const row = {
-      title: options.title || 'Untitled',
-      content: options.content || '',
-      mimeType: options.mimeType || 'text/plain',
-      contentType: options.contentType || 'plain',
-      language: options.language || '',
-      encoding: options.encoding || 'utf-8',
-      tags: options.tags || '',
-      addressRefs: options.addressRefs || '',
-      parentId: options.parentId || '',
-      metadata: options.metadata || '{}',
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      syncPath: options.syncPath || '',
-      synced: options.synced || 0,
-      starred: options.starred || 0,
-      archived: options.archived || 0
-    };
-
-    datastoreStore.setRow('content', contentId, row);
+    db.prepare(`
+      INSERT INTO content (id, title, content, mimeType, contentType, language, encoding, tags, addressRefs, parentId, metadata, createdAt, updatedAt, syncPath, synced, starred, archived)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      contentId,
+      options.title || 'Untitled',
+      options.content || '',
+      options.mimeType || 'text/plain',
+      options.contentType || 'plain',
+      options.language || '',
+      options.encoding || 'utf-8',
+      options.tags || '',
+      options.addressRefs || '',
+      options.parentId || '',
+      options.metadata || '{}',
+      timestamp,
+      timestamp,
+      options.syncPath || '',
+      options.synced || 0,
+      options.starred || 0,
+      options.archived || 0
+    );
     return { success: true, id: contentId };
   } catch (error) {
     console.error('datastore-add-content error:', error);
@@ -1850,38 +1766,44 @@ ipcMain.handle('datastore-add-content', async (ev, data) => {
 ipcMain.handle('datastore-query-content', async (ev, data) => {
   try {
     const { filter = {} } = data;
-    const table = datastoreStore.getTable('content');
-    let results = Object.entries(table).map(([id, row]) => ({ id, ...row }));
 
-    // Apply filters
+    let sql = 'SELECT * FROM content WHERE 1=1';
+    const params = [];
+
     if (filter.contentType) {
-      results = results.filter(item => item.contentType === filter.contentType);
+      sql += ' AND contentType = ?';
+      params.push(filter.contentType);
     }
     if (filter.mimeType) {
-      results = results.filter(item => item.mimeType === filter.mimeType);
+      sql += ' AND mimeType = ?';
+      params.push(filter.mimeType);
     }
     if (filter.synced !== undefined) {
-      results = results.filter(item => item.synced === filter.synced);
+      sql += ' AND synced = ?';
+      params.push(filter.synced);
     }
     if (filter.starred !== undefined) {
-      results = results.filter(item => item.starred === filter.starred);
+      sql += ' AND starred = ?';
+      params.push(filter.starred);
     }
     if (filter.tag) {
-      results = results.filter(item => item.tags && item.tags.includes(filter.tag));
+      sql += ' AND tags LIKE ?';
+      params.push(`%${filter.tag}%`);
     }
 
     // Sort
-    if (filter.sortBy === 'updated') {
-      results.sort((a, b) => b.updatedAt - a.updatedAt);
-    } else if (filter.sortBy === 'created') {
-      results.sort((a, b) => b.createdAt - a.createdAt);
-    }
+    const sortMap = {
+      updated: 'updatedAt DESC',
+      created: 'createdAt DESC'
+    };
+    sql += ` ORDER BY ${sortMap[filter.sortBy] || 'updatedAt DESC'}`;
 
-    // Limit
     if (filter.limit) {
-      results = results.slice(0, filter.limit);
+      sql += ' LIMIT ?';
+      params.push(filter.limit);
     }
 
+    const results = db.prepare(sql).all(...params);
     return { success: true, data: results };
   } catch (error) {
     console.error('datastore-query-content error:', error);
@@ -1892,7 +1814,15 @@ ipcMain.handle('datastore-query-content', async (ev, data) => {
 ipcMain.handle('datastore-get-table', async (ev, data) => {
   try {
     const { tableName } = data;
-    const table = datastoreStore.getTable(tableName);
+    if (!isValidTable(tableName)) {
+      return { success: false, error: `Invalid table name: ${tableName}` };
+    }
+    const rows = db.prepare(`SELECT * FROM ${tableName}`).all();
+    // Convert to object keyed by id for compatibility
+    const table = {};
+    for (const row of rows) {
+      table[row.id] = row;
+    }
     return { success: true, data: table };
   } catch (error) {
     console.error('datastore-get-table error:', error);
@@ -1903,7 +1833,15 @@ ipcMain.handle('datastore-get-table', async (ev, data) => {
 ipcMain.handle('datastore-set-row', async (ev, data) => {
   try {
     const { tableName, rowId, rowData } = data;
-    datastoreStore.setRow(tableName, rowId, rowData);
+    if (!isValidTable(tableName)) {
+      return { success: false, error: `Invalid table name: ${tableName}` };
+    }
+    const row = { id: rowId, ...rowData };
+    const columns = Object.keys(row);
+    const placeholders = columns.map(() => '?').join(', ');
+    const values = columns.map(col => row[col]);
+
+    db.prepare(`INSERT OR REPLACE INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders})`).run(...values);
     return { success: true };
   } catch (error) {
     console.error('datastore-set-row error:', error);
@@ -1914,11 +1852,11 @@ ipcMain.handle('datastore-set-row', async (ev, data) => {
 ipcMain.handle('datastore-get-stats', async () => {
   try {
     const stats = {
-      totalAddresses: datastoreMetrics.getMetric('totalAddresses'),
-      totalVisits: datastoreMetrics.getMetric('totalVisits'),
-      avgVisitDuration: datastoreMetrics.getMetric('avgVisitDuration'),
-      totalContent: datastoreMetrics.getMetric('totalContent'),
-      syncedContent: datastoreMetrics.getMetric('syncedContent')
+      totalAddresses: db.prepare('SELECT COUNT(*) as count FROM addresses').get().count,
+      totalVisits: db.prepare('SELECT COUNT(*) as count FROM visits').get().count,
+      avgVisitDuration: db.prepare('SELECT AVG(duration) as avg FROM visits').get().avg || 0,
+      totalContent: db.prepare('SELECT COUNT(*) as count FROM content').get().count,
+      syncedContent: db.prepare('SELECT COUNT(*) as count FROM content WHERE synced = 1').get().count
     };
     return { success: true, data: stats };
   } catch (error) {
@@ -1929,15 +1867,6 @@ ipcMain.handle('datastore-get-stats', async () => {
 
 // ***** Tag IPC Handlers *****
 
-// Calculate frecency score: frequency * 10 * decay_factor
-// decay_factor = 1 / (1 + days_since_use / 7)
-const calculateFrecency = (frequency, lastUsedAt) => {
-  const currentTime = Date.now();
-  const daysSinceUse = (currentTime - lastUsedAt) / (1000 * 60 * 60 * 24);
-  const decayFactor = 1 / (1 + daysSinceUse / 7);
-  return frequency * 10 * decayFactor;
-};
-
 // Get or create a tag by name
 ipcMain.handle('datastore-get-or-create-tag', async (ev, data) => {
   try {
@@ -1946,43 +1875,24 @@ ipcMain.handle('datastore-get-or-create-tag', async (ev, data) => {
     const slug = name.toLowerCase().trim().replace(/\s+/g, '-');
     const timestamp = now();
 
-    // Look for existing tag by name
-    const tagsTable = datastoreStore.getTable('tags');
-    let existingTag = null;
-    let existingTagId = null;
-
-    for (const [id, tag] of Object.entries(tagsTable)) {
-      if (tag.name.toLowerCase() === name.toLowerCase()) {
-        existingTag = tag;
-        existingTagId = id;
-        break;
-      }
-    }
+    // Look for existing tag by name (case-insensitive)
+    const existingTag = db.prepare('SELECT * FROM tags WHERE LOWER(name) = LOWER(?)').get(name);
 
     if (existingTag) {
-      console.log('  -> found existing tag:', existingTagId);
-      return { success: true, data: { id: existingTagId, ...existingTag }, created: false };
+      console.log('  -> found existing tag:', existingTag.id);
+      return { success: true, data: existingTag, created: false };
     }
 
     // Create new tag
     const tagId = generateId('tag');
-    const newTag = {
-      name: name.trim(),
-      slug,
-      color: '#999999',
-      parentId: '',
-      description: '',
-      metadata: '{}',
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      frequency: 0,
-      lastUsedAt: 0,
-      frecencyScore: 0
-    };
+    db.prepare(`
+      INSERT INTO tags (id, name, slug, color, parentId, description, metadata, createdAt, updatedAt, frequency, lastUsedAt, frecencyScore)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(tagId, name.trim(), slug, '#999999', '', '', '{}', timestamp, timestamp, 0, 0, 0);
 
-    datastoreStore.setRow('tags', tagId, newTag);
+    const newTag = db.prepare('SELECT * FROM tags WHERE id = ?').get(tagId);
     console.log('  -> created new tag:', tagId);
-    return { success: true, data: { id: tagId, ...newTag }, created: true };
+    return { success: true, data: newTag, created: true };
   } catch (error) {
     console.error('datastore-get-or-create-tag error:', error);
     return { success: false, error: error.message };
@@ -1997,37 +1907,26 @@ ipcMain.handle('datastore-tag-address', async (ev, data) => {
     const timestamp = now();
 
     // Check if link already exists
-    const addressTagsTable = datastoreStore.getTable('address_tags');
-    for (const [id, link] of Object.entries(addressTagsTable)) {
-      if (link.addressId === addressId && link.tagId === tagId) {
-        return { success: true, data: { id, ...link }, alreadyExists: true };
-      }
+    const existingLink = db.prepare('SELECT * FROM address_tags WHERE addressId = ? AND tagId = ?').get(addressId, tagId);
+    if (existingLink) {
+      return { success: true, data: existingLink, alreadyExists: true };
     }
 
     // Create the link
     const linkId = generateId('address_tag');
-    const newLink = {
-      addressId,
-      tagId,
-      createdAt: timestamp
-    };
-    datastoreStore.setRow('address_tags', linkId, newLink);
+    db.prepare('INSERT INTO address_tags (id, addressId, tagId, createdAt) VALUES (?, ?, ?, ?)').run(linkId, addressId, tagId, timestamp);
 
     // Update tag frequency and frecency
-    const tag = datastoreStore.getRow('tags', tagId);
+    const tag = db.prepare('SELECT * FROM tags WHERE id = ?').get(tagId);
     if (tag) {
       const newFrequency = (tag.frequency || 0) + 1;
       const frecencyScore = calculateFrecency(newFrequency, timestamp);
-      datastoreStore.setRow('tags', tagId, {
-        ...tag,
-        frequency: newFrequency,
-        lastUsedAt: timestamp,
-        frecencyScore,
-        updatedAt: timestamp
-      });
+      db.prepare('UPDATE tags SET frequency = ?, lastUsedAt = ?, frecencyScore = ?, updatedAt = ? WHERE id = ?')
+        .run(newFrequency, timestamp, frecencyScore, timestamp, tagId);
     }
 
-    return { success: true, data: { id: linkId, ...newLink } };
+    const newLink = db.prepare('SELECT * FROM address_tags WHERE id = ?').get(linkId);
+    return { success: true, data: newLink };
   } catch (error) {
     console.error('datastore-tag-address error:', error);
     return { success: false, error: error.message };
@@ -2039,16 +1938,8 @@ ipcMain.handle('datastore-untag-address', async (ev, data) => {
   try {
     const { addressId, tagId } = data;
 
-    // Find and remove the link
-    const addressTagsTable = datastoreStore.getTable('address_tags');
-    for (const [id, link] of Object.entries(addressTagsTable)) {
-      if (link.addressId === addressId && link.tagId === tagId) {
-        datastoreStore.delRow('address_tags', id);
-        return { success: true, removed: true };
-      }
-    }
-
-    return { success: true, removed: false };
+    const result = db.prepare('DELETE FROM address_tags WHERE addressId = ? AND tagId = ?').run(addressId, tagId);
+    return { success: true, removed: result.changes > 0 };
   } catch (error) {
     console.error('datastore-untag-address error:', error);
     return { success: false, error: error.message };
@@ -2059,9 +1950,8 @@ ipcMain.handle('datastore-untag-address', async (ev, data) => {
 ipcMain.handle('datastore-get-tags-by-frecency', async (ev, data = {}) => {
   try {
     const { domain } = data || {};
-    const tagsTable = datastoreStore.getTable('tags');
-    console.log('datastore-get-tags-by-frecency: tagsTable has', Object.keys(tagsTable).length, 'tags');
-    let tags = Object.entries(tagsTable).map(([id, tag]) => ({ id, ...tag }));
+    let tags = db.prepare('SELECT * FROM tags').all();
+    console.log('datastore-get-tags-by-frecency: tags table has', tags.length, 'tags');
 
     // Recalculate frecency scores (they decay over time)
     tags = tags.map(tag => ({
@@ -2071,24 +1961,14 @@ ipcMain.handle('datastore-get-tags-by-frecency', async (ev, data = {}) => {
 
     // If domain provided, boost tags used on same-domain addresses
     if (domain) {
-      const addressesTable = datastoreStore.getTable('addresses');
-      const addressTagsTable = datastoreStore.getTable('address_tags');
-
-      // Find addresses with matching domain
-      const domainAddressIds = new Set();
-      for (const [id, addr] of Object.entries(addressesTable)) {
-        if (addr.domain === domain) {
-          domainAddressIds.add(id);
-        }
-      }
-
-      // Find tags used on those addresses
-      const domainTagIds = new Set();
-      for (const [, link] of Object.entries(addressTagsTable)) {
-        if (domainAddressIds.has(link.addressId)) {
-          domainTagIds.add(link.tagId);
-        }
-      }
+      // Find tag IDs used on addresses with matching domain using JOIN
+      const domainTagIds = new Set(
+        db.prepare(`
+          SELECT DISTINCT at.tagId FROM address_tags at
+          JOIN addresses a ON at.addressId = a.id
+          WHERE a.domain = ?
+        `).all(domain).map(row => row.tagId)
+      );
 
       // Apply 2x boost
       tags = tags.map(tag => ({
@@ -2111,22 +1991,13 @@ ipcMain.handle('datastore-get-tags-by-frecency', async (ev, data = {}) => {
 ipcMain.handle('datastore-get-address-tags', async (ev, data) => {
   try {
     const { addressId } = data;
-    const addressTagsTable = datastoreStore.getTable('address_tags');
-    const tagsTable = datastoreStore.getTable('tags');
 
-    const tagIds = [];
-    for (const [, link] of Object.entries(addressTagsTable)) {
-      if (link.addressId === addressId) {
-        tagIds.push(link.tagId);
-      }
-    }
-
-    const tags = tagIds
-      .map(tagId => {
-        const tag = tagsTable[tagId];
-        return tag ? { id: tagId, ...tag } : null;
-      })
-      .filter(Boolean);
+    // Use JOIN to get tags directly
+    const tags = db.prepare(`
+      SELECT t.* FROM tags t
+      JOIN address_tags at ON t.id = at.tagId
+      WHERE at.addressId = ?
+    `).all(addressId);
 
     return { success: true, data: tags };
   } catch (error) {
@@ -2139,22 +2010,13 @@ ipcMain.handle('datastore-get-address-tags', async (ev, data) => {
 ipcMain.handle('datastore-get-addresses-by-tag', async (ev, data) => {
   try {
     const { tagId } = data;
-    const addressTagsTable = datastoreStore.getTable('address_tags');
-    const addressesTable = datastoreStore.getTable('addresses');
 
-    const addressIds = [];
-    for (const [, link] of Object.entries(addressTagsTable)) {
-      if (link.tagId === tagId) {
-        addressIds.push(link.addressId);
-      }
-    }
-
-    const addresses = addressIds
-      .map(addressId => {
-        const addr = addressesTable[addressId];
-        return addr ? { id: addressId, ...addr } : null;
-      })
-      .filter(Boolean);
+    // Use JOIN to get addresses directly
+    const addresses = db.prepare(`
+      SELECT a.* FROM addresses a
+      JOIN address_tags at ON a.id = at.addressId
+      WHERE at.tagId = ?
+    `).all(tagId);
 
     return { success: true, data: addresses };
   } catch (error) {
@@ -2166,27 +2028,15 @@ ipcMain.handle('datastore-get-addresses-by-tag', async (ev, data) => {
 // Get addresses that have no tags
 ipcMain.handle('datastore-get-untagged-addresses', async (ev, data) => {
   try {
-    const addressTagsTable = datastoreStore.getTable('address_tags');
-    const addressesTable = datastoreStore.getTable('addresses');
+    // Use LEFT JOIN + NULL check to find untagged addresses
+    const addresses = db.prepare(`
+      SELECT a.* FROM addresses a
+      LEFT JOIN address_tags at ON a.id = at.addressId
+      WHERE at.id IS NULL
+      ORDER BY a.visitCount DESC
+    `).all();
 
-    // Get all address IDs that have at least one tag
-    const taggedAddressIds = new Set();
-    for (const [, link] of Object.entries(addressTagsTable)) {
-      taggedAddressIds.add(link.addressId);
-    }
-
-    // Get addresses that are NOT in the tagged set
-    const untaggedAddresses = [];
-    for (const [id, addr] of Object.entries(addressesTable)) {
-      if (!taggedAddressIds.has(id)) {
-        untaggedAddresses.push({ id, ...addr });
-      }
-    }
-
-    // Sort by visitCount descending
-    untaggedAddresses.sort((a, b) => (b.visitCount || 0) - (a.visitCount || 0));
-
-    return { success: true, data: untaggedAddresses };
+    return { success: true, data: addresses };
   } catch (error) {
     console.error('datastore-get-untagged-addresses error:', error);
     return { success: false, error: error.message };
@@ -2281,33 +2131,37 @@ ipcMain.handle('extension-add', async (ev, data) => {
   const { folderPath, manifest, enabled = false } = data;
 
   try {
-    const now = Date.now();
-    const id = manifest?.id || `ext-${now}`;
+    const timestamp = now();
+    const id = manifest?.id || `ext-${timestamp}`;
 
     // Check if extension with this ID already exists
-    const existing = datastoreStore.getRow('extensions', id);
-    if (existing && Object.keys(existing).length > 0) {
+    const existing = db.prepare('SELECT * FROM extensions WHERE id = ?').get(id);
+    if (existing) {
       return { success: false, error: `Extension with ID '${id}' already exists` };
     }
 
     // Add to extensions table
-    datastoreStore.setRow('extensions', id, {
-      name: manifest?.name || path.basename(folderPath),
-      description: manifest?.description || '',
-      version: manifest?.version || '0.0.0',
-      path: folderPath,
-      backgroundUrl: `peek://ext/${manifest?.shortname || id}/background.js`,
-      settingsUrl: manifest?.settings_url || '',
-      iconPath: manifest?.icon || '',
-      builtin: 0,
-      enabled: enabled ? 1 : 0,
-      status: enabled ? 'installed' : 'disabled',
-      installedAt: now,
-      updatedAt: now,
-      lastErrorAt: 0,
-      lastError: '',
-      metadata: JSON.stringify({ shortname: manifest?.shortname || id })
-    });
+    db.prepare(`
+      INSERT INTO extensions (id, name, description, version, path, backgroundUrl, settingsUrl, iconPath, builtin, enabled, status, installedAt, updatedAt, lastErrorAt, lastError, metadata)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      manifest?.name || path.basename(folderPath),
+      manifest?.description || '',
+      manifest?.version || '0.0.0',
+      folderPath,
+      `peek://ext/${manifest?.shortname || id}/background.js`,
+      manifest?.settings_url || '',
+      manifest?.icon || '',
+      0,
+      enabled ? 1 : 0,
+      enabled ? 'installed' : 'disabled',
+      timestamp,
+      timestamp,
+      0,
+      '',
+      JSON.stringify({ shortname: manifest?.shortname || id })
+    );
 
     console.log(`Extension added: ${id} at ${folderPath}`);
     return { success: true, data: { id } };
@@ -2322,8 +2176,8 @@ ipcMain.handle('extension-remove', async (ev, data) => {
   const { id } = data;
 
   try {
-    const existing = datastoreStore.getRow('extensions', id);
-    if (!existing || Object.keys(existing).length === 0) {
+    const existing = db.prepare('SELECT * FROM extensions WHERE id = ?').get(id);
+    if (!existing) {
       return { success: false, error: `Extension '${id}' not found` };
     }
 
@@ -2332,7 +2186,7 @@ ipcMain.handle('extension-remove', async (ev, data) => {
       return { success: false, error: 'Cannot remove built-in extensions' };
     }
 
-    datastoreStore.delRow('extensions', id);
+    db.prepare('DELETE FROM extensions WHERE id = ?').run(id);
     console.log(`Extension removed: ${id}`);
     return { success: true };
   } catch (error) {
@@ -2346,17 +2200,21 @@ ipcMain.handle('extension-update', async (ev, data) => {
   const { id, updates } = data;
 
   try {
-    const existing = datastoreStore.getRow('extensions', id);
-    if (!existing || Object.keys(existing).length === 0) {
+    const existing = db.prepare('SELECT * FROM extensions WHERE id = ?').get(id);
+    if (!existing) {
       return { success: false, error: `Extension '${id}' not found` };
     }
 
     // Apply updates
-    const updatedRow = { ...existing, ...updates, updatedAt: Date.now() };
-    datastoreStore.setRow('extensions', id, updatedRow);
+    const updatedRow = { ...existing, ...updates, updatedAt: now() };
+    const columns = Object.keys(updatedRow).filter(k => k !== 'id');
+    const setClause = columns.map(col => `${col} = ?`).join(', ');
+    const values = columns.map(col => updatedRow[col]);
+
+    db.prepare(`UPDATE extensions SET ${setClause} WHERE id = ?`).run(...values, id);
 
     console.log(`Extension updated: ${id}`, updates);
-    return { success: true, data: updatedRow };
+    return { success: true, data: { id, ...updatedRow } };
   } catch (error) {
     console.error('extension-update error:', error);
     return { success: false, error: error.message };
@@ -2366,8 +2224,7 @@ ipcMain.handle('extension-update', async (ev, data) => {
 // Get all extensions from datastore
 ipcMain.handle('extension-get-all', async (ev) => {
   try {
-    const table = datastoreStore.getTable('extensions');
-    const extensions = Object.entries(table).map(([id, row]) => ({ id, ...row }));
+    const extensions = db.prepare('SELECT * FROM extensions').all();
     return { success: true, data: extensions };
   } catch (error) {
     console.error('extension-get-all error:', error);
@@ -2380,11 +2237,11 @@ ipcMain.handle('extension-get', async (ev, data) => {
   const { id } = data;
 
   try {
-    const row = datastoreStore.getRow('extensions', id);
-    if (!row || Object.keys(row).length === 0) {
+    const row = db.prepare('SELECT * FROM extensions WHERE id = ?').get(id);
+    if (!row) {
       return { success: false, error: `Extension '${id}' not found` };
     }
-    return { success: true, data: { id, ...row } };
+    return { success: true, data: row };
   } catch (error) {
     console.error('extension-get error:', error);
     return { success: false, error: error.message };
@@ -2482,16 +2339,14 @@ ipcMain.handle('extension-settings-get', async (ev, data) => {
   const { extId } = data;
 
   try {
-    const table = datastoreStore.getTable('extension_settings') || {};
+    const rows = db.prepare('SELECT * FROM extension_settings WHERE extensionId = ?').all(extId);
     const settings = {};
 
-    for (const [rowId, row] of Object.entries(table)) {
-      if (row.extensionId === extId) {
-        try {
-          settings[row.key] = JSON.parse(row.value);
-        } catch (e) {
-          settings[row.key] = row.value;
-        }
+    for (const row of rows) {
+      try {
+        settings[row.key] = JSON.parse(row.value);
+      } catch (e) {
+        settings[row.key] = row.value;
       }
     }
 
@@ -2507,16 +2362,14 @@ ipcMain.handle('extension-settings-set', async (ev, data) => {
   const { extId, settings } = data;
 
   try {
-    const now = Date.now();
+    const timestamp = now();
 
     for (const [key, value] of Object.entries(settings)) {
       const rowId = `${extId}:${key}`;
-      datastoreStore.setRow('extension_settings', rowId, {
-        extensionId: extId,
-        key,
-        value: JSON.stringify(value),
-        updatedAt: now
-      });
+      db.prepare(`
+        INSERT OR REPLACE INTO extension_settings (id, extensionId, key, value, updatedAt)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(rowId, extId, key, JSON.stringify(value), timestamp);
     }
 
     return { success: true };
@@ -2531,10 +2384,9 @@ ipcMain.handle('extension-settings-get-key', async (ev, data) => {
   const { extId, key } = data;
 
   try {
-    const rowId = `${extId}:${key}`;
-    const row = datastoreStore.getRow('extension_settings', rowId);
+    const row = db.prepare('SELECT * FROM extension_settings WHERE extensionId = ? AND key = ?').get(extId, key);
 
-    if (!row || Object.keys(row).length === 0) {
+    if (!row) {
       return { success: true, data: null };
     }
 
@@ -2555,12 +2407,10 @@ ipcMain.handle('extension-settings-set-key', async (ev, data) => {
 
   try {
     const rowId = `${extId}:${key}`;
-    datastoreStore.setRow('extension_settings', rowId, {
-      extensionId: extId,
-      key,
-      value: JSON.stringify(value),
-      updatedAt: Date.now()
-    });
+    db.prepare(`
+      INSERT OR REPLACE INTO extension_settings (id, extensionId, key, value, updatedAt)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(rowId, extId, key, JSON.stringify(value), now());
 
     return { success: true };
   } catch (error) {
@@ -3139,27 +2989,10 @@ const onQuit = async () => {
     timestamp: Date.now()
   });
 
-  // Clean up datastore
-  if (datastorePersister) {
-    try {
-      await datastorePersister.stopAutoSave();
-      await datastorePersister.save(); // Final save
-      datastorePersister.destroy();
-      console.log('Datastore persister cleaned up');
-    } catch (error) {
-      console.error('Error cleaning up datastore persister:', error);
-    }
-  }
-
   // Close SQLite database
-  if (datastoreDb) {
+  if (db) {
     try {
-      await new Promise((resolve, reject) => {
-        datastoreDb.close((err) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
+      closeDatabase();
       console.log('SQLite database closed');
     } catch (error) {
       console.error('Error closing SQLite database:', error);

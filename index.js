@@ -17,6 +17,7 @@ import {
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'url';
+// Import from compiled TypeScript backend
 import {
   initDatabase,
   closeDatabase,
@@ -25,13 +26,9 @@ import {
   now,
   parseUrl,
   normalizeUrl,
-  getTableAsObject,
-  getRow,
-  setRow,
-  deleteRow,
   isValidTable,
-  tableNames
-} from './app/datastore/db.js';
+  calculateFrecency,
+} from './dist/backend/electron/index.js';
 import unhandled from 'electron-unhandled';
 
 // Catch unhandled errors and promise rejections without showing alert dialogs
@@ -137,22 +134,12 @@ app.setPath('sessionData', sessionDataPath);
 
 // ***** Datastore *****
 
-// Database reference (set during init)
-let db = null;
+// Note: getDb, generateId, now, parseUrl, normalizeUrl, calculateFrecency, isValidTable
+// are imported directly from backend/electron
 
-const initDatastore = (userDataPath) => {
+const initDatastore = async (userDataPath) => {
   const dbPath = path.join(userDataPath, 'datastore.sqlite');
-  db = initDatabase(dbPath);
-  return db !== null;
-};
-
-// Calculate frecency score: frequency * 10 * decay_factor
-// decay_factor = 1 / (1 + days_since_use / 7)
-const calculateFrecency = (frequency, lastUsedAt) => {
-  const currentTime = Date.now();
-  const daysSinceUse = (currentTime - lastUsedAt) / (1000 * 60 * 60 * 24);
-  const decayFactor = 1 / (1 + daysSinceUse / 7);
-  return Math.round(frequency * 10 * decayFactor);
+  return initDatabase(dbPath);
 };
 
 // ***** Features / Strings *****
@@ -418,7 +405,8 @@ const getExtensionPath = (id) => {
   if (builtinPath) return builtinPath;
 
   // Check datastore for external extensions
-  if (db) {
+  try {
+    const db = getDb();
     const ext = db.prepare('SELECT * FROM extensions WHERE id = ?').get(id);
     if (ext && ext.path) {
       return ext.path;
@@ -436,6 +424,8 @@ const getExtensionPath = (id) => {
         // Ignore JSON parse errors
       }
     }
+  } catch {
+    // Database not initialized yet
   }
 
   return null;
@@ -616,19 +606,18 @@ const loadEnabledExtensions = async () => {
   const builtinExtIds = Array.from(extensionPaths.keys());
 
   // Check which are enabled from datastore/localStorage
+  const db = getDb();
   for (const extId of builtinExtIds) {
     // Check if enabled in extension_settings or extensions table
     let enabled = true; // Default to enabled for builtins
 
-    if (db) {
-      // Check extension_settings for enabled state
-      const setting = db.prepare('SELECT * FROM extension_settings WHERE extensionId = ? AND key = ?').get(extId, 'enabled');
-      if (setting) {
-        try {
-          enabled = JSON.parse(setting.value) !== false;
-        } catch (e) {
-          enabled = true;
-        }
+    // Check extension_settings for enabled state
+    const setting = db.prepare('SELECT * FROM extension_settings WHERE extensionId = ? AND key = ?').get(extId, 'enabled');
+    if (setting) {
+      try {
+        enabled = JSON.parse(setting.value) !== false;
+      } catch (e) {
+        enabled = true;
       }
     }
 
@@ -641,28 +630,26 @@ const loadEnabledExtensions = async () => {
   }
 
   // Load external extensions from datastore
-  if (db) {
-    const externalExts = db.prepare('SELECT * FROM extensions').all();
-    for (const extData of externalExts) {
-      const extId = extData.id;
-      // Skip if already loaded (shouldn't happen but be safe)
-      if (extensionWindows.has(extId)) continue;
+  const externalExts = db.prepare('SELECT * FROM extensions').all();
+  for (const extData of externalExts) {
+    const extId = extData.id;
+    // Skip if already loaded (shouldn't happen but be safe)
+    if (extensionWindows.has(extId)) continue;
 
-      // Skip if not enabled
-      if (extData.enabled !== 1) {
-        console.log(`[ext:win] Skipping disabled external extension: ${extId}`);
-        continue;
-      }
-
-      // Need a path to load from
-      if (!extData.path) {
-        console.log(`[ext:win] Skipping external extension without path: ${extId}`);
-        continue;
-      }
-
-      console.log(`[ext:win] Loading enabled external extension: ${extId}`);
-      await createExtensionWindow(extId);
+    // Skip if not enabled
+    if (extData.enabled !== 1) {
+      console.log(`[ext:win] Skipping disabled external extension: ${extId}`);
+      continue;
     }
+
+    // Need a path to load from
+    if (!extData.path) {
+      console.log(`[ext:win] Skipping external extension without path: ${extId}`);
+      continue;
+    }
+
+    console.log(`[ext:win] Loading enabled external extension: ${extId}`);
+    await createExtensionWindow(extId);
   }
 
   console.log(`[ext:win] Loaded ${extensionWindows.size} extensions`);
@@ -1546,6 +1533,7 @@ ipcMain.handle('datastore-add-address', async (ev, data) => {
     const parsed = parseUrl(normalizedUri);
     const addressId = generateId('addr');
     const timestamp = now();
+    const db = getDb();
 
     const stmt = db.prepare(`
       INSERT INTO addresses (id, uri, protocol, domain, path, title, mimeType, favicon, description, tags, metadata, createdAt, updatedAt, lastVisitAt, visitCount, starred, archived)
@@ -1582,6 +1570,7 @@ ipcMain.handle('datastore-add-address', async (ev, data) => {
 ipcMain.handle('datastore-get-address', async (ev, data) => {
   try {
     const { id } = data;
+    const db = getDb();
     const row = db.prepare('SELECT * FROM addresses WHERE id = ?').get(id);
     return { success: true, data: row || {} };
   } catch (error) {
@@ -1593,6 +1582,7 @@ ipcMain.handle('datastore-get-address', async (ev, data) => {
 ipcMain.handle('datastore-update-address', async (ev, data) => {
   try {
     const { id, updates } = data;
+    const db = getDb();
     const existing = db.prepare('SELECT * FROM addresses WHERE id = ?').get(id);
     if (!existing) {
       return { success: false, error: 'Address not found' };
@@ -1614,6 +1604,7 @@ ipcMain.handle('datastore-update-address', async (ev, data) => {
 ipcMain.handle('datastore-query-addresses', async (ev, data) => {
   try {
     const { filter = {} } = data;
+    const db = getDb();
 
     let sql = 'SELECT * FROM addresses WHERE 1=1';
     const params = [];
@@ -1662,6 +1653,7 @@ ipcMain.handle('datastore-add-visit', async (ev, data) => {
     const { addressId, options = {} } = data;
     const visitId = generateId('visit');
     const timestamp = now();
+    const db = getDb();
 
     db.prepare(`
       INSERT INTO visits (id, addressId, timestamp, duration, source, sourceId, windowType, metadata, scrollDepth, interacted)
@@ -1695,6 +1687,7 @@ ipcMain.handle('datastore-add-visit', async (ev, data) => {
 ipcMain.handle('datastore-query-visits', async (ev, data) => {
   try {
     const { filter = {} } = data;
+    const db = getDb();
 
     let sql = 'SELECT * FROM visits WHERE 1=1';
     const params = [];
@@ -1733,6 +1726,7 @@ ipcMain.handle('datastore-add-content', async (ev, data) => {
     const { options = {} } = data;
     const contentId = generateId('content');
     const timestamp = now();
+    const db = getDb();
 
     db.prepare(`
       INSERT INTO content (id, title, content, mimeType, contentType, language, encoding, tags, addressRefs, parentId, metadata, createdAt, updatedAt, syncPath, synced, starred, archived)
@@ -1766,6 +1760,7 @@ ipcMain.handle('datastore-add-content', async (ev, data) => {
 ipcMain.handle('datastore-query-content', async (ev, data) => {
   try {
     const { filter = {} } = data;
+    const db = getDb();
 
     let sql = 'SELECT * FROM content WHERE 1=1';
     const params = [];
@@ -1814,7 +1809,10 @@ ipcMain.handle('datastore-query-content', async (ev, data) => {
 ipcMain.handle('datastore-get-table', async (ev, data) => {
   try {
     const { tableName } = data;
-    if (!isValidTable(tableName)) {
+    const db = getDb();
+    // Validate table name against known tables
+    const validTables = ['addresses', 'visits', 'content', 'tags', 'address_tags', 'blobs', 'scripts_data', 'feeds', 'extensions', 'extension_settings'];
+    if (!validTables.includes(tableName)) {
       return { success: false, error: `Invalid table name: ${tableName}` };
     }
     const rows = db.prepare(`SELECT * FROM ${tableName}`).all();
@@ -1833,7 +1831,10 @@ ipcMain.handle('datastore-get-table', async (ev, data) => {
 ipcMain.handle('datastore-set-row', async (ev, data) => {
   try {
     const { tableName, rowId, rowData } = data;
-    if (!isValidTable(tableName)) {
+    const db = getDb();
+    // Validate table name against known tables
+    const validTables = ['addresses', 'visits', 'content', 'tags', 'address_tags', 'blobs', 'scripts_data', 'feeds', 'extensions', 'extension_settings'];
+    if (!validTables.includes(tableName)) {
       return { success: false, error: `Invalid table name: ${tableName}` };
     }
     const row = { id: rowId, ...rowData };
@@ -1851,6 +1852,7 @@ ipcMain.handle('datastore-set-row', async (ev, data) => {
 
 ipcMain.handle('datastore-get-stats', async () => {
   try {
+    const db = getDb();
     const stats = {
       totalAddresses: db.prepare('SELECT COUNT(*) as count FROM addresses').get().count,
       totalVisits: db.prepare('SELECT COUNT(*) as count FROM visits').get().count,
@@ -1874,6 +1876,7 @@ ipcMain.handle('datastore-get-or-create-tag', async (ev, data) => {
     console.log('datastore-get-or-create-tag:', name);
     const slug = name.toLowerCase().trim().replace(/\s+/g, '-');
     const timestamp = now();
+    const db = getDb();
 
     // Look for existing tag by name (case-insensitive)
     const existingTag = db.prepare('SELECT * FROM tags WHERE LOWER(name) = LOWER(?)').get(name);
@@ -1905,6 +1908,7 @@ ipcMain.handle('datastore-tag-address', async (ev, data) => {
     const { addressId, tagId } = data;
     console.log('datastore-tag-address:', { addressId, tagId });
     const timestamp = now();
+    const db = getDb();
 
     // Check if link already exists
     const existingLink = db.prepare('SELECT * FROM address_tags WHERE addressId = ? AND tagId = ?').get(addressId, tagId);
@@ -1937,6 +1941,7 @@ ipcMain.handle('datastore-tag-address', async (ev, data) => {
 ipcMain.handle('datastore-untag-address', async (ev, data) => {
   try {
     const { addressId, tagId } = data;
+    const db = getDb();
 
     const result = db.prepare('DELETE FROM address_tags WHERE addressId = ? AND tagId = ?').run(addressId, tagId);
     return { success: true, removed: result.changes > 0 };
@@ -1950,6 +1955,7 @@ ipcMain.handle('datastore-untag-address', async (ev, data) => {
 ipcMain.handle('datastore-get-tags-by-frecency', async (ev, data = {}) => {
   try {
     const { domain } = data || {};
+    const db = getDb();
     let tags = db.prepare('SELECT * FROM tags').all();
     console.log('datastore-get-tags-by-frecency: tags table has', tags.length, 'tags');
 
@@ -1991,6 +1997,7 @@ ipcMain.handle('datastore-get-tags-by-frecency', async (ev, data = {}) => {
 ipcMain.handle('datastore-get-address-tags', async (ev, data) => {
   try {
     const { addressId } = data;
+    const db = getDb();
 
     // Use JOIN to get tags directly
     const tags = db.prepare(`
@@ -2010,6 +2017,7 @@ ipcMain.handle('datastore-get-address-tags', async (ev, data) => {
 ipcMain.handle('datastore-get-addresses-by-tag', async (ev, data) => {
   try {
     const { tagId } = data;
+    const db = getDb();
 
     // Use JOIN to get addresses directly
     const addresses = db.prepare(`
@@ -2028,6 +2036,7 @@ ipcMain.handle('datastore-get-addresses-by-tag', async (ev, data) => {
 // Get addresses that have no tags
 ipcMain.handle('datastore-get-untagged-addresses', async (ev, data) => {
   try {
+    const db = getDb();
     // Use LEFT JOIN + NULL check to find untagged addresses
     const addresses = db.prepare(`
       SELECT a.* FROM addresses a
@@ -2133,6 +2142,7 @@ ipcMain.handle('extension-add', async (ev, data) => {
   try {
     const timestamp = now();
     const id = manifest?.id || `ext-${timestamp}`;
+    const db = getDb();
 
     // Check if extension with this ID already exists
     const existing = db.prepare('SELECT * FROM extensions WHERE id = ?').get(id);
@@ -2176,6 +2186,7 @@ ipcMain.handle('extension-remove', async (ev, data) => {
   const { id } = data;
 
   try {
+    const db = getDb();
     const existing = db.prepare('SELECT * FROM extensions WHERE id = ?').get(id);
     if (!existing) {
       return { success: false, error: `Extension '${id}' not found` };
@@ -2200,6 +2211,7 @@ ipcMain.handle('extension-update', async (ev, data) => {
   const { id, updates } = data;
 
   try {
+    const db = getDb();
     const existing = db.prepare('SELECT * FROM extensions WHERE id = ?').get(id);
     if (!existing) {
       return { success: false, error: `Extension '${id}' not found` };
@@ -2224,6 +2236,7 @@ ipcMain.handle('extension-update', async (ev, data) => {
 // Get all extensions from datastore
 ipcMain.handle('extension-get-all', async (ev) => {
   try {
+    const db = getDb();
     const extensions = db.prepare('SELECT * FROM extensions').all();
     return { success: true, data: extensions };
   } catch (error) {
@@ -2237,6 +2250,7 @@ ipcMain.handle('extension-get', async (ev, data) => {
   const { id } = data;
 
   try {
+    const db = getDb();
     const row = db.prepare('SELECT * FROM extensions WHERE id = ?').get(id);
     if (!row) {
       return { success: false, error: `Extension '${id}' not found` };
@@ -2339,6 +2353,7 @@ ipcMain.handle('extension-settings-get', async (ev, data) => {
   const { extId } = data;
 
   try {
+    const db = getDb();
     const rows = db.prepare('SELECT * FROM extension_settings WHERE extensionId = ?').all(extId);
     const settings = {};
 
@@ -2363,6 +2378,7 @@ ipcMain.handle('extension-settings-set', async (ev, data) => {
 
   try {
     const timestamp = now();
+    const db = getDb();
 
     for (const [key, value] of Object.entries(settings)) {
       const rowId = `${extId}:${key}`;
@@ -2384,6 +2400,7 @@ ipcMain.handle('extension-settings-get-key', async (ev, data) => {
   const { extId, key } = data;
 
   try {
+    const db = getDb();
     const row = db.prepare('SELECT * FROM extension_settings WHERE extensionId = ? AND key = ?').get(extId, key);
 
     if (!row) {
@@ -2406,6 +2423,7 @@ ipcMain.handle('extension-settings-set-key', async (ev, data) => {
   const { extId, key, value } = data;
 
   try {
+    const db = getDb();
     const rowId = `${extId}:${key}`;
     db.prepare(`
       INSERT OR REPLACE INTO extension_settings (id, extensionId, key, value, updatedAt)
@@ -2990,13 +3008,11 @@ const onQuit = async () => {
   });
 
   // Close SQLite database
-  if (db) {
-    try {
-      closeDatabase();
-      console.log('SQLite database closed');
-    } catch (error) {
-      console.error('Error closing SQLite database:', error);
-    }
+  try {
+    closeDatabase();
+    console.log('SQLite database closed');
+  } catch (error) {
+    console.error('Error closing SQLite database:', error);
   }
 
   // Give windows a moment to clean up before forcing quit

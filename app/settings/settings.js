@@ -801,7 +801,7 @@ const renderFeatureSettings = (feature) => {
 
     items.forEach((item, i) => {
       const card = document.createElement('div');
-      card.className = 'item-card';
+      card.className = 'item-card collapsed';
 
       const header = document.createElement('div');
       header.className = 'item-card-header';
@@ -818,6 +818,7 @@ const renderFeatureSettings = (feature) => {
       checkbox.type = 'checkbox';
       checkbox.checked = item.enabled || false;
       checkbox.addEventListener('change', (e) => {
+        e.stopPropagation();
         items[i].enabled = e.target.checked;
         save();
       });
@@ -825,6 +826,12 @@ const renderFeatureSettings = (feature) => {
       wrapper.appendChild(checkbox);
       header.appendChild(wrapper);
       card.appendChild(header);
+
+      // Toggle collapse on header click
+      header.addEventListener('click', (e) => {
+        if (e.target === checkbox) return;
+        card.classList.toggle('collapsed');
+      });
 
       const body = document.createElement('div');
       body.className = 'item-card-body';

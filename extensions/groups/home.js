@@ -168,6 +168,12 @@ const loadTags = async () => {
   if (result.success) {
     state.tags = result.data;
     debug && console.log('Loaded tags:', state.tags.length);
+
+    // Fetch address count for each tag
+    for (const tag of state.tags) {
+      const addressResult = await api.datastore.getAddressesByTag(tag.id);
+      tag.addressCount = addressResult.success ? addressResult.data.length : 0;
+    }
   } else {
     console.error('Failed to load tags:', result.error);
     state.tags = [];
@@ -321,11 +327,8 @@ const createGroupCard = (tag) => {
 
   const meta = document.createElement('div');
   meta.className = 'card-meta';
-  if (tag.isSpecial) {
-    meta.textContent = `${tag.frequency || 0} addresses`;
-  } else {
-    meta.textContent = `Used ${tag.frequency || 0} times`;
-  }
+  const count = tag.isSpecial ? (tag.frequency || 0) : (tag.addressCount || 0);
+  meta.textContent = `${count} ${count === 1 ? 'page' : 'pages'}`;
 
   content.appendChild(title);
   content.appendChild(meta);

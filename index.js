@@ -551,12 +551,24 @@ const createExtensionWindow = async (extId) => {
     return null;
   }
 
-  // Load manifest
+  // Load manifest and settings schema
   let manifest = null;
   try {
     const manifestPath = path.join(extPath, 'manifest.json');
     if (fs.existsSync(manifestPath)) {
       manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+
+      // Load settings schema if specified
+      if (manifest.settingsSchema) {
+        const schemaPath = path.join(extPath, manifest.settingsSchema);
+        if (fs.existsSync(schemaPath)) {
+          const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf-8'));
+          // Merge schema fields into manifest for Settings UI
+          manifest.schemas = { prefs: schema.prefs, item: schema.item };
+          manifest.storageKeys = schema.storageKeys;
+          manifest.defaults = schema.defaults;
+        }
+      }
     }
   } catch (err) {
     console.error(`[ext:win] Failed to load manifest for ${extId}:`, err);

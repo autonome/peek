@@ -1,0 +1,79 @@
+{
+  "prefs": {
+    "type": "object",
+    "properties": {
+      "shortcutKeyPrefix": {
+        "type": "string",
+        "description": "Global OS hotkey prefix to trigger slides - followed by arrow keys",
+        "default": "Option+"
+      }
+    }
+  },
+  "item": {
+    "title": "Slides",
+    "type": "object",
+    "properties": {
+      "screenEdge": {
+        "type": "string",
+        "description": "Edge of screen to slide from (Up/Down/Left/Right)",
+        "default": "Right",
+        "readOnly": true
+      },
+      "title": {
+        "type": "string",
+        "description": "Name of the slide",
+        "default": "New Slide"
+      },
+      "address": {
+        "type": "string",
+        "description": "URL to load",
+        "default": "https://example.com"
+      },
+      "height": {
+        "type": "integer",
+        "description": "Window height",
+        "default": 600
+      },
+      "width": {
+        "type": "integer",
+        "description": "Window width",
+        "default": 800
+      },
+      "persistState": {
+        "type": "boolean",
+        "description": "Persist local state between sessions",
+        "default": false
+      },
+      "keepLive": {
+        "type": "boolean",
+        "description": "Keep page alive in background",
+        "default": false
+      },
+      "allowSound": {
+        "type": "boolean",
+        "description": "Allow the page to emit sound",
+        "default": false
+      },
+      "enabled": {
+        "type": "boolean",
+        "description": "Whether this slide is enabled",
+        "default": false
+      }
+    }
+  },
+  "storageKeys": {
+    "PREFS": "prefs",
+    "ITEMS": "items"
+  },
+  "defaults": {
+    "prefs": {
+      "shortcutKeyPrefix": "Option+"
+    },
+    "items": [
+      { "screenEdge": "Up", "title": "Slide from top", "address": "http://localhost/", "persistState": false, "keepLive": false, "allowSound": false, "height": 600, "width": 800, "enabled": true },
+      { "screenEdge": "Down", "title": "Slide from bottom", "address": "", "persistState": false, "keepLive": false, "allowSound": false, "height": 600, "width": 800, "enabled": false },
+      { "screenEdge": "Left", "title": "Slide from left", "address": "", "persistState": false, "keepLive": false, "allowSound": false, "height": 600, "width": 800, "enabled": false },
+      { "screenEdge": "Right", "title": "Slide from right", "address": "", "persistState": false, "keepLive": false, "allowSound": false, "height": 600, "width": 800, "enabled": false }
+    ]
+  }
+}

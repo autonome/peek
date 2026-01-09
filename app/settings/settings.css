@@ -251,12 +251,38 @@ body {
   margin-bottom: 16px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--border-primary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.item-card-header:hover {
+  opacity: 0.8;
+}
+
+.item-card.collapsed .item-card-header {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.item-card.collapsed .item-card-body {
+  display: none;
 }
 
 .item-card-title {
   font-size: 15px;
   font-weight: 600;
   color: var(--text-primary);
+}
+
+.item-card-title::before {
+  content: '\25BC ';
+  font-size: 10px;
+  margin-right: 6px;
+}
+
+.item-card.collapsed .item-card-title::before {
+  content: '\25B6 ';
 }
 
 .item-card-body .form-group {

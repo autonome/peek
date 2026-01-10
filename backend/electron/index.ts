@@ -4,6 +4,22 @@
  * Exports database functions and types for the Electron main process.
  */
 
+// Configuration
+export {
+  APP_DEF_WIDTH,
+  APP_DEF_HEIGHT,
+  WEB_CORE_ADDRESS,
+  SETTINGS_ADDRESS,
+  IPC_CHANNELS,
+  TOPICS,
+  setPreloadPath,
+  setProfile,
+  getPreloadPath,
+  getProfile,
+  isTestProfile,
+  isDevProfile,
+} from './config.js';
+
 // Database lifecycle and helpers
 export {
   initDatabase,
@@ -140,10 +156,52 @@ export {
   registerWindow,
   getWindowInfo,
   findWindowByKey,
+  removeWindow,
+  getChildWindows,
+  getAllWindows,
   shutdown,
+  // External URL handling
+  handleExternalUrl,
+  setAppReady,
+  registerExternalUrlHandlers,
+  registerSecondInstanceHandler,
+  handleCliUrl,
+  // Background window
+  createBackgroundWindow,
+  getBackgroundWindow,
+  // App lifecycle
+  registerWindowAllClosedHandler,
+  registerActivateHandler,
+  requestSingleInstance,
+  quitApp,
 } from './main.js';
 
 export type { AppConfig } from './main.js';
+
+// IPC handlers
+export {
+  registerDatastoreHandlers,
+  registerExtensionHandlers,
+  registerDarkModeHandlers,
+  registerWindowHandlers,
+  registerMiscHandlers,
+  registerAllHandlers,
+  getRegisteredCommands,
+} from './ipc.js';
+
+// Window helpers
+export {
+  setPrefsGetter,
+  modWindow,
+  addEscHandler,
+  winDevtoolsConfig,
+  closeWindow,
+  getVisibleWindowCount,
+  updateDockVisibility,
+  maybeHideApp,
+  closeOrHideWindow,
+  closeChildWindows,
+} from './windows.js';
 
 // Re-export frontend API types (the contract that preload.js implements)
 export type {

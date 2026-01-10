@@ -1,11 +1,16 @@
-// main.js
+/**
+ * Electron Backend Entry Point
+ *
+ * This is the main entry point for the Electron application.
+ * All Electron-specific code lives here.
+ */
 
 import { app } from 'electron';
-
 import fs from 'node:fs';
 import path from 'node:path';
+import unhandled from 'electron-unhandled';
 
-// Import from compiled TypeScript backend
+// Import from local backend modules
 import {
   // Main process orchestration
   configure,
@@ -31,8 +36,8 @@ import {
   unregisterLocalShortcut,
   // PubSub
   scopes,
-  publish as pubsubPublish,
-  subscribe as pubsubSubscribe,
+  publish,
+  subscribe,
   getSystemAddress,
   // IPC
   registerAllHandlers,
@@ -45,8 +50,7 @@ import {
   // Window helpers
   setPrefsGetter,
   updateDockVisibility,
-} from './dist/backend/electron/index.js';
-import unhandled from 'electron-unhandled';
+} from './index.js';
 
 // Catch unhandled errors and promise rejections without showing alert dialogs
 unhandled({
@@ -56,20 +60,13 @@ unhandled({
   }
 });
 
-const __dirname = import.meta.dirname;
+// Get the root directory (two levels up from dist/backend/electron/)
+const ROOT_DIR = path.resolve(import.meta.dirname, '..', '..', '..');
 
-(async () => {
-
-const DEBUG = process.env.DEBUG || false;
-const DEBUG_LEVELS = {
-  BASIC: 1,
-  FIRST_RUN: 2
-};
-const DEBUG_LEVEL = DEBUG_LEVELS.BASIC;
-//const DEBUG_LEVEL = DEBUG_LEVELS.FIRST_RUN;
+const DEBUG = !!process.env.DEBUG;
 
 // script loaded into every app window
-const preloadPath = path.join(__dirname, 'preload.js');
+const preloadPath = path.join(ROOT_DIR, 'preload.js');
 
 const systemAddress = getSystemAddress();
 
@@ -85,7 +82,8 @@ const strings = {
   }
 };
 
-const profileIsLegit = p => p != undefined && typeof p == 'string' && p.length > 0;
+const profileIsLegit = (p: unknown): p is string =>
+  p !== undefined && typeof p === 'string' && p.length > 0;
 
 // Profile selection:
 // 1. Explicit PROFILE env var takes precedence
@@ -101,39 +99,23 @@ console.log('PROFILE', PROFILE, app.isPackaged ? '(packaged)' : '(source)');
 setProfile(PROFILE);
 
 // Profile dirs are subdir of userData dir
-// ..................................... ↓ we set this per profile
-//
 // {home} / {appData} / {userData} / {profileDir}
-//
 // Chromium's data in a subfolder of profile folder
-//
-// ................................................. ↓ we set this per profile
-//
 // {home} / {appData} / {userData} / {profileDir} / {sessionData}
-
 
 // specify various app data paths and make if not exist
 const defaultUserDataPath = app.getPath('userData');
 const profileDataPath = path.join(defaultUserDataPath, PROFILE);
 const sessionDataPath = path.join(profileDataPath, 'chromium');
 
-//console.log('udp', defaultUserDataPath);
-//console.log('pdp', profileDataPath);
-//console.log('sdp', sessionDataPath);
-
 // create filesystem
-if (!fs.existsSync(sessionDataPath)){
+if (!fs.existsSync(sessionDataPath)) {
   fs.mkdirSync(sessionDataPath, { recursive: true });
 }
 
 // configure Electron with these paths
 app.setPath('userData', profileDataPath);
 app.setPath('sessionData', sessionDataPath);
-
-// ***** Datastore *****
-
-// Note: getDb, generateId, now, parseUrl, normalizeUrl, calculateFrecency, isValidTable
-// are imported directly from backend/electron
 
 // ***** Features / Strings *****
 
@@ -156,18 +138,14 @@ registerActivateHandler();
 
 // app global prefs configurable by user
 // populated during app init
-let _prefs = {};
-let _quitShortcut = null;
+let _prefs: Record<string, unknown> = {};
+let _quitShortcut: string | null = null;
 
 // Set up prefs getter for backend window helpers
 setPrefsGetter(() => _prefs);
 
-// ***** pubsub *****
-// Wrapper object for backend pubsub functions
-const pubsub = {
-  publish: pubsubPublish,
-  subscribe: pubsubSubscribe
-};
+// Define onQuit as alias to quitApp for use in IPC handlers and shortcuts
+const onQuit = quitApp;
 
 // ***** init *****
 
@@ -196,7 +174,7 @@ const onReady = async () => {
   registerSecondInstanceHandler();
 
   // Discover and register built-in extensions from extensions/ folder
-  discoverBuiltinExtensions(path.join(__dirname, 'extensions'));
+  discoverBuiltinExtensions(path.join(ROOT_DIR, 'extensions'));
 
   // Register as default handler for http/https URLs (if not already and user hasn't declined)
   // Skip for test profiles to avoid system dialogs during automated testing
@@ -216,7 +194,7 @@ const onReady = async () => {
         console.log('User previously declined default browser prompt');
       }
     }
-  } catch (e) {
+  } catch {
     // Ignore errors reading pref file
   }
 
@@ -239,8 +217,8 @@ const onReady = async () => {
           console.log('User declined default browser, saving preference');
           try {
             fs.writeFileSync(defaultBrowserPrefFile, JSON.stringify({ declined: true, timestamp: Date.now() }));
-          } catch (e) {
-            console.error('Failed to save default browser preference:', e);
+          } catch {
+            console.error('Failed to save default browser preference');
           }
         }
       }, 2000);
@@ -257,22 +235,23 @@ const onReady = async () => {
 
   // listen for app prefs to configure ourself
   // TODO: kinda janky, needs rethink
-  pubsub.subscribe(systemAddress, scopes.SYSTEM, strings.topics.prefs, async msg => {
-    console.log('PREFS', msg);
+  subscribe(systemAddress, scopes.SYSTEM, strings.topics.prefs, async (msg: unknown) => {
+    const prefsMsg = msg as { prefs: Record<string, unknown> };
+    console.log('PREFS', prefsMsg);
 
     // cache all prefs
-    _prefs = msg.prefs;
+    _prefs = prefsMsg.prefs;
 
     // Update dock visibility based on pref and visible windows
     updateDockVisibility();
 
     // initialize system tray
-    if (msg.prefs.showTrayIcon == true) {
+    if (prefsMsg.prefs.showTrayIcon === true) {
       console.log('showing tray');
-      initTray(__dirname, {
+      initTray(ROOT_DIR, {
         tooltip: labels.tray.tooltip,
         onClick: () => {
-          pubsub.publish(WEB_CORE_ADDRESS, scopes.GLOBAL, 'open', {
+          publish(WEB_CORE_ADDRESS, scopes.GLOBAL, 'open', {
             address: SETTINGS_ADDRESS
           });
         }
@@ -280,7 +259,7 @@ const onReady = async () => {
     }
 
     // update quit shortcut if changed (local shortcut - only works when app has focus)
-    const newQuitShortcut = msg.prefs.quitShortcut || strings.defaults.quitShortcut;
+    const newQuitShortcut = (prefsMsg.prefs.quitShortcut as string) || strings.defaults.quitShortcut;
     if (newQuitShortcut !== _quitShortcut) {
       if (_quitShortcut) {
         console.log('unregistering old quit shortcut:', _quitShortcut);
@@ -316,7 +295,7 @@ registerExternalUrlHandlers();
 
 // Configure app before ready (registers protocol scheme, sets theme)
 configure({
-  rootDir: __dirname,
+  rootDir: ROOT_DIR,
   preloadPath: preloadPath,
   userDataPath: defaultUserDataPath,
   profile: PROFILE,
@@ -327,9 +306,5 @@ configure({
 // Register window-all-closed handler
 registerWindowAllClosedHandler(quitApp);
 
+// Start the app
 app.whenReady().then(onReady);
-
-// Define onQuit as alias to quitApp for use in IPC handlers and shortcuts
-const onQuit = quitApp;
-
-})();

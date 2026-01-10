@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Peek Diagnostic</title>
+  <style>
+    body { font-family: monospace; padding: 20px; background: #1a1a1a; color: #e0e0e0; }
+    h2 { color: #4fc3f7; margin-top: 30px; }
+    pre { background: #2d2d2d; padding: 15px; border-radius: 5px; overflow-x: auto; max-height: 400px; overflow-y: auto; }
+    .key { color: #81c784; }
+    .value { color: #fff59d; }
+    button { background: #4fc3f7; color: #000; border: none; padding: 10px 20px; margin: 5px; cursor: pointer; border-radius: 5px; }
+    button:hover { background: #29b6f6; }
+    .section { margin-bottom: 30px; }
+  </style>
+</head>
+<body>
+  <h1>Peek Diagnostic Tool</h1>
+  <p>This page helps inspect localStorage and datastore contents.</p>
+
+  <div class="section">
+    <button onclick="dumpLocalStorage()">Dump localStorage</button>
+    <button onclick="dumpDatastore()">Dump extension_settings from datastore</button>
+    <button onclick="dumpBoth()">Dump Both</button>
+    <button onclick="copyResults()">Copy Results</button>
+  </div>
+
+  <div id="output"></div>
+
+  <script type="module">
+    const api = window.app;
+    const output = document.getElementById('output');
+
+    function log(title, content) {
+      const section = document.createElement('div');
+      section.innerHTML = `<h2>${title}</h2><pre>${content}</pre>`;
+      output.appendChild(section);
+    }
+
+    function clearOutput() {
+      output.innerHTML = '';
+    }
+
+    window.dumpLocalStorage = function() {
+      clearOutput();
+      const items = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        const value = localStorage.getItem(key);
+        items.push({ key, value });
+      }
+
+      // Sort by key
+      items.sort((a, b) => a.key.localeCompare(b.key));
+
+      // Group by prefix (UUID or name before +)
+      const grouped = {};
+      items.forEach(item => {
+        const parts = item.key.split('+');
+        const prefix = parts[0] || 'other';
+        if (!grouped[prefix]) grouped[prefix] = [];
+        grouped[prefix].push(item);
+      });
+
+      let html = `Total items: ${items.length}\n\n`;
+
+      for (const [prefix, groupItems] of Object.entries(grouped)) {
+        html += `=== ${prefix} ===\n`;
+        groupItems.forEach(item => {
+          let displayValue = item.value;
+          try {
+            const parsed = JSON.parse(item.value);
+            if (Array.isArray(parsed)) {
+              displayValue = `Array[${parsed.length}]: ${JSON.stringify(parsed, null, 2)}`;
+            } else if (typeof parsed === 'object') {
+              displayValue = JSON.stringify(parsed, null, 2);
+            }
+          } catch {}
+          html += `  <span class="key">${item.key}</span>:\n    <span class="value">${displayValue}</span>\n\n`;
+        });
+      }
+
+      log('localStorage Contents', html);
+    };
+
+    window.dumpDatastore = async function() {
+      clearOutput();
+      try {
+        const result = await api.datastore.getTable('extension_settings');
+        if (result.success) {
+          const data = result.data || {};
+          const entries = Object.entries(data);
+          let html = `Total rows: ${entries.length}\n\n`;
+
+          entries.forEach(([rowId, row]) => {
+            let displayValue = row.value;
+            try {
+              const parsed = JSON.parse(row.value);
+              if (Array.isArray(parsed)) {
+                displayValue = `Array[${parsed.length}]: ${JSON.stringify(parsed, null, 2)}`;
+              } else if (typeof parsed === 'object') {
+                displayValue = JSON.stringify(parsed, null, 2);
+              }
+            } catch {}
+            html += `<span class="key">${rowId}</span> (${row.extensionId}:${row.key}):\n  <span class="value">${displayValue}</span>\n\n`;
+          });
+
+          log('extension_settings Table', html);
+        } else {
+          log('extension_settings Table', `Error: ${result.error}`);
+        }
+      } catch (err) {
+        log('extension_settings Table', `Error: ${err.message}`);
+      }
+    };
+
+    window.dumpBoth = async function() {
+      clearOutput();
+      window.dumpLocalStorage();
+      await window.dumpDatastore();
+    };
+
+    window.copyResults = function() {
+      const text = output.innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        alert('Copied to clipboard!');
+      });
+    };
+
+    // Auto-dump on load
+    window.dumpBoth();
+  </script>
+</body>
+</html>

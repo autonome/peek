@@ -193,10 +193,11 @@ export function registerDatastoreHandlers(): void {
 
   ipcMain.handle('datastore-get-table', async (ev, data) => {
     try {
-      if (!isValidTable(data.table)) {
-        return { success: false, error: `Invalid table: ${data.table}` };
+      const tableName = data.tableName || data.table;
+      if (!isValidTable(tableName)) {
+        return { success: false, error: `Invalid table: ${tableName}` };
       }
-      const result = getTable(data.table);
+      const result = getTable(tableName);
       return { success: true, data: result };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -206,10 +207,13 @@ export function registerDatastoreHandlers(): void {
 
   ipcMain.handle('datastore-set-row', async (ev, data) => {
     try {
-      if (!isValidTable(data.table)) {
-        return { success: false, error: `Invalid table: ${data.table}` };
+      const tableName = data.tableName || data.table;
+      const rowId = data.rowId || data.id;
+      const rowData = data.rowData || data.row;
+      if (!isValidTable(tableName)) {
+        return { success: false, error: `Invalid table: ${tableName}` };
       }
-      const result = setRow(data.table, data.id, data.row);
+      const result = setRow(tableName, rowId, rowData);
       return { success: true, data: result };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

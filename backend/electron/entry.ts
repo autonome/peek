@@ -60,8 +60,8 @@ unhandled({
   }
 });
 
-// Get the root directory (two levels up from dist/backend/electron/)
-const ROOT_DIR = path.resolve(import.meta.dirname, '..', '..', '..');
+// Get the root directory - app.getAppPath() works in both dev and packaged modes
+const ROOT_DIR = app.getAppPath();
 
 const DEBUG = !!process.env.DEBUG;
 

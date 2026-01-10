@@ -523,8 +523,8 @@ function isModifier(e) {
 function getValidURL(str) {
   if (!str) return { valid: false };
 
-  // Check if it starts with a valid protocol
-  const hasValidProtocol = /^(https?|ftp|file):\/\//.test(str);
+  // Check if it starts with a valid protocol (including peek:// for internal pages)
+  const hasValidProtocol = /^(https?|ftp|file|peek):\/\//.test(str);
 
   if (!hasValidProtocol) {
     // Check if it looks like a domain (e.g., "example.com" or "localhost")

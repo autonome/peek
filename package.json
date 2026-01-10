@@ -37,6 +37,7 @@
     "smoke:visible": "./scripts/smoke-test.sh --visible",
     "test": "npx playwright test",
     "test:smoke": "npx playwright test tests/smoke.spec.ts",
+    "test:persistence": "npx playwright test tests/smoke.spec.ts --grep 'Data Persistence' --timeout=120000",
     "test:headed": "npx playwright test --headed",
     "test:debug": "npx playwright test --debug"
   },

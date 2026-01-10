@@ -18,7 +18,8 @@ import { spawn } from 'child_process';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT = path.join(__dirname, '..');
-const MAIN_PATH = path.join(ROOT, 'index.js');
+// Pass the root directory - Electron will use package.json main field
+const MAIN_PATH = ROOT;
 
 // Helper to wait for a window with specific URL pattern
 async function waitForWindow(app: ElectronApplication, urlPattern: string | RegExp, timeout = 10000): Promise<Page> {
@@ -419,6 +420,224 @@ test.describe('External URL Opening', () => {
     // Verify background window exists (app started correctly)
     const bgWindow = windows.find(w => w.url().includes('background.html'));
     expect(bgWindow).toBeTruthy();
+
+    await electronApp.close();
+  });
+});
+
+// Data Persistence Tests - verify user data survives app restart
+test.describe('Data Persistence', () => {
+  const PERSISTENCE_PROFILE = 'test-persistence-' + Date.now();
+
+  test('peeks and slides settings persist across restart', async () => {
+    // PHASE 1: Launch app and add custom peeks/slides configuration
+    let electronApp = await electron.launch({
+      args: [MAIN_PATH],
+      env: { ...process.env, PROFILE: PERSISTENCE_PROFILE, DEBUG: '1', PEEK_HEADLESS: '1' }
+    });
+    await new Promise(r => setTimeout(r, 4000));
+
+    let bgWindow = await waitForWindow(electronApp, 'app/background.html');
+
+    // Add custom peek items to extension_settings
+    const testPeeks = [
+      { title: 'Test Peek 1', uri: 'https://test-peek-1.example.com', shortcut: 'Option+1' },
+      { title: 'Test Peek 2', uri: 'https://test-peek-2.example.com', shortcut: 'Option+2' },
+      { title: 'Custom Peek', uri: 'https://custom-peek.example.com', shortcut: 'Option+3' }
+    ];
+
+    const testSlides = [
+      { title: 'Test Slide 1', uri: 'https://test-slide-1.example.com', position: 'right', size: 400 },
+      { title: 'Test Slide 2', uri: 'https://test-slide-2.example.com', position: 'bottom', size: 300 }
+    ];
+
+    // Save peeks items to extension_settings via datastore
+    const savePeeksResult = await bgWindow.evaluate(async (items) => {
+      const api = (window as any).app;
+      return await api.datastore.setRow('extension_settings', 'peeks:items', {
+        extensionId: 'peeks',
+        key: 'items',
+        value: JSON.stringify(items),
+        updatedAt: Date.now()
+      });
+    }, testPeeks);
+    expect(savePeeksResult.success).toBe(true);
+
+    // Save slides items to extension_settings
+    const saveSlidesResult = await bgWindow.evaluate(async (items) => {
+      const api = (window as any).app;
+      return await api.datastore.setRow('extension_settings', 'slides:items', {
+        extensionId: 'slides',
+        key: 'items',
+        value: JSON.stringify(items),
+        updatedAt: Date.now()
+      });
+    }, testSlides);
+    expect(saveSlidesResult.success).toBe(true);
+
+    // Also save custom prefs
+    const savePeeksPrefs = await bgWindow.evaluate(async () => {
+      const api = (window as any).app;
+      return await api.datastore.setRow('extension_settings', 'peeks:prefs', {
+        extensionId: 'peeks',
+        key: 'prefs',
+        value: JSON.stringify({ shortcutKeyPrefix: 'Option+' }),
+        updatedAt: Date.now()
+      });
+    });
+    expect(savePeeksPrefs.success).toBe(true);
+
+    const saveSlidesPrefs = await bgWindow.evaluate(async () => {
+      const api = (window as any).app;
+      return await api.datastore.setRow('extension_settings', 'slides:prefs', {
+        extensionId: 'slides',
+        key: 'prefs',
+        value: JSON.stringify({ defaultPosition: 'right', defaultSize: 350 }),
+        updatedAt: Date.now()
+      });
+    });
+    expect(saveSlidesPrefs.success).toBe(true);
+
+    // Verify data was saved
+    const verifyResult = await bgWindow.evaluate(async () => {
+      const api = (window as any).app;
+      return await api.datastore.getTable('extension_settings');
+    });
+    expect(verifyResult.success).toBe(true);
+    const savedRows = Object.values(verifyResult.data);
+    expect(savedRows.length).toBeGreaterThanOrEqual(4);
+
+    // Close the app
+    await electronApp.close();
+    await new Promise(r => setTimeout(r, 1000));
+
+    // PHASE 2: Relaunch with same profile and verify data persisted
+    electronApp = await electron.launch({
+      args: [MAIN_PATH],
+      env: { ...process.env, PROFILE: PERSISTENCE_PROFILE, DEBUG: '1', PEEK_HEADLESS: '1' }
+    });
+    await new Promise(r => setTimeout(r, 4000));
+
+    bgWindow = await waitForWindow(electronApp, 'app/background.html');
+
+    // Query extension_settings to verify persistence
+    const persistedResult = await bgWindow.evaluate(async () => {
+      const api = (window as any).app;
+      return await api.datastore.getTable('extension_settings');
+    });
+    expect(persistedResult.success).toBe(true);
+
+    const persistedData = persistedResult.data as Record<string, any>;
+
+    // Verify peeks items persisted
+    const peeksItems = persistedData['peeks:items'];
+    expect(peeksItems).toBeTruthy();
+    expect(peeksItems.extensionId).toBe('peeks');
+    expect(peeksItems.key).toBe('items');
+    const parsedPeeks = JSON.parse(peeksItems.value);
+    expect(parsedPeeks.length).toBe(3);
+    expect(parsedPeeks[0].title).toBe('Test Peek 1');
+    expect(parsedPeeks[2].title).toBe('Custom Peek');
+
+    // Verify slides items persisted
+    const slidesItems = persistedData['slides:items'];
+    expect(slidesItems).toBeTruthy();
+    expect(slidesItems.extensionId).toBe('slides');
+    const parsedSlides = JSON.parse(slidesItems.value);
+    expect(parsedSlides.length).toBe(2);
+    expect(parsedSlides[0].position).toBe('right');
+    expect(parsedSlides[1].position).toBe('bottom');
+
+    // Verify prefs persisted
+    const peeksPrefs = persistedData['peeks:prefs'];
+    expect(peeksPrefs).toBeTruthy();
+    const parsedPeeksPrefs = JSON.parse(peeksPrefs.value);
+    expect(parsedPeeksPrefs.shortcutKeyPrefix).toBe('Option+');
+
+    const slidesPrefs = persistedData['slides:prefs'];
+    expect(slidesPrefs).toBeTruthy();
+    const parsedSlidesPrefs = JSON.parse(slidesPrefs.value);
+    expect(parsedSlidesPrefs.defaultPosition).toBe('right');
+
+    await electronApp.close();
+  });
+
+  test('addresses and tags persist across restart', async () => {
+    const ADDR_PROFILE = 'test-addr-persist-' + Date.now();
+
+    // PHASE 1: Add addresses and tags
+    let electronApp = await electron.launch({
+      args: [MAIN_PATH],
+      env: { ...process.env, PROFILE: ADDR_PROFILE, DEBUG: '1', PEEK_HEADLESS: '1' }
+    });
+    await new Promise(r => setTimeout(r, 4000));
+
+    let bgWindow = await waitForWindow(electronApp, 'app/background.html');
+
+    // Add addresses
+    const addr1 = await bgWindow.evaluate(async () => {
+      return await (window as any).app.datastore.addAddress('https://persist-test-1.example.com', {
+        title: 'Persist Test 1',
+        starred: 1
+      });
+    });
+    expect(addr1.success).toBe(true);
+
+    const addr2 = await bgWindow.evaluate(async () => {
+      return await (window as any).app.datastore.addAddress('https://persist-test-2.example.com', {
+        title: 'Persist Test 2'
+      });
+    });
+    expect(addr2.success).toBe(true);
+
+    // Create a tag and tag the addresses
+    const tagResult = await bgWindow.evaluate(async () => {
+      return await (window as any).app.datastore.getOrCreateTag('persist-tag');
+    });
+    expect(tagResult.success).toBe(true);
+    const tagId = tagResult.data?.id;
+
+    if (tagId && addr1.id) {
+      await bgWindow.evaluate(async ({ addressId, tagId }) => {
+        return await (window as any).app.datastore.tagAddress(addressId, tagId);
+      }, { addressId: addr1.id, tagId });
+    }
+
+    await electronApp.close();
+    await new Promise(r => setTimeout(r, 1000));
+
+    // PHASE 2: Verify persistence
+    electronApp = await electron.launch({
+      args: [MAIN_PATH],
+      env: { ...process.env, PROFILE: ADDR_PROFILE, DEBUG: '1', PEEK_HEADLESS: '1' }
+    });
+    await new Promise(r => setTimeout(r, 4000));
+
+    bgWindow = await waitForWindow(electronApp, 'app/background.html');
+
+    // Query addresses - use getTable for more reliable results
+    const tableResult = await bgWindow.evaluate(async () => {
+      return await (window as any).app.datastore.getTable('addresses');
+    });
+    expect(tableResult.success).toBe(true);
+
+    const addresses = Object.values(tableResult.data) as any[];
+    expect(addresses.length).toBeGreaterThanOrEqual(2);
+
+    const persistedAddr1 = addresses.find((a: any) =>
+      a.uri === 'https://persist-test-1.example.com' ||
+      a.uri?.includes('persist-test-1')
+    );
+    expect(persistedAddr1).toBeTruthy();
+    expect(persistedAddr1.title).toBe('Persist Test 1');
+
+    // Query tags
+    const tagsResult = await bgWindow.evaluate(async () => {
+      return await (window as any).app.datastore.getTagsByFrecency(10);
+    });
+    expect(tagsResult.success).toBe(true);
+    const persistTag = tagsResult.data.find((t: any) => t.name === 'persist-tag');
+    expect(persistTag).toBeTruthy();
 
     await electronApp.close();
   });

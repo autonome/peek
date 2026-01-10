@@ -1093,6 +1093,20 @@ const init = async () => {
   });
   sidebarNav.appendChild(datastoreNav);
 
+  // Add Diagnostic link
+  const diagnosticNav = document.createElement('a');
+  diagnosticNav.className = 'nav-item';
+  diagnosticNav.textContent = 'Diagnostic';
+  diagnosticNav.style.cursor = 'pointer';
+  diagnosticNav.addEventListener('click', () => {
+    api.window.open('peek://app/diagnostic.html', {
+      width: 900,
+      height: 700,
+      key: 'diagnostic-tool'
+    });
+  });
+  sidebarNav.appendChild(diagnosticNav);
+
   // Add Quit button at the very bottom
   const quitBtn = document.createElement('button');
   quitBtn.textContent = 'Quit';

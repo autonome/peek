@@ -14,7 +14,7 @@ import { discoverExtensions, loadExtensionManifest, isBuiltinExtensionEnabled, g
 import { initTray } from './tray.js';
 import { registerLocalShortcut, unregisterLocalShortcut, handleLocalShortcut, registerGlobalShortcut, unregisterGlobalShortcut, unregisterShortcutsForAddress } from './shortcuts.js';
 import { scopes, publish, subscribe, setExtensionBroadcaster, getSystemAddress } from './pubsub.js';
-import { APP_DEF_WIDTH, APP_DEF_HEIGHT, WEB_CORE_ADDRESS, getPreloadPath, isTestProfile } from './config.js';
+import { APP_DEF_WIDTH, APP_DEF_HEIGHT, WEB_CORE_ADDRESS, getPreloadPath, isTestProfile, isHeadless } from './config.js';
 import { addEscHandler, winDevtoolsConfig, closeOrHideWindow } from './windows.js';
 
 // Configuration
@@ -378,8 +378,8 @@ export function createBackgroundWindow(): BrowserWindow {
   const win = new BrowserWindow(winPrefs);
   win.loadURL(WEB_CORE_ADDRESS);
 
-  // Setup devtools for the background window (debug mode, but not in tests)
-  if (config.isDev && !isTestProfile()) {
+  // Setup devtools for the background window (debug mode, but not in tests or headless)
+  if (config.isDev && !isTestProfile() && !isHeadless()) {
     win.webContents.openDevTools({ mode: 'detach', activate: false });
   }
 
@@ -417,7 +417,9 @@ export function createBackgroundWindow(): BrowserWindow {
       const existingWindow = findWindowByKey(WEB_CORE_ADDRESS, featuresMap.key as string);
       if (existingWindow) {
         console.log('Reusing existing window with key:', featuresMap.key);
-        existingWindow.window.show();
+        if (!isHeadless()) {
+          existingWindow.window.show();
+        }
         return { action: 'deny' as const };
       }
     }
@@ -427,7 +429,7 @@ export function createBackgroundWindow(): BrowserWindow {
       ...(featuresMap as Electron.BrowserWindowConstructorOptions),
       width: parseInt(String(featuresMap.width)) || APP_DEF_WIDTH,
       height: parseInt(String(featuresMap.height)) || APP_DEF_HEIGHT,
-      show: featuresMap.show !== false,
+      show: isHeadless() ? false : featuresMap.show !== false,
       webPreferences: {
         preload: preloadPath
       }

@@ -1,11 +1,18 @@
 #!/bin/bash
 # Smoke test script - runs the app briefly to verify it starts correctly
-# Usage: ./scripts/smoke-test.sh [duration_seconds] [extra_args...]
-# Example: ./scripts/smoke-test.sh 10
-# Example: ./scripts/smoke-test.sh 15 --some-flag
+# Usage: ./scripts/smoke-test.sh [--visible] [duration_seconds]
+# Example: ./scripts/smoke-test.sh           # headless, 10s
+# Example: ./scripts/smoke-test.sh 15        # headless, 15s
+# Example: ./scripts/smoke-test.sh --visible # visible windows, 10s
+# Example: ./scripts/smoke-test.sh --visible 15
+
+HEADLESS=1
+if [ "$1" = "--visible" ]; then
+    HEADLESS=0
+    shift
+fi
 
 DURATION=${1:-10}
-shift 2>/dev/null || true
 
 # Generate unique profile name for this test run
 PROFILE="test-smoke-$$"
@@ -15,20 +22,25 @@ LOGFILE="/tmp/peek-smoke-$$.log"
 cleanup() {
     if [ -f "$PIDFILE" ]; then
         PID=$(cat "$PIDFILE")
-        kill "$PID" 2>/dev/null
+        # Kill the process group to get all children
+        kill -TERM -"$PID" 2>/dev/null || kill -TERM "$PID" 2>/dev/null || true
+        sleep 0.5
+        kill -9 -"$PID" 2>/dev/null || kill -9 "$PID" 2>/dev/null || true
         rm -f "$PIDFILE"
     fi
-    # Also kill any remaining electron processes with our test profile
-    pkill -f "PROFILE=$PROFILE" 2>/dev/null || true
-    pkill -f "$PROFILE" 2>/dev/null || true
+    # Kill any remaining electron processes from this project
+    pkill -9 -f "/Users/dietrich/misc/peek/node_modules/electron" 2>/dev/null || true
 }
 
 trap cleanup EXIT
 
-echo "Starting smoke test (profile: $PROFILE, duration: ${DURATION}s)..."
-
-# Start the app in background
-PROFILE="$PROFILE" DEBUG=1 yarn start "$@" > "$LOGFILE" 2>&1 &
+if [ "$HEADLESS" = "1" ]; then
+    echo "Starting smoke test (profile: $PROFILE, duration: ${DURATION}s, headless)..."
+    PROFILE="$PROFILE" DEBUG=1 PEEK_HEADLESS=1 yarn start > "$LOGFILE" 2>&1 &
+else
+    echo "Starting smoke test (profile: $PROFILE, duration: ${DURATION}s, visible)..."
+    PROFILE="$PROFILE" DEBUG=1 yarn start > "$LOGFILE" 2>&1 &
+fi
 echo $! > "$PIDFILE"
 
 # Wait for specified duration

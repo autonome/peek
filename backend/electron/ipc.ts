@@ -59,6 +59,7 @@ import {
   getPreloadPath,
   IPC_CHANNELS,
   TOPICS,
+  isHeadless,
 } from './config.js';
 
 import {
@@ -697,7 +698,9 @@ export function registerWindowHandlers(): void {
       const existingWindow = findWindowByKey(msg.source, options.key);
       if (existingWindow) {
         console.log('Reusing existing window with key:', options.key);
-        existingWindow.window.show();
+        if (!isHeadless()) {
+          existingWindow.window.show();
+        }
         return { success: true, id: existingWindow.id, reused: true };
       }
     }
@@ -707,7 +710,7 @@ export function registerWindowHandlers(): void {
       ...options,
       width: parseInt(options.width) || APP_DEF_WIDTH,
       height: parseInt(options.height) || APP_DEF_HEIGHT,
-      show: options.show !== false,
+      show: isHeadless() ? false : options.show !== false,
       webPreferences: {
         ...options.webPreferences,
         preload: getPreloadPath()

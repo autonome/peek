@@ -20,6 +20,14 @@ let _preloadPath: string = '';
 let _profile: string = '';
 
 /**
+ * Check if running in headless mode (no visible windows)
+ * Set PEEK_HEADLESS=1 to enable
+ */
+export function isHeadless(): boolean {
+  return !!process.env.PEEK_HEADLESS;
+}
+
+/**
  * Set runtime paths (called during app initialization)
  */
 export function setPreloadPath(preloadPath: string): void {

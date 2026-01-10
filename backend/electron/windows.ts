@@ -9,6 +9,7 @@ import {
   WEB_CORE_ADDRESS,
   SETTINGS_ADDRESS,
   isTestProfile,
+  isHeadless,
 } from './config.js';
 import {
   getWindowInfo,
@@ -123,8 +124,8 @@ export function winDevtoolsConfig(bw: BrowserWindow): void {
 
   console.log('winDevtoolsConfig:', bw.id, 'openDevTools:', params.openDevTools, 'address:', params.address);
 
-  // Check if devTools should be opened (never in test profiles)
-  if (params.openDevTools === true && !isTestProfile()) {
+  // Check if devTools should be opened (never in test profiles or headless mode)
+  if (params.openDevTools === true && !isTestProfile() && !isHeadless()) {
     const isDetached = params.detachedDevTools === true;
     // Determine if detached mode should be used
     // activate: false prevents devtools from stealing focus (only works with detach/undocked)

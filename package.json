@@ -33,6 +33,8 @@
     "make": "electron-builder",
     "lint": "echo \"No linting configured\"",
     "help": "electron --help",
+    "smoke": "./scripts/smoke-test.sh",
+    "smoke:visible": "./scripts/smoke-test.sh --visible",
     "test": "npx playwright test",
     "test:smoke": "npx playwright test tests/smoke.spec.ts",
     "test:headed": "npx playwright test --headed",

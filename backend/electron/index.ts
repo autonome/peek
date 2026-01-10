@@ -18,6 +18,7 @@ export {
   getProfile,
   isTestProfile,
   isDevProfile,
+  isHeadless,
 } from './config.js';
 
 // Database lifecycle and helpers

@@ -24,6 +24,15 @@
     <button onclick="copyResults()">Copy Results</button>
   </div>
 
+  <div class="section" style="margin-top: 20px; padding: 15px; background: #2d2d2d; border-radius: 5px;">
+    <h3 style="margin-top: 0; color: #ff9800;">Migration Tools</h3>
+    <p style="color: #aaa; font-size: 12px;">Use these to fix migration issues:</p>
+    <button onclick="forceMigrateAll()" style="background: #ff9800; font-weight: bold;">Migrate ALL to Datastore (Recommended)</button>
+    <button onclick="forceMigratePeeks()">Migrate Peeks</button>
+    <button onclick="forceMigrateSlides()">Migrate Slides</button>
+    <button onclick="clearExtensionSettings()" style="background: #f44336;">Clear extension_settings</button>
+  </div>
+
   <div id="output"></div>
 
   <script type="module">
@@ -124,6 +133,185 @@
       navigator.clipboard.writeText(text).then(() => {
         alert('Copied to clipboard!');
       });
+    };
+
+    // Extension UUID to shortname mapping (from app/config.js)
+    const extensionMap = {
+      'ef3bd271-d408-421f-9338-47b615571e43': 'peeks',
+      '434108f3-18a6-437a-b507-2f998f693bb2': 'slides',
+      '82de735f-a4b7-4fe6-a458-ec29939ae00d': 'groups',
+      'cee1225d-40ac-41e5-a34c-e2edba69d599': 'cmd',
+      '30c25027-d367-4595-b37f-9db3de853c37': 'scripts'
+    };
+
+    // Fix function: Copy from UUID keys to shortname keys in localStorage
+    window.fixPeeksAndSlides = function() {
+      clearOutput();
+      let results = [];
+
+      // Peeks: copy from UUID to shortname
+      const peeksUuidItems = localStorage.getItem('ef3bd271-d408-421f-9338-47b615571e43+items');
+      const peeksUuidPrefs = localStorage.getItem('ef3bd271-d408-421f-9338-47b615571e43+prefs');
+
+      if (peeksUuidItems) {
+        localStorage.setItem('peeks+items', peeksUuidItems);
+        const items = JSON.parse(peeksUuidItems);
+        results.push(`Peeks items: Copied ${items.length} items from UUID key to shortname key`);
+      } else {
+        results.push('Peeks items: No UUID data found');
+      }
+
+      if (peeksUuidPrefs) {
+        localStorage.setItem('peeks+prefs', peeksUuidPrefs);
+        results.push(`Peeks prefs: Copied from UUID key to shortname key`);
+      }
+
+      // Slides: copy from UUID to shortname
+      const slidesUuidItems = localStorage.getItem('434108f3-18a6-437a-b507-2f998f693bb2+items');
+      const slidesUuidPrefs = localStorage.getItem('434108f3-18a6-437a-b507-2f998f693bb2+prefs');
+
+      if (slidesUuidItems) {
+        localStorage.setItem('slides+items', slidesUuidItems);
+        const items = JSON.parse(slidesUuidItems);
+        results.push(`Slides items: Copied ${items.length} items from UUID key to shortname key`);
+      } else {
+        results.push('Slides items: No UUID data found');
+      }
+
+      if (slidesUuidPrefs) {
+        localStorage.setItem('slides+prefs', slidesUuidPrefs);
+        results.push(`Slides prefs: Copied from UUID key to shortname key`);
+      }
+
+      // Groups: copy from UUID to shortname
+      const groupsUuidPrefs = localStorage.getItem('82de735f-a4b7-4fe6-a458-ec29939ae00d+prefs');
+      if (groupsUuidPrefs) {
+        localStorage.setItem('groups+prefs', groupsUuidPrefs);
+        results.push(`Groups prefs: Copied from UUID key to shortname key`);
+      }
+
+      log('Fix Results', results.join('\n'));
+      log('Next Steps', 'Close Settings and reopen it. Your peeks/slides should now show the correct data.\n\nIf using the datastore, also click "Force Migrate" buttons.');
+
+      // Refresh display
+      window.dumpLocalStorage();
+    };
+
+    window.clearExtensionSettings = async function() {
+      if (!confirm('This will clear all extension settings from the datastore. Continue?')) return;
+
+      try {
+        // Get all rows and delete them one by one
+        const result = await api.datastore.getTable('extension_settings');
+        if (result.success) {
+          const ids = Object.keys(result.data);
+          for (const id of ids) {
+            // Use raw SQL via evaluate if available, or just log
+            console.log('Would delete:', id);
+          }
+          log('Clear Result', `Found ${ids.length} rows. Note: Direct deletion not implemented yet.\nPlease restart app after clearing to re-run migration.`);
+        }
+      } catch (err) {
+        log('Clear Error', err.message);
+      }
+
+      // For now, show what would be cleared
+      await window.dumpDatastore();
+    };
+
+    async function migrateExtension(uuid, shortname) {
+      // Try both UUID keys and shortname keys (prefer UUID as it's the original)
+      const uuidPrefsKey = `${uuid}+prefs`;
+      const uuidItemsKey = `${uuid}+items`;
+      const shortPrefsKey = `${shortname}+prefs`;
+      const shortItemsKey = `${shortname}+items`;
+
+      // Prefer UUID keys, fallback to shortname keys
+      const prefsStr = localStorage.getItem(uuidPrefsKey) || localStorage.getItem(shortPrefsKey);
+      const itemsStr = localStorage.getItem(uuidItemsKey) || localStorage.getItem(shortItemsKey);
+
+      let migrated = [];
+      const now = Date.now();
+
+      const prefsSource = localStorage.getItem(uuidPrefsKey) ? uuidPrefsKey :
+                          localStorage.getItem(shortPrefsKey) ? shortPrefsKey : null;
+      const itemsSource = localStorage.getItem(uuidItemsKey) ? uuidItemsKey :
+                          localStorage.getItem(shortItemsKey) ? shortItemsKey : null;
+
+      if (prefsStr) {
+        try {
+          const prefs = JSON.parse(prefsStr);
+          await api.datastore.setRow('extension_settings', `${shortname}:prefs`, {
+            extensionId: shortname,
+            key: 'prefs',
+            value: JSON.stringify(prefs),
+            updatedAt: now
+          });
+          migrated.push(`prefs: migrated from ${prefsSource}`);
+        } catch (e) {
+          migrated.push(`prefs error: ${e.message}`);
+        }
+      } else {
+        migrated.push(`prefs: not found in localStorage`);
+      }
+
+      if (itemsStr) {
+        try {
+          const items = JSON.parse(itemsStr);
+          await api.datastore.setRow('extension_settings', `${shortname}:items`, {
+            extensionId: shortname,
+            key: 'items',
+            value: JSON.stringify(items),
+            updatedAt: now
+          });
+          migrated.push(`items: Array[${items.length}] migrated from ${itemsSource}`);
+        } catch (e) {
+          migrated.push(`items error: ${e.message}`);
+        }
+      } else {
+        migrated.push(`items: not found in localStorage`);
+      }
+
+      return migrated;
+    }
+
+    window.forceMigratePeeks = async function() {
+      clearOutput();
+      const result = await migrateExtension('ef3bd271-d408-421f-9338-47b615571e43', 'peeks');
+      log('Peeks Migration', result.join('\n'));
+
+      // Notify extension to reload
+      api.publish('peeks:settings-changed', {}, api.scopes.GLOBAL);
+      log('Notification', 'Sent peeks:settings-changed to reload extension');
+
+      await window.dumpDatastore();
+    };
+
+    window.forceMigrateSlides = async function() {
+      clearOutput();
+      const result = await migrateExtension('434108f3-18a6-437a-b507-2f998f693bb2', 'slides');
+      log('Slides Migration', result.join('\n'));
+
+      // Notify extension to reload
+      api.publish('slides:settings-changed', {}, api.scopes.GLOBAL);
+      log('Notification', 'Sent slides:settings-changed to reload extension');
+
+      await window.dumpDatastore();
+    };
+
+    window.forceMigrateAll = async function() {
+      clearOutput();
+
+      for (const [uuid, shortname] of Object.entries(extensionMap)) {
+        const result = await migrateExtension(uuid, shortname);
+        log(`${shortname} Migration`, result.join('\n'));
+
+        // Notify extension
+        api.publish(`${shortname}:settings-changed`, {}, api.scopes.GLOBAL);
+      }
+
+      log('Notification', 'Sent settings-changed for all extensions');
+      await window.dumpDatastore();
     };
 
     // Auto-dump on load

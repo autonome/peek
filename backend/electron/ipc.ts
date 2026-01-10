@@ -540,12 +540,14 @@ export function registerExtensionHandlers(): void {
   });
 
   // Extension settings handlers
+  // Note: preload sends { extId } but we accept both extId and id for compatibility
   ipcMain.handle('extension-settings-get', async (ev, data) => {
     try {
       const db = getDb();
+      const extId = data.extId || data.id;
       const settings = db.prepare(
         'SELECT * FROM extension_settings WHERE extensionId = ?'
-      ).all(data.id) as Array<{ key: string; value: string }>;
+      ).all(extId) as Array<{ key: string; value: string }>;
 
       const result: Record<string, unknown> = {};
       for (const s of settings) {
@@ -565,7 +567,7 @@ export function registerExtensionHandlers(): void {
   ipcMain.handle('extension-settings-set', async (ev, data) => {
     try {
       const db = getDb();
-      const extId = data.id;
+      const extId = data.extId || data.id;
       const settings = data.settings || {};
 
       for (const [key, value] of Object.entries(settings)) {
@@ -586,9 +588,10 @@ export function registerExtensionHandlers(): void {
   ipcMain.handle('extension-settings-get-key', async (ev, data) => {
     try {
       const db = getDb();
+      const extId = data.extId || data.id;
       const setting = db.prepare(
         'SELECT * FROM extension_settings WHERE extensionId = ? AND key = ?'
-      ).get(data.id, data.key) as { value: string } | undefined;
+      ).get(extId, data.key) as { value: string } | undefined;
 
       if (!setting) {
         return { success: true, data: null };
@@ -608,11 +611,12 @@ export function registerExtensionHandlers(): void {
   ipcMain.handle('extension-settings-set-key', async (ev, data) => {
     try {
       const db = getDb();
+      const extId = data.extId || data.id;
       const jsonValue = JSON.stringify(data.value);
       db.prepare(`
         INSERT OR REPLACE INTO extension_settings (id, extensionId, key, value, updatedAt)
         VALUES (?, ?, ?, ?, ?)
-      `).run(`${data.id}_${data.key}`, data.id, data.key, jsonValue, Date.now());
+      `).run(`${extId}_${data.key}`, extId, data.key, jsonValue, Date.now());
 
       return { success: true, data: { key: data.key, value: data.value } };
     } catch (error) {

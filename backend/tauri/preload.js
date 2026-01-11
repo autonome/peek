@@ -60,24 +60,71 @@
 
   // ==================== Shortcuts ====================
 
+  // Track global shortcut handlers and listeners for cleanup
+  const globalShortcutHandlers = new Map();
+  const globalShortcutListeners = new Map();
+
   api.shortcuts = {
-    register: (shortcut, cb, options = {}) => {
+    register: async (shortcut, cb, options = {}) => {
       const isGlobal = options.global === true;
       console.log(`[tauri] registering ${isGlobal ? 'global' : 'local'} shortcut ${shortcut}`);
 
       if (isGlobal) {
-        // Global shortcuts not yet implemented in Tauri MVP
-        console.warn('[tauri] Global shortcuts not yet implemented');
+        try {
+          // Register via Rust command
+          const result = await invoke('shortcut_register', {
+            shortcut,
+            source: sourceAddress
+          });
+
+          if (result.success) {
+            // Listen for the shortcut event - replace + with _ to match Rust event naming
+            const safeShortcut = shortcut.replace(/\+/g, '_');
+            const eventName = `shortcut:${safeShortcut}`;
+            invoke('log_message', { source: sourceAddress, args: [`Setting up listener for: ${eventName}`] });
+            const unlisten = await listen(eventName, (event) => {
+              invoke('log_message', { source: sourceAddress, args: [`EVENT RECEIVED: ${eventName}`, JSON.stringify(event)] });
+              try {
+                cb();
+                invoke('log_message', { source: sourceAddress, args: [`Callback executed for: ${shortcut}`] });
+              } catch (e) {
+                invoke('log_message', { source: sourceAddress, args: [`Callback error for ${shortcut}: ${e}`] });
+              }
+            });
+            globalShortcutHandlers.set(shortcut, cb);
+            globalShortcutListeners.set(shortcut, unlisten);
+            invoke('log_message', { source: sourceAddress, args: [`Global shortcut registered: ${shortcut}`] });
+          } else {
+            console.error(`[tauri] Failed to register global shortcut ${shortcut}:`, result.error);
+          }
+        } catch (e) {
+          console.error(`[tauri] Failed to register global shortcut ${shortcut}:`, e);
+        }
       } else {
         localShortcutHandlers.set(shortcut, cb);
       }
     },
 
-    unregister: (shortcut, options = {}) => {
+    unregister: async (shortcut, options = {}) => {
       const isGlobal = options.global === true;
       console.log(`[tauri] unregistering ${isGlobal ? 'global' : 'local'} shortcut ${shortcut}`);
 
-      if (!isGlobal) {
+      if (isGlobal) {
+        try {
+          // Unregister via Rust command
+          await invoke('shortcut_unregister', { shortcut });
+
+          // Stop listening for the event
+          const unlisten = globalShortcutListeners.get(shortcut);
+          if (unlisten) {
+            unlisten();
+            globalShortcutListeners.delete(shortcut);
+          }
+          globalShortcutHandlers.delete(shortcut);
+        } catch (e) {
+          console.error(`[tauri] Failed to unregister global shortcut ${shortcut}:`, e);
+        }
+      } else {
         localShortcutHandlers.delete(shortcut);
       }
     }
@@ -215,10 +262,10 @@
     getOrCreateTag: (name) => invoke('datastore_get_or_create_tag', { name }),
     tagAddress: (addressId, tagId) => invoke('datastore_tag_address', { addressId, tagId }),
     untagAddress: (addressId, tagId) => invoke('datastore_untag_address', { addressId, tagId }),
-    getTagsByFrecency: (domain) => ({ success: true, data: [] }), // Not implemented
+    getTagsByFrecency: (limit) => invoke('datastore_get_tags_by_frecency', { limit }),
     getAddressTags: (addressId) => invoke('datastore_get_address_tags', { addressId }),
-    getAddressesByTag: (tagId) => ({ success: true, data: [] }), // Not implemented
-    getUntaggedAddresses: () => ({ success: true, data: [] }) // Not implemented
+    getAddressesByTag: (tagId) => invoke('datastore_get_addresses_by_tag', { tagId }),
+    getUntaggedAddresses: (limit) => invoke('datastore_get_untagged_addresses', { limit })
   };
 
   // ==================== Commands ====================
@@ -229,15 +276,16 @@
         console.error('commands.register: name and execute are required');
         return;
       }
+      // Store execute handler locally
       window._cmdHandlers = window._cmdHandlers || {};
       window._cmdHandlers[command.name] = command.execute;
 
-      // Publish command registration
-      api.publish('cmd:register', {
+      // Register with backend
+      invoke('commands_register', {
         name: command.name,
         description: command.description || '',
         source: sourceAddress
-      }, api.scopes.GLOBAL);
+      }).catch(e => console.error('[tauri] commands.register error:', e));
 
       console.log('[tauri] commands.register:', command.name);
     },
@@ -246,13 +294,17 @@
       if (window._cmdHandlers) {
         delete window._cmdHandlers[name];
       }
-      api.publish('cmd:unregister', { name }, api.scopes.GLOBAL);
+      invoke('commands_unregister', { name }).catch(e => console.error('[tauri] commands.unregister error:', e));
       console.log('[tauri] commands.unregister:', name);
     },
 
     getAll: async () => {
-      // Return empty array for now - cmd registry not implemented
-      return [];
+      try {
+        return await invoke('commands_get_all', {});
+      } catch (e) {
+        console.error('[tauri] commands.getAll error:', e);
+        return [];
+      }
     }
   };
 
@@ -261,7 +313,14 @@
   api.extensions = {
     _hasPermission: () => sourceAddress.startsWith('peek://app/'),
 
-    list: async () => ({ success: true, data: [] }),
+    list: async () => {
+      try {
+        return await invoke('extensions_list', {});
+      } catch (e) {
+        console.error('[tauri] extensions.list error:', e);
+        return { success: false, error: String(e) };
+      }
+    },
     load: async (id) => ({ success: false, error: 'Not implemented in Tauri MVP' }),
     unload: async (id) => ({ success: false, error: 'Not implemented in Tauri MVP' }),
     reload: async (id) => ({ success: false, error: 'Not implemented in Tauri MVP' }),
@@ -314,7 +373,9 @@
 
   api.quit = () => {
     console.log('[tauri] quit requested');
-    // Not implemented yet
+    invoke('app_quit', {}).catch(e => {
+      console.error('[tauri] quit error:', e);
+    });
   };
 
   // ==================== Keyboard Handling ====================
@@ -370,6 +431,44 @@
 
   // Expose API globally
   window.app = api;
+
+  // Sync running extensions' enabled state to localStorage
+  // This ensures the Settings UI shows correct enabled checkboxes
+  const syncExtensionState = async () => {
+    try {
+      const result = await invoke('extensions_list', {});
+      if (result.success && result.data && result.data.length > 0) {
+        // Get current features from localStorage
+        const storageKey = '8aadaae5-2594-4968-aba0-707f0d371cfb'; // app config id
+        const stored = localStorage.getItem(storageKey);
+        const data = stored ? JSON.parse(stored) : {};
+        const items = data.items || [];
+
+        // Mark running extensions as enabled
+        const runningIds = new Set(result.data.map(e => e.id.toLowerCase()));
+        let changed = false;
+
+        items.forEach(item => {
+          const itemName = item.name?.toLowerCase();
+          if (runningIds.has(itemName) && !item.enabled) {
+            item.enabled = true;
+            changed = true;
+          }
+        });
+
+        if (changed) {
+          data.items = items;
+          localStorage.setItem(storageKey, JSON.stringify(data));
+          console.log('[tauri:preload] Synced extension enabled state to localStorage');
+        }
+      }
+    } catch (e) {
+      // Ignore errors during sync
+    }
+  };
+
+  // Run sync after a short delay to ensure extensions are loaded
+  setTimeout(syncExtensionState, 2000);
 
   console.log('[tauri:preload] API initialized for:', sourceAddress);
 })();

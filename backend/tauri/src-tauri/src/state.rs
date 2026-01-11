@@ -1,6 +1,8 @@
 //! Application state management
 
+use crate::extensions::ExtensionManifest;
 use rusqlite::Connection;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -12,6 +14,33 @@ pub struct WindowInfo {
     pub source: String,
     pub url: String,
     pub created_at: i64,
+}
+
+/// Command registered by an extension or feature
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegisteredCommand {
+    pub name: String,
+    pub description: String,
+    pub source: String,
+}
+
+/// Loaded extension info
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoadedExtension {
+    pub id: String,
+    pub manifest: ExtensionManifest,
+    pub window_label: String,
+}
+
+/// Registered shortcut info
+#[derive(Debug, Clone)]
+pub struct RegisteredShortcut {
+    /// Original shortcut string from JS (e.g., "Option+Space")
+    pub original: String,
+    /// Tauri-compatible shortcut string (e.g., "Alt+Space")
+    pub tauri_format: String,
+    /// Source window that registered it
+    pub source: String,
 }
 
 /// Application state shared across all commands
@@ -30,6 +59,15 @@ pub struct AppState {
 
     /// Headless mode - no visible windows (for testing)
     pub headless: bool,
+
+    /// Registered commands from extensions/features
+    pub commands: Mutex<HashMap<String, RegisteredCommand>>,
+
+    /// Loaded extensions
+    pub extensions: Mutex<HashMap<String, LoadedExtension>>,
+
+    /// Registered global shortcuts - maps tauri_format to shortcut info
+    pub shortcuts: Mutex<HashMap<String, RegisteredShortcut>>,
 }
 
 impl AppState {
@@ -40,7 +78,79 @@ impl AppState {
             profile_dir,
             windows: Mutex::new(HashMap::new()),
             headless,
+            commands: Mutex::new(HashMap::new()),
+            extensions: Mutex::new(HashMap::new()),
+            shortcuts: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Register a shortcut mapping
+    pub fn register_shortcut(&self, original: &str, tauri_format: &str, source: &str) {
+        let mut shortcuts = self.shortcuts.lock().unwrap();
+        shortcuts.insert(
+            tauri_format.to_string(),
+            RegisteredShortcut {
+                original: original.to_string(),
+                tauri_format: tauri_format.to_string(),
+                source: source.to_string(),
+            },
+        );
+    }
+
+    /// Unregister a shortcut
+    pub fn unregister_shortcut(&self, tauri_format: &str) {
+        let mut shortcuts = self.shortcuts.lock().unwrap();
+        shortcuts.remove(tauri_format);
+    }
+
+    /// Find shortcut by tauri format, returns original name
+    pub fn find_shortcut(&self, tauri_format: &str) -> Option<RegisteredShortcut> {
+        let shortcuts = self.shortcuts.lock().unwrap();
+        shortcuts.get(tauri_format).cloned()
+    }
+
+    /// Register a loaded extension
+    pub fn register_extension(&self, id: &str, manifest: ExtensionManifest, window_label: &str) {
+        let mut extensions = self.extensions.lock().unwrap();
+        extensions.insert(
+            id.to_string(),
+            LoadedExtension {
+                id: id.to_string(),
+                manifest,
+                window_label: window_label.to_string(),
+            },
+        );
+    }
+
+    /// Get all loaded extensions
+    pub fn list_extensions(&self) -> Vec<LoadedExtension> {
+        let extensions = self.extensions.lock().unwrap();
+        extensions.values().cloned().collect()
+    }
+
+    /// Register a command
+    pub fn register_command(&self, name: &str, description: &str, source: &str) {
+        let mut commands = self.commands.lock().unwrap();
+        commands.insert(
+            name.to_string(),
+            RegisteredCommand {
+                name: name.to_string(),
+                description: description.to_string(),
+                source: source.to_string(),
+            },
+        );
+    }
+
+    /// Unregister a command
+    pub fn unregister_command(&self, name: &str) {
+        let mut commands = self.commands.lock().unwrap();
+        commands.remove(name);
+    }
+
+    /// Get all registered commands
+    pub fn get_all_commands(&self) -> Vec<RegisteredCommand> {
+        let commands = self.commands.lock().unwrap();
+        commands.values().cloned().collect()
     }
 
     /// Register a window in the registry

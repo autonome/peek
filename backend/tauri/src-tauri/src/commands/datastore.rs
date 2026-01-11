@@ -1,7 +1,10 @@
 //! Datastore commands - IPC handlers for SQLite operations
 
 use super::CommandResponse;
-use crate::datastore::{self, Address, AddressFilter, AddressOptions, AddressTag, DatastoreStats, Tag, Visit, VisitFilter, VisitOptions};
+use crate::datastore::{
+    self, Address, AddressFilter, AddressOptions, AddressTag, DatastoreStats, Tag, Visit,
+    VisitFilter, VisitOptions,
+};
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -172,6 +175,47 @@ pub async fn datastore_get_address_tags(
     match datastore::get_address_tags(&db, &address_id) {
         Ok(tags) => Ok(CommandResponse::success(tags)),
         Err(e) => Ok(CommandResponse::error(format!("Failed to get address tags: {}", e))),
+    }
+}
+
+#[tauri::command]
+pub async fn datastore_get_tags_by_frecency(
+    state: tauri::State<'_, Arc<AppState>>,
+    limit: Option<i64>,
+) -> Result<CommandResponse<Vec<Tag>>, String> {
+    let db = state.db.lock().unwrap();
+    let limit = limit.unwrap_or(50);
+
+    match datastore::get_tags_by_frecency(&db, limit) {
+        Ok(tags) => Ok(CommandResponse::success(tags)),
+        Err(e) => Ok(CommandResponse::error(format!("Failed to get tags: {}", e))),
+    }
+}
+
+#[tauri::command]
+pub async fn datastore_get_addresses_by_tag(
+    state: tauri::State<'_, Arc<AppState>>,
+    tag_id: String,
+) -> Result<CommandResponse<Vec<Address>>, String> {
+    let db = state.db.lock().unwrap();
+
+    match datastore::get_addresses_by_tag(&db, &tag_id) {
+        Ok(addresses) => Ok(CommandResponse::success(addresses)),
+        Err(e) => Ok(CommandResponse::error(format!("Failed to get addresses: {}", e))),
+    }
+}
+
+#[tauri::command]
+pub async fn datastore_get_untagged_addresses(
+    state: tauri::State<'_, Arc<AppState>>,
+    limit: Option<i64>,
+) -> Result<CommandResponse<Vec<Address>>, String> {
+    let db = state.db.lock().unwrap();
+    let limit = limit.unwrap_or(100);
+
+    match datastore::get_untagged_addresses(&db, limit) {
+        Ok(addresses) => Ok(CommandResponse::success(addresses)),
+        Err(e) => Ok(CommandResponse::error(format!("Failed to get addresses: {}", e))),
     }
 }
 

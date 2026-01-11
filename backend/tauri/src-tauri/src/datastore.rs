@@ -799,6 +799,103 @@ pub fn get_address_tags(conn: &Connection, address_id: &str) -> Result<Vec<Tag>>
     tags.collect()
 }
 
+pub fn get_tags_by_frecency(conn: &Connection, limit: i64) -> Result<Vec<Tag>> {
+    let mut stmt = conn.prepare(
+        r#"SELECT id, name, slug, color, parentId, description, metadata, createdAt, updatedAt, frequency, lastUsedAt, frecencyScore
+           FROM tags
+           ORDER BY frecencyScore DESC, frequency DESC, lastUsedAt DESC
+           LIMIT ?1"#,
+    )?;
+
+    let tags = stmt.query_map(params![limit], |row| {
+        Ok(Tag {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            slug: row.get(2)?,
+            color: row.get(3)?,
+            parent_id: row.get(4)?,
+            description: row.get(5)?,
+            metadata: row.get(6)?,
+            created_at: row.get(7)?,
+            updated_at: row.get(8)?,
+            frequency: row.get(9)?,
+            last_used_at: row.get(10)?,
+            frecency_score: row.get(11)?,
+        })
+    })?;
+
+    tags.collect()
+}
+
+pub fn get_addresses_by_tag(conn: &Connection, tag_id: &str) -> Result<Vec<Address>> {
+    let mut stmt = conn.prepare(
+        r#"SELECT a.id, a.uri, a.protocol, a.domain, a.path, a.title, a.mimeType, a.favicon, a.description, a.tags, a.metadata, a.createdAt, a.updatedAt, a.lastVisitAt, a.visitCount, a.starred, a.archived
+           FROM addresses a
+           JOIN address_tags at ON a.id = at.addressId
+           WHERE at.tagId = ?1
+           ORDER BY a.updatedAt DESC"#,
+    )?;
+
+    let addresses = stmt.query_map(params![tag_id], |row| {
+        Ok(Address {
+            id: row.get(0)?,
+            uri: row.get(1)?,
+            protocol: row.get(2)?,
+            domain: row.get(3)?,
+            path: row.get(4)?,
+            title: row.get(5)?,
+            mime_type: row.get(6)?,
+            favicon: row.get(7)?,
+            description: row.get(8)?,
+            tags: row.get(9)?,
+            metadata: row.get(10)?,
+            created_at: row.get(11)?,
+            updated_at: row.get(12)?,
+            last_visit_at: row.get(13)?,
+            visit_count: row.get(14)?,
+            starred: row.get(15)?,
+            archived: row.get(16)?,
+        })
+    })?;
+
+    addresses.collect()
+}
+
+pub fn get_untagged_addresses(conn: &Connection, limit: i64) -> Result<Vec<Address>> {
+    let mut stmt = conn.prepare(
+        r#"SELECT a.id, a.uri, a.protocol, a.domain, a.path, a.title, a.mimeType, a.favicon, a.description, a.tags, a.metadata, a.createdAt, a.updatedAt, a.lastVisitAt, a.visitCount, a.starred, a.archived
+           FROM addresses a
+           LEFT JOIN address_tags at ON a.id = at.addressId
+           WHERE at.id IS NULL
+           ORDER BY a.updatedAt DESC
+           LIMIT ?1"#,
+    )?;
+
+    let addresses = stmt.query_map(params![limit], |row| {
+        Ok(Address {
+            id: row.get(0)?,
+            uri: row.get(1)?,
+            protocol: row.get(2)?,
+            domain: row.get(3)?,
+            path: row.get(4)?,
+            title: row.get(5)?,
+            mime_type: row.get(6)?,
+            favicon: row.get(7)?,
+            description: row.get(8)?,
+            tags: row.get(9)?,
+            metadata: row.get(10)?,
+            created_at: row.get(11)?,
+            updated_at: row.get(12)?,
+            last_visit_at: row.get(13)?,
+            visit_count: row.get(14)?,
+            starred: row.get(15)?,
+            archived: row.get(16)?,
+        })
+    })?;
+
+    addresses.collect()
+}
+
 // ==================== Generic Table Operations ====================
 
 pub fn get_table(

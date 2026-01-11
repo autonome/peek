@@ -16,23 +16,18 @@ for arg in "$@"; do
     fi
 done
 
+MODE="headless"
+[ -z "$HEADLESS" ] && MODE="visible"
+
 if [ "$DURATION" = "0" ]; then
-    echo "Running Tauri (Ctrl+C to stop)..."
+    echo "Running Tauri $MODE (Ctrl+C to stop)..."
     HEADLESS=$HEADLESS cargo run 2>&1
 else
-    MODE="headless"
-    [ -z "$HEADLESS" ] && MODE="visible"
-    echo "Running Tauri ($MODE) for $DURATION seconds..."
-    LOGFILE=$(mktemp)
-    # Run in background, capture all output to file
-    HEADLESS=$HEADLESS cargo run > "$LOGFILE" 2>&1 &
+    echo "Running Tauri $MODE for $DURATION seconds..."
+    HEADLESS=$HEADLESS cargo run 2>&1 &
     PID=$!
     sleep "$DURATION"
     kill $PID 2>/dev/null
     wait $PID 2>/dev/null
-    echo "=== Output ==="
-    cat "$LOGFILE"
-    rm "$LOGFILE"
-    echo ""
-    echo "=== Stopped after $DURATION seconds ==="
+    echo "=== Done ==="
 fi

@@ -35,6 +35,10 @@ impl<T> CommandResponse<T> {
     }
 }
 
+use crate::state::{AppState, LoadedExtension, RegisteredCommand};
+use std::sync::Arc;
+use tauri::{AppHandle, Emitter};
+
 /// Log message command - forwards renderer logs to stdout
 #[tauri::command]
 pub fn log_message(source: String, args: Vec<serde_json::Value>) {
@@ -47,4 +51,135 @@ pub fn log_message(source: String, args: Vec<serde_json::Value>) {
         .collect();
 
     println!("[{}] {}", source, formatted_args.join(" "));
+}
+
+/// Register a command from a renderer
+#[tauri::command]
+pub async fn commands_register(
+    state: tauri::State<'_, Arc<AppState>>,
+    name: String,
+    description: String,
+    source: String,
+) -> Result<CommandResponse<bool>, String> {
+    state.register_command(&name, &description, &source);
+    println!("[tauri:cmd] Registered command: {} from {}", name, source);
+    Ok(CommandResponse::success(true))
+}
+
+/// Unregister a command
+#[tauri::command]
+pub async fn commands_unregister(
+    state: tauri::State<'_, Arc<AppState>>,
+    name: String,
+) -> Result<CommandResponse<bool>, String> {
+    state.unregister_command(&name);
+    println!("[tauri:cmd] Unregistered command: {}", name);
+    Ok(CommandResponse::success(true))
+}
+
+/// Get all registered commands
+#[tauri::command]
+pub async fn commands_get_all(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<Vec<RegisteredCommand>, String> {
+    Ok(state.get_all_commands())
+}
+
+/// List all loaded extensions
+#[tauri::command]
+pub async fn extensions_list(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<CommandResponse<Vec<LoadedExtension>>, String> {
+    let extensions = state.list_extensions();
+    Ok(CommandResponse::success(extensions))
+}
+
+/// Quit the application
+#[tauri::command]
+pub async fn app_quit(app: AppHandle) -> Result<(), String> {
+    println!("[tauri] Quit requested");
+    app.exit(0);
+    Ok(())
+}
+
+/// Register a global shortcut
+#[tauri::command]
+pub async fn shortcut_register(
+    app: AppHandle,
+    state: tauri::State<'_, Arc<AppState>>,
+    shortcut: String,
+    source: String,
+) -> Result<CommandResponse<bool>, String> {
+    use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
+
+    // Convert Electron-style shortcuts to Tauri format
+    let tauri_shortcut = shortcut
+        .replace("CommandOrControl", "CmdOrCtrl")
+        .replace("Command", "Cmd")
+        .replace("Control", "Ctrl")
+        .replace("Option", "Alt");
+
+    println!(
+        "[tauri:shortcut] Registering: {} -> {} from {}",
+        shortcut, tauri_shortcut, source
+    );
+
+    let parsed: Shortcut = match tauri_shortcut.parse() {
+        Ok(s) => s,
+        Err(e) => {
+            println!("[tauri:shortcut] Failed to parse {}: {}", tauri_shortcut, e);
+            return Ok(CommandResponse::error(format!("Invalid shortcut: {}", e)));
+        }
+    };
+
+    // Register the shortcut with Tauri
+    if let Err(e) = app.global_shortcut().register(parsed.clone()) {
+        println!("[tauri:shortcut] Failed to register {}: {}", shortcut, e);
+        return Ok(CommandResponse::error(format!("Failed to register: {}", e)));
+    }
+
+    // Store the mapping so the global handler can look it up
+    // Use the parsed shortcut's string representation as the key
+    let tauri_key = parsed.to_string();
+    state.register_shortcut(&shortcut, &tauri_key, &source);
+
+    println!("[tauri:shortcut] Registered: {} (key: {})", shortcut, tauri_key);
+    Ok(CommandResponse::success(true))
+}
+
+/// Unregister a global shortcut
+#[tauri::command]
+pub async fn shortcut_unregister(
+    app: AppHandle,
+    state: tauri::State<'_, Arc<AppState>>,
+    shortcut: String,
+) -> Result<CommandResponse<bool>, String> {
+    use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
+
+    let tauri_shortcut = shortcut
+        .replace("CommandOrControl", "CmdOrCtrl")
+        .replace("Command", "Cmd")
+        .replace("Control", "Ctrl")
+        .replace("Option", "Alt");
+
+    let parsed: Shortcut = match tauri_shortcut.parse() {
+        Ok(s) => s,
+        Err(e) => {
+            return Ok(CommandResponse::error(format!("Invalid shortcut: {}", e)));
+        }
+    };
+
+    let tauri_key = parsed.to_string();
+
+    match app.global_shortcut().unregister(parsed) {
+        Ok(_) => {
+            state.unregister_shortcut(&tauri_key);
+            println!("[tauri:shortcut] Unregistered: {}", shortcut);
+            Ok(CommandResponse::success(true))
+        }
+        Err(e) => {
+            println!("[tauri:shortcut] Failed to unregister {}: {}", shortcut, e);
+            Ok(CommandResponse::error(format!("Failed to unregister: {}", e)))
+        }
+    }
 }

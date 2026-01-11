@@ -5,12 +5,13 @@
 
 mod commands;
 mod datastore;
+mod extensions;
 mod protocol;
 mod state;
 
 use state::AppState;
 use std::sync::Arc;
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{ActivationPolicy, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 /// The preload script that provides window.app API
 /// This is injected into all windows to match Electron's preload behavior
@@ -21,10 +22,61 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
+            // Initialize global shortcut plugin with a handler that emits events
+            // This must be done in setup, not with .plugin(), to properly handle all shortcuts
+            #[cfg(desktop)]
+            {
+                use tauri_plugin_global_shortcut::ShortcutState;
+
+                app.handle().plugin(
+                    tauri_plugin_global_shortcut::Builder::new()
+                        .with_handler(|app, shortcut, event| {
+                            if event.state == ShortcutState::Pressed {
+                                // Get the shortcut as a string for lookup
+                                let shortcut_str = shortcut.to_string();
+
+                                // Look up the original shortcut name from state
+                                if let Some(state) = app.try_state::<Arc<AppState>>() {
+                                    if let Some(info) = state.find_shortcut(&shortcut_str) {
+                                        // Emit with original name, replacing + with _ for valid event name
+                                        let safe_name = info.original.replace('+', "_");
+                                        let event_name = format!("shortcut:{}", safe_name);
+
+                                        println!(
+                                            "[tauri:shortcut] Triggered: {} (original: {}) - emitting: {}",
+                                            shortcut_str, info.original, event_name
+                                        );
+
+                                        if let Err(e) = app.emit(
+                                            &event_name,
+                                            serde_json::json!({
+                                                "shortcut": info.original,
+                                                "source": info.source
+                                            }),
+                                        ) {
+                                            println!("[tauri:shortcut] Emit failed: {}", e);
+                                        }
+                                    } else {
+                                        println!(
+                                            "[tauri:shortcut] No mapping found for: {}",
+                                            shortcut_str
+                                        );
+                                    }
+                                }
+                            }
+                        })
+                        .build(),
+                )?;
+            }
+
             // Check for headless mode (for testing)
-            let headless = std::env::var("HEADLESS").is_ok();
+            // HEADLESS=1 means headless, empty or unset means visible
+            let headless = std::env::var("HEADLESS").map(|v| !v.is_empty()).unwrap_or(false);
             if headless {
                 println!("[tauri] Running in HEADLESS mode - no visible windows");
+                // Prevent app from appearing in Dock and stealing focus
+                #[cfg(target_os = "macos")]
+                app.set_activation_policy(ActivationPolicy::Accessory);
             }
 
             // Determine profile based on environment
@@ -77,6 +129,61 @@ pub fn run() {
                 println!("[tauri] DevTools opened for main window");
             }
 
+            // Discover and load extensions
+            let extensions_dir = if cfg!(debug_assertions) {
+                let manifest_dir =
+                    std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
+                std::path::PathBuf::from(manifest_dir)
+                    .join("../../..")
+                    .join("extensions")
+            } else {
+                app.path()
+                    .resource_dir()
+                    .expect("Failed to get resource dir")
+                    .join("extensions")
+            };
+
+            let discovered = extensions::discover_extensions(&extensions_dir);
+            println!("[tauri] Discovered {} extensions", discovered.len());
+
+            // Get state for checking enabled status
+            let state = app.state::<Arc<AppState>>();
+
+            for ext in discovered {
+                let is_enabled = {
+                    let db = state.db.lock().unwrap();
+                    extensions::is_extension_enabled(&db, &ext.id, ext.manifest.builtin)
+                };
+
+                if !is_enabled {
+                    println!("[tauri:ext] Skipping disabled extension: {}", ext.id);
+                    continue;
+                }
+
+                // Create extension background window
+                let background = ext.manifest.background.as_deref().unwrap_or("background.html");
+                let ext_url = format!("peek://ext/{}/{}", ext.id, background);
+
+                println!("[tauri:ext] Loading extension: {} from {}", ext.id, ext_url);
+
+                let ext_url_parsed = WebviewUrl::CustomProtocol(
+                    ext_url.parse().expect("Invalid extension URL"),
+                );
+
+                let label = format!("ext_{}", ext.id);
+                let window_result = WebviewWindowBuilder::new(app, &label, ext_url_parsed)
+                    .title(&format!("Extension: {}", ext.manifest.name.as_deref().unwrap_or(&ext.id)))
+                    .inner_size(800.0, 600.0)
+                    .visible(false)
+                    .initialization_script(PRELOAD_SCRIPT)
+                    .build();
+
+                if window_result.is_ok() {
+                    // Register the extension in state
+                    state.register_extension(&ext.id, ext.manifest.clone(), &label);
+                }
+            }
+
             println!("[tauri] App setup complete");
 
             Ok(())
@@ -101,11 +208,25 @@ pub fn run() {
             commands::datastore::datastore_tag_address,
             commands::datastore::datastore_untag_address,
             commands::datastore::datastore_get_address_tags,
+            commands::datastore::datastore_get_tags_by_frecency,
+            commands::datastore::datastore_get_addresses_by_tag,
+            commands::datastore::datastore_get_untagged_addresses,
             commands::datastore::datastore_get_table,
             commands::datastore::datastore_set_row,
             commands::datastore::datastore_get_stats,
             // Utility commands
             commands::log_message,
+            // Command palette
+            commands::commands_register,
+            commands::commands_unregister,
+            commands::commands_get_all,
+            // Extensions
+            commands::extensions_list,
+            // App control
+            commands::app_quit,
+            // Shortcuts
+            commands::shortcut_register,
+            commands::shortcut_unregister,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

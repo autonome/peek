@@ -8,7 +8,41 @@
 (function() {
   'use strict';
 
-  // Skip if already initialized or not in Tauri
+  // Always set up ESC handler for closing windows, even on external pages
+  // This runs before any Tauri check to ensure ESC works everywhere
+  const setupEscapeHandler = () => {
+    document.addEventListener('keyup', (e) => {
+      if (e.key === 'Escape') {
+        // If we have the Tauri API, use it to close
+        if (window.__TAURI__ && window.__TAURI__.webviewWindow) {
+          const { getCurrentWebviewWindow } = window.__TAURI__.webviewWindow;
+          if (window._escapeCallback) {
+            Promise.resolve(window._escapeCallback()).then(result => {
+              if (!result || !result.handled) {
+                getCurrentWebviewWindow().close();
+              }
+            }).catch(() => {
+              getCurrentWebviewWindow().close();
+            });
+          } else {
+            getCurrentWebviewWindow().close();
+          }
+        } else {
+          // Fallback: try window.close()
+          window.close();
+        }
+      }
+    });
+  };
+
+  // Set up ESC handler immediately
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupEscapeHandler);
+  } else {
+    setupEscapeHandler();
+  }
+
+  // Skip API setup if already initialized or not in Tauri
   if (window.app || !window.__TAURI__) {
     return;
   }
@@ -67,65 +101,60 @@
   api.shortcuts = {
     register: async (shortcut, cb, options = {}) => {
       const isGlobal = options.global === true;
-      console.log(`[tauri] registering ${isGlobal ? 'global' : 'local'} shortcut ${shortcut}`);
+      invoke('log_message', { source: sourceAddress, args: [`registering ${isGlobal ? 'global' : 'local'} shortcut: ${shortcut}`] });
 
-      if (isGlobal) {
-        try {
-          // Register via Rust command
-          const result = await invoke('shortcut_register', {
-            shortcut,
-            source: sourceAddress
+      // In Tauri, we register all shortcuts as global (they work system-wide)
+      // The "local" vs "global" distinction from Electron is handled differently
+      // For now, treat all shortcuts as global shortcuts with event emission
+      try {
+        // Register via Rust command
+        const result = await invoke('shortcut_register', {
+          shortcut,
+          source: sourceAddress
+        });
+
+        if (result.success) {
+          // Listen for the shortcut event - replace + with _ to match Rust event naming
+          const safeShortcut = shortcut.replace(/\+/g, '_');
+          const eventName = `shortcut:${safeShortcut}`;
+          invoke('log_message', { source: sourceAddress, args: [`Setting up listener for: ${eventName}`] });
+          const unlisten = await listen(eventName, (event) => {
+            invoke('log_message', { source: sourceAddress, args: [`EVENT RECEIVED: ${eventName}`, JSON.stringify(event)] });
+            try {
+              cb();
+              invoke('log_message', { source: sourceAddress, args: [`Callback executed for: ${shortcut}`] });
+            } catch (e) {
+              invoke('log_message', { source: sourceAddress, args: [`Callback error for ${shortcut}: ${e}`] });
+            }
           });
-
-          if (result.success) {
-            // Listen for the shortcut event - replace + with _ to match Rust event naming
-            const safeShortcut = shortcut.replace(/\+/g, '_');
-            const eventName = `shortcut:${safeShortcut}`;
-            invoke('log_message', { source: sourceAddress, args: [`Setting up listener for: ${eventName}`] });
-            const unlisten = await listen(eventName, (event) => {
-              invoke('log_message', { source: sourceAddress, args: [`EVENT RECEIVED: ${eventName}`, JSON.stringify(event)] });
-              try {
-                cb();
-                invoke('log_message', { source: sourceAddress, args: [`Callback executed for: ${shortcut}`] });
-              } catch (e) {
-                invoke('log_message', { source: sourceAddress, args: [`Callback error for ${shortcut}: ${e}`] });
-              }
-            });
-            globalShortcutHandlers.set(shortcut, cb);
-            globalShortcutListeners.set(shortcut, unlisten);
-            invoke('log_message', { source: sourceAddress, args: [`Global shortcut registered: ${shortcut}`] });
-          } else {
-            console.error(`[tauri] Failed to register global shortcut ${shortcut}:`, result.error);
-          }
-        } catch (e) {
-          console.error(`[tauri] Failed to register global shortcut ${shortcut}:`, e);
+          globalShortcutHandlers.set(shortcut, cb);
+          globalShortcutListeners.set(shortcut, unlisten);
+          invoke('log_message', { source: sourceAddress, args: [`${isGlobal ? 'Global' : 'Local'} shortcut registered: ${shortcut}`] });
+        } else {
+          console.error(`[tauri] Failed to register shortcut ${shortcut}:`, result.error);
         }
-      } else {
-        localShortcutHandlers.set(shortcut, cb);
+      } catch (e) {
+        console.error(`[tauri] Failed to register shortcut ${shortcut}:`, e);
       }
     },
 
     unregister: async (shortcut, options = {}) => {
       const isGlobal = options.global === true;
-      console.log(`[tauri] unregistering ${isGlobal ? 'global' : 'local'} shortcut ${shortcut}`);
+      invoke('log_message', { source: sourceAddress, args: [`unregistering ${isGlobal ? 'global' : 'local'} shortcut: ${shortcut}`] });
 
-      if (isGlobal) {
-        try {
-          // Unregister via Rust command
-          await invoke('shortcut_unregister', { shortcut });
+      try {
+        // Unregister via Rust command
+        await invoke('shortcut_unregister', { shortcut });
 
-          // Stop listening for the event
-          const unlisten = globalShortcutListeners.get(shortcut);
-          if (unlisten) {
-            unlisten();
-            globalShortcutListeners.delete(shortcut);
-          }
-          globalShortcutHandlers.delete(shortcut);
-        } catch (e) {
-          console.error(`[tauri] Failed to unregister global shortcut ${shortcut}:`, e);
+        // Stop listening for the event
+        const unlisten = globalShortcutListeners.get(shortcut);
+        if (unlisten) {
+          unlisten();
+          globalShortcutListeners.delete(shortcut);
         }
-      } else {
-        localShortcutHandlers.delete(shortcut);
+        globalShortcutHandlers.delete(shortcut);
+      } catch (e) {
+        console.error(`[tauri] Failed to unregister shortcut ${shortcut}:`, e);
       }
     }
   };
@@ -231,8 +260,10 @@
     const key = `${sourceAddress}:${topic}`;
 
     listen(`pubsub:${topic}`, (event) => {
-      const msg = event.payload || {};
-      msg.source = sourceAddress;
+      const payload = event.payload || {};
+      // Unwrap the data and add source - publish wraps msg in { source, scope, data: msg }
+      const msg = payload.data || {};
+      msg.source = payload.source || sourceAddress;
       try {
         callback(msg);
       } catch (ex) {
@@ -270,6 +301,9 @@
 
   // ==================== Commands ====================
 
+  // Track command execution subscriptions for cleanup
+  const commandSubscriptions = new Map();
+
   api.commands = {
     register: (command) => {
       if (!command.name || !command.execute) {
@@ -279,6 +313,21 @@
       // Store execute handler locally
       window._cmdHandlers = window._cmdHandlers || {};
       window._cmdHandlers[command.name] = command.execute;
+
+      // Subscribe to execution messages from the cmd panel
+      const executeTopic = `cmd:execute:${command.name}`;
+      listen(`pubsub:${executeTopic}`, (event) => {
+        const payload = event.payload || {};
+        const ctx = payload.data || {};
+        console.log(`[tauri] Executing command: ${command.name}`, ctx);
+        try {
+          command.execute(ctx);
+        } catch (e) {
+          console.error(`[tauri] Command execution error for ${command.name}:`, e);
+        }
+      }).then(unlisten => {
+        commandSubscriptions.set(command.name, unlisten);
+      });
 
       // Register with backend
       invoke('commands_register', {
@@ -293,6 +342,12 @@
     unregister: (name) => {
       if (window._cmdHandlers) {
         delete window._cmdHandlers[name];
+      }
+      // Clean up execution subscription
+      const unlisten = commandSubscriptions.get(name);
+      if (unlisten) {
+        unlisten();
+        commandSubscriptions.delete(name);
       }
       invoke('commands_unregister', { name }).catch(e => console.error('[tauri] commands.unregister error:', e));
       console.log('[tauri] commands.unregister:', name);
@@ -412,22 +467,18 @@
     }
   });
 
-  // ESC key handling
-  document.addEventListener('keyup', (e) => {
-    if (e.key === 'Escape') {
-      if (window._escapeCallback) {
-        Promise.resolve(window._escapeCallback()).then(result => {
-          if (!result || !result.handled) {
-            getCurrentWebviewWindow().close();
-          }
-        }).catch(() => {
-          getCurrentWebviewWindow().close();
-        });
-      } else {
-        getCurrentWebviewWindow().close();
-      }
-    }
-  });
+  // ESC key handling is now set up at the top of the file to work on all pages
+
+  // Override window.close to use Tauri's close method
+  const originalClose = window.close.bind(window);
+  window.close = () => {
+    console.log('[tauri] window.close called');
+    getCurrentWebviewWindow().close().catch(e => {
+      console.error('[tauri] window.close error:', e);
+      // Fallback to original
+      originalClose();
+    });
+  };
 
   // Expose API globally
   window.app = api;

@@ -20,10 +20,12 @@ pub struct WindowOpenOptions {
     pub modal: Option<bool>,
     pub transparent: Option<bool>,
     pub decorations: Option<bool>,
+    pub frame: Option<bool>,      // Electron's frame option (false = no titlebar/menubar)
     pub always_on_top: Option<bool>,
     pub visible: Option<bool>,
     pub resizable: Option<bool>,
     pub keep_live: Option<bool>,
+    pub center: Option<bool>,
 }
 
 /// Window info returned by list command
@@ -117,12 +119,23 @@ pub async fn window_open(
         builder = builder.position(x, y);
     }
 
-    if let Some(decorations) = options.decorations {
-        builder = builder.decorations(decorations);
-    }
+    // Handle decorations - frame:false in Electron means no decorations
+    let has_decorations = match (options.decorations, options.frame) {
+        (Some(d), _) => d,           // Explicit decorations takes precedence
+        (None, Some(f)) => f,        // frame:false means decorations:false
+        (None, None) => true,        // Default to having decorations
+    };
+    builder = builder.decorations(has_decorations);
+
+    // Note: transparent windows require macos-private-api feature on macOS
+    // Skipping for now as it prevents App Store submission
 
     if options.always_on_top.unwrap_or(false) {
         builder = builder.always_on_top(true);
+    }
+
+    if options.center.unwrap_or(false) {
+        builder = builder.center();
     }
 
     // Build the window

@@ -26,11 +26,12 @@ pub fn run() {
             // This must be done in setup, not with .plugin(), to properly handle all shortcuts
             #[cfg(desktop)]
             {
-                use tauri_plugin_global_shortcut::ShortcutState;
+                use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
+                let app_handle = app.handle().clone();
                 app.handle().plugin(
                     tauri_plugin_global_shortcut::Builder::new()
-                        .with_handler(|app, shortcut, event| {
+                        .with_handler(move |app, shortcut, event| {
                             if event.state == ShortcutState::Pressed {
                                 // Get the shortcut as a string for lookup
                                 let shortcut_str = shortcut.to_string();
@@ -38,6 +39,32 @@ pub fn run() {
                                 // Look up the original shortcut name from state
                                 if let Some(state) = app.try_state::<Arc<AppState>>() {
                                     if let Some(info) = state.find_shortcut(&shortcut_str) {
+                                        // Check for quit shortcut
+                                        if info.original.to_lowercase() == "option+q" || info.original.to_lowercase() == "alt+q" {
+                                            println!("[tauri:shortcut] Quit shortcut triggered, exiting...");
+                                            app.exit(0);
+                                            return;
+                                        }
+
+                                        // Check for ESC shortcut - close focused window
+                                        if info.original.to_lowercase() == "escape" {
+                                            println!("[tauri:shortcut] ESC triggered, closing focused window...");
+                                            // Find the focused window by iterating through all webview windows
+                                            for (label, window) in app.webview_windows() {
+                                                if window.is_focused().unwrap_or(false) {
+                                                    // Don't close the main background window or extension backgrounds
+                                                    if label != "main" && !label.starts_with("ext_") {
+                                                        println!("[tauri:shortcut] Closing focused window: {}", label);
+                                                        let _ = window.close();
+                                                    } else {
+                                                        println!("[tauri:shortcut] Skipping background window: {}", label);
+                                                    }
+                                                    break;
+                                                }
+                                            }
+                                            return;
+                                        }
+
                                         // Emit with original name, replacing + with _ for valid event name
                                         let safe_name = info.original.replace('+', "_");
                                         let event_name = format!("shortcut:{}", safe_name);
@@ -67,6 +94,7 @@ pub fn run() {
                         })
                         .build(),
                 )?;
+
             }
 
             // Check for headless mode (for testing)
@@ -104,7 +132,34 @@ pub fn run() {
 
             // Create app state
             let state = AppState::new(db, profile, profile_dir, headless);
-            app.manage(Arc::new(state));
+            let state_arc = Arc::new(state);
+            app.manage(state_arc.clone());
+
+            // Register system shortcuts at startup
+            #[cfg(desktop)]
+            {
+                use tauri_plugin_global_shortcut::GlobalShortcutExt;
+
+                // Quit shortcut (Option+Q)
+                let quit_shortcut = "Alt+Q";
+                if let Ok(parsed) = quit_shortcut.parse::<tauri_plugin_global_shortcut::Shortcut>() {
+                    if app.global_shortcut().register(parsed.clone()).is_ok() {
+                        let tauri_key = parsed.to_string();
+                        state_arc.register_shortcut("Option+q", &tauri_key, "system");
+                        println!("[tauri] Registered quit shortcut: Option+Q (key: {})", tauri_key);
+                    }
+                }
+
+                // ESC shortcut to close focused window
+                let esc_shortcut = "Escape";
+                if let Ok(parsed) = esc_shortcut.parse::<tauri_plugin_global_shortcut::Shortcut>() {
+                    if app.global_shortcut().register(parsed.clone()).is_ok() {
+                        let tauri_key = parsed.to_string();
+                        state_arc.register_shortcut("Escape", &tauri_key, "system");
+                        println!("[tauri] Registered ESC shortcut for closing windows (key: {})", tauri_key);
+                    }
+                }
+            }
 
             // Create main window programmatically with preload script injection
             let main_url = WebviewUrl::CustomProtocol(

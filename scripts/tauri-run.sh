@@ -6,13 +6,19 @@
 
 cd "$(dirname "$0")/../backend/tauri/src-tauri"
 
-DURATION=${1:-10}
+# Kill any existing Tauri process
+pkill -f "peek-tauri" 2>/dev/null
+sleep 1
+
+DURATION=10
 HEADLESS=1
 
-# Check for --visible flag
+# Parse arguments
 for arg in "$@"; do
     if [ "$arg" = "--visible" ]; then
         HEADLESS=""
+    elif [[ "$arg" =~ ^[0-9]+$ ]]; then
+        DURATION="$arg"
     fi
 done
 

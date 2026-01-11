@@ -39,7 +39,11 @@
     "test:smoke": "npx playwright test tests/smoke.spec.ts",
     "test:persistence": "npx playwright test tests/smoke.spec.ts --grep 'Data Persistence' --timeout=120000",
     "test:headed": "npx playwright test --headed",
-    "test:debug": "npx playwright test --debug"
+    "test:debug": "npx playwright test --debug",
+    "tauri:dev": "cd backend/tauri/src-tauri && cargo run",
+    "tauri:build": "cd backend/tauri/src-tauri && cargo tauri build",
+    "tauri:check": "cd backend/tauri/src-tauri && cargo check",
+    "tauri:test": "cd backend/tauri/src-tauri && cargo test --test smoke -- --nocapture"
   },
   "dependencies": {
     "better-sqlite3": "^12.5.0",

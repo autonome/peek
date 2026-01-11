@@ -9,6 +9,10 @@ out/
 app/dist/
 dist/
 
+# Tauri build output
+backend/tauri/src-tauri/target/
+backend/tauri/src-tauri/gen/
+
 # Test output
 test-results/
 playwright-report/

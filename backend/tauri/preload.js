@@ -114,8 +114,9 @@
         });
 
         if (result.success) {
-          // Listen for the shortcut event - replace + with _ to match Rust event naming
-          const safeShortcut = shortcut.replace(/\+/g, '_');
+          // Listen for the shortcut event - sanitize to match Rust event naming
+          // Only alphanumeric, '-', '/', ':', '_' are allowed in event names
+          const safeShortcut = shortcut.replace(/[^a-zA-Z0-9\-/:_]/g, '_');
           const eventName = `shortcut:${safeShortcut}`;
           invoke('log_message', { source: sourceAddress, args: [`Setting up listener for: ${eventName}`] });
           const unlisten = await listen(eventName, (event) => {

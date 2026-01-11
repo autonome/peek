@@ -1,14 +1,14 @@
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { openStore } from "../utils.js";
+import { createDatastoreStore } from "../utils.js";
 import windows from "../windows.js";
 import api from '../api.js';
 
 console.log('background', labels.name);
 
 const debug = api.debug;
-const clear = false;
 
-const store = openStore(id, defaults, clear /* clear storage */);
+// Store is created asynchronously in init()
+let store = null;
 
 let _intervals = [];
 
@@ -169,20 +169,24 @@ const initItems = (prefs, items) => {
   });
 };
 
-const updateItem = (item) => {
+const updateItem = async (item) => {
   let items = store.get('items');
   const idx = items.findIndex(el => el.id == item.id);
   items[idx] = item;
-  store.set('items', items);
+  await store.set('items', items);
 };
 
-const init = () => {
+const init = async () => {
   console.log('init');
+
+  // Create datastore-backed store
+  store = await createDatastoreStore('scripts', defaults);
+  console.log('scripts store initialized from datastore');
 
   const prefs = () => store.get(storageKeys.PREFS);
   const items = () => store.get(storageKeys.ITEMS);
 
-  // initialize slides
+  // initialize scripts
   if (items().length > 0) {
     initItems(prefs(), items());
   }

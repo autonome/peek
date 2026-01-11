@@ -1,5 +1,5 @@
 import appConfig from '../config.js';
-import { openStore } from '../utils.js';
+import { createDatastoreStore } from '../utils.js';
 import api from '../api.js';
 import fc from '../features.js';
 
@@ -72,8 +72,8 @@ const createCheckbox = (label, value, onChange, options = {}) => {
   return group;
 };
 
-// Create a settings section
-const createSection = (sectionId, title, contentFn) => {
+// Create a settings section (supports async contentFn)
+const createSection = async (sectionId, title, contentFn) => {
   const section = document.createElement('div');
   section.className = 'section';
   section.id = `section-${sectionId}`;
@@ -83,7 +83,7 @@ const createSection = (sectionId, title, contentFn) => {
   titleEl.textContent = title;
   section.appendChild(titleEl);
 
-  const content = contentFn();
+  const content = await contentFn();
   if (content) {
     section.appendChild(content);
   }
@@ -92,18 +92,20 @@ const createSection = (sectionId, title, contentFn) => {
 };
 
 // Render core settings
-const renderCoreSettings = () => {
+const renderCoreSettings = async () => {
   const { id, labels, schemas, storageKeys, defaults } = appConfig;
-  const store = openStore(id, defaults, clear);
+
+  // Load from datastore
+  const store = await createDatastoreStore('core', defaults);
 
   let prefs = store.get(storageKeys.PREFS);
   let features = store.get(storageKeys.ITEMS);
 
   const container = document.createElement('div');
 
-  const save = () => {
-    store.set(storageKeys.PREFS, prefs);
-    store.set(storageKeys.ITEMS, features);
+  const save = async () => {
+    await store.set(storageKeys.PREFS, prefs);
+    await store.set(storageKeys.ITEMS, features);
     // Notify main process of prefs change for live updates (quit shortcut, dock visibility, etc.)
     api.publish('topic:core:prefs', { id, prefs }, api.scopes.SYSTEM);
   };
@@ -315,8 +317,9 @@ const renderExtensionsSettings = async () => {
 
     try {
       // Get features list to check enabled state for builtins
-      const store = openStore(appConfig.id, appConfig.defaults, false);
-      const features = store.get(appConfig.storageKeys.ITEMS) || [];
+      // Use pre-loaded core store if available, otherwise load fresh
+      const coreStore = _coreStore || await createDatastoreStore('core', appConfig.defaults);
+      const features = coreStore.get(appConfig.storageKeys.ITEMS) || [];
 
       // Get both running extensions and datastore extensions
       const [runningResult, datastoreResult] = await Promise.all([
@@ -343,8 +346,9 @@ const renderExtensionsSettings = async () => {
       builtinExtIds.forEach(extId => {
         const running = runningById.get(extId);
         // Find matching feature to get enabled state
+        // For builtins: if running, they're enabled. Otherwise check stored state, default true.
         const feature = features.find(f => f.name.toLowerCase() === extId);
-        const isEnabled = feature ? feature.enabled : false;
+        const isEnabled = running ? true : (feature ? feature.enabled !== false : true);
 
         if (running) {
           // Extension is running
@@ -440,12 +444,12 @@ const renderExtensionsSettings = async () => {
 
           if (isBuiltin) {
             // Update features storage for persistence
-            const store = openStore(appConfig.id, appConfig.defaults, false);
-            const featuresList = store.get(appConfig.storageKeys.ITEMS) || [];
+            const coreStore = _coreStore || await createDatastoreStore('core', appConfig.defaults);
+            const featuresList = coreStore.get(appConfig.storageKeys.ITEMS) || [];
             const featureIndex = featuresList.findIndex(f => f.name.toLowerCase() === ext.id);
             if (featureIndex >= 0) {
               featuresList[featureIndex].enabled = newEnabled;
-              store.set(appConfig.storageKeys.ITEMS, featuresList);
+              await coreStore.set(appConfig.storageKeys.ITEMS, featuresList);
             }
 
             // Use the feature toggle mechanism to load/unload
@@ -648,63 +652,18 @@ const renderExtensionsSettings = async () => {
 };
 
 // Render feature settings (Peeks, Slides, etc.)
-// Now reads/writes from datastore extension_settings table for isolated extensions
-const renderFeatureSettings = (feature) => {
+// Reads/writes from datastore extension_settings table
+const renderFeatureSettings = async (feature) => {
   const { id, labels, schemas, storageKeys, defaults } = feature;
 
   // Use extension shortname for datastore key (e.g., 'peeks', 'slides', 'groups')
   const extId = labels.name.toLowerCase();
 
-  // Read from localStorage (legacy source)
-  const store = openStore(id, defaults, clear);
+  // Load from datastore
+  const store = await createDatastoreStore(extId, defaults);
 
   let prefs = store.get(storageKeys.PREFS);
   let items = store.get(storageKeys.ITEMS);
-
-  // Migrate localStorage to datastore if datastore is empty
-  // This ensures extensions (which read from datastore) get the user's settings
-  const migrateToDatastore = async () => {
-    try {
-      const rowIdPrefs = `${extId}:prefs`;
-      const tableResult = await api.datastore.getTable('extension_settings');
-      const table = tableResult.success ? (tableResult.data || {}) : {};
-
-      // Check if this extension already has prefs in datastore
-      const hasPrefs = Object.values(table).some(row => row.extensionId === extId && row.key === 'prefs');
-
-      // If datastore doesn't have prefs yet, migrate from localStorage
-      if (!hasPrefs) {
-        console.log(`[settings] Migrating ${extId} settings to datastore`);
-        const now = Date.now();
-
-        await api.datastore.setRow('extension_settings', rowIdPrefs, {
-          extensionId: extId,
-          key: 'prefs',
-          value: JSON.stringify(prefs),
-          updatedAt: now
-        });
-
-        if (items) {
-          const rowIdItems = `${extId}:items`;
-          await api.datastore.setRow('extension_settings', rowIdItems, {
-            extensionId: extId,
-            key: 'items',
-            value: JSON.stringify(items),
-            updatedAt: now
-          });
-        }
-
-        // Notify extension to reload settings
-        const settingsChangedTopic = `${extId}:settings-changed`;
-        api.publish(settingsChangedTopic, {}, api.scopes.GLOBAL);
-      }
-    } catch (err) {
-      console.error(`[settings] Migration error for ${extId}:`, err);
-    }
-  };
-
-  // Run migration async (don't block UI)
-  migrateToDatastore();
 
   const container = document.createElement('div');
 
@@ -712,29 +671,10 @@ const renderFeatureSettings = (feature) => {
   const settingsChangedTopic = `${labels.name.toLowerCase()}:settings-changed`;
 
   const save = async () => {
-    // Save to localStorage (legacy)
-    store.set(storageKeys.PREFS, prefs);
-    store.set(storageKeys.ITEMS, items);
-
-    // Also save to datastore for isolated extensions
-    const rowIdPrefs = `${extId}:prefs`;
-    const rowIdItems = `${extId}:items`;
-    const now = Date.now();
-
-    await api.datastore.setRow('extension_settings', rowIdPrefs, {
-      extensionId: extId,
-      key: 'prefs',
-      value: JSON.stringify(prefs),
-      updatedAt: now
-    });
-
+    // Save to datastore
+    await store.set(storageKeys.PREFS, prefs);
     if (items) {
-      await api.datastore.setRow('extension_settings', rowIdItems, {
-        extensionId: extId,
-        key: 'items',
-        value: JSON.stringify(items),
-        updatedAt: now
-      });
+      await store.set(storageKeys.ITEMS, items);
     }
 
     // Notify feature to hot-reload with new settings (GLOBAL for cross-process)
@@ -908,10 +848,12 @@ const showSection = (sectionId) => {
   }
 };
 
-// Helper to check if a feature is enabled
+// Helper to check if a feature is enabled (reads from cached store)
+// Note: Needs pre-loaded coreStore passed in, or use async version
+let _coreStore = null;
 const isFeatureEnabled = (featureName) => {
-  const store = openStore(appConfig.id, appConfig.defaults, false);
-  const features = store.get(appConfig.storageKeys.ITEMS) || [];
+  if (!_coreStore) return false;
+  const features = _coreStore.get(appConfig.storageKeys.ITEMS) || [];
   const feature = features.find(f => f.name.toLowerCase() === featureName.toLowerCase());
   return feature ? feature.enabled : false;
 };
@@ -921,6 +863,9 @@ const init = async () => {
   const sidebarNav = document.getElementById('sidebarNav');
   const contentArea = document.getElementById('settingsContent');
 
+  // Pre-load core store for isFeatureEnabled checks
+  _coreStore = await createDatastoreStore('core', appConfig.defaults);
+
   // Add Core section
   const coreNav = document.createElement('a');
   coreNav.className = 'nav-item active';
@@ -929,7 +874,7 @@ const init = async () => {
   coreNav.addEventListener('click', () => showSection('core'));
   sidebarNav.appendChild(coreNav);
 
-  const coreSection = createSection('core', 'Core Settings', renderCoreSettings);
+  const coreSection = await createSection('core', 'Core Settings', renderCoreSettings);
   coreSection.classList.add('active');
   contentArea.appendChild(coreSection);
 
@@ -954,7 +899,7 @@ const init = async () => {
     sidebarNav.appendChild(navItem);
 
     // Add section
-    const section = createSection(sectionId, name, () => renderFeatureSettings(feature));
+    const section = await createSection(sectionId, name, () => renderFeatureSettings(feature));
     if (!enabled) section.style.display = 'none';
     contentArea.appendChild(section);
 
@@ -1050,7 +995,7 @@ const init = async () => {
           }
 
           // Add section (insert before extensions section)
-          const section = createSection(sectionId, name, () => renderFeatureSettings(feature));
+          const section = await createSection(sectionId, name, () => renderFeatureSettings(feature));
           const extSectionEl = document.getElementById('section-extensions');
           if (extSectionEl) {
             contentArea.insertBefore(section, extSectionEl);

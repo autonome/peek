@@ -1,14 +1,14 @@
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
-import { openStore } from "../utils.js";
+import { createDatastoreStore } from "../utils.js";
 import windows from "../windows.js";
 import api from '../api.js';
 
 console.log('index', labels.name);
 
 const debug = api.debug;
-const clear = false;
 
-const store = openStore(id, defaults, clear /* clear storage */);
+// Store is created asynchronously in init()
+let store = null;
 
 const address = 'peek://app/cmd/panel.html';
 
@@ -113,6 +113,10 @@ const initShortcut = (prefs) => {
 
 const init = async () => {
   console.log('init');
+
+  // Create datastore-backed store
+  store = await createDatastoreStore('cmd', defaults);
+  console.log('cmd store initialized from datastore');
 
   const prefs = () => store.get(storageKeys.PREFS);
 

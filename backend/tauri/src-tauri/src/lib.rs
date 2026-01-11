@@ -65,8 +65,15 @@ pub fn run() {
                                             return;
                                         }
 
-                                        // Emit with original name, replacing + with _ for valid event name
-                                        let safe_name = info.original.replace('+', "_");
+                                        // Emit with original name, sanitizing for valid event name
+                                        // Only alphanumeric, '-', '/', ':', '_' are allowed
+                                        let safe_name: String = info.original.chars().map(|c| {
+                                            if c.is_alphanumeric() || c == '-' || c == '/' || c == ':' || c == '_' {
+                                                c
+                                            } else {
+                                                '_'
+                                            }
+                                        }).collect();
                                         let event_name = format!("shortcut:{}", safe_name);
 
                                         println!(

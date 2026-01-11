@@ -1,5 +1,5 @@
 import appConfig from './config.js';
-import { openStore } from "./utils.js";
+import { createDatastoreStore } from "./utils.js";
 import windowManager from "./windows.js";
 import api from './api.js';
 import fc from './features.js';
@@ -10,9 +10,9 @@ const { id, labels, schemas, storageKeys, defaults } = appConfig;
 console.log('core', id, labels.name);
 
 const debug = api.debug;
-const clear = false;
 
-const store = openStore(id, defaults, clear /* clear storage */);
+// Store is created asynchronously in init()
+let store = null;
 
 // Datastore is now initialized in main process and accessible via api.datastore
 console.log('core', 'datastore available via api.datastore');
@@ -115,11 +115,21 @@ const initIframeFeature = file => {
   });
 };
 
-const prefs = () => store.get(storageKeys.PREFS);
-const features = () => store.get(storageKeys.ITEMS);
+const prefs = () => store ? store.get(storageKeys.PREFS) : defaults.prefs;
+const features = () => store ? store.get(storageKeys.ITEMS) : defaults.items;
 
 // Register extension management commands for cmd palette
 const registerExtensionCommands = () => {
+  // Settings command
+  api.commands.register({
+    name: 'settings',
+    description: 'Open settings',
+    execute: async () => {
+      const p = prefs();
+      await openSettingsWindow(p);
+    }
+  });
+
   // Reload extension command (uses main process IPC)
   api.commands.register({
     name: 'extension reload',
@@ -168,6 +178,13 @@ const registerExtensionCommands = () => {
 
 const init = async () => {
   console.log('init');
+
+  // Run migrations first (moves localStorage -> datastore)
+  await migrations.runMigrations();
+
+  // Create datastore-backed store
+  store = await createDatastoreStore('core', defaults);
+  console.log('core store initialized from datastore');
 
   const p = prefs();
 
@@ -255,9 +272,6 @@ const init = async () => {
   });
 
   initSettingsShortcut(p);
-
-  // Run any pending migrations (e.g., localStorage -> datastore)
-  await migrations.runMigrations();
 
   // Initialize core features (non-extension features only)
   features().forEach(initFeature);

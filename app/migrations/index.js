@@ -6,12 +6,18 @@
  */
 
 import extensionSettingsMigration from './extension-settings.js';
+import localstorageToDatastoreMigration from './localstorage-to-datastore.js';
 
 const migrations = [
   {
     name: 'extension-settings-v1',
     run: extensionSettingsMigration.runMigration,
     check: extensionSettingsMigration.isMigrationComplete
+  },
+  {
+    name: 'localstorage-to-datastore-v1',
+    run: localstorageToDatastoreMigration.runMigration,
+    check: localstorageToDatastoreMigration.isMigrationComplete
   }
 ];
 

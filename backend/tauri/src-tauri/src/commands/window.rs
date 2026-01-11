@@ -80,9 +80,11 @@ pub async fn window_open(
 
     // Check if window with this key already exists and reuse it
     if let Some(existing) = app.get_webview_window(&label) {
-        // Window exists, just show and focus it
-        let _ = existing.show();
-        let _ = existing.set_focus();
+        // Window exists - only show and focus if not in headless mode
+        if !state.headless {
+            let _ = existing.show();
+            let _ = existing.set_focus();
+        }
 
         return Ok(CommandResponse::success(WindowOpenResult { id: label }));
     }
@@ -211,8 +213,14 @@ pub async fn window_hide(
 #[tauri::command]
 pub async fn window_show(
     app: tauri::AppHandle,
+    state: tauri::State<'_, Arc<AppState>>,
     id: Option<String>,
 ) -> Result<CommandResponse<bool>, String> {
+    // In headless mode, don't show any windows
+    if state.headless {
+        return Ok(CommandResponse::success(true));
+    }
+
     let label = id.unwrap_or_else(|| "main".to_string());
 
     if let Some(window) = app.get_webview_window(&label) {
@@ -232,17 +240,21 @@ pub async fn window_show(
 #[tauri::command]
 pub async fn window_focus(
     app: tauri::AppHandle,
+    state: tauri::State<'_, Arc<AppState>>,
     id: Option<String>,
 ) -> Result<CommandResponse<bool>, String> {
     let label = id.unwrap_or_else(|| "main".to_string());
 
     if let Some(window) = app.get_webview_window(&label) {
-        window
-            .show()
-            .map_err(|e| format!("Failed to show: {}", e))?;
-        window
-            .set_focus()
-            .map_err(|e| format!("Failed to focus: {}", e))?;
+        // Only show window if not in headless mode
+        if !state.headless {
+            window
+                .show()
+                .map_err(|e| format!("Failed to show: {}", e))?;
+            window
+                .set_focus()
+                .map_err(|e| format!("Failed to focus: {}", e))?;
+        }
         Ok(CommandResponse::success(true))
     } else {
         Ok(CommandResponse::error(format!(

@@ -3,6 +3,7 @@
 //! These commands mirror the Electron IPC handlers in backend/electron/ipc.ts
 
 pub mod datastore;
+pub mod extensions;
 pub mod window;
 
 use serde::Serialize;

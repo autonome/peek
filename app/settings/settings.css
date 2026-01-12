@@ -26,6 +26,9 @@
   --scrollbar-track: #f8f8f8;
   --scrollbar-thumb: #d0d0d0;
   --scrollbar-thumb-hover: #b0b0b0;
+  --error-bg: #fef2f2;
+  --error-border: #fecaca;
+  --error-text: #dc2626;
 }
 
 /* Dark mode */
@@ -51,6 +54,9 @@
     --scrollbar-track: #242424;
     --scrollbar-thumb: #4a4a4a;
     --scrollbar-thumb-hover: #5a5a5a;
+    --error-bg: #450a0a;
+    --error-border: #7f1d1d;
+    --error-text: #fca5a5;
   }
 }
 

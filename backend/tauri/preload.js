@@ -381,13 +381,83 @@
     unload: async (id) => ({ success: false, error: 'Not implemented in Tauri MVP' }),
     reload: async (id) => ({ success: false, error: 'Not implemented in Tauri MVP' }),
     getManifest: async (id) => ({ success: false, error: 'Not implemented' }),
-    pickFolder: async () => ({ success: false, error: 'Not implemented' }),
-    validateFolder: async (path) => ({ success: false, error: 'Not implemented' }),
-    add: async (path, manifest, enabled) => ({ success: false, error: 'Not implemented' }),
-    remove: async (id) => ({ success: false, error: 'Not implemented' }),
-    update: async (id, updates) => ({ success: false, error: 'Not implemented' }),
-    getAll: async () => ({ success: true, data: [] }),
-    get: async (id) => ({ success: false, error: 'Not found' }),
+
+    pickFolder: async () => {
+      try {
+        const result = await invoke('extension_pick_folder', {});
+        if (result.error === 'Canceled') {
+          return { success: true, canceled: true };
+        }
+        return { success: true, data: result.data };
+      } catch (e) {
+        console.error('[tauri] extensions.pickFolder error:', e);
+        return { success: false, error: String(e) };
+      }
+    },
+
+    validateFolder: async (folderPath) => {
+      try {
+        return await invoke('extension_validate_folder', { folderPath });
+      } catch (e) {
+        console.error('[tauri] extensions.validateFolder error:', e);
+        return { success: false, error: String(e) };
+      }
+    },
+
+    add: async (folderPath, manifest, enabled, lastError = null) => {
+      if (!api.extensions._hasPermission()) {
+        return { success: false, error: 'Permission denied' };
+      }
+      try {
+        return await invoke('extension_add', { folderPath, manifest, enabled, lastError });
+      } catch (e) {
+        console.error('[tauri] extensions.add error:', e);
+        return { success: false, error: String(e) };
+      }
+    },
+
+    remove: async (id) => {
+      if (!api.extensions._hasPermission()) {
+        return { success: false, error: 'Permission denied' };
+      }
+      try {
+        return await invoke('extension_remove', { id });
+      } catch (e) {
+        console.error('[tauri] extensions.remove error:', e);
+        return { success: false, error: String(e) };
+      }
+    },
+
+    update: async (id, updates) => {
+      if (!api.extensions._hasPermission()) {
+        return { success: false, error: 'Permission denied' };
+      }
+      try {
+        return await invoke('extension_update', { id, updates });
+      } catch (e) {
+        console.error('[tauri] extensions.update error:', e);
+        return { success: false, error: String(e) };
+      }
+    },
+
+    getAll: async () => {
+      try {
+        return await invoke('extension_get_all', {});
+      } catch (e) {
+        console.error('[tauri] extensions.getAll error:', e);
+        return { success: true, data: [] };
+      }
+    },
+
+    get: async (id) => {
+      try {
+        return await invoke('extension_get', { id });
+      } catch (e) {
+        console.error('[tauri] extensions.get error:', e);
+        return { success: false, error: String(e) };
+      }
+    },
+
     getSettingsSchema: async (extId) => ({ success: false, error: 'Not implemented' })
   };
 

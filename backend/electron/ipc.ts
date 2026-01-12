@@ -324,7 +324,7 @@ export function registerExtensionHandlers(): void {
 
   ipcMain.handle('extension-validate-folder', async (ev, data) => {
     try {
-      const extPath = data.path;
+      const extPath = data.folderPath || data.path;
       const manifestPath = path.join(extPath, 'manifest.json');
 
       if (!fs.existsSync(manifestPath)) {
@@ -360,7 +360,7 @@ export function registerExtensionHandlers(): void {
   ipcMain.handle('extension-add', async (ev, data) => {
     try {
       const db = getDb();
-      const extPath = data.path;
+      const extPath = data.folderPath || data.path;
       const manifestPath = path.join(extPath, 'manifest.json');
 
       if (!fs.existsSync(manifestPath)) {
@@ -377,10 +377,14 @@ export function registerExtensionHandlers(): void {
         return { success: false, error: `Extension ${id} already installed` };
       }
 
+      // Get lastError if provided
+      const lastError = data.lastError || '';
+      const lastErrorAt = lastError ? Date.now() : 0;
+
       // Insert into database
       db.prepare(`
-        INSERT INTO extensions (id, name, description, version, path, enabled, builtin, status, installedAt, updatedAt, metadata)
-        VALUES (?, ?, ?, ?, ?, 1, 0, 'installed', ?, ?, ?)
+        INSERT INTO extensions (id, name, description, version, path, enabled, builtin, status, installedAt, updatedAt, metadata, lastError, lastErrorAt)
+        VALUES (?, ?, ?, ?, ?, 1, 0, 'installed', ?, ?, ?, ?, ?)
       `).run(
         id,
         manifest.name || id,
@@ -389,10 +393,12 @@ export function registerExtensionHandlers(): void {
         extPath,
         Date.now(),
         Date.now(),
-        JSON.stringify(manifest)
+        JSON.stringify(manifest),
+        lastError,
+        lastErrorAt
       );
 
-      return { success: true, data: { id, manifest, path: extPath } };
+      return { success: true, data: { id, manifest, path: extPath, lastError: lastError || null } };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return { success: false, error: message };
@@ -445,6 +451,14 @@ export function registerExtensionHandlers(): void {
       if (updates.status !== undefined) {
         fields.push('status = ?');
         values.push(updates.status);
+      }
+      if (updates.lastError !== undefined) {
+        fields.push('lastError = ?');
+        values.push(updates.lastError);
+      }
+      if (updates.lastErrorAt !== undefined) {
+        fields.push('lastErrorAt = ?');
+        values.push(updates.lastErrorAt);
       }
 
       if (fields.length > 0) {

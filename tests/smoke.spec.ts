@@ -718,3 +718,118 @@ test.describe('Core Functionality', () => {
     }, openResult.id);
   });
 });
+
+// Extension Lifecycle tests
+test.describe('Extension Lifecycle', () => {
+  let electronApp: ElectronApplication;
+  let bgWindow: Page;
+
+  // Use the example extension for testing
+  const EXAMPLE_EXT_PATH = path.join(ROOT, 'extensions', 'example');
+
+  test.beforeAll(async () => {
+    electronApp = await electron.launch({
+      args: [MAIN_PATH],
+      env: { ...process.env, PROFILE: 'test-ext-lifecycle', DEBUG: '1' }
+    });
+    await new Promise(r => setTimeout(r, 4000));
+    bgWindow = await waitForWindow(electronApp, 'app/background.html');
+  });
+
+  test.afterAll(async () => {
+    if (electronApp) await electronApp.close();
+  });
+
+  test('validate extension folder', async () => {
+    const result = await bgWindow.evaluate(async (extPath: string) => {
+      return await (window as any).app.extensions.validateFolder(extPath);
+    }, EXAMPLE_EXT_PATH);
+
+    expect(result.success).toBe(true);
+    expect(result.data).toBeTruthy();
+    expect(result.data.manifest).toBeTruthy();
+    expect(result.data.manifest.id || result.data.manifest.shortname || result.data.manifest.name).toBeTruthy();
+  });
+
+  test('add extension', async () => {
+    // First validate to get manifest
+    const validateResult = await bgWindow.evaluate(async (extPath: string) => {
+      return await (window as any).app.extensions.validateFolder(extPath);
+    }, EXAMPLE_EXT_PATH);
+
+    const manifest = validateResult.data.manifest;
+
+    // Add the extension
+    const addResult = await bgWindow.evaluate(async ({ extPath, manifest }) => {
+      return await (window as any).app.extensions.add(extPath, manifest, false);
+    }, { extPath: EXAMPLE_EXT_PATH, manifest });
+
+    expect(addResult.success).toBe(true);
+    expect(addResult.data).toBeTruthy();
+    expect(addResult.data.id).toBeTruthy();
+  });
+
+  test('list extensions includes added extension', async () => {
+    const result = await bgWindow.evaluate(async () => {
+      return await (window as any).app.extensions.getAll();
+    });
+
+    expect(result.success).toBe(true);
+    expect(Array.isArray(result.data)).toBe(true);
+
+    // Find the example extension
+    const exampleExt = result.data.find((ext: any) =>
+      ext.id === 'example' || ext.path?.includes('example')
+    );
+    expect(exampleExt).toBeTruthy();
+  });
+
+  test('update extension (enable/disable)', async () => {
+    // Enable the extension
+    const enableResult = await bgWindow.evaluate(async () => {
+      return await (window as any).app.extensions.update('example', { enabled: true });
+    });
+    expect(enableResult.success).toBe(true);
+
+    // Verify it's enabled (accept both boolean true and integer 1)
+    const getResult1 = await bgWindow.evaluate(async () => {
+      return await (window as any).app.extensions.get('example');
+    });
+    expect(getResult1.success).toBe(true);
+    expect(getResult1.data.enabled === true || getResult1.data.enabled === 1).toBe(true);
+
+    // Disable it
+    const disableResult = await bgWindow.evaluate(async () => {
+      return await (window as any).app.extensions.update('example', { enabled: false });
+    });
+    expect(disableResult.success).toBe(true);
+
+    // Verify it's disabled (accept both boolean false and integer 0)
+    const getResult2 = await bgWindow.evaluate(async () => {
+      return await (window as any).app.extensions.get('example');
+    });
+    expect(getResult2.success).toBe(true);
+    expect(getResult2.data.enabled === false || getResult2.data.enabled === 0).toBe(true);
+  });
+
+  test('remove extension', async () => {
+    const removeResult = await bgWindow.evaluate(async () => {
+      return await (window as any).app.extensions.remove('example');
+    });
+    expect(removeResult.success).toBe(true);
+
+    // Verify it's removed
+    const getResult = await bgWindow.evaluate(async () => {
+      return await (window as any).app.extensions.get('example');
+    });
+    expect(getResult.success).toBe(false);
+
+    // Verify it's not in list
+    const listResult = await bgWindow.evaluate(async () => {
+      return await (window as any).app.extensions.getAll();
+    });
+    expect(listResult.success).toBe(true);
+    const exampleExt = listResult.data.find((ext: any) => ext.id === 'example');
+    expect(exampleExt).toBeFalsy();
+  });
+});

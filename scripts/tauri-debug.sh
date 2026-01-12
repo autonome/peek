@@ -1,26 +1,47 @@
 #!/bin/bash
-# Run Tauri and capture shortcut-related logs
-# Usage: ./scripts/tauri-debug.sh [duration_seconds]
-#
-# Runs Tauri in visible mode and filters for shortcut/event logs.
+# Run Tauri with debug output for troubleshooting
+# Usage: ./scripts/tauri-debug.sh [--headless] [duration_seconds]
 
-cd "$(dirname "$0")/../backend/tauri/src-tauri"
+SCRIPT_DIR="$(dirname "$0")"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+TAURI_DIR="$PROJECT_DIR/backend/tauri/src-tauri"
 
-pkill -f "peek-tauri" 2>/dev/null
-sleep 1
+HEADLESS=0
+DURATION=10
 
-DURATION=${1:-15}
+for arg in "$@"; do
+    case "$arg" in
+        --headless)
+            HEADLESS=1
+            ;;
+        [0-9]*)
+            DURATION="$arg"
+            ;;
+    esac
+done
 
-echo "Running Tauri for $DURATION seconds, filtering shortcut logs..."
-echo "Press Option+Space or other shortcuts to test."
+cd "$TAURI_DIR"
+
+echo "=== Tauri Debug Run ==="
+echo "Mode: $([ "$HEADLESS" = "1" ] && echo "headless" || echo "visible")"
+echo "Duration: ${DURATION}s"
 echo ""
 
-HEADLESS= cargo run 2>&1 &
+LOGFILE="/tmp/tauri-debug-$$.log"
+
+if [ "$HEADLESS" = "1" ]; then
+    HEADLESS=1 cargo run > "$LOGFILE" 2>&1 &
+else
+    cargo run > "$LOGFILE" 2>&1 &
+fi
 PID=$!
 
 sleep "$DURATION"
+
+echo "=== Key log entries ==="
+grep -E "\[tauri\]|\[tauri:|window_open|visible|hiding|HEADLESS" "$LOGFILE" | grep -v "protocol" | head -50
+
 kill $PID 2>/dev/null
-wait $PID 2>/dev/null
 
 echo ""
-echo "=== Done ==="
+echo "Full log saved to: $LOGFILE"

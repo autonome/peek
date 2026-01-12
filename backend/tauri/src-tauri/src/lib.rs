@@ -21,6 +21,7 @@ pub const PRELOAD_SCRIPT: &str = include_str!("../../preload.js");
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // Initialize global shortcut plugin with a handler that emits events
             // This must be done in setup, not with .plugin(), to properly handle all shortcuts
@@ -175,11 +176,18 @@ pub fn run() {
                     .expect("Invalid main URL"),
             );
 
-            let main_window = WebviewWindowBuilder::new(app, "main", main_url)
+            let mut main_builder = WebviewWindowBuilder::new(app, "main", main_url)
                 .title("Peek (Tauri)")
                 .inner_size(800.0, 600.0)
                 .visible(false)
-                .initialization_script(PRELOAD_SCRIPT)
+                .initialization_script(PRELOAD_SCRIPT);
+
+            // In headless mode, prevent windows from being focusable
+            if headless {
+                main_builder = main_builder.focused(false);
+            }
+
+            let main_window = main_builder
                 .build()
                 .expect("Failed to create main window");
 
@@ -233,12 +241,18 @@ pub fn run() {
                 );
 
                 let label = format!("ext_{}", ext.id);
-                let window_result = WebviewWindowBuilder::new(app, &label, ext_url_parsed)
+                let mut ext_builder = WebviewWindowBuilder::new(app, &label, ext_url_parsed)
                     .title(&format!("Extension: {}", ext.manifest.name.as_deref().unwrap_or(&ext.id)))
                     .inner_size(800.0, 600.0)
                     .visible(false)
-                    .initialization_script(PRELOAD_SCRIPT)
-                    .build();
+                    .initialization_script(PRELOAD_SCRIPT);
+
+                // In headless mode, prevent windows from being focusable
+                if headless {
+                    ext_builder = ext_builder.focused(false);
+                }
+
+                let window_result = ext_builder.build();
 
                 if window_result.is_ok() {
                     // Register the extension in state
@@ -282,8 +296,16 @@ pub fn run() {
             commands::commands_register,
             commands::commands_unregister,
             commands::commands_get_all,
-            // Extensions
+            // Extensions - list running
             commands::extensions_list,
+            // Extension management
+            commands::extensions::extension_pick_folder,
+            commands::extensions::extension_validate_folder,
+            commands::extensions::extension_add,
+            commands::extensions::extension_remove,
+            commands::extensions::extension_update,
+            commands::extensions::extension_get_all,
+            commands::extensions::extension_get,
             // App control
             commands::app_quit,
             // Shortcuts

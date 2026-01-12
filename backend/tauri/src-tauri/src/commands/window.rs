@@ -100,10 +100,12 @@ pub async fn window_open(
 
     // Check headless mode - force windows to be hidden
     let visible = if state.headless {
+        println!("[tauri:window] HEADLESS mode - forcing visible=false");
         false
     } else {
         options.visible.unwrap_or(true)
     };
+    println!("[tauri:window] Creating window with visible={}", visible);
 
     // Create window builder with preload script injection
     let mut builder = WebviewWindowBuilder::new(&app, &label, webview_url.clone())
@@ -146,6 +148,13 @@ pub async fn window_open(
         .map_err(|e| format!("Failed to create window: {}", e))?;
 
     println!("[tauri:window] Window created: label={}", label);
+
+    // In headless mode, explicitly hide the window after creation
+    // (belt and suspenders - visible(false) should work but being extra safe)
+    if state.headless {
+        let _ = window.hide();
+        println!("[tauri:window] Explicitly hiding window in headless mode");
+    }
 
     // Register in state
     let url_str = match webview_url {

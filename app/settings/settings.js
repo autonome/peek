@@ -265,13 +265,15 @@ const renderExtensionsSettings = async () => {
       const validateResult = await api.extensions.validateFolder(folderPath);
 
       // Add even if invalid (disabled), so user can fix and retry
-      const manifest = validateResult.manifest || {};
-      const isValid = validateResult.valid === true;
+      // Handle both Electron format (data.manifest) and flat format
+      const manifest = validateResult.data?.manifest || validateResult.manifest || {};
+      const isValid = validateResult.success && !validateResult.error;
+      const validationError = !isValid ? (validateResult.error || 'Unknown validation error') : null;
 
       addBtn.textContent = 'Adding...';
 
-      // Add to datastore (disabled if invalid)
-      const addResult = await api.extensions.add(folderPath, manifest, false);
+      // Add to datastore (disabled if invalid, with error message)
+      const addResult = await api.extensions.add(folderPath, manifest, false, validationError);
 
       if (addResult.success) {
         addBtn.textContent = isValid ? 'Added!' : 'Added (disabled - has errors)';
@@ -382,24 +384,35 @@ const renderExtensionsSettings = async () => {
       });
 
       // Add datastore extensions (external)
+      // Handle both Electron format (flat fields) and Tauri format (with manifest object)
       datastoreExts.forEach(ext => {
         const running = runningById.get(ext.id);
+        // Tauri returns manifest object, Electron returns flat fields
+        const manifestData = ext.manifest || {};
+        const name = ext.name || manifestData.name || ext.id;
+        const description = ext.description || manifestData.description || '';
+        const version = ext.version || manifestData.version || '';
+        const shortname = (ext.metadata ? JSON.parse(ext.metadata).shortname : manifestData.shortname) || ext.id;
+        const builtin = ext.builtin === 1 || ext.builtin === true || manifestData.builtin;
+        // Handle both snake_case (Tauri JSON) and direct field names
+        const lastError = ext.lastError || ext.last_error || null;
+
         allExtensions.push({
           id: ext.id,
           manifest: {
             id: ext.id,
-            name: ext.name,
-            shortname: JSON.parse(ext.metadata || '{}').shortname || ext.id,
-            description: ext.description,
-            version: ext.version,
-            builtin: ext.builtin === 1
+            name,
+            shortname,
+            description,
+            version,
+            builtin
           },
           path: ext.path,
           source: 'datastore',
           isRunning: !!running,
-          enabled: ext.enabled === 1,
+          enabled: ext.enabled === 1 || ext.enabled === true,
           status: ext.status,
-          lastError: ext.lastError
+          lastError
         });
       });
 
@@ -459,23 +472,38 @@ const renderExtensionsSettings = async () => {
               enabled: newEnabled
             });
           } else if (ext.source === 'datastore') {
-            // Update in datastore
-            await api.extensions.update(ext.id, {
-              enabled: newEnabled ? 1 : 0,
-              status: newEnabled ? 'installed' : 'disabled'
-            });
-
-            // Load or unload the extension
+            // Load or unload the extension first
+            let loadResult = { success: true };
             if (newEnabled) {
-              await api.extensions.load(ext.id);
+              loadResult = await api.extensions.load(ext.id);
             } else {
-              await api.extensions.unload(ext.id);
+              loadResult = await api.extensions.unload(ext.id);
+            }
+
+            if (loadResult.success) {
+              // Update in datastore only if load/unload succeeded
+              await api.extensions.update(ext.id, {
+                enabled: newEnabled ? 1 : 0,
+                status: newEnabled ? 'installed' : 'disabled',
+                lastError: '',
+                lastErrorAt: 0
+              });
+            } else {
+              // Load/unload failed - store the error and keep disabled
+              const errorMsg = loadResult.error || 'Failed to load extension';
+              await api.extensions.update(ext.id, {
+                enabled: 0,
+                status: 'error',
+                lastError: errorMsg,
+                lastErrorAt: Date.now()
+              });
+              console.error(`[settings] Extension ${ext.id} load failed:`, errorMsg);
             }
           }
 
           checkbox.disabled = false;
-          // Small delay to let the extension load/unload
-          setTimeout(refreshExtensionsList, 500);
+          // Refresh to show current state
+          setTimeout(refreshExtensionsList, 300);
         });
         leftSide.appendChild(checkbox);
 
@@ -623,7 +651,8 @@ const renderExtensionsSettings = async () => {
         // Show error if any
         if (ext.lastError) {
           const errorInfo = document.createElement('div');
-          errorInfo.style.cssText = 'margin-top: 8px; padding: 8px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; font-size: 12px; color: #dc2626;';
+          errorInfo.className = 'extension-error';
+          errorInfo.style.cssText = 'margin-top: 8px; padding: 8px; background: var(--error-bg, #fef2f2); border: 1px solid var(--error-border, #fecaca); border-radius: 4px; font-size: 12px; color: var(--error-text, #dc2626);';
           errorInfo.textContent = `Error: ${ext.lastError}`;
           body.appendChild(errorInfo);
         }

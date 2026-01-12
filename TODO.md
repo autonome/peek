@@ -47,20 +47,51 @@ Requires chaining and "activities"
 - [ ] Vim mode
 - [ ] List editor
 
+## v? - Standard UI components
+
+- [ ] the popup we need for cmd chaining previews
+- [ ] button groups
+  - [ ] add/remove/both modes
+  - [ ] on/off mode
+- [ ] tag input
+- [ ] 
+
+## v? - Scripts
+
+- [ ] API for logging outputs to datastore (time series data, feeds)
+- [ ] Command support for blocking on a content script running
+- [ ] Extension api for executing arbitrary scripts against a page
+- [ ] Timeouts for page scripts in commands
+- [ ] Support for scheduling scripts (or maybe that's just in the extension... harder to manage tho)
+- [ ] Page load triggers for background scripts
+
 ## v? - Chaining / Connecting
 
 Now that we have commands, we need to be able to chain them together for more complex "workbench-y" interactions. Chaining reqs inputs/outputs (eg activities/intents/applets), so that API unlocks the rest.
 
-- [ ] Cmd API updates
+Example flow:
+- open a web page
+- cmd: show lists -> shows list of lists detected in the page
+- arrow up/down and choose one -> shows preview of the selected list
+- cmd: csv -> shows preview of csv
+- cmd: save file -> prompts to download
+
+- [ ] Connector API: Chaining reqs inputs/outputs (eg activities/intents/applets)
+  - [ ] Determine if this should be a new API or reuses command registration
+  - [ ] Extension API to register as a connector handler for a set of mime/types
+  - [ ] Extension API to emit data to handlers for the specified mime type output (or maybe we allow multiple like the web clipboard API does)
+- [ ] Cmd support for chaining flow using "connectors"
+  - [ ] Add Connector Handler support, so data can move one-way from a command to another
+  - [ ] Filter first on mime type matches
+  - [ ] Policy for determing best matching command order (using frecency + adaptive matching)
+- [ ] Support previewing of the data in between steps
+  - [ ] Modular system for plugging renderers in for generating previews/editors of mime types
+  - [ ] Doesn't need to be an extension API yet, but we'll need a way for that later maybe
+  - [ ] Preview panel is visually connected to the cmd panel, which should stay visible or visually connected somehow
+- [ ] Cmd UI updates
   - [ ] Cmd panel can show dropdown listing matching commands
   - [ ] User can navigate list w/ arrow up/down, j/k and tab/shift-tab
   - [ ] If cmd response has a previewAddress property, show a preview pane w/ that address
-- [ ] Connector API: Chaining reqs inputs/outputs (eg activities/intents/applets)
-  - [ ] Extension API to register as a connector handler for a set of mime/types
-  - [ ] Extension API to emit data to handlers for the specified mime type output (or maybe we allow multiple like the web clipboard API does)
-- [ ] Support for commmands to register as a connector handler for a set of mime types, and emit response array of mime-typed-data
-- [ ] Background glue for listing matching commands
-- [ ] pipelines/chains/transformers
 
 ## v? - Publishing, Provenance, Remote Extensions?
 

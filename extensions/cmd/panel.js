@@ -64,7 +64,18 @@ let state = {
   matchCounts: {}, // match counts - selectedcommand:numberofselections
   adaptiveFeedback: {}, // adaptive matching - typed -> { command: count, ... }
   typed: '', // text typed by user so far, if any
-  lastExecuted: '' // text last typed by user when last they hit return
+  lastExecuted: '', // text last typed by user when last they hit return
+
+  // Chain mode state for command composition
+  chainMode: false, // Whether we're in chain mode (piping output between commands)
+  chainContext: null, // Current chain data: { data, mimeType, title, sourceCommand }
+  chainStack: [], // History stack for undo (array of chainContext objects)
+
+  // Execution state for showing progress
+  executing: false, // Whether a command is currently executing
+  executingCommand: null, // Name of the command being executed
+  executionTimeout: null, // Timeout handle for cancellation
+  executionError: null // Error message if execution failed
 };
 
 // Load adaptive data on startup
@@ -131,6 +142,40 @@ async function render() {
   setTimeout(() => {
     commandInput.focus();
   }, 50);
+
+  // Reset state when panel becomes visible (handles keepLive reuse)
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      // Reset execution state when panel is shown
+      hideExecutionState();
+      // Exit chain mode if panel was reused
+      if (state.chainMode) {
+        exitChainMode();
+      }
+    }
+  });
+
+  // Chain cancel button handler
+  const chainCancelBtn = document.getElementById('chain-cancel');
+  if (chainCancelBtn) {
+    chainCancelBtn.addEventListener('click', () => {
+      exitChainMode();
+      commandInput.value = '';
+      state.typed = '';
+      commandInput.focus();
+      updateCommandUI();
+      updateResultsUI();
+    });
+  }
+
+  // Execution cancel button handler
+  const execCancelBtn = document.querySelector('#execution-state .exec-cancel');
+  if (execCancelBtn) {
+    execCancelBtn.addEventListener('click', () => {
+      cancelExecution();
+      commandInput.focus();
+    });
+  }
 }
 
 render();
@@ -141,8 +186,18 @@ render();
 function handleSpecialKey(e) {
   const commandInput = document.getElementById('command-input');
 
-  // Escape key - close window
+  // Escape key - exit chain mode first, then close window
   if (e.key === 'Escape' && !hasModifier(e)) {
+    if (state.chainMode) {
+      // If in chain mode, exit chain mode instead of closing
+      exitChainMode();
+      // Clear input
+      commandInput.value = '';
+      state.typed = '';
+      updateCommandUI();
+      updateResultsUI();
+      return;
+    }
     shutdown();
     return;
   }
@@ -246,12 +301,408 @@ function buildExecutionContext(name, typed) {
   // Search is the joined params (text after command name)
   const search = params.length > 0 ? params.join(' ') : null;
 
-  return {
+  const context = {
     typed,       // Full typed string
     name,        // Command name
     params,      // Array of parameters
     search       // Text after command name (for search-style commands)
   };
+
+  // Add chain data if in chain mode
+  if (state.chainMode && state.chainContext) {
+    context.input = state.chainContext.data;           // Input data from previous command
+    context.inputMimeType = state.chainContext.mimeType; // MIME type of input data
+    context.inputTitle = state.chainContext.title;     // Human-readable title
+    context.inputSource = state.chainContext.sourceCommand; // Source command name
+  }
+
+  return context;
+}
+
+// ===== Chain Mode Functions =====
+
+/**
+ * Check if a MIME pattern matches an actual MIME type
+ * Supports wildcards like star/star for any type, text/star for text subtypes
+ */
+function mimeTypeMatches(pattern, actual) {
+  if (!pattern || !actual) return false;
+  if (pattern === '*/*' || pattern === actual) return true;
+
+  const [pType, pSub] = pattern.split('/');
+  const [aType, aSub] = actual.split('/');
+
+  // Wildcard subtype (e.g., "text/*" matches "text/plain")
+  return pSub === '*' && pType === aType;
+}
+
+/**
+ * Find commands that can accept the given MIME type as input
+ */
+function findChainingCommands(mimeType) {
+  return Object.values(state.commands).filter(cmd => {
+    if (!cmd.accepts?.length) return false;
+    return cmd.accepts.some(acceptedType => mimeTypeMatches(acceptedType, mimeType));
+  });
+}
+
+/**
+ * Enter chain mode with output from a command
+ * @param {Object} output - { data, mimeType, title }
+ * @param {string} sourceCommand - Name of the command that produced this output
+ */
+function enterChainMode(output, sourceCommand) {
+  console.log('[cmd:panel] Entering chain mode with output:', output.mimeType, output.title);
+
+  state.chainMode = true;
+  state.chainContext = {
+    data: output.data,
+    mimeType: output.mimeType,
+    title: output.title || 'Output',
+    sourceCommand
+  };
+
+  // Push to stack for potential undo
+  state.chainStack.push({ ...state.chainContext });
+
+  // Find commands that can accept this output
+  const chainingCommands = findChainingCommands(output.mimeType);
+  console.log('[cmd:panel] Found', chainingCommands.length, 'commands accepting', output.mimeType);
+
+  // Clear input and update matches to show chaining commands
+  state.typed = '';
+  state.matches = chainingCommands.map(cmd => cmd.name);
+  state.matchIndex = 0;
+
+  // Update UI
+  updateChainUI();
+  updateCommandUI();
+  updateResultsUI();
+
+  // Show preview if we have data
+  if (output.data) {
+    showPreview(output.data, output.mimeType, output.title);
+  }
+}
+
+/**
+ * Exit chain mode and reset state
+ */
+function exitChainMode() {
+  console.log('[cmd:panel] Exiting chain mode');
+
+  state.chainMode = false;
+  state.chainContext = null;
+  state.chainStack = [];
+  state.matches = [];
+  state.matchIndex = 0;
+
+  // Hide preview
+  hidePreview();
+
+  // Update UI
+  updateChainUI();
+  updateCommandUI();
+  updateResultsUI();
+}
+
+/**
+ * Go back one step in the chain (undo)
+ */
+function chainUndo() {
+  if (state.chainStack.length <= 1) {
+    // Can't undo past the first item, exit chain mode
+    exitChainMode();
+    return;
+  }
+
+  // Pop current and restore previous
+  state.chainStack.pop();
+  state.chainContext = { ...state.chainStack[state.chainStack.length - 1] };
+
+  // Update matches for the restored context
+  const chainingCommands = findChainingCommands(state.chainContext.mimeType);
+  state.matches = chainingCommands.map(cmd => cmd.name);
+  state.matchIndex = 0;
+
+  // Update UI
+  updateChainUI();
+  updateCommandUI();
+  updateResultsUI();
+
+  // Update preview
+  if (state.chainContext.data) {
+    showPreview(state.chainContext.data, state.chainContext.mimeType, state.chainContext.title);
+  }
+}
+
+/**
+ * Update chain indicator UI
+ */
+function updateChainUI() {
+  const chainIndicator = document.getElementById('chain-indicator');
+  if (!chainIndicator) return;
+
+  if (state.chainMode && state.chainContext) {
+    chainIndicator.style.display = 'flex';
+    document.getElementById('chain-mime').textContent = state.chainContext.mimeType;
+    document.getElementById('chain-title').textContent = state.chainContext.title || '';
+  } else {
+    chainIndicator.style.display = 'none';
+  }
+}
+
+/**
+ * Show preview pane with data
+ */
+function showPreview(data, mimeType, title) {
+  const previewContainer = document.getElementById('preview-container');
+  const previewContent = document.getElementById('preview-content');
+  const previewMime = document.getElementById('preview-mime');
+  const previewTitle = document.getElementById('preview-title');
+
+  if (!previewContainer || !previewContent) {
+    console.log('[cmd:panel] Preview container not found');
+    return;
+  }
+
+  // Render content based on MIME type
+  const renderer = getRenderer(mimeType);
+  previewContent.innerHTML = renderer(data);
+
+  // Update header
+  if (previewMime) previewMime.textContent = mimeType;
+  if (previewTitle) previewTitle.textContent = title || '';
+
+  // Show container
+  previewContainer.style.display = 'block';
+
+  // Resize window to accommodate preview
+  resizePanelForPreview();
+}
+
+/**
+ * Hide preview pane
+ */
+function hidePreview() {
+  const previewContainer = document.getElementById('preview-container');
+  if (previewContainer) {
+    previewContainer.style.display = 'none';
+  }
+
+  // Resize window back to normal
+  resizePanelForPreview();
+}
+
+/**
+ * Resize panel window to fit content
+ * Note: Window resize API not yet implemented - using CSS-based layout instead
+ */
+function resizePanelForPreview() {
+  // CSS handles the layout via flex and max-height
+  // This function is a placeholder for future window resize support
+}
+
+// ===== MIME Type Renderers =====
+
+/**
+ * Get renderer for MIME type
+ */
+function getRenderer(mimeType) {
+  const renderers = {
+    'application/json': renderJson,
+    'text/csv': renderCsv,
+    'text/plain': renderPlain,
+    'text/html': renderHtml
+  };
+
+  // Try exact match first
+  if (renderers[mimeType]) {
+    return renderers[mimeType];
+  }
+
+  // Try type-only match (e.g., "text/*")
+  const [type] = mimeType.split('/');
+  if (type === 'text') {
+    return renderPlain;
+  }
+
+  // Default fallback
+  return renderDefault;
+}
+
+function renderJson(data) {
+  try {
+    const parsed = typeof data === 'string' ? JSON.parse(data) : data;
+
+    // If it's an array, render as a nice list/table
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      // Check if items are objects (render as table) or primitives (render as list)
+      if (typeof parsed[0] === 'object' && parsed[0] !== null) {
+        return renderJsonTable(parsed);
+      } else {
+        // Simple array of primitives
+        const items = parsed.slice(0, 50).map((item, i) =>
+          `<div class="preview-list-item">${i + 1}. ${escapeHtml(String(item))}</div>`
+        ).join('');
+        const more = parsed.length > 50 ? `<div class="preview-more">... and ${parsed.length - 50} more</div>` : '';
+        return `<div class="preview-list">${items}${more}</div>`;
+      }
+    }
+
+    // For objects or other types, show formatted JSON
+    return `<pre class="preview-json">${escapeHtml(JSON.stringify(parsed, null, 2))}</pre>`;
+  } catch (e) {
+    return `<pre class="preview-error">Invalid JSON: ${escapeHtml(String(data))}</pre>`;
+  }
+}
+
+function renderJsonTable(data) {
+  // Get all unique keys from the objects
+  const keys = new Set();
+  data.forEach(item => {
+    if (typeof item === 'object' && item !== null) {
+      Object.keys(item).forEach(k => keys.add(k));
+    }
+  });
+  const headers = Array.from(keys).slice(0, 6); // Limit columns
+
+  // Build table
+  const headerRow = headers.map(h => `<th>${escapeHtml(String(h))}</th>`).join('');
+  const rows = data.slice(0, 30).map(item => {
+    const cells = headers.map(h => {
+      const val = item[h];
+      const display = val === null || val === undefined ? '' :
+                      typeof val === 'object' ? JSON.stringify(val) : String(val);
+      return `<td>${escapeHtml(display.slice(0, 50))}</td>`;
+    }).join('');
+    return `<tr>${cells}</tr>`;
+  }).join('');
+
+  const more = data.length > 30 ? `<div class="preview-more">Showing 30 of ${data.length} items</div>` : '';
+
+  return `<table class="preview-table"><thead><tr>${headerRow}</tr></thead><tbody>${rows}</tbody></table>${more}`;
+}
+
+function renderCsv(data) {
+  const lines = String(data).split('\n').slice(0, 20); // Limit to 20 lines
+  const rows = lines.map(line => {
+    const cells = line.split(',').map(cell => `<td>${escapeHtml(cell.trim())}</td>`).join('');
+    return `<tr>${cells}</tr>`;
+  }).join('');
+  return `<table class="preview-csv">${rows}</table>`;
+}
+
+function renderPlain(data) {
+  const text = String(data).slice(0, 2000); // Limit length
+  return `<pre class="preview-plain">${escapeHtml(text)}</pre>`;
+}
+
+function renderHtml(data) {
+  // Sanitize and show snippet of HTML
+  const text = String(data).slice(0, 2000);
+  return `<pre class="preview-html">${escapeHtml(text)}</pre>`;
+}
+
+function renderDefault(data) {
+  const text = String(data).slice(0, 1000);
+  return `<pre class="preview-default">${escapeHtml(text)}</pre>`;
+}
+
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+// ===== Execution State Functions =====
+
+const EXECUTION_TIMEOUT_MS = 30000; // 30 second timeout
+
+/**
+ * Show execution state (spinner + command name)
+ */
+function showExecutionState(commandName) {
+  state.executing = true;
+  state.executingCommand = commandName;
+  state.executionError = null;
+
+  const execState = document.getElementById('execution-state');
+  if (!execState) return;
+
+  execState.classList.remove('error');
+  execState.style.display = 'flex';
+
+  const spinner = execState.querySelector('.spinner');
+  const execText = execState.querySelector('.exec-text');
+
+  if (spinner) spinner.style.display = 'block';
+  if (execText) execText.textContent = `Running "${commandName}"...`;
+}
+
+/**
+ * Hide execution state
+ */
+function hideExecutionState() {
+  state.executing = false;
+  state.executingCommand = null;
+  state.executionError = null;
+
+  if (state.executionTimeout) {
+    clearTimeout(state.executionTimeout);
+    state.executionTimeout = null;
+  }
+
+  const execState = document.getElementById('execution-state');
+  if (execState) {
+    execState.style.display = 'none';
+    execState.classList.remove('error');
+  }
+}
+
+/**
+ * Show execution error
+ */
+function showExecutionError(commandName, errorMsg) {
+  state.executing = false;
+  state.executionError = errorMsg;
+
+  if (state.executionTimeout) {
+    clearTimeout(state.executionTimeout);
+    state.executionTimeout = null;
+  }
+
+  const execState = document.getElementById('execution-state');
+  if (!execState) return;
+
+  execState.classList.add('error');
+  execState.style.display = 'flex';
+
+  const spinner = execState.querySelector('.spinner');
+  const execText = execState.querySelector('.exec-text');
+
+  if (spinner) spinner.style.display = 'none';
+  if (execText) {
+    execText.innerHTML = `<span class="exec-error">"${escapeHtml(commandName)}" failed: ${escapeHtml(errorMsg)}</span>`;
+  }
+
+  // Auto-hide error after 5 seconds
+  setTimeout(() => {
+    if (state.executionError === errorMsg) {
+      hideExecutionState();
+    }
+  }, 5000);
+}
+
+/**
+ * Cancel current execution
+ */
+function cancelExecution() {
+  console.log('[cmd:panel] Cancelling execution');
+  hideExecutionState();
 }
 
 /**
@@ -259,12 +710,67 @@ function buildExecutionContext(name, typed) {
  */
 async function execute(name, typed) {
   api.log('execute() called with:', name, typed);
-  if (state.commands[name]) {
-    api.log('executing cmd', name, typed);
-    const context = buildExecutionContext(name, typed);
-    debug && console.log('execution context', context);
-    state.commands[name].execute(context);
+  if (!state.commands[name]) return;
+
+  api.log('executing cmd', name, typed);
+  const context = buildExecutionContext(name, typed);
+  debug && console.log('execution context', context);
+
+  // Show execution state with spinner
+  showExecutionState(name);
+
+  // Set up timeout
+  const timeoutPromise = new Promise((_, reject) => {
+    state.executionTimeout = setTimeout(() => {
+      reject(new Error(`Command timed out after ${EXECUTION_TIMEOUT_MS / 1000}s`));
+    }, EXECUTION_TIMEOUT_MS);
+  });
+
+  try {
+    // Execute command with timeout
+    const result = await Promise.race([
+      state.commands[name].execute(context),
+      timeoutPromise
+    ]);
+
+    // Clear timeout
+    if (state.executionTimeout) {
+      clearTimeout(state.executionTimeout);
+      state.executionTimeout = null;
+    }
+
+    // Hide execution state
+    hideExecutionState();
+
+    debug && console.log('command result:', result);
+
+    // Check if command produced chainable output
+    if (result && result.output && result.output.data && result.output.mimeType) {
+      // Command produced output - enter chain mode
+      enterChainMode(result.output, name);
+
+      // Clear input for next command
+      const commandInput = document.getElementById('command-input');
+      if (commandInput) {
+        commandInput.value = '';
+        commandInput.focus();
+      }
+      // Don't shutdown - stay open for chaining
+      return;
+    }
+
+    // No output or end of chain - close panel
+    if (state.chainMode) {
+      exitChainMode();
+    }
     setTimeout(shutdown, 100);
+  } catch (err) {
+    console.error('[cmd:panel] Command execution error:', err);
+
+    // Show error state
+    showExecutionError(name, err.message || 'Unknown error');
+
+    // Don't close panel on error - let user see the error and try again
   }
 }
 
@@ -515,7 +1021,49 @@ function updateResultsUI() {
     if (index === state.matchIndex) {
       item.classList.add('selected');
     }
-    item.textContent = match;
+
+    // Get command metadata for description and badges
+    const cmd = state.commands[match];
+
+    // Build item content with name, description, and badges
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'cmd-name';
+    nameSpan.textContent = match;
+    item.appendChild(nameSpan);
+
+    // Add description if available
+    if (cmd && cmd.description) {
+      const descSpan = document.createElement('span');
+      descSpan.className = 'cmd-desc';
+      descSpan.textContent = cmd.description;
+      item.appendChild(descSpan);
+    }
+
+    // Add badges for chaining capabilities (only show in chain mode or if command has outputs)
+    if (cmd && (state.chainMode || (cmd.produces && cmd.produces.length > 0))) {
+      const badgesSpan = document.createElement('span');
+      badgesSpan.className = 'cmd-badges';
+
+      // Show what the command accepts (in chain mode)
+      if (state.chainMode && cmd.accepts && cmd.accepts.length > 0) {
+        const acceptBadge = document.createElement('span');
+        acceptBadge.className = 'cmd-badge';
+        acceptBadge.textContent = '← ' + cmd.accepts[0];
+        badgesSpan.appendChild(acceptBadge);
+      }
+
+      // Show what the command produces
+      if (cmd.produces && cmd.produces.length > 0) {
+        const produceBadge = document.createElement('span');
+        produceBadge.className = 'cmd-badge';
+        produceBadge.textContent = '→ ' + cmd.produces[0];
+        badgesSpan.appendChild(produceBadge);
+      }
+
+      if (badgesSpan.children.length > 0) {
+        item.appendChild(badgesSpan);
+      }
+    }
 
     // Add click handler
     item.addEventListener('click', () => {

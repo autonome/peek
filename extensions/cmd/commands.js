@@ -72,16 +72,42 @@ window.addEventListener('DOMContentLoaded', () => initializeCommandSources());
 
 /**
  * Create a proxy command that publishes execution back to the registering extension
+ *
+ * Proxy commands execute via pubsub (fire-and-forget). For chaining support,
+ * extensions can subscribe to `cmd:execute:${name}:result` and publish their
+ * result, which we capture here and return for the chaining flow.
  */
 function createProxyCommand(cmdData) {
   return {
     name: cmdData.name,
     description: cmdData.description || '',
     source: cmdData.source,
+    // Preserve connector metadata for chaining
+    accepts: cmdData.accepts || [],
+    produces: cmdData.produces || [],
     execute: async (ctx) => {
-      // Publish execution request to the extension that registered this command
-      // Use GLOBAL scope so it reaches the extension in background.html
-      api.publish(`cmd:execute:${cmdData.name}`, ctx, api.scopes.GLOBAL);
+      return new Promise((resolve) => {
+        const resultTopic = `cmd:execute:${cmdData.name}:result`;
+
+        // Set up listener for result (one-time)
+        const unsubscribe = api.subscribe(resultTopic, (result) => {
+          // Got result from extension - pass it back for chaining
+          resolve(result);
+        }, api.scopes.GLOBAL);
+
+        // Publish execution request to the extension
+        // Include a flag so extension knows to publish result
+        api.publish(`cmd:execute:${cmdData.name}`, {
+          ...ctx,
+          expectResult: true,
+          resultTopic
+        }, api.scopes.GLOBAL);
+
+        // Timeout after 30 seconds - return undefined (no chaining)
+        setTimeout(() => {
+          resolve(undefined);
+        }, 30000);
+      });
     }
   };
 }

@@ -75,7 +75,10 @@ const initCommandRegistry = () => {
     commandRegistry.set(msg.name, {
       name: msg.name,
       description: msg.description || '',
-      source: msg.source
+      source: msg.source,
+      // Connector metadata for chaining
+      accepts: msg.accepts || [],   // MIME types this command accepts as input
+      produces: msg.produces || []  // MIME types this command produces as output
     });
   }, api.scopes.GLOBAL);
 
@@ -106,7 +109,8 @@ const initCommandRegistry = () => {
  * Open the command panel window
  */
 const openPanelWindow = (prefs) => {
-  const height = prefs.height || 50;
+  // Use larger default height to accommodate results list and preview
+  const height = prefs.height || 400;
   const width = prefs.width || 600;
 
   const params = {

@@ -9,6 +9,11 @@ import noteModule from './note.js';
 import historyModule from './history.js';
 import tagModule from './tag.js';
 
+// Chaining commands - for command composition pipelines
+import listsCommand from './lists.js';
+import csvCommand from './csv.js';
+import saveCommand from './save.js';
+
 console.log('[cmd:commands/index] tagModule.commands:', tagModule.commands?.map(c => c.name));
 
 // Source commands (commented out as they need browser extension APIs)
@@ -31,7 +36,12 @@ const activeCommands = [
   modalCommand,
   ...noteModule.commands,
   ...historyModule.commands,
-  ...tagModule.commands
+  ...tagModule.commands,
+
+  // Chaining commands
+  listsCommand,
+  csvCommand,
+  saveCommand
 ];
 
 console.log('[cmd:commands/index] activeCommands:', activeCommands.map(c => c.name));

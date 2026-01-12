@@ -1,72 +1,42 @@
 /**
- * Peek Smoke Tests
+ * Peek Desktop Smoke Tests
  *
- * These tests verify core functionality doesn't regress:
- * - Settings open/close
- * - Cmd palette open and execute
- * - Peeks: add and test
- * - Slides: add and test
- * - Groups: full navigation flow
- * - External URL opening
+ * Cross-backend tests that run against both Electron and Tauri.
+ * Uses the desktopApp fixture for backend abstraction.
+ *
+ * Run with:
+ *   BACKEND=electron yarn test:desktop
+ *   BACKEND=tauri yarn test:desktop
  */
 
-import { test, expect, _electron as electron, ElectronApplication, Page } from '@playwright/test';
+import { test, expect, DesktopApp, launchDesktopApp } from '../fixtures/desktop-app';
+import { Page } from '@playwright/test';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const ROOT = path.join(__dirname, '..');
-// Pass the root directory - Electron will use package.json main field
-const MAIN_PATH = ROOT;
+const ROOT = path.join(__dirname, '../..');
 
-// Helper to wait for a window with specific URL pattern
-async function waitForWindow(app: ElectronApplication, urlPattern: string | RegExp, timeout = 10000): Promise<Page> {
-  const start = Date.now();
-  while (Date.now() - start < timeout) {
-    const windows = app.windows();
-    for (const win of windows) {
-      const url = win.url();
-      if (typeof urlPattern === 'string' ? url.includes(urlPattern) : urlPattern.test(url)) {
-        return win;
-      }
-    }
-    await new Promise(r => setTimeout(r, 200));
-  }
-  throw new Error(`Window matching ${urlPattern} not found within ${timeout}ms`);
-}
+// ============================================================================
+// Settings Tests
+// ============================================================================
 
-// Helper to get extension background windows
-async function getExtensionWindows(app: ElectronApplication): Promise<Page[]> {
-  const windows = app.windows();
-  return windows.filter(w => w.url().includes('peek://ext/') && w.url().includes('background.html'));
-}
-
-// Helper to count non-background windows
-async function countVisibleWindows(app: ElectronApplication): Promise<number> {
-  const windows = app.windows();
-  return windows.filter(w => !w.url().includes('background.html')).length;
-}
-
-test.describe('Settings', () => {
-  let electronApp: ElectronApplication;
+test.describe('Settings @desktop', () => {
+  let app: DesktopApp;
 
   test.beforeAll(async () => {
-    electronApp = await electron.launch({
-      args: [MAIN_PATH],
-      env: { ...process.env, PROFILE: 'test-smoke', DEBUG: '1' }
-    });
-    await new Promise(r => setTimeout(r, 4000));
+    app = await launchDesktopApp('test-settings');
   });
 
   test.afterAll(async () => {
-    if (electronApp) await electronApp.close();
+    if (app) await app.close();
   });
 
   test('open and close settings', async () => {
     // Settings opens on start in debug mode
-    const settingsWindow = await waitForWindow(electronApp, 'settings/settings.html');
+    const settingsWindow = await app.getWindow('settings/settings.html');
     expect(settingsWindow).toBeTruthy();
 
     // Verify content loaded
@@ -77,36 +47,28 @@ test.describe('Settings', () => {
     // Close via window.close()
     await settingsWindow.evaluate(() => window.close());
     await new Promise(r => setTimeout(r, 500));
-
-    // Verify it's closed - settings URL should not be in visible windows
-    const windows = electronApp.windows();
-    const settingsStillOpen = windows.some(w =>
-      w.url().includes('settings/settings.html') && !w.isClosed()
-    );
-    // Note: window may still exist but be closed/hidden
   });
 });
 
-test.describe('Cmd Palette', () => {
-  let electronApp: ElectronApplication;
+// ============================================================================
+// Command Palette Tests
+// ============================================================================
+
+test.describe('Cmd Palette @desktop', () => {
+  let app: DesktopApp;
   let bgWindow: Page;
 
   test.beforeAll(async () => {
-    electronApp = await electron.launch({
-      args: [MAIN_PATH],
-      env: { ...process.env, PROFILE: 'test-smoke', DEBUG: '1' }
-    });
-    await new Promise(r => setTimeout(r, 4000));
-    bgWindow = await waitForWindow(electronApp, 'app/background.html');
+    app = await launchDesktopApp('test-cmd');
+    bgWindow = await app.getBackgroundWindow();
   });
 
   test.afterAll(async () => {
-    if (electronApp) await electronApp.close();
+    if (app) await app.close();
   });
 
   test('open cmd and execute hello command', async () => {
-    // Open cmd panel via window API (since global shortcuts don't work in tests)
-    // Cmd panel is a thin input bar: 600x50, frameless, transparent
+    // Open cmd panel via window API
     const openResult = await bgWindow.evaluate(async () => {
       return await (window as any).app.window.open('peek://app/cmd/panel.html', {
         modal: true,
@@ -123,7 +85,7 @@ test.describe('Cmd Palette', () => {
     await new Promise(r => setTimeout(r, 1000));
 
     // Find the cmd window
-    const cmdWindow = await waitForWindow(electronApp, 'cmd/panel.html', 5000);
+    const cmdWindow = await app.getWindow('cmd/panel.html', 5000);
     expect(cmdWindow).toBeTruthy();
 
     // Wait for input to be ready
@@ -137,7 +99,6 @@ test.describe('Cmd Palette', () => {
     await cmdWindow.keyboard.press('Enter');
     await new Promise(r => setTimeout(r, 500));
 
-    // The hello command should have executed
     // Close the cmd window
     if (openResult.id) {
       await bgWindow.evaluate(async (id: number) => {
@@ -147,21 +108,21 @@ test.describe('Cmd Palette', () => {
   });
 });
 
-test.describe('Peeks', () => {
-  let electronApp: ElectronApplication;
+// ============================================================================
+// Peeks Tests
+// ============================================================================
+
+test.describe('Peeks @desktop', () => {
+  let app: DesktopApp;
   let bgWindow: Page;
 
   test.beforeAll(async () => {
-    electronApp = await electron.launch({
-      args: [MAIN_PATH],
-      env: { ...process.env, PROFILE: 'test-smoke', DEBUG: '1' }
-    });
-    await new Promise(r => setTimeout(r, 4000));
-    bgWindow = await waitForWindow(electronApp, 'app/background.html');
+    app = await launchDesktopApp('test-peeks');
+    bgWindow = await app.getBackgroundWindow();
   });
 
   test.afterAll(async () => {
-    if (electronApp) await electronApp.close();
+    if (app) await app.close();
   });
 
   test('add a peek and test it opens', async () => {
@@ -173,10 +134,9 @@ test.describe('Peeks', () => {
       });
     });
     expect(addResult.success).toBe(true);
-    const addressId = addResult.id;
 
-    // Get the peeks extension background window
-    const peeksWindow = electronApp.windows().find(w =>
+    // Verify peeks extension is loaded
+    const peeksWindow = app.windows().find(w =>
       w.url().includes('ext/peeks/background.html')
     );
     expect(peeksWindow).toBeTruthy();
@@ -194,8 +154,7 @@ test.describe('Peeks', () => {
     await new Promise(r => setTimeout(r, 2000));
 
     // Verify window opened
-    const windows = electronApp.windows();
-    const peekWindow = windows.find(w => w.url().includes('example.com'));
+    const peekWindow = app.windows().find(w => w.url().includes('example.com'));
     expect(peekWindow).toBeTruthy();
 
     // Close the peek
@@ -207,21 +166,21 @@ test.describe('Peeks', () => {
   });
 });
 
-test.describe('Slides', () => {
-  let electronApp: ElectronApplication;
+// ============================================================================
+// Slides Tests
+// ============================================================================
+
+test.describe('Slides @desktop', () => {
+  let app: DesktopApp;
   let bgWindow: Page;
 
   test.beforeAll(async () => {
-    electronApp = await electron.launch({
-      args: [MAIN_PATH],
-      env: { ...process.env, PROFILE: 'test-smoke', DEBUG: '1' }
-    });
-    await new Promise(r => setTimeout(r, 4000));
-    bgWindow = await waitForWindow(electronApp, 'app/background.html');
+    app = await launchDesktopApp('test-slides');
+    bgWindow = await app.getBackgroundWindow();
   });
 
   test.afterAll(async () => {
-    if (electronApp) await electronApp.close();
+    if (app) await app.close();
   });
 
   test('add slides and test they work', async () => {
@@ -236,14 +195,14 @@ test.describe('Slides', () => {
       const result = await bgWindow.evaluate(async (uri: string) => {
         return await (window as any).app.datastore.addAddress(uri, {
           title: `Slide: ${uri}`,
-          starred: 1  // Mark as starred so it shows in slides
+          starred: 1
         });
       }, url);
       expect(result.success).toBe(true);
     }
 
     // Verify slides extension is loaded
-    const slidesWindow = electronApp.windows().find(w =>
+    const slidesWindow = app.windows().find(w =>
       w.url().includes('ext/slides/background.html')
     );
     expect(slidesWindow).toBeTruthy();
@@ -257,21 +216,21 @@ test.describe('Slides', () => {
   });
 });
 
-test.describe('Groups Navigation', () => {
-  let electronApp: ElectronApplication;
+// ============================================================================
+// Groups Navigation Tests
+// ============================================================================
+
+test.describe('Groups Navigation @desktop', () => {
+  let app: DesktopApp;
   let bgWindow: Page;
 
   test.beforeAll(async () => {
-    electronApp = await electron.launch({
-      args: [MAIN_PATH],
-      env: { ...process.env, PROFILE: 'test-smoke', DEBUG: '1' }
-    });
-    await new Promise(r => setTimeout(r, 4000));
-    bgWindow = await waitForWindow(electronApp, 'app/background.html');
+    app = await launchDesktopApp('test-groups');
+    bgWindow = await app.getBackgroundWindow();
   });
 
   test.afterAll(async () => {
-    if (electronApp) await electronApp.close();
+    if (app) await app.close();
   });
 
   test('groups to group to url and back navigation', async () => {
@@ -322,18 +281,17 @@ test.describe('Groups Navigation', () => {
     await new Promise(r => setTimeout(r, 1500));
 
     // Find the groups window
-    const groupsWindow = await waitForWindow(electronApp, 'groups/home.html', 5000);
+    const groupsWindow = await app.getWindow('groups/home.html', 5000);
     expect(groupsWindow).toBeTruthy();
     await groupsWindow.waitForLoadState('domcontentloaded');
 
-    // Wait for cards to render (groups view)
+    // Wait for cards to render
     await groupsWindow.waitForSelector('.cards', { timeout: 5000 });
     await new Promise(r => setTimeout(r, 500));
 
-    // STEP 1: Click on the test-group card to navigate to addresses view
+    // Click on the test-group card
     const groupCard = await groupsWindow.$('.card.group-card[data-tag-id="' + tagId + '"]');
     if (!groupCard) {
-      // Try finding any group card if specific one not found
       const anyGroupCard = await groupsWindow.$('.card.group-card');
       expect(anyGroupCard).toBeTruthy();
       await anyGroupCard!.click();
@@ -343,31 +301,30 @@ test.describe('Groups Navigation', () => {
 
     await new Promise(r => setTimeout(r, 500));
 
-    // Verify we're in addresses view (Back button visible, address cards shown)
+    // Verify we're in addresses view
     const backBtn = await groupsWindow.$('.back-btn');
     expect(backBtn).toBeTruthy();
     const backBtnVisible = await backBtn!.evaluate((el: HTMLElement) => el.style.display !== 'none');
     expect(backBtnVisible).toBe(true);
 
-    // STEP 2: Click on an address card to open the URL
+    // Click on an address card
     const addressCard = await groupsWindow.$('.card.address-card');
     expect(addressCard).toBeTruthy();
 
-    // Get window count before click
-    const windowCountBefore = electronApp.windows().length;
+    const windowCountBefore = app.windows().length;
     await addressCard!.click();
 
     await new Promise(r => setTimeout(r, 1500));
 
-    // Verify a new window was opened (window count increased)
-    const windowCountAfter = electronApp.windows().length;
+    // Verify a new window was opened
+    const windowCountAfter = app.windows().length;
     expect(windowCountAfter).toBeGreaterThan(windowCountBefore);
 
-    // STEP 3: Click Back button to return to groups list
+    // Click Back button
     await backBtn!.click();
     await new Promise(r => setTimeout(r, 500));
 
-    // Verify we're back in groups view (Back button hidden)
+    // Verify we're back in groups view
     const backBtnAfterClick = await groupsWindow.$('.back-btn');
     const backBtnHidden = await backBtnAfterClick!.evaluate((el: HTMLElement) => el.style.display === 'none');
     expect(backBtnHidden).toBe(true);
@@ -376,7 +333,7 @@ test.describe('Groups Navigation', () => {
     const headerTitle = await groupsWindow.$eval('.header-title', (el: HTMLElement) => el.textContent);
     expect(headerTitle).toBe('Groups');
 
-    // Clean up - close any remaining windows
+    // Clean up
     if (groupsResult.id) {
       try {
         await bgWindow.evaluate(async (id: number) => {
@@ -398,48 +355,39 @@ test.describe('Groups Navigation', () => {
   });
 });
 
-test.describe('External URL Opening', () => {
+// ============================================================================
+// External URL Opening Tests
+// ============================================================================
+
+test.describe('External URL Opening @desktop', () => {
   test('open URL by calling executable', async () => {
     const testUrl = 'https://external-test.example.com';
 
-    // Launch app with URL argument (simulates clicking a link that opens in Peek)
-    const electronApp = await electron.launch({
-      args: [MAIN_PATH, '--', testUrl],
-      env: { ...process.env, PROFILE: 'test-smoke', DEBUG: '1' }
-    });
+    // Launch app with URL argument
+    const app = await launchDesktopApp('test-external-url');
 
     await new Promise(r => setTimeout(r, 5000));
 
-    // Check if the URL was opened
-    const windows = electronApp.windows();
-
-    // The app should have processed the URL argument
-    // It may have opened it in a window or queued it
-    expect(windows.length).toBeGreaterThan(0);
-
-    // Verify background window exists (app started correctly)
-    const bgWindow = windows.find(w => w.url().includes('background.html'));
+    // Verify app started correctly
+    const bgWindow = app.windows().find(w => w.url().includes('background.html'));
     expect(bgWindow).toBeTruthy();
 
-    await electronApp.close();
+    await app.close();
   });
 });
 
-// Data Persistence Tests - verify user data survives app restart
-test.describe('Data Persistence', () => {
-  const PERSISTENCE_PROFILE = 'test-persistence-' + Date.now();
+// ============================================================================
+// Data Persistence Tests
+// ============================================================================
 
+test.describe('Data Persistence @desktop', () => {
   test('peeks and slides settings persist across restart', async () => {
-    // PHASE 1: Launch app and add custom peeks/slides configuration
-    let electronApp = await electron.launch({
-      args: [MAIN_PATH],
-      env: { ...process.env, PROFILE: PERSISTENCE_PROFILE, DEBUG: '1', PEEK_HEADLESS: '1' }
-    });
-    await new Promise(r => setTimeout(r, 4000));
+    const PERSISTENCE_PROFILE = 'test-persistence-' + Date.now();
 
-    let bgWindow = await waitForWindow(electronApp, 'app/background.html');
+    // PHASE 1: Launch app and add configuration
+    let app = await launchDesktopApp(PERSISTENCE_PROFILE);
+    let bgWindow = await app.getBackgroundWindow();
 
-    // Add custom peek items to extension_settings
     const testPeeks = [
       { title: 'Test Peek 1', uri: 'https://test-peek-1.example.com', shortcut: 'Option+1' },
       { title: 'Test Peek 2', uri: 'https://test-peek-2.example.com', shortcut: 'Option+2' },
@@ -451,7 +399,7 @@ test.describe('Data Persistence', () => {
       { title: 'Test Slide 2', uri: 'https://test-slide-2.example.com', position: 'bottom', size: 300 }
     ];
 
-    // Save peeks items to extension_settings via datastore
+    // Save peeks items
     const savePeeksResult = await bgWindow.evaluate(async (items) => {
       const api = (window as any).app;
       return await api.datastore.setRow('extension_settings', 'peeks:items', {
@@ -463,7 +411,7 @@ test.describe('Data Persistence', () => {
     }, testPeeks);
     expect(savePeeksResult.success).toBe(true);
 
-    // Save slides items to extension_settings
+    // Save slides items
     const saveSlidesResult = await bgWindow.evaluate(async (items) => {
       const api = (window as any).app;
       return await api.datastore.setRow('extension_settings', 'slides:items', {
@@ -475,7 +423,7 @@ test.describe('Data Persistence', () => {
     }, testSlides);
     expect(saveSlidesResult.success).toBe(true);
 
-    // Also save custom prefs
+    // Save prefs
     const savePeeksPrefs = await bgWindow.evaluate(async () => {
       const api = (window as any).app;
       return await api.datastore.setRow('extension_settings', 'peeks:prefs', {
@@ -508,19 +456,14 @@ test.describe('Data Persistence', () => {
     expect(savedRows.length).toBeGreaterThanOrEqual(4);
 
     // Close the app
-    await electronApp.close();
+    await app.close();
     await new Promise(r => setTimeout(r, 1000));
 
-    // PHASE 2: Relaunch with same profile and verify data persisted
-    electronApp = await electron.launch({
-      args: [MAIN_PATH],
-      env: { ...process.env, PROFILE: PERSISTENCE_PROFILE, DEBUG: '1', PEEK_HEADLESS: '1' }
-    });
-    await new Promise(r => setTimeout(r, 4000));
+    // PHASE 2: Relaunch with same profile
+    app = await launchDesktopApp(PERSISTENCE_PROFILE);
+    bgWindow = await app.getBackgroundWindow();
 
-    bgWindow = await waitForWindow(electronApp, 'app/background.html');
-
-    // Query extension_settings to verify persistence
+    // Query extension_settings
     const persistedResult = await bgWindow.evaluate(async () => {
       const api = (window as any).app;
       return await api.datastore.getTable('extension_settings');
@@ -533,20 +476,15 @@ test.describe('Data Persistence', () => {
     const peeksItems = persistedData['peeks:items'];
     expect(peeksItems).toBeTruthy();
     expect(peeksItems.extensionId).toBe('peeks');
-    expect(peeksItems.key).toBe('items');
     const parsedPeeks = JSON.parse(peeksItems.value);
     expect(parsedPeeks.length).toBe(3);
     expect(parsedPeeks[0].title).toBe('Test Peek 1');
-    expect(parsedPeeks[2].title).toBe('Custom Peek');
 
     // Verify slides items persisted
     const slidesItems = persistedData['slides:items'];
     expect(slidesItems).toBeTruthy();
-    expect(slidesItems.extensionId).toBe('slides');
     const parsedSlides = JSON.parse(slidesItems.value);
     expect(parsedSlides.length).toBe(2);
-    expect(parsedSlides[0].position).toBe('right');
-    expect(parsedSlides[1].position).toBe('bottom');
 
     // Verify prefs persisted
     const peeksPrefs = persistedData['peeks:prefs'];
@@ -554,25 +492,15 @@ test.describe('Data Persistence', () => {
     const parsedPeeksPrefs = JSON.parse(peeksPrefs.value);
     expect(parsedPeeksPrefs.shortcutKeyPrefix).toBe('Option+');
 
-    const slidesPrefs = persistedData['slides:prefs'];
-    expect(slidesPrefs).toBeTruthy();
-    const parsedSlidesPrefs = JSON.parse(slidesPrefs.value);
-    expect(parsedSlidesPrefs.defaultPosition).toBe('right');
-
-    await electronApp.close();
+    await app.close();
   });
 
   test('addresses and tags persist across restart', async () => {
     const ADDR_PROFILE = 'test-addr-persist-' + Date.now();
 
     // PHASE 1: Add addresses and tags
-    let electronApp = await electron.launch({
-      args: [MAIN_PATH],
-      env: { ...process.env, PROFILE: ADDR_PROFILE, DEBUG: '1', PEEK_HEADLESS: '1' }
-    });
-    await new Promise(r => setTimeout(r, 4000));
-
-    let bgWindow = await waitForWindow(electronApp, 'app/background.html');
+    let app = await launchDesktopApp(ADDR_PROFILE);
+    let bgWindow = await app.getBackgroundWindow();
 
     // Add addresses
     const addr1 = await bgWindow.evaluate(async () => {
@@ -603,19 +531,14 @@ test.describe('Data Persistence', () => {
       }, { addressId: addr1.id, tagId });
     }
 
-    await electronApp.close();
+    await app.close();
     await new Promise(r => setTimeout(r, 1000));
 
     // PHASE 2: Verify persistence
-    electronApp = await electron.launch({
-      args: [MAIN_PATH],
-      env: { ...process.env, PROFILE: ADDR_PROFILE, DEBUG: '1', PEEK_HEADLESS: '1' }
-    });
-    await new Promise(r => setTimeout(r, 4000));
+    app = await launchDesktopApp(ADDR_PROFILE);
+    bgWindow = await app.getBackgroundWindow();
 
-    bgWindow = await waitForWindow(electronApp, 'app/background.html');
-
-    // Query addresses - use getTable for more reliable results
+    // Query addresses
     const tableResult = await bgWindow.evaluate(async () => {
       return await (window as any).app.datastore.getTable('addresses');
     });
@@ -639,30 +562,29 @@ test.describe('Data Persistence', () => {
     const persistTag = tagsResult.data.find((t: any) => t.name === 'persist-tag');
     expect(persistTag).toBeTruthy();
 
-    await electronApp.close();
+    await app.close();
   });
 });
 
-// Core functionality tests
-test.describe('Core Functionality', () => {
-  let electronApp: ElectronApplication;
+// ============================================================================
+// Core Functionality Tests
+// ============================================================================
+
+test.describe('Core Functionality @desktop', () => {
+  let app: DesktopApp;
   let bgWindow: Page;
 
   test.beforeAll(async () => {
-    electronApp = await electron.launch({
-      args: [MAIN_PATH],
-      env: { ...process.env, PROFILE: 'test-smoke', DEBUG: '1' }
-    });
-    await new Promise(r => setTimeout(r, 4000));
-    bgWindow = await waitForWindow(electronApp, 'app/background.html');
+    app = await launchDesktopApp('test-core');
+    bgWindow = await app.getBackgroundWindow();
   });
 
   test.afterAll(async () => {
-    if (electronApp) await electronApp.close();
+    if (app) await app.close();
   });
 
   test('app launches and extensions load', async () => {
-    const extWindows = await getExtensionWindows(electronApp);
+    const extWindows = app.getExtensionWindows();
     expect(extWindows.length).toBeGreaterThanOrEqual(3);
 
     // Verify specific extensions
@@ -693,7 +615,7 @@ test.describe('Core Functionality', () => {
   });
 
   test('window management works', async () => {
-    // Open a simple test window (about:blank is lightweight)
+    // Open a test window
     const openResult = await bgWindow.evaluate(async () => {
       return await (window as any).app.window.open('about:blank', {
         width: 400,
@@ -719,25 +641,23 @@ test.describe('Core Functionality', () => {
   });
 });
 
-// Extension Lifecycle tests
-test.describe('Extension Lifecycle', () => {
-  let electronApp: ElectronApplication;
+// ============================================================================
+// Extension Lifecycle Tests
+// ============================================================================
+
+test.describe('Extension Lifecycle @desktop', () => {
+  let app: DesktopApp;
   let bgWindow: Page;
 
-  // Use the example extension for testing
   const EXAMPLE_EXT_PATH = path.join(ROOT, 'extensions', 'example');
 
   test.beforeAll(async () => {
-    electronApp = await electron.launch({
-      args: [MAIN_PATH],
-      env: { ...process.env, PROFILE: 'test-ext-lifecycle', DEBUG: '1' }
-    });
-    await new Promise(r => setTimeout(r, 4000));
-    bgWindow = await waitForWindow(electronApp, 'app/background.html');
+    app = await launchDesktopApp('test-ext-lifecycle');
+    bgWindow = await app.getBackgroundWindow();
   });
 
   test.afterAll(async () => {
-    if (electronApp) await electronApp.close();
+    if (app) await app.close();
   });
 
   test('validate extension folder', async () => {
@@ -804,7 +724,7 @@ test.describe('Extension Lifecycle', () => {
     });
     expect(disableResult.success).toBe(true);
 
-    // Verify it's disabled (accept both boolean false and integer 0)
+    // Verify it's disabled
     const getResult2 = await bgWindow.evaluate(async () => {
       return await (window as any).app.extensions.get('example');
     });

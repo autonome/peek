@@ -170,26 +170,46 @@ fn serve_tauri_file<R: tauri::Runtime>(
 fn get_resource_dir<R: tauri::Runtime>(
     ctx: &UriSchemeContext<'_, R>,
 ) -> Result<PathBuf, String> {
-    // In development, use the project root
-    // In production, use the resource directory
-    if cfg!(debug_assertions) {
-        // Development: go up from src-tauri to project root
-        let manifest_dir =
-            std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
-        let manifest_path = PathBuf::from(manifest_dir);
-
-        // Go up from backend/tauri/src-tauri to project root
-        Ok(manifest_path
+    // Try CARGO_MANIFEST_DIR first (set when running via cargo)
+    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+        let dev_path = PathBuf::from(manifest_dir)
             .join("../../..")
             .canonicalize()
-            .unwrap_or(manifest_path))
-    } else {
-        // Production: use Tauri's resource directory
-        ctx.app_handle()
-            .path()
-            .resource_dir()
-            .map_err(|e| format!("Failed to get resource dir: {}", e))
+            .map_err(|e| format!("Failed to canonicalize: {}", e))?;
+        if dev_path.join("app").exists() {
+            return Ok(dev_path);
+        }
     }
+
+    // Check if we're running from target/ directory (compiled binary)
+    if let Ok(exe_path) = std::env::current_exe() {
+        let exe_str = exe_path.to_string_lossy();
+        if exe_str.contains("/target/release/") || exe_str.contains("/target/debug/") {
+            // Navigate up from target/{release,debug} to project root
+            // Path: project/backend/tauri/src-tauri/target/{release,debug}/peek-tauri
+            if let Some(target_profile) = exe_path.parent() {
+                if let Some(target) = target_profile.parent() {
+                    if let Some(src_tauri) = target.parent() {
+                        if let Some(tauri_dir) = src_tauri.parent() {
+                            if let Some(backend_dir) = tauri_dir.parent() {
+                                if let Some(project_root) = backend_dir.parent() {
+                                    if project_root.join("app").exists() {
+                                        return Ok(project_root.to_path_buf());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Production: use Tauri's resource directory
+    ctx.app_handle()
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("Failed to get resource dir: {}", e))
 }
 
 /// Serve a file from the filesystem

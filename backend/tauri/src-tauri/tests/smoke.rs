@@ -268,6 +268,290 @@ fn test_url_normalization() {
     println!("✓ URL normalization works");
 }
 
+/// Test extension CRUD operations
+#[test]
+fn test_extension_operations() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.sqlite");
+    let conn = datastore::init_database(&db_path).unwrap();
+
+    let now = datastore::now();
+
+    // Add an extension
+    conn.execute(
+        "INSERT INTO extensions (id, name, description, version, path, backgroundUrl, builtin, enabled, status, installedAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        rusqlite::params![
+            "test-ext",
+            "Test Extension",
+            "A test extension",
+            "1.0.0",
+            "/path/to/extension",
+            "background.html",
+            0,
+            1,
+            "installed",
+            now,
+            now
+        ],
+    ).expect("Failed to add extension");
+    println!("✓ Extension added");
+
+    // Get extension
+    let ext: (String, String, i32, i32) = conn.query_row(
+        "SELECT id, name, enabled, builtin FROM extensions WHERE id = ?",
+        rusqlite::params!["test-ext"],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+    ).expect("Failed to get extension");
+
+    assert_eq!(ext.0, "test-ext");
+    assert_eq!(ext.1, "Test Extension");
+    assert_eq!(ext.2, 1); // enabled
+    assert_eq!(ext.3, 0); // not builtin
+    println!("✓ Extension retrieved correctly");
+
+    // Update extension (disable it)
+    conn.execute(
+        "UPDATE extensions SET enabled = ?, status = ?, updatedAt = ? WHERE id = ?",
+        rusqlite::params![0, "disabled", now, "test-ext"],
+    ).expect("Failed to update extension");
+
+    let enabled: i32 = conn.query_row(
+        "SELECT enabled FROM extensions WHERE id = ?",
+        rusqlite::params!["test-ext"],
+        |row| row.get(0),
+    ).unwrap();
+    assert_eq!(enabled, 0);
+    println!("✓ Extension updated (disabled)");
+
+    // Re-enable
+    conn.execute(
+        "UPDATE extensions SET enabled = ?, status = ? WHERE id = ?",
+        rusqlite::params![1, "installed", "test-ext"],
+    ).unwrap();
+
+    let enabled: i32 = conn.query_row(
+        "SELECT enabled FROM extensions WHERE id = ?",
+        rusqlite::params!["test-ext"],
+        |row| row.get(0),
+    ).unwrap();
+    assert_eq!(enabled, 1);
+    println!("✓ Extension re-enabled");
+
+    // List all extensions
+    let count: i32 = conn.query_row(
+        "SELECT COUNT(*) FROM extensions",
+        [],
+        |row| row.get(0),
+    ).unwrap();
+    assert_eq!(count, 1);
+    println!("✓ Extension list works");
+
+    // Remove extension
+    conn.execute(
+        "DELETE FROM extensions WHERE id = ?",
+        rusqlite::params!["test-ext"],
+    ).expect("Failed to remove extension");
+
+    let count: i32 = conn.query_row(
+        "SELECT COUNT(*) FROM extensions WHERE id = ?",
+        rusqlite::params!["test-ext"],
+        |row| row.get(0),
+    ).unwrap();
+    assert_eq!(count, 0);
+    println!("✓ Extension removed");
+}
+
+/// Test extension_settings operations (used for extension prefs/items)
+#[test]
+fn test_extension_settings() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.sqlite");
+    let conn = datastore::init_database(&db_path).unwrap();
+
+    let now = datastore::now();
+
+    // Save extension settings (like peeks items)
+    let peeks_items = serde_json::json!([
+        {"title": "Test Peek 1", "uri": "https://test1.com", "shortcut": "Option+1"},
+        {"title": "Test Peek 2", "uri": "https://test2.com", "shortcut": "Option+2"}
+    ]);
+
+    conn.execute(
+        "INSERT INTO extension_settings (extensionId, key, value, updatedAt) VALUES (?, ?, ?, ?)",
+        rusqlite::params!["peeks", "items", peeks_items.to_string(), now],
+    ).expect("Failed to save extension settings");
+    println!("✓ Extension settings saved");
+
+    // Retrieve settings
+    let value: String = conn.query_row(
+        "SELECT value FROM extension_settings WHERE extensionId = ? AND key = ?",
+        rusqlite::params!["peeks", "items"],
+        |row| row.get(0),
+    ).expect("Failed to get extension settings");
+
+    let parsed: serde_json::Value = serde_json::from_str(&value).unwrap();
+    assert!(parsed.is_array());
+    assert_eq!(parsed.as_array().unwrap().len(), 2);
+    assert_eq!(parsed[0]["title"], "Test Peek 1");
+    println!("✓ Extension settings retrieved correctly");
+
+    // Update settings
+    let updated_items = serde_json::json!([
+        {"title": "Updated Peek", "uri": "https://updated.com", "shortcut": "Option+1"}
+    ]);
+
+    conn.execute(
+        "UPDATE extension_settings SET value = ?, updatedAt = ? WHERE extensionId = ? AND key = ?",
+        rusqlite::params![updated_items.to_string(), now, "peeks", "items"],
+    ).expect("Failed to update extension settings");
+
+    let value: String = conn.query_row(
+        "SELECT value FROM extension_settings WHERE extensionId = ? AND key = ?",
+        rusqlite::params!["peeks", "items"],
+        |row| row.get(0),
+    ).unwrap();
+
+    let parsed: serde_json::Value = serde_json::from_str(&value).unwrap();
+    assert_eq!(parsed.as_array().unwrap().len(), 1);
+    assert_eq!(parsed[0]["title"], "Updated Peek");
+    println!("✓ Extension settings updated");
+
+    // Save prefs for another extension
+    let slides_prefs = serde_json::json!({"defaultPosition": "right", "defaultSize": 350});
+
+    conn.execute(
+        "INSERT INTO extension_settings (extensionId, key, value, updatedAt) VALUES (?, ?, ?, ?)",
+        rusqlite::params!["slides", "prefs", slides_prefs.to_string(), now],
+    ).unwrap();
+
+    // Query all settings for an extension
+    let mut stmt = conn.prepare(
+        "SELECT key, value FROM extension_settings WHERE extensionId = ?"
+    ).unwrap();
+
+    let settings: Vec<(String, String)> = stmt.query_map(
+        rusqlite::params!["peeks"],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    ).unwrap().filter_map(|r| r.ok()).collect();
+
+    assert_eq!(settings.len(), 1);
+    println!("✓ Extension settings query works");
+}
+
+/// Test data persistence (simulates app restart)
+#[test]
+fn test_data_persistence() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.sqlite");
+
+    // Phase 1: Create data
+    {
+        let conn = datastore::init_database(&db_path).unwrap();
+
+        // Add addresses
+        let opts = datastore::AddressOptions {
+            title: Some("Persistent Page".to_string()),
+            starred: Some(1),
+            ..Default::default()
+        };
+        datastore::add_address(&conn, "https://persist.example.com", &opts).unwrap();
+
+        // Add tag
+        let (tag, _) = datastore::get_or_create_tag(&conn, "persistent-tag").unwrap();
+
+        // Add extension settings
+        let now = datastore::now();
+        conn.execute(
+            "INSERT INTO extension_settings (extensionId, key, value, updatedAt) VALUES (?, ?, ?, ?)",
+            rusqlite::params!["test", "data", "\"persisted\"", now],
+        ).unwrap();
+
+        println!("✓ Phase 1: Data created");
+        // Connection closes here
+    }
+
+    // Phase 2: Reopen and verify persistence
+    {
+        let conn = datastore::init_database(&db_path).unwrap();
+
+        // Verify address persisted
+        let filter = datastore::AddressFilter {
+            starred: Some(1),
+            ..Default::default()
+        };
+        let addresses = datastore::query_addresses(&conn, &filter).unwrap();
+        assert_eq!(addresses.len(), 1);
+        assert_eq!(addresses[0].title, "Persistent Page");
+        println!("✓ Phase 2: Address persisted");
+
+        // Verify tag persisted
+        let (tag, created) = datastore::get_or_create_tag(&conn, "persistent-tag").unwrap();
+        assert!(!created); // Should already exist
+        println!("✓ Phase 2: Tag persisted");
+
+        // Verify extension settings persisted
+        let value: String = conn.query_row(
+            "SELECT value FROM extension_settings WHERE extensionId = ? AND key = ?",
+            rusqlite::params!["test", "data"],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(value, "\"persisted\"");
+        println!("✓ Phase 2: Extension settings persisted");
+    }
+
+    println!("✓ Data persistence verified across restart");
+}
+
+/// Test extension error tracking
+#[test]
+fn test_extension_error_tracking() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.sqlite");
+    let conn = datastore::init_database(&db_path).unwrap();
+
+    let now = datastore::now();
+
+    // Add extension
+    conn.execute(
+        "INSERT INTO extensions (id, name, path, enabled, status, installedAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        rusqlite::params!["error-ext", "Error Test", "/path", 0, "installed", now, now],
+    ).unwrap();
+
+    // Record an error
+    let error_msg = "Failed to load: manifest not found";
+    conn.execute(
+        "UPDATE extensions SET lastError = ?, lastErrorAt = ?, status = ? WHERE id = ?",
+        rusqlite::params![error_msg, now, "error", "error-ext"],
+    ).unwrap();
+
+    // Verify error recorded
+    let (last_error, status): (String, String) = conn.query_row(
+        "SELECT lastError, status FROM extensions WHERE id = ?",
+        rusqlite::params!["error-ext"],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    ).unwrap();
+
+    assert_eq!(last_error, error_msg);
+    assert_eq!(status, "error");
+    println!("✓ Extension error tracked");
+
+    // Clear error on successful load
+    conn.execute(
+        "UPDATE extensions SET lastError = '', lastErrorAt = 0, status = ?, enabled = 1 WHERE id = ?",
+        rusqlite::params!["installed", "error-ext"],
+    ).unwrap();
+
+    let (last_error, status): (String, String) = conn.query_row(
+        "SELECT lastError, status FROM extensions WHERE id = ?",
+        rusqlite::params!["error-ext"],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    ).unwrap();
+
+    assert_eq!(last_error, "");
+    assert_eq!(status, "installed");
+    println!("✓ Extension error cleared");
+}
+
 /// Main test runner - prints summary
 fn main() {
     println!("\n🧪 Tauri Backend Smoke Tests\n");

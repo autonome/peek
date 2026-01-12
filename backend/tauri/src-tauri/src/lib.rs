@@ -200,18 +200,55 @@ pub fn run() {
             }
 
             // Discover and load extensions
-            let extensions_dir = if cfg!(debug_assertions) {
-                let manifest_dir =
-                    std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
-                std::path::PathBuf::from(manifest_dir)
-                    .join("../../..")
-                    .join("extensions")
-            } else {
-                app.path()
+            // Check for development mode (running from source) vs bundled app
+            let extensions_dir = find_extensions_dir(app)?;
+
+            fn find_extensions_dir(app: &tauri::App) -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
+                // Try CARGO_MANIFEST_DIR first (set when running via cargo)
+                if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+                    let dev_path = std::path::PathBuf::from(manifest_dir)
+                        .join("../../..")
+                        .join("extensions");
+                    if dev_path.exists() {
+                        println!("[tauri] Using dev extensions path (CARGO_MANIFEST_DIR): {:?}", dev_path);
+                        return Ok(dev_path);
+                    }
+                }
+
+                // No CARGO_MANIFEST_DIR - check if we're running from target/ directory
+                // (common when running compiled binary directly during development)
+                if let Ok(exe_path) = std::env::current_exe() {
+                    // Check if exe is in .../target/{release,debug}/...
+                    let exe_str = exe_path.to_string_lossy();
+                    if exe_str.contains("/target/release/") || exe_str.contains("/target/debug/") {
+                        // Navigate up from target/{release,debug} to project root
+                        // Path: project/backend/tauri/src-tauri/target/{release,debug}/peek-tauri
+                        if let Some(target_profile) = exe_path.parent() {
+                            if let Some(target) = target_profile.parent() {
+                                if let Some(src_tauri) = target.parent() {
+                                    if let Some(tauri_dir) = src_tauri.parent() {
+                                        if let Some(backend_dir) = tauri_dir.parent() {
+                                            if let Some(project_root) = backend_dir.parent() {
+                                                let dev_path = project_root.join("extensions");
+                                                if dev_path.exists() {
+                                                    println!("[tauri] Using dev extensions path (exe path): {:?}", dev_path);
+                                                    return Ok(dev_path);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Fallback to resource dir for bundled app
+                Ok(app.path()
                     .resource_dir()
                     .expect("Failed to get resource dir")
-                    .join("extensions")
-            };
+                    .join("extensions"))
+            }
 
             let discovered = extensions::discover_extensions(&extensions_dir);
             println!("[tauri] Discovered {} extensions", discovered.len());

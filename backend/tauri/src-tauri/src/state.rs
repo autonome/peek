@@ -128,6 +128,12 @@ impl AppState {
         extensions.values().cloned().collect()
     }
 
+    /// Unregister a loaded extension
+    pub fn unregister_extension(&self, id: &str) {
+        let mut extensions = self.extensions.lock().unwrap();
+        extensions.remove(id);
+    }
+
     /// Register a command
     pub fn register_command(&self, name: &str, description: &str, source: &str) {
         let mut commands = self.commands.lock().unwrap();

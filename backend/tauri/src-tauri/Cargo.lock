@@ -2242,6 +2242,7 @@ name = "peek-tauri"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "lazy_static",
  "mime_guess",
  "rusqlite",
  "serde",

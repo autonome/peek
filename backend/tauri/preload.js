@@ -377,9 +377,39 @@
         return { success: false, error: String(e) };
       }
     },
-    load: async (id) => ({ success: false, error: 'Not implemented in Tauri MVP' }),
-    unload: async (id) => ({ success: false, error: 'Not implemented in Tauri MVP' }),
-    reload: async (id) => ({ success: false, error: 'Not implemented in Tauri MVP' }),
+    load: async (id) => {
+      if (!api.extensions._hasPermission()) {
+        return { success: false, error: 'Permission denied' };
+      }
+      try {
+        return await invoke('extension_load', { id });
+      } catch (e) {
+        console.error('[tauri] extensions.load error:', e);
+        return { success: false, error: String(e) };
+      }
+    },
+    unload: async (id) => {
+      if (!api.extensions._hasPermission()) {
+        return { success: false, error: 'Permission denied' };
+      }
+      try {
+        return await invoke('extension_unload', { id });
+      } catch (e) {
+        console.error('[tauri] extensions.unload error:', e);
+        return { success: false, error: String(e) };
+      }
+    },
+    reload: async (id) => {
+      if (!api.extensions._hasPermission()) {
+        return { success: false, error: 'Permission denied' };
+      }
+      try {
+        return await invoke('extension_reload', { id });
+      } catch (e) {
+        console.error('[tauri] extensions.reload error:', e);
+        return { success: false, error: String(e) };
+      }
+    },
     getManifest: async (id) => ({ success: false, error: 'Not implemented' }),
 
     pickFolder: async () => {

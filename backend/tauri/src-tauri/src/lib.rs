@@ -306,6 +306,9 @@ pub fn run() {
             commands::extensions::extension_update,
             commands::extensions::extension_get_all,
             commands::extensions::extension_get,
+            commands::extensions::extension_load,
+            commands::extensions::extension_unload,
+            commands::extensions::extension_reload,
             // App control
             commands::app_quit,
             // Shortcuts

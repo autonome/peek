@@ -6,9 +6,16 @@
 //! - peek://extensions/... → Extension infrastructure
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use tauri::http::{Request, Response};
 use tauri::{Manager, UriSchemeContext, UriSchemeResponder};
+
+lazy_static::lazy_static! {
+    /// Maps extension IDs to their filesystem paths for custom (non-bundled) extensions
+    pub static ref EXTENSION_PATHS: Mutex<HashMap<String, String>> = Mutex::new(HashMap::new());
+}
 
 /// Handle peek:// protocol requests
 pub fn handle_peek_protocol<R: tauri::Runtime>(
@@ -110,9 +117,17 @@ fn serve_extension_file<R: tauri::Runtime>(
         ext_path
     };
 
-    // Get extension base path
-    let resource_dir = get_resource_dir(ctx)?;
-    let ext_base_path = resource_dir.join("extensions").join(ext_id);
+    // Check if this is a custom extension with a registered path
+    let ext_base_path = {
+        let paths = EXTENSION_PATHS.lock().unwrap();
+        if let Some(custom_path) = paths.get(ext_id) {
+            PathBuf::from(custom_path)
+        } else {
+            // Fall back to bundled extensions directory
+            let resource_dir = get_resource_dir(ctx)?;
+            resource_dir.join("extensions").join(ext_id)
+        }
+    };
 
     // Security: Prevent path traversal
     let requested_path = ext_base_path.join(ext_path);

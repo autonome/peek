@@ -397,3 +397,152 @@ pub async fn extension_get(
         Err(e) => Ok(CommandResponse::error(format!("Query error: {}", e))),
     }
 }
+
+/// Load result
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtensionLoadResult {
+    pub id: String,
+    pub window_label: String,
+}
+
+/// Load an extension by ID - creates the background window
+#[tauri::command]
+pub async fn extension_load(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Arc<AppState>>,
+    id: String,
+) -> Result<CommandResponse<ExtensionLoadResult>, String> {
+    use tauri::{WebviewUrl, WebviewWindowBuilder};
+    use crate::PRELOAD_SCRIPT;
+
+    // Check if already loaded
+    let existing = state.list_extensions();
+    if existing.iter().any(|e| e.id == id) {
+        return Ok(CommandResponse::error(format!("Extension {} is already loaded", id)));
+    }
+
+    // Get extension from database
+    let (ext_path, background_url) = {
+        let db = state.db.lock().unwrap();
+        let result: Result<(String, String), rusqlite::Error> = db.query_row(
+            "SELECT path, backgroundUrl FROM extensions WHERE id = ?",
+            rusqlite::params![id],
+            |row| {
+                let path: String = row.get(0)?;
+                let background: String = row.get::<_, Option<String>>(1)?.unwrap_or_else(|| "background.html".to_string());
+                Ok((path, background))
+            },
+        );
+
+        match result {
+            Ok(r) => r,
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                return Ok(CommandResponse::error(format!("Extension {} not found in database", id)));
+            }
+            Err(e) => {
+                return Ok(CommandResponse::error(format!("Database error: {}", e)));
+            }
+        }
+    };
+
+    // Validate the path exists
+    let ext_path_buf = PathBuf::from(&ext_path);
+    if !ext_path_buf.exists() {
+        return Ok(CommandResponse::error(format!("Extension path does not exist: {}", ext_path)));
+    }
+
+    // Read manifest to get extension info
+    let manifest_path = ext_path_buf.join("manifest.json");
+    let manifest: ExtensionManifest = if manifest_path.exists() {
+        match fs::read_to_string(&manifest_path) {
+            Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+            Err(_) => ExtensionManifest::default(),
+        }
+    } else {
+        ExtensionManifest::default()
+    };
+
+    // Register the extension path for the protocol handler
+    {
+        let mut paths = crate::protocol::EXTENSION_PATHS.lock().unwrap();
+        paths.insert(id.clone(), ext_path.clone());
+    }
+
+    // Create the extension URL
+    let background = if background_url.is_empty() { "background.html".to_string() } else { background_url };
+    let ext_url = format!("peek://ext/{}/{}", id, background);
+    println!("[tauri:ext] Loading extension: {} from {}", id, ext_url);
+
+    let ext_url_parsed = WebviewUrl::CustomProtocol(
+        ext_url.parse().map_err(|e| format!("Invalid URL: {}", e))?,
+    );
+
+    let label = format!("ext_{}", id);
+    let ext_builder = WebviewWindowBuilder::new(&app, &label, ext_url_parsed)
+        .title(&format!("Extension: {}", manifest.name.as_deref().unwrap_or(&id)))
+        .inner_size(800.0, 600.0)
+        .visible(false)
+        .initialization_script(PRELOAD_SCRIPT);
+
+    match ext_builder.build() {
+        Ok(_) => {
+            // Register in state
+            state.register_extension(&id, manifest, &label);
+            println!("[tauri:ext] Extension loaded: {}", id);
+            Ok(CommandResponse::success(ExtensionLoadResult {
+                id,
+                window_label: label,
+            }))
+        }
+        Err(e) => {
+            Ok(CommandResponse::error(format!("Failed to create extension window: {}", e)))
+        }
+    }
+}
+
+/// Unload an extension by ID - closes the background window
+#[tauri::command]
+pub async fn extension_unload(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Arc<AppState>>,
+    id: String,
+) -> Result<CommandResponse<bool>, String> {
+    use tauri::Manager;
+
+    let label = format!("ext_{}", id);
+
+    // Close the window if it exists
+    if let Some(window) = app.get_webview_window(&label) {
+        let _ = window.close();
+    }
+
+    // Unregister from state
+    state.unregister_extension(&id);
+
+    // Remove from protocol paths
+    {
+        let mut paths = crate::protocol::EXTENSION_PATHS.lock().unwrap();
+        paths.remove(&id);
+    }
+
+    println!("[tauri:ext] Extension unloaded: {}", id);
+    Ok(CommandResponse::success(true))
+}
+
+/// Reload an extension by ID - unloads then loads again
+#[tauri::command]
+pub async fn extension_reload(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Arc<AppState>>,
+    id: String,
+) -> Result<CommandResponse<ExtensionLoadResult>, String> {
+    // First unload
+    let _ = extension_unload(app.clone(), state.clone(), id.clone()).await;
+
+    // Small delay
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    // Then load
+    extension_load(app, state, id).await
+}

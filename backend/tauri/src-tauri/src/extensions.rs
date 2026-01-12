@@ -21,7 +21,7 @@ pub struct SettingsSchema {
 }
 
 /// Extension manifest
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtensionManifest {
     pub id: Option<String>,

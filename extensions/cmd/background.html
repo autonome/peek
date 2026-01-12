@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Cmd Extension</title>
+</head>
+<body>
+<script type="module">
+  import extension from './background.js';
+
+  const api = window.app;
+  const extId = extension.id;
+
+  console.log(`[ext:${extId}] background.html loaded`);
+
+  // Signal ready to main process
+  api.publish('ext:ready', {
+    id: extId,
+    manifest: {
+      id: extension.id,
+      labels: extension.labels,
+      version: '1.0.0'
+    }
+  }, api.scopes.SYSTEM);
+
+  // Initialize extension
+  if (extension.init) {
+    console.log(`[ext:${extId}] calling init()`);
+    extension.init();
+  }
+
+  // Handle shutdown request from main process
+  api.subscribe('app:shutdown', () => {
+    console.log(`[ext:${extId}] received shutdown`);
+    if (extension.uninit) {
+      extension.uninit();
+    }
+  }, api.scopes.SYSTEM);
+
+  // Handle extension-specific shutdown
+  api.subscribe(`ext:${extId}:shutdown`, () => {
+    console.log(`[ext:${extId}] received extension shutdown`);
+    if (extension.uninit) {
+      extension.uninit();
+    }
+  }, api.scopes.SYSTEM);
+</script>
+</body>
+</html>

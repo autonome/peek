@@ -301,16 +301,23 @@
   };
 
   // ==================== Commands ====================
+  // Extensions should wait for cmd:ready before registering commands.
+  // The cmd extension is loaded first and publishes cmd:ready when initialized.
 
   // Track command execution subscriptions for cleanup
   const commandSubscriptions = new Map();
 
   api.commands = {
+    /**
+     * Register a command with the cmd palette
+     * IMPORTANT: Extensions should wait for cmd:ready before calling this.
+     */
     register: (command) => {
       if (!command.name || !command.execute) {
         console.error('commands.register: name and execute are required');
         return;
       }
+
       // Store execute handler locally
       window._cmdHandlers = window._cmdHandlers || {};
       window._cmdHandlers[command.name] = command.execute;
@@ -330,12 +337,16 @@
         commandSubscriptions.set(command.name, unlisten);
       });
 
-      // Register with backend
-      invoke('commands_register', {
-        name: command.name,
-        description: command.description || '',
-        source: sourceAddress
-      }).catch(e => console.error('[tauri] commands.register error:', e));
+      // Publish registration to cmd extension via pubsub
+      emit('pubsub:cmd:register', {
+        source: sourceAddress,
+        scope: api.scopes.GLOBAL,
+        data: {
+          name: command.name,
+          description: command.description || '',
+          source: sourceAddress
+        }
+      }).catch(e => console.error('[tauri] cmd:register publish error:', e));
 
       console.log('[tauri] commands.register:', command.name);
     },
@@ -350,17 +361,19 @@
         unlisten();
         commandSubscriptions.delete(name);
       }
-      invoke('commands_unregister', { name }).catch(e => console.error('[tauri] commands.unregister error:', e));
+      // Publish unregister via pubsub
+      emit('pubsub:cmd:unregister', {
+        source: sourceAddress,
+        scope: api.scopes.GLOBAL,
+        data: { name }
+      }).catch(e => console.error('[tauri] cmd:unregister publish error:', e));
+
       console.log('[tauri] commands.unregister:', name);
     },
 
+    // Commands are owned by cmd extension - use pubsub cmd:query-commands
     getAll: async () => {
-      try {
-        return await invoke('commands_get_all', {});
-      } catch (e) {
-        console.error('[tauri] commands.getAll error:', e);
-        return [];
-      }
+      return [];
     }
   };
 

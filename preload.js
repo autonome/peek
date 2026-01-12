@@ -315,10 +315,14 @@ api.quit = () => {
 };
 
 // Command registration API for extensions
-// Commands are registered via pubsub since cmd runs in renderer
+// Commands API
+// Extensions should wait for cmd:ready before registering commands.
+// The cmd extension is loaded first and publishes cmd:ready when initialized.
+
 api.commands = {
   /**
    * Register a command with the cmd palette
+   * IMPORTANT: Extensions should wait for cmd:ready before calling this.
    * @param {Object} command - Command object with name, description, execute
    */
   register: (command) => {
@@ -330,18 +334,6 @@ api.commands = {
     // Store the execute handler locally (can't serialize functions via pubsub)
     window._cmdHandlers = window._cmdHandlers || {};
     window._cmdHandlers[command.name] = command.execute;
-
-    // Register the command metadata via pubsub (GLOBAL scope for cross-window)
-    ipcRenderer.send('publish', {
-      source: sourceAddress,
-      scope: 3, // GLOBAL - so cmd panel in separate window receives it
-      topic: 'cmd:register',
-      data: {
-        name: command.name,
-        description: command.description || '',
-        source: sourceAddress
-      }
-    });
 
     // Subscribe to execution requests for this command (GLOBAL scope)
     const execTopic = `cmd:execute:${command.name}`;
@@ -366,7 +358,19 @@ api.commands = {
       }
     });
 
-    console.log('commands.register:', command.name);
+    // Publish registration to cmd extension (GLOBAL scope)
+    ipcRenderer.send('publish', {
+      source: sourceAddress,
+      scope: 3,
+      topic: 'cmd:register',
+      data: {
+        name: command.name,
+        description: command.description || '',
+        source: sourceAddress
+      }
+    });
+
+    console.log('[preload] commands.register:', command.name);
   },
 
   /**
@@ -387,20 +391,17 @@ api.commands = {
       data: { name }
     });
 
-    console.log('commands.unregister:', name);
+    console.log('[preload] commands.unregister:', name);
   },
 
   /**
-   * Get all registered commands from the main process registry
-   * This queries the authoritative registry, not pubsub subscriptions
-   * @returns {Promise<Array>} Array of command objects
+   * Get all registered commands
+   * Note: Commands are owned by cmd extension - use pubsub cmd:query-commands
+   * @returns {Promise<Array>} Empty array - use pubsub directly
    */
   getAll: async () => {
-    const result = await ipcRenderer.invoke('get-registered-commands');
-    if (result.success) {
-      return result.data;
-    }
-    console.error('commands.getAll failed:', result);
+    // Commands are queried via pubsub cmd:query-commands
+    // Return empty - caller should use pubsub directly
     return [];
   }
 };

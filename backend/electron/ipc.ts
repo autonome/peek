@@ -58,7 +58,6 @@ import {
   APP_DEF_HEIGHT,
   getPreloadPath,
   IPC_CHANNELS,
-  TOPICS,
   isHeadless,
 } from './config.js';
 
@@ -82,30 +81,6 @@ import {
   publish,
   subscribe,
 } from './pubsub.js';
-
-// Command registry - stores commands registered via cmd:register topic
-const commandRegistry = new Map<string, { name: string; description: string; source: string }>();
-
-/**
- * Get all registered commands
- */
-export function getRegisteredCommands(): Array<{ name: string; description: string; source: string }> {
-  return Array.from(commandRegistry.values());
-}
-
-/**
- * Register a command in the registry
- */
-export function registerCommand(name: string, description: string, source: string): void {
-  commandRegistry.set(name, { name, description, source });
-}
-
-/**
- * Unregister a command from the registry
- */
-export function unregisterCommand(name: string): void {
-  commandRegistry.delete(name);
-}
 
 /**
  * Register datastore IPC handlers
@@ -1106,20 +1081,6 @@ export function registerMiscHandlers(onQuit: () => void): void {
   // PubSub publish
   ipcMain.on(IPC_CHANNELS.PUBLISH, (_ev, msg) => {
     console.log('ipc:publish', msg);
-
-    // Intercept command registration to store in registry
-    if (msg.topic === TOPICS.CMD_REGISTER && msg.data) {
-      commandRegistry.set(msg.data.name, {
-        name: msg.data.name,
-        description: msg.data.description || '',
-        source: msg.data.source
-      });
-      console.log('[cmd-registry] Registered command:', msg.data.name);
-    } else if (msg.topic === TOPICS.CMD_UNREGISTER && msg.data) {
-      commandRegistry.delete(msg.data.name);
-      console.log('[cmd-registry] Unregistered command:', msg.data.name);
-    }
-
     publish(msg.source, msg.scope, msg.topic, msg.data);
   });
 
@@ -1131,13 +1092,6 @@ export function registerMiscHandlers(onQuit: () => void): void {
       console.log('ipc:subscribe:notification', msg);
       ev.reply(msg.replyTopic, data);
     });
-  });
-
-  // Get registered commands
-  ipcMain.handle(IPC_CHANNELS.GET_REGISTERED_COMMANDS, async () => {
-    const commands = Array.from(commandRegistry.values());
-    console.log('[cmd-registry] Query returned', commands.length, 'commands');
-    return { success: true, data: commands };
   });
 
   // Console log from renderer

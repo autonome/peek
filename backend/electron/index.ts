@@ -187,7 +187,6 @@ export {
   registerWindowHandlers,
   registerMiscHandlers,
   registerAllHandlers,
-  getRegisteredCommands,
 } from './ipc.js';
 
 // Window helpers

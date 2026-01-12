@@ -1,0 +1,10 @@
+{
+  "id": "cmd",
+  "shortname": "cmd",
+  "name": "Cmd",
+  "description": "Quick command access via keyboard shortcut",
+  "version": "1.0.0",
+  "background": "background.html",
+  "builtin": true,
+  "settingsSchema": "./settings-schema.json"
+}

@@ -48,8 +48,6 @@ yarn test:debug
 
 ### Tauri Testing Notes
 
-Tauri on macOS uses WKWebView which doesn't support Chrome DevTools Protocol (CDP) or WebDriver.
-
 **Tauri testing uses a two-part approach:**
 1. **Frontend Tests** (`yarn test:tauri:frontend`) - Runs the same Playwright tests against a mocked backend served via HTTP. Tests frontend UI behavior.
 2. **Rust Unit Tests** (`yarn test:tauri:rust`) - Tests backend datastore and API functionality.
@@ -60,6 +58,71 @@ Tauri on macOS uses WKWebView which doesn't support Chrome DevTools Protocol (CD
 - 14/17 tests pass with the mock approach
 
 The Rust unit tests in `backend/tauri/src-tauri/tests/smoke.rs` cover the backend functionality that the mock doesn't test.
+
+### Why Can't We Test Tauri Directly on macOS?
+
+Tauri on macOS uses **WKWebView** (Apple's native WebKit wrapper), which has no automation support:
+
+| Protocol | Electron (Chromium) | Tauri macOS (WKWebView) | Tauri Linux (WebKitGTK) | Tauri Windows (WebView2) |
+|----------|---------------------|-------------------------|-------------------------|--------------------------|
+| CDP (Chrome DevTools Protocol) | ✅ | ❌ | ❌ | ✅ |
+| WebDriver | ✅ | ❌ | ✅ | ✅ |
+| Playwright support | ✅ | ❌ | ❌ | ✅ |
+
+**The core problem:** Apple provides `safaridriver` for Safari, but **no equivalent driver for WKWebView**. They simply never built one.
+
+**Relevant issues and documentation:**
+- [tauri-apps/tauri#7068](https://github.com/tauri-apps/tauri/issues/7068) - Feature request for macOS support in tauri-driver
+- [Tauri WebDriver docs](https://v2.tauri.app/develop/tests/webdriver/) - Official docs confirming macOS limitation
+- [Apple Developer Forums](https://developer.apple.com/forums/thread/89848) - "How to test WKWebView" with no good answer
+- [appium/appium#5839](https://github.com/appium/appium/issues/5839) - Appium's historical struggles with WKWebView
+- [Example workarounds repo](https://github.com/nicok/tauri-ui-testing-on-macos)
+
+### Alternative Approaches Considered
+
+| Approach | Reuses Playwright Tests | Tests Real App | Complexity | Why Not |
+|----------|------------------------|----------------|------------|---------|
+| **Frontend Mock** (chosen) | ✅ Yes | ❌ Mock only | Low | Best tradeoff |
+| Appium Mac2 Driver | ❌ Different API | ✅ Yes | Medium | Can't reuse tests, clunky |
+| tauri-driver | ✅ WebDriver | ✅ Yes | Low | **Doesn't work on macOS** |
+| TestDriver.ai | ❌ Different API | ✅ Yes | Medium | AI-based, non-deterministic |
+| CrabNebula Cloud | ✅ Partial | ✅ Yes | Low | Paid service |
+| Run Linux VM | ✅ Yes | ✅ Yes | High | Slow CI, complex setup |
+
+### How the Frontend Mock Works
+
+Since the frontend code (`app/`) is **identical** between Electron and Tauri, we can test it separately:
+
+```
+Electron Tests:                    Tauri Frontend Tests:
+┌─────────────────┐               ┌─────────────────┐
+│   Playwright    │               │   Playwright    │
+│   (CDP to       │               │   (HTTP to      │
+│    Electron)    │               │    localhost)   │
+└────────┬────────┘               └────────┬────────┘
+         │                                 │
+         ▼                                 ▼
+┌─────────────────┐               ┌─────────────────┐
+│  Electron App   │               │  HTTP Server    │
+│  (real backend) │               │  + Mock API     │
+└─────────────────┘               └─────────────────┘
+```
+
+**Implementation:**
+1. `tests/mocks/tauri-backend.js` - Mocks the `window.app` API (datastore, shortcuts, windows, etc.)
+2. `tests/fixtures/desktop-app.ts` - `launchTauriFrontend()` starts HTTP server and injects mock
+3. HTTP server serves `app/` directory on `localhost:5199`
+4. Playwright runs against Chromium, same selectors and assertions as Electron tests
+
+**What gets tested:**
+- ✅ Frontend UI (identical code, same tests)
+- ✅ Component interactions
+- ✅ Datastore API calls (mocked responses)
+- ❌ Real Tauri↔Frontend IPC
+- ❌ Real multi-window behavior
+- ❌ Data persistence across restarts
+
+**The gap is filled by Rust unit tests** in `backend/tauri/src-tauri/tests/smoke.rs` which test real datastore operations, persistence, and backend logic.
 
 ## Coverage Matrix
 

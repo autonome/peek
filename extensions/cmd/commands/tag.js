@@ -8,7 +8,7 @@
  *   tag -r foo       - remove tag "foo" from active window
  *   tag              - show tags for active window
  */
-import api from '../../api.js';
+import api from 'peek://app/api.js';
 
 /**
  * Get the most recently focused non-internal window

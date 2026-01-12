@@ -23,12 +23,9 @@ export const IPC_CHANNELS = {
   RENDERER_LOG: 'renderer-log',
   APP_QUIT: 'app-quit',
   MODIFY_WINDOW: 'modifywindow',
-  GET_REGISTERED_COMMANDS: 'get-registered-commands',
 } as const;
 
 // PubSub topics
 export const TOPICS = {
   PREFS: 'topic:core:prefs',
-  CMD_REGISTER: 'cmd:register',
-  CMD_UNREGISTER: 'cmd:unregister',
 } as const;

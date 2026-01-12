@@ -247,7 +247,14 @@ const init = async () => {
   currentSettings = await loadSettings();
 
   initShortcut(currentSettings.prefs.shortcutKey);
-  initCommands();
+
+  // Wait for cmd:ready before registering commands
+  api.subscribe('cmd:ready', () => {
+    initCommands();
+  }, api.scopes.GLOBAL);
+
+  // Query in case cmd is already ready (it usually is since cmd loads first)
+  api.publish('cmd:query', {}, api.scopes.GLOBAL);
 
   // Listen for settings changes to hot-reload (GLOBAL scope for cross-process)
   api.subscribe('groups:settings-changed', async () => {

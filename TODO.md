@@ -9,6 +9,25 @@
 - [ ] Entity search/browse
 - [ ] ML NER
 
+## v? - Browser status quo extensibility
+
+Status quo
+- [ ] browser extensions (limited, mostly get a couple popular ones working)
+- [ ] opensearch
+- [ ] quicksearch
+- [ ] bookmarklets
+- [ ] userscripts
+- [ ] language packs
+
+- [ ] some kind of theming (https://github.com/AgregoreWeb/agregore-browser/pull/291)
+
+Search
+- [ ] Local
+- [ ] OpenSearch
+
+Web extensions
+- [ ] WebExtension integration for priority only, on some platforms
+
 ## v? - Minimum viable web workbench
 
 - [ ] Design philosophy write-up w/ driving principles and characteristics
@@ -28,45 +47,44 @@ Requires chaining and "activities"
 - [ ] Vim mode
 - [ ] List editor
 
-## v? - Extensibility
+## v? - Chaining / Connecting
 
-Status quo
-- [ ] browser extensions (limited, mostly get a couple popular ones working)
-- [ ] opensearch
-- [ ] quicksearch
-- [ ] bookmarklets
-- [ ] userscripts
-- [ ] language packs
+Now that we have commands, we need to be able to chain them together for more complex "workbench-y" interactions. Chaining reqs inputs/outputs (eg activities/intents/applets), so that API unlocks the rest.
 
+- [ ] Cmd API updates
+  - [ ] Cmd panel can show dropdown listing matching commands
+  - [ ] User can navigate list w/ arrow up/down, j/k and tab/shift-tab
+  - [ ] If cmd response has a previewAddress property, show a preview pane w/ that address
+- [ ] Connector API: Chaining reqs inputs/outputs (eg activities/intents/applets)
+  - [ ] Extension API to register as a connector handler for a set of mime/types
+  - [ ] Extension API to emit data to handlers for the specified mime type output (or maybe we allow multiple like the web clipboard API does)
+- [ ] Support for commmands to register as a connector handler for a set of mime types, and emit response array of mime-typed-data
+- [ ] Background glue for listing matching commands
+- [ ] pipelines/chains/transformers
+
+## v? - Publishing, Provenance, Remote Extensions?
+
+- [ ] poke at remote loading + provenance
+
+## v? - Base "Extensions"
 
 Peek extensions
-- [ ] see notes/extensibility.md
-- [ ] poke at remote loading + provenance
-- [ ] window manager views (bad name, but what Peek "features" are now)
-- [ ] commands (eg Quicksilver, Ubiquity, Raycast style)
-- [ ] transformers
-- [ ] pipelines/chains
-- [ ] chaining requires something like activities/intents/applets for inputs/outputs
-- [ ] some kind of theming (https://github.com/AgregoreWeb/agregore-browser/pull/291)
-
-Search
-- [ ] Local
-- [ ] OpenSearch
-
-Web extensions
-- [ ] WebExtension integration for priority only, on some platforms
+- [x] see notes/extensibility.md
+- [x] window manager views (bad name, but what Peek "features" are now)
+- [x] commands (eg Quicksilver, Ubiquity, Raycast style)
 
 ## v? Portability
 
-does this need to be done before extensions?
-
+- [x] Abstract back-end system
+- [ ] Back-end implementations
+  - [x] Electron
+  - [x] Tauri
+  - [ ] Mobile (webview) back-end
+  - [ ] Extension back-end
 - [ ] Common background runtime
   - [ ] Datastore -> background
   - [ ] API -> background
 - [ ] Define subset of core API for portability
-- [ ] Extension back-end
-- [ ] Mobile (webview) back-end
-- [ ] Tauri back-end
 
 ## v? Pages, Tagging & Groups
 

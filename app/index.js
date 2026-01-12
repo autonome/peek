@@ -29,7 +29,8 @@ const topicCorePrefs = 'topic:core:prefs';
 const topicFeatureToggle = 'core:feature:toggle';
 
 // Built-in extensions (now loaded by main process ExtensionManager)
-const builtinExtensions = ['groups', 'peeks', 'slides'];
+// cmd is first so it's ready to receive command registrations from other extensions
+const builtinExtensions = ['cmd', 'groups', 'peeks', 'slides'];
 
 let _settingsWin = null;
 
@@ -280,8 +281,13 @@ const init = async () => {
   // It receives the 'core:ready' signal and calls loadEnabledExtensions()
   console.log('Core features initialized. Extensions loaded by main process.');
 
-  // Register extension dev commands
-  registerExtensionCommands();
+  // Register extension dev commands - wait for cmd:ready
+  api.subscribe('cmd:ready', () => {
+    registerExtensionCommands();
+  }, api.scopes.GLOBAL);
+
+  // Query in case cmd is already ready
+  api.publish('cmd:query', {}, api.scopes.GLOBAL);
 };
 
 window.addEventListener('load', () => {

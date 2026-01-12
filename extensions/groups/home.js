@@ -245,12 +245,15 @@ const showGroups = async () => {
     container.appendChild(untaggedCard);
   }
 
-  if (state.tags.length === 0 && state.untaggedCount === 0) {
+  // Filter out empty groups (tags with no addresses)
+  const nonEmptyTags = state.tags.filter(tag => tag.addressCount > 0);
+
+  if (nonEmptyTags.length === 0 && state.untaggedCount === 0) {
     container.innerHTML = '<div class="empty-state">No groups yet. Create one to get started.</div>';
     return;
   }
 
-  state.tags.forEach(tag => {
+  nonEmptyTags.forEach(tag => {
     const card = createGroupCard(tag);
     container.appendChild(card);
   });

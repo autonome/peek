@@ -69,9 +69,26 @@ const saveSettings = async (settings) => {
  * - cmd:query-commands - Panel queries for all registered commands
  */
 const initCommandRegistry = () => {
-  // Handle command registrations from extensions
+  // Handle batch command registrations (from preload batching)
+  api.subscribe('cmd:register-batch', (msg) => {
+    if (!msg.commands || !Array.isArray(msg.commands)) return;
+
+    debug && console.log('[ext:cmd] cmd:register-batch received:', msg.commands.length, 'commands');
+
+    for (const cmd of msg.commands) {
+      commandRegistry.set(cmd.name, {
+        name: cmd.name,
+        description: cmd.description || '',
+        source: cmd.source,
+        accepts: cmd.accepts || [],
+        produces: cmd.produces || []
+      });
+    }
+  }, api.scopes.GLOBAL);
+
+  // Handle individual command registrations from extensions
   api.subscribe('cmd:register', (msg) => {
-    console.log('[ext:cmd] cmd:register received:', msg.name);
+    debug && console.log('[ext:cmd] cmd:register received:', msg.name);
     commandRegistry.set(msg.name, {
       name: msg.name,
       description: msg.description || '',
@@ -84,20 +101,20 @@ const initCommandRegistry = () => {
 
   // Handle command unregistrations
   api.subscribe('cmd:unregister', (msg) => {
-    console.log('[ext:cmd] cmd:unregister received:', msg.name);
+    debug && console.log('[ext:cmd] cmd:unregister received:', msg.name);
     commandRegistry.delete(msg.name);
   }, api.scopes.GLOBAL);
 
   // Handle queries from late-arriving consumers
   // Re-publish ready signal so they know we're available
   api.subscribe('cmd:query', () => {
-    console.log('[ext:cmd] cmd:query received, re-publishing ready');
+    debug && console.log('[ext:cmd] cmd:query received, re-publishing ready');
     api.publish('cmd:ready', { id: 'cmd' }, api.scopes.GLOBAL);
   }, api.scopes.GLOBAL);
 
   // Handle command list queries from the panel
   api.subscribe('cmd:query-commands', () => {
-    console.log('[ext:cmd] cmd:query-commands received');
+    debug && console.log('[ext:cmd] cmd:query-commands received');
     const commands = Array.from(commandRegistry.values());
     api.publish('cmd:query-commands-response', { commands }, api.scopes.GLOBAL);
   }, api.scopes.GLOBAL);

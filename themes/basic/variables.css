@@ -1,0 +1,116 @@
+/**
+ * Peek Default Theme
+ * Base16 color scheme with light and dark variants
+ *
+ * Usage:
+ *   - No data-theme attribute: follows system preference
+ *   - data-theme="light": force light mode
+ *   - data-theme="dark": force dark mode
+ */
+
+/* ========== Light Mode (default) ========== */
+:root {
+  /* Base16 Grayscale */
+  --base00: #ffffff;  /* Default Background */
+  --base01: #f5f5f5;  /* Lighter Background (status bars, line numbers) */
+  --base02: #e0e0e0;  /* Selection Background */
+  --base03: #b0b0b0;  /* Comments, Invisibles, Line Highlighting */
+  --base04: #666666;  /* Dark Foreground (status bars) */
+  --base05: #333333;  /* Default Foreground, Caret, Delimiters */
+  --base06: #1a1a1a;  /* Light Foreground (rarely used) */
+  --base07: #0f0f0f;  /* Light Background (rarely used) */
+
+  /* Base16 Accent Colors */
+  --base08: #d73a49;  /* Red - Variables, Errors, Diff Deleted */
+  --base09: #e36209;  /* Orange - Integers, Boolean, Constants */
+  --base0A: #c08b00;  /* Yellow - Classes, Search Background */
+  --base0B: #22863a;  /* Green - Strings, Success, Diff Inserted */
+  --base0C: #1b7c83;  /* Cyan - Support, Regex, Escape Chars */
+  --base0D: #0066cc;  /* Blue - Functions, Primary Accent */
+  --base0E: #6f42c1;  /* Purple - Keywords, Storage */
+  --base0F: #8b4513;  /* Brown - Deprecated */
+
+  /* Semantic Aliases */
+  --theme-bg: var(--base00);
+  --theme-bg-secondary: var(--base01);
+  --theme-bg-tertiary: var(--base02);
+  --theme-text: var(--base05);
+  --theme-text-secondary: var(--base04);
+  --theme-text-muted: var(--base03);
+  --theme-border: var(--base02);
+  --theme-accent: var(--base0D);
+  --theme-success: var(--base0B);
+  --theme-warning: var(--base0A);
+  --theme-danger: var(--base08);
+
+  /* Typography - system-ui has 96%+ support (caniuse.com/font-family-system-ui) */
+  --theme-font-sans: system-ui, sans-serif;
+  --theme-font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, "Cascadia Mono", monospace;
+}
+
+/* ========== Dark Mode (system preference) ========== */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    /* Base16 Grayscale - Dark */
+    --base00: #1c1c1e;  /* Default Background */
+    --base01: #2c2c2e;  /* Lighter Background */
+    --base02: #3a3a3c;  /* Selection Background */
+    --base03: #636366;  /* Comments, Invisibles */
+    --base04: #98989d;  /* Dark Foreground */
+    --base05: #f5f5f7;  /* Default Foreground */
+    --base06: #ffffff;  /* Light Foreground */
+    --base07: #ffffff;  /* Light Background */
+
+    /* Base16 Accent Colors - Dark (adjusted for dark bg) */
+    --base08: #ff453a;  /* Red */
+    --base09: #ff9f0a;  /* Orange */
+    --base0A: #ffd60a;  /* Yellow */
+    --base0B: #30d158;  /* Green */
+    --base0C: #64d2ff;  /* Cyan */
+    --base0D: #0a84ff;  /* Blue */
+    --base0E: #bf5af2;  /* Purple */
+    --base0F: #ac8e68;  /* Brown */
+  }
+}
+
+/* ========== Forced Light Mode ========== */
+[data-theme="light"] {
+  --base00: #ffffff;
+  --base01: #f5f5f5;
+  --base02: #e0e0e0;
+  --base03: #b0b0b0;
+  --base04: #666666;
+  --base05: #333333;
+  --base06: #1a1a1a;
+  --base07: #0f0f0f;
+
+  --base08: #d73a49;
+  --base09: #e36209;
+  --base0A: #c08b00;
+  --base0B: #22863a;
+  --base0C: #1b7c83;
+  --base0D: #0066cc;
+  --base0E: #6f42c1;
+  --base0F: #8b4513;
+}
+
+/* ========== Forced Dark Mode ========== */
+[data-theme="dark"] {
+  --base00: #1c1c1e;
+  --base01: #2c2c2e;
+  --base02: #3a3a3c;
+  --base03: #636366;
+  --base04: #98989d;
+  --base05: #f5f5f7;
+  --base06: #ffffff;
+  --base07: #ffffff;
+
+  --base08: #ff453a;
+  --base09: #ff9f0a;
+  --base0A: #ffd60a;
+  --base0B: #30d158;
+  --base0C: #64d2ff;
+  --base0D: #0a84ff;
+  --base0E: #bf5af2;
+  --base0F: #ac8e68;
+}

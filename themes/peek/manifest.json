@@ -1,0 +1,10 @@
+{
+  "id": "peek",
+  "name": "Peek",
+  "version": "1.0.0",
+  "description": "Monospace theme with iOS-inspired colors",
+  "author": "Peek",
+  "colorSchemes": ["light", "dark"],
+  "defaultScheme": "system",
+  "variables": "./variables.css"
+}

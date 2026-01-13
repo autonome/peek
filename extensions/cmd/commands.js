@@ -15,12 +15,19 @@ const api = window.app;
 // Command registry - uses an object map for legacy compatibility
 let commands = {};
 
+// Debounce timer for UI updates
+let updateTimer = null;
+const UPDATE_DELAY_MS = 16; // ~1 frame
+
 /**
- * Notifies the UI that commands have been updated
+ * Notifies the UI that commands have been updated (debounced)
  */
 function onCommandsUpdated() {
-  window.dispatchEvent(new CustomEvent('cmd-update-commands', { detail: commands }));
-  console.log('[cmd:commands] cmd-update-commands dispatched, commands:', Object.keys(commands).length);
+  clearTimeout(updateTimer);
+  updateTimer = setTimeout(() => {
+    window.dispatchEvent(new CustomEvent('cmd-update-commands', { detail: commands }));
+    debug && console.log('[cmd:commands] cmd-update-commands dispatched, commands:', Object.keys(commands).length);
+  }, UPDATE_DELAY_MS);
 }
 
 /**
@@ -33,6 +40,13 @@ function addCommand(command) {
 }
 
 /**
+ * Adds a command without triggering update (for batching)
+ */
+function addCommandSilent(command) {
+  commands[command.name] = command;
+}
+
+/**
  * Removes a command from the registry
  * @param {string} name - The command name to remove
  */
@@ -40,7 +54,7 @@ function removeCommand(name) {
   if (commands[name]) {
     delete commands[name];
     onCommandsUpdated();
-    console.log('[cmd:commands] Command removed:', name);
+    debug && console.log('[cmd:commands] Command removed:', name);
   }
 }
 
@@ -48,14 +62,14 @@ function removeCommand(name) {
  * Initializes all command sources and registers them
  */
 async function initializeCommandSources() {
-  console.log('[cmd:commands] initializeCommandSources');
+  debug && console.log('[cmd:commands] initializeCommandSources');
 
   // Load commands from the commands module
   const moduleCommands = commandsModule.commands;
-  console.log('[cmd:commands] moduleCommands:', moduleCommands.map(c => c.name));
+  debug && console.log('[cmd:commands] moduleCommands:', moduleCommands.map(c => c.name));
   moduleCommands.forEach(command => {
-    console.log('[cmd:commands] adding command:', command.name);
-    addCommand(command);
+    debug && console.log('[cmd:commands] adding command:', command.name);
+    addCommandSilent(command); // Use silent add for batch loading
   });
 
   // Initialize any command sources that dynamically generate commands
@@ -118,33 +132,46 @@ function createProxyCommand(cmdData) {
 function initializeCommandRegistration() {
   // Listen for response to our query
   api.subscribe('cmd:query-commands-response', (msg) => {
-    console.log('[cmd:commands] cmd:query-commands-response received', msg.commands?.length, 'commands');
+    debug && console.log('[cmd:commands] cmd:query-commands-response received', msg.commands?.length, 'commands');
     if (msg.commands) {
       msg.commands.forEach(cmdData => {
         const command = createProxyCommand(cmdData);
-        addCommand(command);
+        addCommandSilent(command); // Use silent add for batch
       });
+      onCommandsUpdated(); // Single update after batch
     }
   }, api.scopes.GLOBAL);
 
-  // Also listen for new registrations while panel is open
+  // Handle batch registrations from preload batching
+  api.subscribe('cmd:register-batch', (msg) => {
+    debug && console.log('[cmd:commands] cmd:register-batch received', msg.commands?.length, 'commands');
+    if (msg.commands) {
+      msg.commands.forEach(cmdData => {
+        const command = createProxyCommand(cmdData);
+        addCommandSilent(command); // Use silent add for batch
+      });
+      onCommandsUpdated(); // Single update after batch
+    }
+  }, api.scopes.GLOBAL);
+
+  // Also listen for individual registrations while panel is open
   api.subscribe('cmd:register', (msg) => {
-    console.log('[cmd:commands] cmd:register received (live)', msg);
+    debug && console.log('[cmd:commands] cmd:register received (live)', msg);
     const command = createProxyCommand(msg);
     addCommand(command);
   }, api.scopes.GLOBAL);
 
   // Listen for unregistrations while panel is open
   api.subscribe('cmd:unregister', (msg) => {
-    console.log('[cmd:commands] cmd:unregister received', msg);
+    debug && console.log('[cmd:commands] cmd:unregister received', msg);
     removeCommand(msg.name);
   }, api.scopes.GLOBAL);
 
   // Query the background process for currently registered commands
-  console.log('[cmd:commands] Querying for registered commands...');
+  debug && console.log('[cmd:commands] Querying for registered commands...');
   api.publish('cmd:query-commands', {}, api.scopes.GLOBAL);
 
-  console.log('[cmd:commands] Command registration listeners initialized');
+  debug && console.log('[cmd:commands] Command registration listeners initialized');
 }
 
 // Initialize command registration listeners

@@ -227,39 +227,67 @@ export async function createExtensionWindow(extId: string): Promise<BrowserWindo
 }
 
 /**
- * Load all enabled extensions
+ * Load all enabled extensions with startup phases for optimization
+ *
+ * Startup phases allow extensions to defer work:
+ * - 'early': cmd loads first (it's the command registry)
+ * - 'commands': other extensions load, should register commands
+ * - 'ui': extensions can initialize UI elements
+ * - 'complete': all extensions loaded
  */
 export async function loadEnabledExtensions(): Promise<number> {
-  // Load enabled built-in extensions
   const builtinExtIds = getRegisteredExtensionIds();
-  for (const extId of builtinExtIds) {
-    if (isBuiltinExtensionEnabled(extId)) {
-      console.log(`[ext:win] Loading enabled extension: ${extId}`);
-      await createExtensionWindow(extId);
-    } else {
-      console.log(`[ext:win] Skipping disabled extension: ${extId}`);
-    }
+
+  // Phase 1: Early - load cmd first (it's the command registry)
+  publish('system', scopes.GLOBAL, 'ext:startup:phase', { phase: 'early' });
+
+  if (builtinExtIds.includes('cmd') && isBuiltinExtensionEnabled('cmd')) {
+    console.log('[ext:win] Loading cmd extension first (command registry)');
+    await createExtensionWindow('cmd');
   }
 
-  // Load enabled external extensions
+  // Phase 2: Commands - other extensions should register commands
+  publish('system', scopes.GLOBAL, 'ext:startup:phase', { phase: 'commands' });
+
+  // Load remaining built-in extensions in parallel (faster startup)
+  const otherBuiltinIds = builtinExtIds.filter(id => id !== 'cmd');
+  const enabledBuiltinIds = otherBuiltinIds.filter(id => {
+    if (isBuiltinExtensionEnabled(id)) {
+      console.log(`[ext:win] Loading enabled extension: ${id}`);
+      return true;
+    } else {
+      console.log(`[ext:win] Skipping disabled extension: ${id}`);
+      return false;
+    }
+  });
+
+  await Promise.all(enabledBuiltinIds.map(id => createExtensionWindow(id)));
+
+  // Load external extensions in parallel
   const externalExts = getExternalExtensions();
-  for (const ext of externalExts) {
-    if (extensionWindows.has(ext.id)) continue;
+  const enabledExternalExts = externalExts.filter(ext => {
+    if (extensionWindows.has(ext.id)) return false;
     if (!ext.enabled) {
       console.log(`[ext:win] Skipping disabled external extension: ${ext.id}`);
-      continue;
+      return false;
     }
     if (!ext.path) {
       console.log(`[ext:win] Skipping external extension without path: ${ext.id}`);
-      continue;
+      return false;
     }
     console.log(`[ext:win] Loading enabled external extension: ${ext.id}`);
-    await createExtensionWindow(ext.id);
-  }
+    return true;
+  });
+
+  await Promise.all(enabledExternalExts.map(ext => createExtensionWindow(ext.id)));
 
   console.log(`[ext:win] Loaded ${extensionWindows.size} extensions`);
 
-  // Signal that all extensions are loaded
+  // Phase 3: UI - extensions can now initialize UI elements
+  publish('system', scopes.GLOBAL, 'ext:startup:phase', { phase: 'ui' });
+
+  // Phase 4: Complete - all extensions loaded
+  publish('system', scopes.GLOBAL, 'ext:startup:phase', { phase: 'complete' });
   publish('system', scopes.GLOBAL, 'ext:all-loaded', {
     count: extensionWindows.size
   });

@@ -23,6 +23,29 @@ const sourceAddress = window.location.toString();
 
 const rndm = () => Math.random().toString(16).slice(2);
 
+// Command registration batching for startup performance
+// Collects registrations and sends as single batch after debounce
+let pendingRegistrations = [];
+let registrationTimer = null;
+const BATCH_DELAY_MS = 16; // ~1 frame
+
+function flushRegistrations() {
+  if (pendingRegistrations.length === 0) return;
+
+  const batch = pendingRegistrations;
+  pendingRegistrations = [];
+  registrationTimer = null;
+
+  ipcRenderer.send('publish', {
+    source: sourceAddress,
+    scope: 3, // GLOBAL
+    topic: 'cmd:register-batch',
+    data: { commands: batch }
+  });
+
+  DEBUG && console.log('[preload] commands.flush: sent batch of', batch.length, 'commands');
+}
+
 // Context detection for permission tiers
 const isCore = sourceAddress.startsWith('peek://app/');
 const isExtension = sourceAddress.startsWith('peek://ext/');
@@ -542,20 +565,27 @@ api.commands = {
       }
     });
 
-    // Publish registration to cmd extension (GLOBAL scope)
-    ipcRenderer.send('publish', {
+    // Queue registration for batching (improves startup performance)
+    pendingRegistrations.push({
+      name: command.name,
+      description: command.description || '',
       source: sourceAddress,
-      scope: 3,
-      topic: 'cmd:register',
-      data: {
-        name: command.name,
-        description: command.description || '',
-        source: sourceAddress
-      }
+      accepts: command.accepts || [],
+      produces: command.produces || []
     });
 
-    console.log('[preload] commands.register:', command.name);
+    // Debounce: flush after BATCH_DELAY_MS of no new registrations
+    clearTimeout(registrationTimer);
+    registrationTimer = setTimeout(flushRegistrations, BATCH_DELAY_MS);
+
+    DEBUG && console.log('[preload] commands.register:', command.name);
   },
+
+  /**
+   * Flush any pending command registrations immediately
+   * Useful for extensions that need commands available before debounce completes
+   */
+  flush: flushRegistrations,
 
   /**
    * Unregister a command from the cmd palette
@@ -575,7 +605,7 @@ api.commands = {
       data: { name }
     });
 
-    console.log('[preload] commands.unregister:', name);
+    DEBUG && console.log('[preload] commands.unregister:', name);
   },
 
   /**

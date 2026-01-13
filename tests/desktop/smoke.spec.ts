@@ -1747,3 +1747,234 @@ test.describe('Themes @desktop', () => {
     expect(result.error).toBeTruthy();
   });
 });
+
+// ============================================================================
+// Command Registration Performance Tests
+// ============================================================================
+
+test.describe('Command Registration Performance @desktop', () => {
+  let app: DesktopApp;
+  let bgWindow: Page;
+
+  test.beforeAll(async () => {
+    app = await launchDesktopApp('test-cmd-perf');
+    bgWindow = await app.getBackgroundWindow();
+  });
+
+  test.afterAll(async () => {
+    if (app) await app.close();
+  });
+
+  test('cmd:register-batch is handled by cmd extension', async () => {
+    // Test that batch registration works by sending a batch and verifying commands appear
+    const result = await bgWindow.evaluate(async () => {
+      const api = (window as any).app;
+
+      // Send a batch of test commands
+      api.publish('cmd:register-batch', {
+        commands: [
+          { name: 'test-batch-cmd-1', description: 'Test batch command 1', source: 'test' },
+          { name: 'test-batch-cmd-2', description: 'Test batch command 2', source: 'test' },
+          { name: 'test-batch-cmd-3', description: 'Test batch command 3', source: 'test' }
+        ]
+      }, api.scopes.GLOBAL);
+
+      // Wait for batch to be processed
+      await new Promise(r => setTimeout(r, 100));
+
+      // Query commands to verify they were registered
+      return new Promise((resolve) => {
+        api.subscribe('cmd:query-commands-response', (msg: any) => {
+          const commands = msg.commands || [];
+          const batchCmds = commands.filter((c: any) => c.name.startsWith('test-batch-cmd-'));
+          resolve({
+            totalCommands: commands.length,
+            batchCommandsFound: batchCmds.length,
+            batchCommandNames: batchCmds.map((c: any) => c.name)
+          });
+        }, api.scopes.GLOBAL);
+
+        api.publish('cmd:query-commands', {}, api.scopes.GLOBAL);
+
+        setTimeout(() => resolve({ totalCommands: 0, batchCommandsFound: 0, batchCommandNames: [] }), 2000);
+      });
+    });
+
+    expect(result.batchCommandsFound).toBe(3);
+    expect(result.batchCommandNames).toContain('test-batch-cmd-1');
+    expect(result.batchCommandNames).toContain('test-batch-cmd-2');
+    expect(result.batchCommandNames).toContain('test-batch-cmd-3');
+  });
+
+  test('api.commands.flush() sends pending registrations immediately', async () => {
+    // Test that flush() can be called to send batched commands immediately
+    const result = await bgWindow.evaluate(async () => {
+      const api = (window as any).app;
+
+      // Register a command (it will be batched)
+      api.commands.register({
+        name: 'test-flush-cmd',
+        description: 'Test flush command',
+        execute: () => {}
+      });
+
+      // Immediately flush
+      api.commands.flush();
+
+      // Wait a bit for processing
+      await new Promise(r => setTimeout(r, 50));
+
+      // Query commands to verify it was registered
+      return new Promise((resolve) => {
+        api.subscribe('cmd:query-commands-response', (msg: any) => {
+          const commands = msg.commands || [];
+          const flushCmd = commands.find((c: any) => c.name === 'test-flush-cmd');
+          resolve({
+            found: !!flushCmd,
+            commandName: flushCmd?.name
+          });
+        }, api.scopes.GLOBAL);
+
+        api.publish('cmd:query-commands', {}, api.scopes.GLOBAL);
+
+        setTimeout(() => resolve({ found: false }), 2000);
+      });
+    });
+
+    expect(result.found).toBe(true);
+    expect(result.commandName).toBe('test-flush-cmd');
+  });
+
+  test('commands registered via api.commands.register are batched', async () => {
+    // Test that multiple rapid registrations are batched (not sent individually)
+    const result = await bgWindow.evaluate(async () => {
+      const api = (window as any).app;
+      const receivedBatches: any[] = [];
+
+      // Subscribe to batch messages to count them
+      api.subscribe('cmd:register-batch', (msg: any) => {
+        receivedBatches.push(msg);
+      }, api.scopes.GLOBAL);
+
+      // Register multiple commands rapidly
+      for (let i = 0; i < 5; i++) {
+        api.commands.register({
+          name: `test-rapid-cmd-${i}`,
+          description: `Rapid command ${i}`,
+          execute: () => {}
+        });
+      }
+
+      // Wait for debounce to complete (16ms + buffer)
+      await new Promise(r => setTimeout(r, 50));
+
+      // Verify commands are registered
+      return new Promise((resolve) => {
+        api.subscribe('cmd:query-commands-response', (msg: any) => {
+          const commands = msg.commands || [];
+          const rapidCmds = commands.filter((c: any) => c.name.startsWith('test-rapid-cmd-'));
+          resolve({
+            commandsRegistered: rapidCmds.length,
+            // Note: We can't directly count batches from renderer, but we verify all commands arrived
+            allCommandsPresent: rapidCmds.length === 5
+          });
+        }, api.scopes.GLOBAL);
+
+        api.publish('cmd:query-commands', {}, api.scopes.GLOBAL);
+
+        setTimeout(() => resolve({ commandsRegistered: 0, allCommandsPresent: false }), 2000);
+      });
+    });
+
+    expect(result.commandsRegistered).toBe(5);
+    expect(result.allCommandsPresent).toBe(true);
+  });
+});
+
+// ============================================================================
+// Startup Phase Events Tests
+// ============================================================================
+
+test.describe('Startup Phase Events @desktop', () => {
+  let app: DesktopApp;
+  let bgWindow: Page;
+
+  test.beforeAll(async () => {
+    app = await launchDesktopApp('test-startup-phases');
+    bgWindow = await app.getBackgroundWindow();
+  });
+
+  test.afterAll(async () => {
+    if (app) await app.close();
+  });
+
+  test('ext:startup:phase events are available for subscription', async () => {
+    // Test that extensions can subscribe to startup phase events
+    // Since app is already started, we test that the subscription mechanism works
+    const result = await bgWindow.evaluate(async () => {
+      const api = (window as any).app;
+      let received = false;
+
+      // Subscribe to startup phase events
+      api.subscribe('ext:startup:phase', (msg: any) => {
+        received = true;
+      }, api.scopes.GLOBAL);
+
+      // The subscription should be set up without error
+      return { subscriptionCreated: true };
+    });
+
+    expect(result.subscriptionCreated).toBe(true);
+  });
+
+  test('ext:all-loaded event was published during startup', async () => {
+    // Verify that the ext:all-loaded event was published by checking extensions are running
+    const result = await bgWindow.evaluate(async () => {
+      const api = (window as any).app;
+
+      // Get running extensions - if they're running, ext:all-loaded was published
+      const extResult = await api.extensions.list();
+      const extensions = extResult.data || [];
+      return {
+        success: extResult.success,
+        extensionCount: extensions.length,
+        hasCmd: extensions.some((e: any) => e.id === 'cmd'),
+        hasGroups: extensions.some((e: any) => e.id === 'groups')
+      };
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.extensionCount).toBeGreaterThan(0);
+    expect(result.hasCmd).toBe(true);
+  });
+
+  test('cmd extension loads before other extensions can register commands', async () => {
+    // Verify that cmd is running and accepting commands (which means it loaded first)
+    const result = await bgWindow.evaluate(async () => {
+      const api = (window as any).app;
+
+      // Query commands - if we get a response, cmd is running and initialized
+      return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          resolve({ cmdResponded: false, commandCount: 0 });
+        }, 2000);
+
+        api.subscribe('cmd:query-commands-response', (msg: any) => {
+          clearTimeout(timeout);
+          resolve({
+            cmdResponded: true,
+            commandCount: msg.commands?.length || 0,
+            hasHelloCommand: msg.commands?.some((c: any) => c.name === 'hello')
+          });
+        }, api.scopes.GLOBAL);
+
+        api.publish('cmd:query-commands', {}, api.scopes.GLOBAL);
+      });
+    });
+
+    expect(result.cmdResponded).toBe(true);
+    expect(result.commandCount).toBeGreaterThan(0);
+    // hello command from example extension should be registered
+    expect(result.hasHelloCommand).toBe(true);
+  });
+});

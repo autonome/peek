@@ -1465,10 +1465,23 @@ test.describe('Command Chaining @desktop', () => {
     await cmdWindow.press('input', 'Enter');
     await new Promise(r => setTimeout(r, 1000));
 
-    // After csv executes, preview should show CSV content
-    const previewContent = await cmdWindow.$eval('#preview-content', (el: HTMLElement) => el.textContent || '');
-    // CSV should have comma-separated values
-    expect(previewContent).toContain(',');
+    // After csv executes, preview should show CSV content rendered as a table
+    // The CSV renderer converts comma-separated values into HTML table cells
+    const previewInfo = await cmdWindow.$eval('#preview-content', (el: HTMLElement) => {
+      const table = el.querySelector('table.preview-csv');
+      const cells = el.querySelectorAll('td');
+      return {
+        hasTable: !!table,
+        cellCount: cells.length,
+        // Get text from cells to verify data is present
+        cellTexts: Array.from(cells).slice(0, 8).map(c => c.textContent || '')
+      };
+    });
+    // CSV should be rendered as a table with multiple cells
+    expect(previewInfo.hasTable).toBe(true);
+    expect(previewInfo.cellCount).toBeGreaterThan(0);
+    // Should have some data cells (header + at least one row)
+    expect(previewInfo.cellTexts.length).toBeGreaterThan(0);
 
     // Chain indicator should show text/csv MIME type
     const chainMime = await cmdWindow.$eval('#chain-mime', (el: HTMLElement) => el.textContent || '');

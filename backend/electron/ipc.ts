@@ -719,6 +719,20 @@ function broadcastThemeChange(colorScheme: string): void {
 }
 
 /**
+ * Restore the saved theme preference
+ * Call this AFTER themes have been discovered/registered
+ */
+export function restoreSavedTheme(): void {
+  const savedThemeId = getThemeSetting(THEME_ID_KEY);
+  if (savedThemeId) {
+    const success = setActiveThemeId(savedThemeId);
+    if (!success) {
+      console.warn('[theme] Failed to restore theme:', savedThemeId, '- theme may not be registered yet');
+    }
+  }
+}
+
+/**
  * Register theme-related IPC handlers
  */
 export function registerThemeHandlers(): void {

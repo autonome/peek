@@ -193,6 +193,7 @@ export {
   registerWindowHandlers,
   registerMiscHandlers,
   registerAllHandlers,
+  restoreSavedTheme,
 } from './ipc.js';
 
 // Window helpers

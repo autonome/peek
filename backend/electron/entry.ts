@@ -42,6 +42,7 @@ import {
   getSystemAddress,
   // IPC
   registerAllHandlers,
+  restoreSavedTheme,
   // Config
   WEB_CORE_ADDRESS,
   SETTINGS_ADDRESS,
@@ -179,6 +180,9 @@ const onReady = async () => {
 
   // Discover and register built-in themes from themes/ folder
   discoverBuiltinThemes(path.join(ROOT_DIR, 'themes'));
+
+  // Restore saved theme preference (must be after themes are discovered)
+  restoreSavedTheme();
 
   // Register as default handler for http/https URLs (if not already and user hasn't declined)
   // Skip for test profiles to avoid system dialogs during automated testing

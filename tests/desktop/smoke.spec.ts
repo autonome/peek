@@ -1762,6 +1762,67 @@ test.describe('Themes @desktop', () => {
 });
 
 // ============================================================================
+// Theme Persistence Tests
+// ============================================================================
+
+test.describe('Theme Persistence @desktop', () => {
+  const profileName = 'test-theme-persist';
+
+  test('saved theme is restored on restart', async () => {
+    // First session: set theme to peek
+    let app = await launchDesktopApp(profileName);
+    let bgWindow = await app.getBackgroundWindow();
+
+    // Set theme to peek
+    const setResult = await bgWindow.evaluate(async () => {
+      return await (window as any).app.theme.setTheme('peek');
+    });
+    expect(setResult.success).toBe(true);
+
+    // Verify theme is set
+    const themeState1 = await bgWindow.evaluate(async () => {
+      return await (window as any).app.theme.get();
+    });
+    expect(themeState1.themeId).toBe('peek');
+
+    // Close app
+    await app.close();
+
+    // Wait a bit for cleanup
+    await new Promise(r => setTimeout(r, 500));
+
+    // Second session: verify theme is restored
+    app = await launchDesktopApp(profileName);
+    bgWindow = await app.getBackgroundWindow();
+
+    // Theme should be peek without needing to set it
+    const themeState2 = await bgWindow.evaluate(async () => {
+      return await (window as any).app.theme.get();
+    });
+    expect(themeState2.themeId).toBe('peek');
+
+    // Open settings window to verify the theme CSS is loaded correctly
+    await bgWindow.evaluate(async () => {
+      return await (window as any).app.window.open('peek://app/settings/settings.html', {
+        width: 800, height: 600
+      });
+    });
+    await new Promise(r => setTimeout(r, 1000));
+
+    const settingsWin = await app.getWindow('settings/settings.html', 5000);
+    expect(settingsWin).toBeTruthy();
+
+    // Check that the CSS variable has the peek theme's font
+    const fontVar = await settingsWin.evaluate(() => {
+      return getComputedStyle(document.documentElement).getPropertyValue('--theme-font-sans');
+    });
+    expect(fontVar).toContain('ServerMono');
+
+    await app.close();
+  });
+});
+
+// ============================================================================
 // Command Registration Performance Tests
 // ============================================================================
 

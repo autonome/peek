@@ -8,13 +8,15 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <style>
+      @import url('peek://theme/variables.css');
+
       html, body {
         margin: 0;
         padding: 0;
         height: 100%;
         width: 100%;
         background-color: transparent;
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, "Helvetica Neue", sans-serif;
+        font-family: var(--theme-font-sans);
         color: white;
         overflow: hidden;
         -webkit-app-region: drag;
@@ -167,7 +169,7 @@
       }
 
       #chain-indicator #chain-mime {
-        font-family: monospace;
+        font-family: var(--theme-font-mono);
         background: rgba(255, 255, 255, 0.1);
         padding: 2px 6px;
         border-radius: 3px;
@@ -224,7 +226,7 @@
       }
 
       #preview-mime {
-        font-family: monospace;
+        font-family: var(--theme-font-mono);
         background: rgba(255, 255, 255, 0.1);
         padding: 2px 6px;
         border-radius: 3px;
@@ -242,7 +244,7 @@
         margin: 0;
         white-space: pre-wrap;
         word-break: break-all;
-        font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+        font-family: var(--theme-font-mono);
         font-size: 11px;
         line-height: 1.4;
       }

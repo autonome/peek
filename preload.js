@@ -779,6 +779,25 @@ api.onMessage = callback => {
 };
 */
 
+/**
+ * File operations
+ */
+api.files = {
+  /**
+   * Show native save dialog and write content to file
+   * @param {string} content - Content to save
+   * @param {object} options - Options { filename, mimeType }
+   * @returns {Promise<{success: boolean, path?: string, canceled?: boolean, error?: string}>}
+   */
+  save: (content, options = {}) => {
+    return ipcRenderer.invoke('file-save-dialog', {
+      content,
+      filename: options.filename,
+      mimeType: options.mimeType
+    });
+  }
+};
+
 contextBridge.exposeInMainWorld('app', api);
 console.log(src, 'api exposed');
 

@@ -8,7 +8,8 @@
  *   lists → csv → save myfile.csv
  *   lists → save data.json
  */
-import api from 'peek://app/api.js';
+
+const api = window.app;
 
 /**
  * Get file extension from MIME type
@@ -85,27 +86,18 @@ export default {
         content = JSON.stringify(data, null, 2);
       }
 
-      // Create blob and trigger download
-      const blob = new Blob([content], { type: mimeType });
-      const url = URL.createObjectURL(blob);
+      // Send to background script to handle download
+      // Background persists regardless of panel state
+      api.publish('cmd:save-file', {
+        content,
+        filename,
+        mimeType
+      }, api.scopes.GLOBAL);
 
-      // Create download link and click it
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-
-      // Clean up
-      setTimeout(() => URL.revokeObjectURL(url), 100);
-
-      console.log('[save] Saved file:', filename);
-
+      console.log('[save] Requested download:', filename);
       return {
         success: true,
-        message: `Saved as ${filename}`
-        // No output - this ends the chain
+        message: `Saving ${filename}...`
       };
     } catch (err) {
       console.error('[save] Error:', err);

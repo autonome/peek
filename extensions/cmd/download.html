@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Save File</title>
+  <meta charset="utf-8">
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #282c34;
+      color: white;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      box-sizing: border-box;
+    }
+    .status {
+      font-size: 14px;
+      color: rgba(255,255,255,0.8);
+    }
+    .filename {
+      font-size: 16px;
+      font-weight: 500;
+      margin: 10px 0;
+    }
+    .error {
+      color: #ff6b6b;
+    }
+  </style>
+</head>
+<body>
+  <div class="status" id="status">Preparing download...</div>
+  <div class="filename" id="filename"></div>
+
+  <script type="module">
+    const api = window.app;
+    const params = new URLSearchParams(window.location.search);
+    const downloadId = params.get('id');
+
+    const statusEl = document.getElementById('status');
+    const filenameEl = document.getElementById('filename');
+
+    if (!downloadId) {
+      statusEl.textContent = 'Error: No download ID';
+      statusEl.classList.add('error');
+      setTimeout(() => window.close(), 2000);
+    } else {
+      // Subscribe to our specific data topic FIRST
+      api.subscribe(`cmd:download-data:${downloadId}`, async (msg) => {
+        console.log('[download] Received data for:', downloadId);
+
+        filenameEl.textContent = msg.filename;
+        statusEl.textContent = 'Choose save location...';
+
+        try {
+          // Use native save dialog - this window is not modal so dialog stays open
+          const result = await api.files.save(msg.content, {
+            filename: msg.filename,
+            mimeType: msg.mimeType
+          });
+
+          if (result.success) {
+            statusEl.textContent = 'Saved!';
+            setTimeout(() => window.close(), 500);
+          } else if (result.canceled) {
+            statusEl.textContent = 'Cancelled';
+            setTimeout(() => window.close(), 500);
+          } else {
+            statusEl.textContent = 'Error: ' + (result.error || 'Unknown error');
+            statusEl.classList.add('error');
+            setTimeout(() => window.close(), 2000);
+          }
+        } catch (err) {
+          console.error('[download] Error:', err);
+          statusEl.textContent = 'Error: ' + err.message;
+          statusEl.classList.add('error');
+          setTimeout(() => window.close(), 2000);
+        }
+      }, api.scopes.GLOBAL);
+
+      // NOW publish ready - background will respond with data
+      console.log('[download] Publishing ready for:', downloadId);
+      api.publish('cmd:download-ready', { id: downloadId }, api.scopes.GLOBAL);
+    }
+  </script>
+</body>
+</html>

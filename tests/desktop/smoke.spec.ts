@@ -1292,17 +1292,300 @@ test.describe('Command Chaining @desktop', () => {
     const executionState = await cmdWindow.$('#execution-state');
     expect(executionState).toBeTruthy();
 
-    // Verify chain indicator is initially hidden
-    const chainDisplay = await cmdWindow.$eval('#chain-indicator', (el: HTMLElement) => el.style.display);
-    expect(chainDisplay === 'none' || chainDisplay === '').toBe(true);
+    // Verify chain indicator is initially hidden (no 'visible' class)
+    const chainVisible = await cmdWindow.$eval('#chain-indicator', (el: HTMLElement) => el.classList.contains('visible'));
+    expect(chainVisible).toBe(false);
 
-    // Verify preview is initially hidden
-    const previewDisplay = await cmdWindow.$eval('#preview-container', (el: HTMLElement) => el.style.display);
-    expect(previewDisplay === 'none' || previewDisplay === '').toBe(true);
+    // Verify preview is initially hidden (no 'visible' class)
+    const previewVisible = await cmdWindow.$eval('#preview-container', (el: HTMLElement) => el.classList.contains('visible'));
+    expect(previewVisible).toBe(false);
 
-    // Verify execution state is initially hidden
-    const execDisplay = await cmdWindow.$eval('#execution-state', (el: HTMLElement) => el.style.display);
-    expect(execDisplay === 'none' || execDisplay === '').toBe(true);
+    // Verify execution state is initially hidden (no 'visible' class)
+    const execVisible = await cmdWindow.$eval('#execution-state', (el: HTMLElement) => el.classList.contains('visible'));
+    expect(execVisible).toBe(false);
+
+    // Verify results is initially hidden (no 'visible' class)
+    const resultsVisible = await cmdWindow.$eval('#results', (el: HTMLElement) => el.classList.contains('visible'));
+    expect(resultsVisible).toBe(false);
+
+    // Close the window
+    if (openResult.id) {
+      await bgWindow.evaluate(async (id: number) => {
+        return await (window as any).app.window.close(id);
+      }, openResult.id);
+    }
+  });
+
+  test('lists command produces array output and enters output selection mode', async () => {
+    // Open cmd panel
+    const openResult = await bgWindow.evaluate(async () => {
+      return await (window as any).app.window.open('peek://ext/cmd/panel.html', {
+        modal: true,
+        width: 600,
+        height: 400,
+        frame: false,
+        transparent: true,
+        alwaysOnTop: true,
+        center: true
+      });
+    });
+    expect(openResult.success).toBe(true);
+
+    await new Promise(r => setTimeout(r, 1500));
+
+    const cmdWindow = await app.getWindow('cmd/panel.html', 5000);
+    expect(cmdWindow).toBeTruthy();
+
+    // Wait for input to be ready
+    await cmdWindow.waitForSelector('input', { timeout: 5000 });
+
+    // Type 'lists' command
+    await cmdWindow.fill('input', 'lists');
+
+    // Press down arrow to show results
+    await cmdWindow.press('input', 'ArrowDown');
+    await new Promise(r => setTimeout(r, 300));
+
+    // Verify results are visible
+    const resultsVisible = await cmdWindow.$eval('#results', (el: HTMLElement) => el.classList.contains('visible'));
+    expect(resultsVisible).toBe(true);
+
+    // Press Enter to execute
+    await cmdWindow.press('input', 'Enter');
+    await new Promise(r => setTimeout(r, 1000));
+
+    // After lists executes, we should be in output selection mode
+    // Results should show the items from the lists output
+    const hasResults = await cmdWindow.$eval('#results', (el: HTMLElement) => {
+      return el.classList.contains('visible') && el.children.length > 0;
+    });
+    expect(hasResults).toBe(true);
+
+    // Preview should show the selected item
+    const previewVisible = await cmdWindow.$eval('#preview-container', (el: HTMLElement) => el.classList.contains('visible'));
+    expect(previewVisible).toBe(true);
+
+    // Close the window
+    if (openResult.id) {
+      await bgWindow.evaluate(async (id: number) => {
+        return await (window as any).app.window.close(id);
+      }, openResult.id);
+    }
+  });
+
+  test('selecting output item enters chain mode with filtered commands', async () => {
+    // Open cmd panel
+    const openResult = await bgWindow.evaluate(async () => {
+      return await (window as any).app.window.open('peek://ext/cmd/panel.html', {
+        modal: true,
+        width: 600,
+        height: 400,
+        frame: false,
+        transparent: true,
+        alwaysOnTop: true,
+        center: true
+      });
+    });
+    expect(openResult.success).toBe(true);
+
+    await new Promise(r => setTimeout(r, 1500));
+
+    const cmdWindow = await app.getWindow('cmd/panel.html', 5000);
+    expect(cmdWindow).toBeTruthy();
+
+    // Execute lists command
+    await cmdWindow.waitForSelector('input', { timeout: 5000 });
+    await cmdWindow.fill('input', 'lists');
+    await cmdWindow.press('input', 'ArrowDown');
+    await new Promise(r => setTimeout(r, 300));
+    await cmdWindow.press('input', 'Enter');
+    await new Promise(r => setTimeout(r, 1000));
+
+    // Now in output selection mode - press Enter to select first item
+    await cmdWindow.press('input', 'Enter');
+    await new Promise(r => setTimeout(r, 500));
+
+    // Should now be in chain mode
+    const chainVisible = await cmdWindow.$eval('#chain-indicator', (el: HTMLElement) => el.classList.contains('visible'));
+    expect(chainVisible).toBe(true);
+
+    // Results should show commands that accept the output MIME type (application/json)
+    const resultsVisible = await cmdWindow.$eval('#results', (el: HTMLElement) => el.classList.contains('visible'));
+    expect(resultsVisible).toBe(true);
+
+    // Should see csv and save commands (they accept application/json or */*)
+    const resultText = await cmdWindow.$eval('#results', (el: HTMLElement) => el.textContent || '');
+    expect(resultText.toLowerCase()).toContain('csv');
+    expect(resultText.toLowerCase()).toContain('save');
+
+    // Close the window
+    if (openResult.id) {
+      await bgWindow.evaluate(async (id: number) => {
+        return await (window as any).app.window.close(id);
+      }, openResult.id);
+    }
+  });
+
+  test('csv command converts JSON to CSV format', async () => {
+    // Open cmd panel
+    const openResult = await bgWindow.evaluate(async () => {
+      return await (window as any).app.window.open('peek://ext/cmd/panel.html', {
+        modal: true,
+        width: 600,
+        height: 400,
+        frame: false,
+        transparent: true,
+        alwaysOnTop: true,
+        center: true
+      });
+    });
+    expect(openResult.success).toBe(true);
+
+    await new Promise(r => setTimeout(r, 1500));
+
+    const cmdWindow = await app.getWindow('cmd/panel.html', 5000);
+    expect(cmdWindow).toBeTruthy();
+
+    // Execute lists command
+    await cmdWindow.waitForSelector('input', { timeout: 5000 });
+    await cmdWindow.fill('input', 'lists');
+    await cmdWindow.press('input', 'ArrowDown');
+    await new Promise(r => setTimeout(r, 300));
+    await cmdWindow.press('input', 'Enter');
+    await new Promise(r => setTimeout(r, 1000));
+
+    // Select first item
+    await cmdWindow.press('input', 'Enter');
+    await new Promise(r => setTimeout(r, 500));
+
+    // Now in chain mode - type 'csv' and execute
+    await cmdWindow.fill('input', 'csv');
+    await cmdWindow.press('input', 'ArrowDown');
+    await new Promise(r => setTimeout(r, 300));
+    await cmdWindow.press('input', 'Enter');
+    await new Promise(r => setTimeout(r, 1000));
+
+    // After csv executes, preview should show CSV content
+    const previewContent = await cmdWindow.$eval('#preview-content', (el: HTMLElement) => el.textContent || '');
+    // CSV should have comma-separated values
+    expect(previewContent).toContain(',');
+
+    // Chain indicator should show text/csv MIME type
+    const chainMime = await cmdWindow.$eval('#chain-mime', (el: HTMLElement) => el.textContent || '');
+    expect(chainMime).toBe('text/csv');
+
+    // Close the window
+    if (openResult.id) {
+      await bgWindow.evaluate(async (id: number) => {
+        return await (window as any).app.window.close(id);
+      }, openResult.id);
+    }
+  });
+
+  test('escape exits chain mode before closing panel', async () => {
+    // Open cmd panel
+    const openResult = await bgWindow.evaluate(async () => {
+      return await (window as any).app.window.open('peek://ext/cmd/panel.html', {
+        modal: true,
+        width: 600,
+        height: 400,
+        frame: false,
+        transparent: true,
+        alwaysOnTop: true,
+        center: true
+      });
+    });
+    expect(openResult.success).toBe(true);
+
+    await new Promise(r => setTimeout(r, 1500));
+
+    const cmdWindow = await app.getWindow('cmd/panel.html', 5000);
+    expect(cmdWindow).toBeTruthy();
+
+    // Execute lists and select item to enter chain mode
+    await cmdWindow.waitForSelector('input', { timeout: 5000 });
+    await cmdWindow.fill('input', 'lists');
+    await cmdWindow.press('input', 'ArrowDown');
+    await new Promise(r => setTimeout(r, 300));
+    await cmdWindow.press('input', 'Enter');
+    await new Promise(r => setTimeout(r, 1000));
+    await cmdWindow.press('input', 'Enter');
+    await new Promise(r => setTimeout(r, 500));
+
+    // Verify in chain mode
+    let chainVisible = await cmdWindow.$eval('#chain-indicator', (el: HTMLElement) => el.classList.contains('visible'));
+    expect(chainVisible).toBe(true);
+
+    // Press Escape - should exit chain mode, not close panel
+    await cmdWindow.press('input', 'Escape');
+    await new Promise(r => setTimeout(r, 300));
+
+    // Chain indicator should be hidden now
+    chainVisible = await cmdWindow.$eval('#chain-indicator', (el: HTMLElement) => el.classList.contains('visible'));
+    expect(chainVisible).toBe(false);
+
+    // Panel should still exist (window not closed)
+    const inputExists = await cmdWindow.$('input');
+    expect(inputExists).toBeTruthy();
+
+    // Close the window
+    if (openResult.id) {
+      await bgWindow.evaluate(async (id: number) => {
+        return await (window as any).app.window.close(id);
+      }, openResult.id);
+    }
+  });
+
+  test('arrow navigation in output selection mode', async () => {
+    // Open cmd panel
+    const openResult = await bgWindow.evaluate(async () => {
+      return await (window as any).app.window.open('peek://ext/cmd/panel.html', {
+        modal: true,
+        width: 600,
+        height: 400,
+        frame: false,
+        transparent: true,
+        alwaysOnTop: true,
+        center: true
+      });
+    });
+    expect(openResult.success).toBe(true);
+
+    await new Promise(r => setTimeout(r, 1500));
+
+    const cmdWindow = await app.getWindow('cmd/panel.html', 5000);
+    expect(cmdWindow).toBeTruthy();
+
+    // Execute lists command
+    await cmdWindow.waitForSelector('input', { timeout: 5000 });
+    await cmdWindow.fill('input', 'lists');
+    await cmdWindow.press('input', 'ArrowDown');
+    await new Promise(r => setTimeout(r, 300));
+    await cmdWindow.press('input', 'Enter');
+    await new Promise(r => setTimeout(r, 1000));
+
+    // In output selection mode - first item should be selected
+    let selectedItem = await cmdWindow.$('.command-item.selected');
+    expect(selectedItem).toBeTruthy();
+
+    // Get initial selected item text
+    const firstSelectedText = await cmdWindow.$eval('.command-item.selected', (el: HTMLElement) => el.textContent || '');
+
+    // Press down to select next item
+    await cmdWindow.press('input', 'ArrowDown');
+    await new Promise(r => setTimeout(r, 200));
+
+    // Selected item should change
+    const secondSelectedText = await cmdWindow.$eval('.command-item.selected', (el: HTMLElement) => el.textContent || '');
+    expect(secondSelectedText).not.toBe(firstSelectedText);
+
+    // Press up to go back
+    await cmdWindow.press('input', 'ArrowUp');
+    await new Promise(r => setTimeout(r, 200));
+
+    // Should be back to first item
+    const backToFirst = await cmdWindow.$eval('.command-item.selected', (el: HTMLElement) => el.textContent || '');
+    expect(backToFirst).toBe(firstSelectedText);
 
     // Close the window
     if (openResult.id) {

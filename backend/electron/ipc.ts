@@ -1127,6 +1127,52 @@ export function registerMiscHandlers(onQuit: () => void): void {
       }
     }
   });
+
+  // File save dialog - shows native save dialog and writes file
+  ipcMain.handle('file-save-dialog', async (ev, data: {
+    content: string;
+    filename?: string;
+    mimeType?: string;
+  }) => {
+    try {
+      // Determine file filters based on MIME type
+      const filters: Electron.FileFilter[] = [];
+      if (data.mimeType) {
+        const extMap: Record<string, { name: string; extensions: string[] }> = {
+          'application/json': { name: 'JSON', extensions: ['json'] },
+          'text/csv': { name: 'CSV', extensions: ['csv'] },
+          'text/plain': { name: 'Text', extensions: ['txt'] },
+          'text/html': { name: 'HTML', extensions: ['html', 'htm'] },
+        };
+        const filter = extMap[data.mimeType];
+        if (filter) {
+          filters.push(filter);
+        }
+      }
+      filters.push({ name: 'All Files', extensions: ['*'] });
+
+      // Get the sender's window to parent the dialog
+      // This prevents the modal panel from blurring when dialog opens
+      const senderWindow = BrowserWindow.fromWebContents(ev.sender);
+
+      const result = await dialog.showSaveDialog(senderWindow!, {
+        defaultPath: data.filename,
+        filters,
+      });
+
+      if (result.canceled || !result.filePath) {
+        return { success: false, canceled: true };
+      }
+
+      // Write the file
+      fs.writeFileSync(result.filePath, data.content, 'utf-8');
+
+      return { success: true, path: result.filePath };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
 }
 
 /**

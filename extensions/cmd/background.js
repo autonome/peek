@@ -256,7 +256,53 @@ const init = async () => {
     }
   }, api.scopes.GLOBAL);
 
-  // 5. LAST: Publish ready signal (PROVIDER PATTERN)
+  // 5. Handle save-file requests from panel
+  // Background script handles this so it persists after panel closes
+  // Uses a pending downloads map to handle the request/response pattern
+  const pendingDownloads = new Map();
+
+  api.subscribe('cmd:save-file', async (msg) => {
+    console.log('[ext:cmd] save-file request:', msg.filename);
+
+    try {
+      // Generate unique ID and store the data
+      const downloadId = Math.random().toString(36).slice(2);
+      pendingDownloads.set(downloadId, {
+        content: msg.content,
+        filename: msg.filename,
+        mimeType: msg.mimeType
+      });
+
+      // Open download window with the ID
+      const downloadPageUrl = `peek://ext/cmd/download.html?id=${downloadId}`;
+
+      await api.window.open(downloadPageUrl, {
+        width: 400,
+        height: 200,
+        show: true,
+        alwaysOnTop: true
+      });
+    } catch (err) {
+      console.error('[ext:cmd] save-file error:', err);
+    }
+  }, api.scopes.GLOBAL);
+
+  // Download window requests data when ready
+  api.subscribe('cmd:download-ready', (msg) => {
+    console.log('[ext:cmd] download-ready:', msg.id);
+
+    const data = pendingDownloads.get(msg.id);
+    if (data) {
+      // Send data to the requesting window
+      api.publish(`cmd:download-data:${msg.id}`, data, api.scopes.GLOBAL);
+      // Clean up
+      pendingDownloads.delete(msg.id);
+    } else {
+      console.error('[ext:cmd] No pending download for id:', msg.id);
+    }
+  }, api.scopes.GLOBAL);
+
+  // 6. LAST: Publish ready signal (PROVIDER PATTERN)
   // This tells all waiting consumers that cmd is ready to receive registrations
   console.log('[ext:cmd] Publishing cmd:ready');
   api.publish('cmd:ready', { id: 'cmd' }, api.scopes.GLOBAL);

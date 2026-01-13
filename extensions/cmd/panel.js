@@ -981,6 +981,13 @@ async function execute(name, typed) {
     if (state.chainMode) {
       exitChainMode();
     }
+
+    // Check result action type
+    // 'prompt' - command shows a dialog/prompt, keep panel open for user interaction
+    if (result && result.action === 'prompt') {
+      return;
+    }
+
     setTimeout(shutdown, 100);
   } catch (err) {
     console.error('[cmd:panel] Command execution error:', err);

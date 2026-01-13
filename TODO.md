@@ -47,16 +47,37 @@ Requires chaining and "activities"
 - [ ] Vim mode
 - [ ] List editor
 
-## v? - Standard UI components
+## v? - Theming
 
-- [ ] the popup we need for cmd chaining previews
+- [ ] customizable theme(s)
+  - [ ] portable/packageable system
+  - [ ] extension variant, or is there a standard/convention?
+  - [ ] extensions can import/use in their web content
+  - [ ] review agregore/peersky approach
+    - https://github.com/AgregoreWeb/agregore-browser/issues/289
+    - https://github.com/AgregoreWeb/agregore-browser/pull/291
+    - https://github.com/p2plabsxyz/peersky-browser/pull/43
+- [ ] update default theme in peek
+  - [ ] start with styles in ~/misc/peek-mobile
+- [ ] look at applying/changing default theme for http web pages
+  - [ ] reflect system theme (eg about:blank should not be always a white flash before page load)
+  - [ ] reflect peek configured theme
+
+## v? - UI Componentry
+
+- [ ] popup system
+  - [ ] see ~/sync/Sites/base/hud.html/css/js
+  - [ ] design for pagestream, eg vertical up/down chat-style history of pages/actions, w/ left/right for page-specific stuff (maybe uses window template?)
+  - [ ] port cmd chaining and previews
+- [ ] window templates?
+  - [ ] eg page overlay
 - [ ] button groups
   - [ ] add/remove/both modes
   - [ ] on/off mode
-- [ ] tag input
-- [ ] 
+- [ ] tag input field
+- [ ] reactive schema+card+data framework
 
-## v? - Scripts
+## v? - Feeds, time-series, scripts
 
 - [ ] API for logging outputs to datastore (time series data, feeds)
 - [ ] Command support for blocking on a content script running
@@ -64,6 +85,10 @@ Requires chaining and "activities"
 - [ ] Timeouts for page scripts in commands
 - [ ] Support for scheduling scripts (or maybe that's just in the extension... harder to manage tho)
 - [ ] Page load triggers for background scripts
+
+## v? - Page metadata, actions, ui
+
+- over/underlay infra (window templates)
 
 ## v? - Chaining / Connecting
 

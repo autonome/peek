@@ -210,6 +210,24 @@ const createTableStatements = `
   );
   CREATE INDEX IF NOT EXISTS idx_extension_settings_extensionId ON extension_settings(extensionId);
   CREATE UNIQUE INDEX IF NOT EXISTS idx_extension_settings_unique ON extension_settings(extensionId, key);
+
+  CREATE TABLE IF NOT EXISTS themes (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    description TEXT DEFAULT '',
+    version TEXT DEFAULT '1.0.0',
+    author TEXT DEFAULT '',
+    path TEXT,
+    builtin INTEGER DEFAULT 0,
+    enabled INTEGER DEFAULT 1,
+    installedAt INTEGER,
+    updatedAt INTEGER,
+    lastError TEXT DEFAULT '',
+    lastErrorAt INTEGER DEFAULT 0,
+    metadata TEXT DEFAULT '{}'
+  );
+  CREATE INDEX IF NOT EXISTS idx_themes_enabled ON themes(enabled);
+  CREATE INDEX IF NOT EXISTS idx_themes_builtin ON themes(builtin);
 `;
 
 // Module state

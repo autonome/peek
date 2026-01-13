@@ -39,6 +39,10 @@ import {
 
 import {
   getExtensionPath,
+  getRegisteredThemeIds,
+  getThemePath,
+  getActiveThemeId,
+  setActiveThemeId,
 } from './protocol.js';
 
 import {
@@ -663,22 +667,411 @@ export function registerExtensionHandlers(): void {
 }
 
 /**
- * Register dark mode IPC handlers
+ * Theme settings storage keys
  */
-export function registerDarkModeHandlers(): void {
-  ipcMain.handle('dark-mode:toggle', () => {
-    if (nativeTheme.shouldUseDarkColors) {
-      nativeTheme.themeSource = 'light';
-    } else {
-      nativeTheme.themeSource = 'dark';
+const THEME_SETTINGS_KEY = 'core';
+const THEME_ID_KEY = 'theme.id';
+const THEME_COLOR_SCHEME_KEY = 'theme.colorScheme';
+
+/**
+ * Get theme setting from datastore
+ * Note: value is JSON.parse'd to match how utils.js datastoreStore stores values
+ */
+function getThemeSetting(key: string): string | null {
+  try {
+    const db = getDb();
+    const row = db.prepare(
+      'SELECT value FROM extension_settings WHERE extensionId = ? AND key = ?'
+    ).get(THEME_SETTINGS_KEY, key) as { value: string } | undefined;
+    if (!row?.value) return null;
+    // Parse JSON-encoded value, fall back to raw value for backwards compatibility
+    try {
+      return JSON.parse(row.value);
+    } catch {
+      return row.value;
     }
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Set theme setting in datastore
+ * Note: value is JSON.stringify'd to match how utils.js datastoreStore expects values
+ */
+function setThemeSetting(key: string, value: string): void {
+  const db = getDb();
+  const timestamp = Date.now();
+  db.prepare(`
+    INSERT OR REPLACE INTO extension_settings (id, extensionId, key, value, updatedAt)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(`${THEME_SETTINGS_KEY}_${key}`, THEME_SETTINGS_KEY, key, JSON.stringify(value), timestamp);
+}
+
+/**
+ * Broadcast theme change to all windows
+ */
+function broadcastThemeChange(colorScheme: string): void {
+  const windows = BrowserWindow.getAllWindows();
+  for (const win of windows) {
+    win.webContents.send('theme:changed', { colorScheme });
+  }
+}
+
+/**
+ * Register theme-related IPC handlers
+ */
+export function registerThemeHandlers(): void {
+  // Get current theme settings
+  ipcMain.handle('theme:get', () => {
+    const themeId = getThemeSetting(THEME_ID_KEY) || getActiveThemeId();
+    const colorScheme = getThemeSetting(THEME_COLOR_SCHEME_KEY) || 'system';
+    const isDark = nativeTheme.shouldUseDarkColors;
+
+    return {
+      themeId,
+      colorScheme,
+      isDark,
+      effectiveScheme: colorScheme === 'system' ? (isDark ? 'dark' : 'light') : colorScheme
+    };
+  });
+
+  // Set color scheme preference (system/light/dark)
+  ipcMain.handle('theme:setColorScheme', (_ev, colorScheme: string) => {
+    if (!['system', 'light', 'dark'].includes(colorScheme)) {
+      return { success: false, error: 'Invalid color scheme' };
+    }
+
+    setThemeSetting(THEME_COLOR_SCHEME_KEY, colorScheme);
+
+    // Update nativeTheme to match (affects new windows)
+    nativeTheme.themeSource = colorScheme as 'system' | 'light' | 'dark';
+
+    // Broadcast to all windows
+    broadcastThemeChange(colorScheme);
+
+    return {
+      success: true,
+      colorScheme,
+      effectiveScheme: colorScheme === 'system'
+        ? (nativeTheme.shouldUseDarkColors ? 'dark' : 'light')
+        : colorScheme
+    };
+  });
+
+  // Set active theme
+  ipcMain.handle('theme:setTheme', (_ev, themeId: string) => {
+    if (!setActiveThemeId(themeId)) {
+      return { success: false, error: 'Theme not found' };
+    }
+    setThemeSetting(THEME_ID_KEY, themeId);
+
+    // Broadcast to all windows to reload their CSS
+    const windows = BrowserWindow.getAllWindows();
+    for (const win of windows) {
+      win.webContents.send('theme:themeChanged', { themeId });
+    }
+
+    return { success: true, themeId };
+  });
+
+  // List available themes
+  ipcMain.handle('theme:list', () => {
+    const themeIds = getRegisteredThemeIds();
+    const themes = themeIds.map(id => {
+      const themePath = getThemePath(id);
+      if (!themePath) return null;
+
+      try {
+        const manifestPath = path.join(themePath, 'manifest.json');
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+        return {
+          id: manifest.id || id,
+          name: manifest.name || id,
+          version: manifest.version || '1.0.0',
+          description: manifest.description || '',
+          colorSchemes: manifest.colorSchemes || ['light', 'dark'],
+        };
+      } catch {
+        return { id, name: id, version: '1.0.0', description: '', colorSchemes: ['light', 'dark'] };
+      }
+    }).filter(Boolean);
+
+    return { themes };
+  });
+
+  // Legacy dark-mode handlers for backwards compatibility
+  ipcMain.handle('dark-mode:toggle', () => {
+    const newScheme = nativeTheme.shouldUseDarkColors ? 'light' : 'dark';
+    setThemeSetting(THEME_COLOR_SCHEME_KEY, newScheme);
+    nativeTheme.themeSource = newScheme;
+    broadcastThemeChange(newScheme);
     return nativeTheme.shouldUseDarkColors;
   });
 
   ipcMain.handle('dark-mode:system', () => {
+    setThemeSetting(THEME_COLOR_SCHEME_KEY, 'system');
     nativeTheme.themeSource = 'system';
+    broadcastThemeChange('system');
     return nativeTheme.shouldUseDarkColors;
   });
+
+  // Listen for system theme changes
+  nativeTheme.on('updated', () => {
+    const colorScheme = getThemeSetting(THEME_COLOR_SCHEME_KEY) || 'system';
+    if (colorScheme === 'system') {
+      broadcastThemeChange('system');
+    }
+  });
+
+  // ===== Theme management (add/remove/reload) =====
+
+  // Open folder picker for themes
+  ipcMain.handle('theme:pickFolder', async () => {
+    try {
+      const result = await dialog.showOpenDialog({
+        properties: ['openDirectory']
+      });
+      if (result.canceled || result.filePaths.length === 0) {
+        return { success: false, canceled: true };
+      }
+      return { success: true, data: { path: result.filePaths[0] } };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // Validate a theme folder
+  ipcMain.handle('theme:validateFolder', async (_ev, data) => {
+    try {
+      const themePath = data.folderPath || data.path;
+      const manifestPath = path.join(themePath, 'manifest.json');
+
+      if (!fs.existsSync(manifestPath)) {
+        return { success: false, error: 'No manifest.json found in folder' };
+      }
+
+      const manifestContent = fs.readFileSync(manifestPath, 'utf-8');
+      const manifest = JSON.parse(manifestContent);
+
+      if (!manifest.id && !manifest.name) {
+        return { success: false, error: 'Manifest must have id or name' };
+      }
+
+      // Check for variables.css (or whatever the manifest points to)
+      const variablesFile = manifest.variables || 'variables.css';
+      const variablesPath = path.join(themePath, variablesFile);
+      if (!fs.existsSync(variablesPath)) {
+        return { success: false, error: `Theme CSS file not found: ${variablesFile}` };
+      }
+
+      return {
+        success: true,
+        data: {
+          manifest,
+          path: themePath
+        }
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // Add a theme
+  ipcMain.handle('theme:add', async (_ev, data) => {
+    try {
+      const db = getDb();
+      const themePath = data.folderPath || data.path;
+      const manifestPath = path.join(themePath, 'manifest.json');
+
+      if (!fs.existsSync(manifestPath)) {
+        return { success: false, error: 'No manifest.json found' };
+      }
+
+      const manifestContent = fs.readFileSync(manifestPath, 'utf-8');
+      const manifest = JSON.parse(manifestContent);
+      const id = manifest.id || manifest.name || `theme_${Date.now()}`;
+
+      // Check if already exists
+      const existing = db.prepare('SELECT * FROM themes WHERE id = ?').get(id);
+      if (existing) {
+        return { success: false, error: `Theme ${id} already installed` };
+      }
+
+      const lastError = data.lastError || '';
+      const lastErrorAt = lastError ? Date.now() : 0;
+
+      // Insert into database
+      db.prepare(`
+        INSERT INTO themes (id, name, description, version, author, path, builtin, enabled, installedAt, updatedAt, lastError, lastErrorAt, metadata)
+        VALUES (?, ?, ?, ?, ?, ?, 0, 1, ?, ?, ?, ?, ?)
+      `).run(
+        id,
+        manifest.name || id,
+        manifest.description || '',
+        manifest.version || '1.0.0',
+        manifest.author || '',
+        themePath,
+        Date.now(),
+        Date.now(),
+        lastError,
+        lastErrorAt,
+        JSON.stringify(manifest)
+      );
+
+      // Register the theme path so it's available via peek://theme/
+      const { registerThemePath } = await import('./protocol.js');
+      registerThemePath(id, themePath);
+
+      return { success: true, data: { id, manifest, path: themePath, lastError: lastError || null } };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // Remove a theme
+  ipcMain.handle('theme:remove', async (_ev, data) => {
+    try {
+      const db = getDb();
+      const themeId = data.id;
+
+      // Check if exists
+      const existing = db.prepare('SELECT * FROM themes WHERE id = ?').get(themeId) as { builtin?: number } | undefined;
+      if (!existing) {
+        return { success: false, error: `Theme ${themeId} not found` };
+      }
+
+      // Don't allow removing builtin themes
+      if (existing.builtin === 1) {
+        return { success: false, error: 'Cannot remove built-in theme' };
+      }
+
+      // Remove from database
+      db.prepare('DELETE FROM themes WHERE id = ?').run(themeId);
+
+      return { success: true, data: { id: themeId } };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // Get all themes (builtin + external)
+  ipcMain.handle('theme:getAll', async () => {
+    try {
+      const db = getDb();
+
+      // Get builtin themes from registry
+      const builtinIds = getRegisteredThemeIds();
+      const themes: Array<{
+        id: string;
+        name: string;
+        description: string;
+        version: string;
+        author: string;
+        path: string;
+        builtin: boolean;
+        colorSchemes: string[];
+      }> = [];
+
+      // Add builtin themes
+      for (const id of builtinIds) {
+        const themePath = getThemePath(id);
+        if (!themePath) continue;
+
+        try {
+          const manifestPath = path.join(themePath, 'manifest.json');
+          const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+          themes.push({
+            id: manifest.id || id,
+            name: manifest.name || id,
+            description: manifest.description || '',
+            version: manifest.version || '1.0.0',
+            author: manifest.author || '',
+            path: themePath,
+            builtin: true,
+            colorSchemes: manifest.colorSchemes || ['light', 'dark'],
+          });
+        } catch {
+          themes.push({
+            id,
+            name: id,
+            description: '',
+            version: '1.0.0',
+            author: '',
+            path: themePath,
+            builtin: true,
+            colorSchemes: ['light', 'dark'],
+          });
+        }
+      }
+
+      // Add external themes from database
+      const externalThemes = db.prepare('SELECT * FROM themes WHERE builtin = 0').all() as Array<{
+        id: string;
+        name: string;
+        description: string;
+        version: string;
+        author: string;
+        path: string;
+        metadata?: string;
+      }>;
+
+      for (const ext of externalThemes) {
+        let colorSchemes = ['light', 'dark'];
+        try {
+          const metadata = JSON.parse(ext.metadata || '{}');
+          colorSchemes = metadata.colorSchemes || colorSchemes;
+        } catch { /* ignore */ }
+
+        themes.push({
+          id: ext.id,
+          name: ext.name,
+          description: ext.description,
+          version: ext.version,
+          author: ext.author,
+          path: ext.path,
+          builtin: false,
+          colorSchemes,
+        });
+      }
+
+      return { success: true, data: themes };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // Reload a theme (re-read manifest, notify windows)
+  ipcMain.handle('theme:reload', async (_ev, data) => {
+    try {
+      const themeId = data.id;
+      const themePath = getThemePath(themeId);
+      if (!themePath) {
+        return { success: false, error: 'Theme not found' };
+      }
+
+      // Broadcast to all windows to reload their CSS
+      const windows = BrowserWindow.getAllWindows();
+      for (const win of windows) {
+        win.webContents.send('theme:reload', { themeId });
+      }
+
+      return { success: true, data: { id: themeId } };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+}
+
+// Keep old function name for compatibility but call new one
+export function registerDarkModeHandlers(): void {
+  registerThemeHandlers();
 }
 
 /**
@@ -921,7 +1314,9 @@ export function registerWindowHandlers(): void {
         return { success: false, error: 'Window not found' };
       }
 
-      win.focus();
+      if (!isHeadless()) {
+        win.focus();
+      }
       return { success: true };
     } catch (error) {
       console.error('Failed to focus window:', error);

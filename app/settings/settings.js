@@ -218,6 +218,375 @@ const renderCoreSettings = async () => {
   return container;
 };
 
+// Render themes settings
+const renderThemesSettings = async () => {
+  const container = document.createElement('div');
+
+  // Get current theme state
+  const themeState = await api.theme.get();
+  const activeThemeId = themeState?.themeId || 'basic';
+  const colorScheme = themeState?.colorScheme || 'system';
+
+  // Color scheme selector at top
+  const schemeSection = document.createElement('div');
+  schemeSection.className = 'form-section';
+  schemeSection.style.marginBottom = '24px';
+
+  const schemeTitle = document.createElement('h3');
+  schemeTitle.className = 'form-section-title';
+  schemeTitle.textContent = 'Color Scheme';
+  schemeSection.appendChild(schemeTitle);
+
+  const schemeGroup = document.createElement('div');
+  schemeGroup.style.cssText = 'display: flex; gap: 8px;';
+
+  ['system', 'light', 'dark'].forEach(scheme => {
+    const btn = document.createElement('button');
+    btn.textContent = scheme.charAt(0).toUpperCase() + scheme.slice(1);
+    const isActive = colorScheme === scheme;
+    btn.style.cssText = `
+      padding: 8px 16px;
+      font-size: 13px;
+      background: ${isActive ? 'var(--base0D)' : 'var(--bg-tertiary)'};
+      border: 2px solid ${isActive ? 'var(--base0D)' : 'var(--base03)'};
+      border-radius: 6px;
+      color: ${isActive ? 'white' : 'var(--text-primary)'};
+      cursor: pointer;
+      flex: 1;
+      font-weight: ${isActive ? '600' : '400'};
+    `;
+    btn.addEventListener('click', async () => {
+      const result = await api.theme.setColorScheme(scheme);
+      if (result.success) {
+        // Update button styles
+        schemeGroup.querySelectorAll('button').forEach(b => {
+          const btnIsActive = b.textContent.toLowerCase() === scheme;
+          b.style.background = btnIsActive ? 'var(--base0D)' : 'var(--bg-tertiary)';
+          b.style.borderColor = btnIsActive ? 'var(--base0D)' : 'var(--base03)';
+          b.style.color = btnIsActive ? 'white' : 'var(--text-primary)';
+          b.style.fontWeight = btnIsActive ? '600' : '400';
+        });
+      }
+    });
+    schemeGroup.appendChild(btn);
+  });
+
+  schemeSection.appendChild(schemeGroup);
+
+  const schemeHelp = document.createElement('div');
+  schemeHelp.className = 'help-text';
+  schemeHelp.style.marginTop = '8px';
+  schemeHelp.textContent = 'System follows your OS preference. Light/Dark forces that mode.';
+  schemeSection.appendChild(schemeHelp);
+
+  container.appendChild(schemeSection);
+
+  // Add Theme button
+  const addSection = document.createElement('div');
+  addSection.className = 'form-section';
+  addSection.style.marginBottom = '24px';
+
+  const addBtn = document.createElement('button');
+  addBtn.textContent = '+ Add Theme';
+  addBtn.style.cssText = `
+    padding: 10px 16px;
+    font-size: 13px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
+    border-radius: 6px;
+    color: var(--text-primary);
+    cursor: pointer;
+    width: 100%;
+  `;
+  addBtn.addEventListener('mouseenter', () => {
+    addBtn.style.background = 'var(--bg-hover)';
+  });
+  addBtn.addEventListener('mouseleave', () => {
+    addBtn.style.background = 'var(--bg-tertiary)';
+  });
+  addBtn.addEventListener('click', async () => {
+    addBtn.textContent = 'Selecting folder...';
+    addBtn.disabled = true;
+
+    try {
+      // Open folder picker
+      const pickResult = await api.theme.pickFolder();
+      if (!pickResult.success || pickResult.canceled) {
+        addBtn.textContent = '+ Add Theme';
+        addBtn.disabled = false;
+        return;
+      }
+
+      const folderPath = pickResult.data.path;
+      addBtn.textContent = 'Validating...';
+
+      // Validate folder
+      const validateResult = await api.theme.validateFolder(folderPath);
+
+      if (!validateResult.success) {
+        addBtn.textContent = `Error: ${validateResult.error}`;
+        setTimeout(() => {
+          addBtn.textContent = '+ Add Theme';
+          addBtn.disabled = false;
+        }, 3000);
+        return;
+      }
+
+      addBtn.textContent = 'Adding...';
+
+      // Add to datastore
+      const addResult = await api.theme.add(folderPath);
+
+      if (addResult.success) {
+        addBtn.textContent = 'Added!';
+
+        // Refresh the list
+        setTimeout(() => {
+          addBtn.textContent = '+ Add Theme';
+          addBtn.disabled = false;
+          refreshThemesList();
+        }, 1500);
+      } else {
+        addBtn.textContent = `Error: ${addResult.error}`;
+        setTimeout(() => {
+          addBtn.textContent = '+ Add Theme';
+          addBtn.disabled = false;
+        }, 3000);
+      }
+    } catch (err) {
+      console.error('Add theme error:', err);
+      addBtn.textContent = 'Error adding theme';
+      setTimeout(() => {
+        addBtn.textContent = '+ Add Theme';
+        addBtn.disabled = false;
+      }, 2000);
+    }
+  });
+  addSection.appendChild(addBtn);
+  container.appendChild(addSection);
+
+  // Themes list container
+  const listContainer = document.createElement('div');
+  listContainer.id = 'themes-list-container';
+  container.appendChild(listContainer);
+
+  // Function to refresh themes list
+  const refreshThemesList = async () => {
+    listContainer.innerHTML = '';
+
+    const loading = document.createElement('div');
+    loading.className = 'help-text';
+    loading.textContent = 'Loading themes...';
+    listContainer.appendChild(loading);
+
+    try {
+      const result = await api.theme.getAll();
+      const currentTheme = await api.theme.get();
+      const activeId = currentTheme?.themeId || 'basic';
+
+      loading.remove();
+
+      if (!result.success || !result.data || result.data.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'help-text';
+        empty.textContent = 'No themes found.';
+        listContainer.appendChild(empty);
+        return;
+      }
+
+      const themes = result.data;
+
+      const themeSection = document.createElement('div');
+      themeSection.className = 'form-section';
+
+      const title = document.createElement('h3');
+      title.className = 'form-section-title';
+      title.textContent = 'Installed Themes';
+      themeSection.appendChild(title);
+
+      themes.forEach(theme => {
+        const isActive = theme.id === activeId;
+        const isBuiltin = theme.builtin;
+
+        const card = document.createElement('div');
+        card.className = 'item-card';
+
+        const header = document.createElement('div');
+        header.className = 'item-card-header';
+
+        // Left side: radio + name
+        const leftSide = document.createElement('div');
+        leftSide.style.cssText = 'display: flex; align-items: center; gap: 12px;';
+
+        // Radio button for selection
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = 'active-theme';
+        radio.checked = isActive;
+        radio.style.cssText = 'width: 16px; height: 16px; cursor: pointer;';
+        radio.addEventListener('change', async () => {
+          if (radio.checked) {
+            const result = await api.theme.setTheme(theme.id);
+            if (result.success) {
+              // Refresh to update UI
+              refreshThemesList();
+            }
+          }
+        });
+        leftSide.appendChild(radio);
+
+        const cardTitle = document.createElement('div');
+        cardTitle.className = 'item-card-title';
+        cardTitle.style.margin = '0';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = theme.name || theme.id;
+        cardTitle.appendChild(nameSpan);
+
+        if (theme.version) {
+          const versionSpan = document.createElement('span');
+          versionSpan.style.cssText = 'margin-left: 8px; font-size: 11px; color: var(--text-tertiary);';
+          versionSpan.textContent = `v${theme.version}`;
+          cardTitle.appendChild(versionSpan);
+        }
+
+        if (isBuiltin) {
+          const badge = document.createElement('span');
+          badge.style.cssText = 'margin-left: 8px; font-size: 10px; padding: 2px 6px; background: var(--bg-tertiary); border-radius: 4px; color: var(--text-tertiary);';
+          badge.textContent = 'built-in';
+          cardTitle.appendChild(badge);
+        }
+
+        if (isActive) {
+          const activeBadge = document.createElement('span');
+          activeBadge.style.cssText = 'margin-left: 8px; font-size: 10px; padding: 2px 6px; background: #22c55e; border-radius: 4px; color: white;';
+          activeBadge.textContent = 'active';
+          cardTitle.appendChild(activeBadge);
+        }
+
+        leftSide.appendChild(cardTitle);
+        header.appendChild(leftSide);
+
+        // Right side: actions
+        const actions = document.createElement('div');
+        actions.style.cssText = 'display: flex; gap: 8px; align-items: center;';
+
+        // Reload button
+        const reloadBtn = document.createElement('button');
+        reloadBtn.textContent = 'Reload';
+        reloadBtn.style.cssText = `
+          padding: 4px 8px;
+          font-size: 11px;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border-primary);
+          border-radius: 4px;
+          color: var(--text-secondary);
+          cursor: pointer;
+        `;
+        reloadBtn.addEventListener('click', async () => {
+          reloadBtn.textContent = '...';
+          reloadBtn.disabled = true;
+          try {
+            const result = await api.theme.reload(theme.id);
+            reloadBtn.textContent = result.success ? '✓' : '✗';
+          } catch (err) {
+            reloadBtn.textContent = '✗';
+          }
+          setTimeout(() => {
+            reloadBtn.textContent = 'Reload';
+            reloadBtn.disabled = false;
+          }, 1000);
+        });
+        actions.appendChild(reloadBtn);
+
+        // Remove button (only for external themes)
+        if (!isBuiltin) {
+          const removeBtn = document.createElement('button');
+          removeBtn.textContent = 'Remove';
+          removeBtn.style.cssText = `
+            padding: 4px 8px;
+            font-size: 11px;
+            background: var(--bg-tertiary);
+            border: 1px solid #ef4444;
+            border-radius: 4px;
+            color: #ef4444;
+            cursor: pointer;
+          `;
+          removeBtn.addEventListener('click', async () => {
+            if (!confirm(`Remove theme "${theme.name || theme.id}"?`)) return;
+
+            removeBtn.textContent = '...';
+            removeBtn.disabled = true;
+
+            const result = await api.theme.remove(theme.id);
+            if (result.success) {
+              refreshThemesList();
+            } else {
+              removeBtn.textContent = 'Error';
+              setTimeout(() => {
+                removeBtn.textContent = 'Remove';
+                removeBtn.disabled = false;
+              }, 2000);
+            }
+          });
+          actions.appendChild(removeBtn);
+        }
+
+        header.appendChild(actions);
+        card.appendChild(header);
+
+        // Body
+        const body = document.createElement('div');
+        body.className = 'item-card-body';
+
+        if (theme.description) {
+          const desc = document.createElement('div');
+          desc.className = 'help-text';
+          desc.style.marginBottom = '8px';
+          desc.textContent = theme.description;
+          body.appendChild(desc);
+        }
+
+        if (theme.author) {
+          const authorInfo = document.createElement('div');
+          authorInfo.className = 'help-text';
+          authorInfo.style.marginBottom = '4px';
+          authorInfo.textContent = `Author: ${theme.author}`;
+          body.appendChild(authorInfo);
+        }
+
+        // Show path for external themes
+        if (theme.path && !isBuiltin) {
+          const pathInfo = document.createElement('div');
+          pathInfo.className = 'help-text';
+          pathInfo.style.cssText = 'font-family: monospace; font-size: 11px;';
+          pathInfo.textContent = theme.path;
+          body.appendChild(pathInfo);
+        }
+
+        card.appendChild(body);
+        themeSection.appendChild(card);
+      });
+
+      listContainer.appendChild(themeSection);
+    } catch (err) {
+      loading.remove();
+      const error = document.createElement('div');
+      error.className = 'help-text';
+      error.textContent = `Error loading themes: ${err.message}`;
+      listContainer.appendChild(error);
+    }
+  };
+
+  // Initial load
+  await refreshThemesList();
+
+  // Store refresh function for external access
+  window._refreshThemesList = refreshThemesList;
+
+  return container;
+};
+
 // Render extensions settings
 const renderExtensionsSettings = async () => {
   const container = document.createElement('div');
@@ -1052,6 +1421,31 @@ const init = async () => {
       window._refreshExtensionsList();
     }
   }, api.scopes.GLOBAL);
+
+  // Add Themes management section
+  const themesNav = document.createElement('a');
+  themesNav.className = 'nav-item';
+  themesNav.textContent = 'Themes';
+  themesNav.dataset.section = 'themes';
+  themesNav.addEventListener('click', () => showSection('themes'));
+  sidebarNav.appendChild(themesNav);
+
+  // Create themes section with async content
+  const themesSection = document.createElement('div');
+  themesSection.className = 'section';
+  themesSection.id = 'section-themes';
+
+  const themesTitle = document.createElement('h2');
+  themesTitle.className = 'section-title';
+  themesTitle.textContent = 'Themes';
+  themesSection.appendChild(themesTitle);
+
+  // Load themes content async
+  renderThemesSettings().then(content => {
+    themesSection.appendChild(content);
+  });
+
+  contentArea.appendChild(themesSection);
 
   // Add Datastore link
   const datastoreNav = document.createElement('a');

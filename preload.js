@@ -309,6 +309,190 @@ api.datastore = {
   }
 };
 
+// Theme API
+api.theme = {
+  /**
+   * Get current theme settings
+   * @returns {Promise<{themeId: string, colorScheme: string, isDark: boolean, effectiveScheme: string}>}
+   */
+  get: () => {
+    return ipcRenderer.invoke('theme:get');
+  },
+
+  /**
+   * Set color scheme preference
+   * @param {string} colorScheme - 'system' | 'light' | 'dark'
+   * @returns {Promise<{success: boolean, colorScheme?: string, effectiveScheme?: string, error?: string}>}
+   */
+  setColorScheme: (colorScheme) => {
+    return ipcRenderer.invoke('theme:setColorScheme', colorScheme);
+  },
+
+  /**
+   * Set active theme
+   * @param {string} themeId - Theme ID
+   * @returns {Promise<{success: boolean, themeId?: string, error?: string}>}
+   */
+  setTheme: (themeId) => {
+    return ipcRenderer.invoke('theme:setTheme', themeId);
+  },
+
+  /**
+   * List available themes (simple list for basic UI)
+   * @returns {Promise<{themes: Array<{id: string, name: string, version: string, description: string, colorSchemes: string[]}>}>}
+   */
+  list: () => {
+    return ipcRenderer.invoke('theme:list');
+  },
+
+  /**
+   * Get all themes with full details (builtin + external)
+   * @returns {Promise<{success: boolean, data?: Array, error?: string}>}
+   */
+  getAll: () => {
+    return ipcRenderer.invoke('theme:getAll');
+  },
+
+  /**
+   * Open folder picker dialog to select a theme folder
+   * @returns {Promise<{success: boolean, canceled?: boolean, data?: {path: string}, error?: string}>}
+   */
+  pickFolder: () => {
+    return ipcRenderer.invoke('theme:pickFolder');
+  },
+
+  /**
+   * Validate a theme folder (checks manifest.json)
+   * @param {string} folderPath - Path to theme folder
+   * @returns {Promise<{success: boolean, data?: {manifest: object, path: string}, error?: string}>}
+   */
+  validateFolder: (folderPath) => {
+    return ipcRenderer.invoke('theme:validateFolder', { folderPath });
+  },
+
+  /**
+   * Add a theme from a folder
+   * @param {string} folderPath - Path to theme folder
+   * @returns {Promise<{success: boolean, data?: {id: string, manifest: object}, error?: string}>}
+   */
+  add: (folderPath) => {
+    return ipcRenderer.invoke('theme:add', { folderPath });
+  },
+
+  /**
+   * Remove a theme
+   * @param {string} id - Theme ID
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  remove: (id) => {
+    return ipcRenderer.invoke('theme:remove', { id });
+  },
+
+  /**
+   * Reload a theme (re-read CSS, notify windows)
+   * @param {string} id - Theme ID
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  reload: (id) => {
+    return ipcRenderer.invoke('theme:reload', { id });
+  },
+
+  /**
+   * Subscribe to theme changes
+   * @param {function} callback - Called with {colorScheme: string} when theme changes
+   */
+  onChange: (callback) => {
+    ipcRenderer.on('theme:changed', (ev, data) => {
+      callback(data);
+    });
+  },
+
+  /**
+   * Subscribe to theme reload events
+   * @param {function} callback - Called with {themeId: string} when theme should be reloaded
+   */
+  onReload: (callback) => {
+    ipcRenderer.on('theme:reload', (ev, data) => {
+      callback(data);
+    });
+  }
+};
+
+// Apply theme on page load
+(async () => {
+  try {
+    const theme = await ipcRenderer.invoke('theme:get');
+    if (theme && theme.colorScheme !== 'system') {
+      document.documentElement.setAttribute('data-theme', theme.colorScheme);
+    }
+    // Listen for color scheme changes
+    ipcRenderer.on('theme:changed', (ev, { colorScheme }) => {
+      if (colorScheme === 'system') {
+        document.documentElement.removeAttribute('data-theme');
+      } else {
+        document.documentElement.setAttribute('data-theme', colorScheme);
+      }
+    });
+
+    // Listen for theme changes (different theme selected) - reload CSS
+    ipcRenderer.on('theme:themeChanged', (ev, { themeId }) => {
+      console.log('[preload] Theme changed to:', themeId, '- reloading stylesheets');
+      reloadStylesheets();
+    });
+
+    // Listen for theme reload requests
+    ipcRenderer.on('theme:reload', (ev, { themeId }) => {
+      console.log('[preload] Theme reload requested:', themeId);
+      reloadStylesheets();
+    });
+  } catch (e) {
+    // Theme not available yet (before app ready)
+  }
+})();
+
+/**
+ * Reload all stylesheets by removing and re-adding link elements
+ * This forces the browser to completely re-fetch CSS including @import statements
+ */
+function reloadStylesheets() {
+  const timestamp = Date.now();
+
+  // Reload <link> stylesheets by removing and re-adding them
+  // This is more aggressive than just changing href and ensures @imports are re-fetched
+  document.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
+    const href = link.getAttribute('href');
+    if (href) {
+      const baseHref = href.split('?')[0];
+      const newHref = `${baseHref}?_t=${timestamp}`;
+
+      // Create a new link element to force complete re-fetch
+      const newLink = document.createElement('link');
+      newLink.rel = 'stylesheet';
+      newLink.href = newHref;
+
+      // Replace the old link with the new one
+      link.parentNode.insertBefore(newLink, link);
+      link.remove();
+    }
+  });
+
+  // For inline <style> with @import, we need to reload them too
+  document.querySelectorAll('style').forEach(style => {
+    const content = style.textContent;
+    if (content && content.includes('@import')) {
+      // Replace @import URLs with cache-busted versions
+      const newContent = content.replace(
+        /@import\s+url\(['"]?([^'")\s]+)['"]?\)/g,
+        (match, url) => {
+          const baseUrl = url.split('?')[0];
+          return `@import url('${baseUrl}?_t=${timestamp}')`;
+        }
+      );
+      style.textContent = newContent;
+    }
+  });
+}
+
 // App control API
 api.quit = () => {
   ipcRenderer.send('app-quit', { source: sourceAddress });

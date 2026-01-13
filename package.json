@@ -56,6 +56,11 @@
     "test:grep": "HEADLESS=1 npx playwright test tests/desktop/ --grep",
 
     "//-- Misc --//": "",
+    "kill": "pkill -f '/Users/dietrich/misc/peek/node_modules/.bin/electron' || true",
+    "debug": "DEBUG=1 electron .",
+    "debug:headless": "PEEK_HEADLESS=1 DEBUG=1 electron .",
+    "restart": "yarn kill && yarn debug",
+    "restart:headless": "yarn kill && yarn debug:headless",
     "lint": "echo \"No linting configured\""
   },
   "dependencies": {

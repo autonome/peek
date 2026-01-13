@@ -90,6 +90,11 @@ export {
   registerExtensionPath,
   getExtensionPath,
   getRegisteredExtensionIds,
+  registerThemePath,
+  getThemePath,
+  getRegisteredThemeIds,
+  getActiveThemeId,
+  setActiveThemeId,
   initProtocol,
 } from './protocol.js';
 
@@ -149,6 +154,7 @@ export {
   configure,
   initialize,
   discoverBuiltinExtensions,
+  discoverBuiltinThemes,
   createExtensionWindow,
   loadEnabledExtensions,
   getRunningExtensions,

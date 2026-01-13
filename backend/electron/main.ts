@@ -7,14 +7,15 @@
 
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, nativeTheme } from 'electron';
 import path from 'node:path';
+import fs from 'node:fs';
 
 import { initDatabase, closeDatabase, getDb } from './datastore.js';
-import { registerScheme, initProtocol, registerExtensionPath, getExtensionPath, getRegisteredExtensionIds } from './protocol.js';
+import { registerScheme, initProtocol, registerExtensionPath, getExtensionPath, getRegisteredExtensionIds, registerThemePath } from './protocol.js';
 import { discoverExtensions, loadExtensionManifest, isBuiltinExtensionEnabled, getExternalExtensions } from './extensions.js';
 import { initTray } from './tray.js';
 import { registerLocalShortcut, unregisterLocalShortcut, handleLocalShortcut, registerGlobalShortcut, unregisterGlobalShortcut, unregisterShortcutsForAddress } from './shortcuts.js';
 import { scopes, publish, subscribe, setExtensionBroadcaster, getSystemAddress } from './pubsub.js';
-import { APP_DEF_WIDTH, APP_DEF_HEIGHT, WEB_CORE_ADDRESS, getPreloadPath, isTestProfile, isHeadless } from './config.js';
+import { APP_DEF_WIDTH, APP_DEF_HEIGHT, WEB_CORE_ADDRESS, getPreloadPath, isTestProfile, isDevProfile, isHeadless, getProfile } from './config.js';
 import { addEscHandler, winDevtoolsConfig, closeOrHideWindow } from './windows.js';
 
 // Configuration
@@ -126,6 +127,38 @@ export function discoverBuiltinExtensions(extensionsDir: string): void {
   const discovered = discoverExtensions(extensionsDir);
   for (const ext of discovered) {
     registerExtensionPath(ext.id, ext.path);
+  }
+}
+
+/**
+ * Discover and register built-in themes
+ */
+export function discoverBuiltinThemes(themesDir: string): void {
+  if (!fs.existsSync(themesDir)) {
+    console.log('Themes directory not found:', themesDir);
+    return;
+  }
+
+  const entries = fs.readdirSync(themesDir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+
+    const themePath = path.join(themesDir, entry.name);
+    const manifestPath = path.join(themePath, 'manifest.json');
+
+    if (!fs.existsSync(manifestPath)) {
+      console.log('Theme missing manifest.json:', entry.name);
+      continue;
+    }
+
+    try {
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+      const themeId = manifest.id || entry.name;
+      registerThemePath(themeId, themePath);
+      console.log('Discovered theme:', themeId);
+    } catch (err) {
+      console.error('Failed to load theme manifest:', entry.name, err);
+    }
   }
 }
 
@@ -615,8 +648,15 @@ export function registerActivateHandler(): void {
 /**
  * Request single instance lock
  * Returns true if lock acquired, false if another instance is running
+ * Skips lock in dev/test profiles to allow running alongside production
  */
 export function requestSingleInstance(): boolean {
+  // Skip single-instance lock in dev/test profiles to allow running alongside production
+  if (isDevProfile() || isTestProfile()) {
+    console.log('Skipping single-instance lock for profile:', getProfile());
+    return true;
+  }
+
   const gotTheLock = app.requestSingleInstanceLock();
   if (!gotTheLock) {
     console.error('APP INSTANCE ALREADY RUNNING, QUITTING');

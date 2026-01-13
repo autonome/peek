@@ -5,6 +5,8 @@
  * - peek://app/{path} - Core app files
  * - peek://ext/{ext-id}/{path} - Extension content
  * - peek://extensions/{path} - Shared extension infrastructure
+ * - peek://theme/{path} - Current theme files (vars.css, manifest.json)
+ * - peek://theme/{themeId}/{path} - Specific theme files
  */
 
 import { protocol, net } from 'electron';
@@ -17,6 +19,12 @@ export const APP_PROTOCOL = `${APP_SCHEME}:`;
 
 // Extension path cache: extensionId -> filesystem path
 const extensionPaths = new Map<string, string>();
+
+// Theme path cache: themeId -> filesystem path
+const themePaths = new Map<string, string>();
+
+// Active theme ID (defaults to basic)
+let activeThemeId = 'basic';
 
 // Root directory (set during init)
 let rootDir: string;
@@ -52,6 +60,55 @@ export function registerExtensionPath(id: string, fsPath: string): void {
  */
 export function getRegisteredExtensionIds(): string[] {
   return Array.from(extensionPaths.keys());
+}
+
+/**
+ * Register a built-in theme path
+ */
+export function registerThemePath(id: string, fsPath: string): void {
+  themePaths.set(id, fsPath);
+  console.log('Registered theme path:', id, fsPath);
+}
+
+/**
+ * Get all registered theme IDs
+ */
+export function getRegisteredThemeIds(): string[] {
+  return Array.from(themePaths.keys());
+}
+
+/**
+ * Get theme filesystem path by ID
+ * First checks built-in themes, then could check datastore for custom themes
+ */
+export function getThemePath(id: string): string | null {
+  // Check built-in themes first
+  const builtinPath = themePaths.get(id);
+  if (builtinPath) return builtinPath;
+
+  // TODO: Check datastore for custom themes
+  return null;
+}
+
+/**
+ * Get the active theme ID
+ */
+export function getActiveThemeId(): string {
+  return activeThemeId;
+}
+
+/**
+ * Set the active theme ID
+ */
+export function setActiveThemeId(id: string): boolean {
+  const themePath = getThemePath(id);
+  if (!themePath) {
+    console.error('Theme not found:', id);
+    return false;
+  }
+  activeThemeId = id;
+  console.log('Active theme set to:', id);
+  return true;
 }
 
 /**
@@ -97,7 +154,7 @@ export function getExtensionPath(id: string): string | null {
 export function initProtocol(appRootDir: string): void {
   rootDir = appRootDir;
 
-  protocol.handle(APP_SCHEME, (req) => {
+  protocol.handle(APP_SCHEME, async (req) => {
     let { host, pathname } = new URL(req.url);
 
     // trim leading slash
@@ -141,6 +198,59 @@ export function initProtocol(appRootDir: string): void {
       }
 
       const fileURL = pathToFileURL(absolutePath).toString();
+      return net.fetch(fileURL);
+    }
+
+    // Handle theme files: peek://theme/{path} or peek://theme/{themeId}/{path}
+    if (host === 'theme') {
+      const parts = pathname.split('/');
+      let themeId: string;
+      let themePath: string;
+
+      // Check if first part is a known theme ID
+      const possibleThemeId = parts[0];
+      if (possibleThemeId && getThemePath(possibleThemeId)) {
+        // peek://theme/{themeId}/{path} - specific theme
+        themeId = possibleThemeId;
+        themePath = parts.slice(1).join('/') || 'variables.css';
+      } else {
+        // peek://theme/{path} - active theme
+        themeId = activeThemeId;
+        themePath = pathname || 'variables.css';
+      }
+
+      const themeBasePath = getThemePath(themeId);
+      if (!themeBasePath) {
+        console.log('Theme not found:', themeId);
+        return new Response('Theme not found', { status: 404 });
+      }
+
+      const absolutePath = path.resolve(themeBasePath, themePath);
+
+      // Security: ensure path stays within theme folder
+      const normalizedBase = path.normalize(themeBasePath);
+      if (!absolutePath.startsWith(normalizedBase)) {
+        console.error('Path traversal attempt blocked:', absolutePath);
+        return new Response('Forbidden', { status: 403 });
+      }
+
+      const fileURL = pathToFileURL(absolutePath).toString();
+
+      // For CSS and font files, add no-cache headers to ensure theme changes take effect
+      if (themePath.endsWith('.css') || themePath.endsWith('.woff2') || themePath.endsWith('.woff')) {
+        const response = await net.fetch(fileURL);
+        const body = await response.arrayBuffer();
+        return new Response(body, {
+          status: response.status,
+          headers: {
+            'Content-Type': response.headers.get('Content-Type') || 'application/octet-stream',
+            'Cache-Control': 'no-store, no-cache, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          }
+        });
+      }
+
       return net.fetch(fileURL);
     }
 

@@ -16,6 +16,7 @@ import {
   configure,
   initialize,
   discoverBuiltinExtensions,
+  discoverBuiltinThemes,
   loadEnabledExtensions,
   // External URL handling
   setAppReady,
@@ -175,6 +176,9 @@ const onReady = async () => {
 
   // Discover and register built-in extensions from extensions/ folder
   discoverBuiltinExtensions(path.join(ROOT_DIR, 'extensions'));
+
+  // Discover and register built-in themes from themes/ folder
+  discoverBuiltinThemes(path.join(ROOT_DIR, 'themes'));
 
   // Register as default handler for http/https URLs (if not already and user hasn't declined)
   // Skip for test profiles to avoid system dialogs during automated testing

@@ -13,7 +13,7 @@
         padding: 0;
         height: 100%;
         width: 100%;
-        background-color: rgba(40, 44, 52, 0.95);
+        background-color: transparent;
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, "Helvetica Neue", sans-serif;
         color: white;
         overflow: hidden;
@@ -23,12 +23,15 @@
       }
 
       .center-wrapper {
-        width: 100%;
         flex-shrink: 0;
         display: flex;
         align-items: center;
         padding: 10px;
         box-sizing: border-box;
+        background-color: rgba(40, 44, 52, 0.95);
+        border-radius: 8px;
+        margin: 5px 10px;
+        width: calc(100% - 20px);
       }
 
       /* Command display wrapper */
@@ -89,16 +92,20 @@
       /* Results list */
       #results {
         display: none;
-        width: 100%;
+        width: calc(100% - 20px);
         flex: 1;
         min-height: 0;
+        max-height: 300px;
         overflow-y: auto;
-        padding: 0 10px;
+        padding: 10px;
+        margin: 5px 10px;
         box-sizing: border-box;
         -webkit-app-region: no-drag;
+        background-color: rgba(40, 44, 52, 0.95);
+        border-radius: 8px;
       }
 
-      #results:not(:empty) {
+      #results.visible {
         display: block;
       }
 
@@ -145,11 +152,18 @@
       #chain-indicator {
         display: none;
         align-items: center;
-        padding: 4px 10px;
-        background: rgba(100, 150, 255, 0.2);
-        border-bottom: 1px solid rgba(100, 150, 255, 0.3);
+        padding: 8px 12px;
+        margin: 10px 10px 5px 10px;
+        background: rgba(60, 80, 120, 0.95);
+        border-radius: 8px;
         font-size: 12px;
         gap: 8px;
+        width: calc(100% - 20px);
+        box-sizing: border-box;
+      }
+
+      #chain-indicator.visible {
+        display: flex;
       }
 
       #chain-indicator #chain-mime {
@@ -184,13 +198,19 @@
       #preview-container {
         display: none;
         flex-shrink: 0;
-        margin: 0 10px 10px 10px;
-        padding: 8px;
-        background: rgba(0, 0, 0, 0.3);
-        border-radius: 4px;
+        margin: 5px 10px;
+        padding: 10px;
+        background: rgba(40, 44, 52, 0.95);
+        border-radius: 8px;
         max-height: 200px;
         overflow: auto;
         -webkit-app-region: no-drag;
+        width: calc(100% - 20px);
+        box-sizing: border-box;
+      }
+
+      #preview-container.visible {
+        display: block;
       }
 
       #preview-header {
@@ -301,16 +321,22 @@
       #execution-state {
         display: none;
         align-items: center;
-        padding: 8px 10px;
-        background: rgba(80, 120, 200, 0.2);
-        border-bottom: 1px solid rgba(80, 120, 200, 0.3);
+        padding: 8px 12px;
+        margin: 10px 10px 5px 10px;
+        background: rgba(60, 100, 160, 0.95);
+        border-radius: 8px;
         font-size: 13px;
         gap: 10px;
+        width: calc(100% - 20px);
+        box-sizing: border-box;
+      }
+
+      #execution-state.visible {
+        display: flex;
       }
 
       #execution-state.error {
-        background: rgba(200, 80, 80, 0.2);
-        border-bottom-color: rgba(200, 80, 80, 0.3);
+        background: rgba(160, 60, 60, 0.95);
       }
 
       #execution-state .spinner {

@@ -66,6 +66,16 @@ let state = {
   typed: '', // text typed by user so far, if any
   lastExecuted: '', // text last typed by user when last they hit return
 
+  // UI visibility state
+  showResults: false, // Whether to show the results dropdown
+
+  // Output selection mode - for selecting an item from command output
+  outputSelectionMode: false, // Whether we're selecting from command output
+  outputItems: [], // Array of items to select from
+  outputItemIndex: 0, // Currently selected output item
+  outputMimeType: null, // MIME type of output items
+  outputSourceCommand: null, // Command that produced the output
+
   // Chain mode state for command composition
   chainMode: false, // Whether we're in chain mode (piping output between commands)
   chainContext: null, // Current chain data: { data, mimeType, title, sourceCommand }
@@ -103,6 +113,9 @@ async function render() {
   // Add event listeners to the input
   commandInput.addEventListener('input', () => {
     state.typed = commandInput.value;
+    // Reset showResults when user types (they'll press down to see results)
+    state.showResults = false;
+
     if (state.typed) {
       // Always pass full text to findMatchingCommands so it can detect parameters
       state.matches = findMatchingCommands(state.typed);
@@ -116,7 +129,11 @@ async function render() {
   });
 
   commandInput.addEventListener('keydown', (e) => {
-    if (['ArrowUp', 'ArrowDown', 'Tab', 'Escape', 'Enter'].includes(e.key)) {
+    if (['ArrowUp', 'ArrowDown', 'ArrowRight', 'Tab', 'Escape', 'Enter'].includes(e.key)) {
+      // Only prevent default for ArrowRight in output selection mode
+      if (e.key === 'ArrowRight' && !state.outputSelectionMode) {
+        return; // Let normal cursor movement happen
+      }
       e.preventDefault(); // Prevent default for special keys
       handleSpecialKey(e);
     }
@@ -148,10 +165,16 @@ async function render() {
     if (!document.hidden) {
       // Reset execution state when panel is shown
       hideExecutionState();
+      // Exit output selection mode if panel was reused
+      if (state.outputSelectionMode) {
+        exitOutputSelectionMode();
+      }
       // Exit chain mode if panel was reused
       if (state.chainMode) {
         exitChainMode();
       }
+      // Reset showResults
+      state.showResults = false;
     }
   });
 
@@ -186,24 +209,41 @@ render();
 function handleSpecialKey(e) {
   const commandInput = document.getElementById('command-input');
 
-  // Escape key - exit chain mode first, then close window
+  // Escape key - exit modes first, then close window
   if (e.key === 'Escape' && !hasModifier(e)) {
-    if (state.chainMode) {
-      // If in chain mode, exit chain mode instead of closing
-      exitChainMode();
-      // Clear input
+    // Exit output selection mode first
+    if (state.outputSelectionMode) {
+      exitOutputSelectionMode();
       commandInput.value = '';
       state.typed = '';
       updateCommandUI();
       updateResultsUI();
       return;
     }
+
+    // Exit chain mode next
+    if (state.chainMode) {
+      exitChainMode();
+      commandInput.value = '';
+      state.typed = '';
+      updateCommandUI();
+      updateResultsUI();
+      return;
+    }
+
+    // Hide results if visible
+    if (state.showResults) {
+      state.showResults = false;
+      updateResultsUI();
+      return;
+    }
+
     shutdown();
     return;
   }
 
-  // Enter key - execute command
-  if (e.key === 'Enter' && !hasModifier(e)) {
+  // Enter key - execute command (but not if in output selection mode - handled above)
+  if (e.key === 'Enter' && !hasModifier(e) && !state.outputSelectionMode) {
     // Check if the typed text is a URL - if so, use the "open" command
     const trimmedText = commandInput.value.trim();
     const urlResult = getValidURL(trimmedText);
@@ -248,19 +288,54 @@ function handleSpecialKey(e) {
     return;
   }
 
-  // Arrow Up - navigate results up
-  if (e.key === 'ArrowUp' && state.matchIndex > 0) {
-    state.matchIndex--;
-    updateCommandUI();
-    updateResultsUI();
+  // Arrow Up - navigate results or output items up
+  if (e.key === 'ArrowUp') {
+    if (state.outputSelectionMode && state.outputItemIndex > 0) {
+      // Navigate output items
+      state.outputItemIndex--;
+      updateOutputSelectionUI();
+      return;
+    } else if (state.showResults && state.matchIndex > 0) {
+      // Navigate command results
+      state.matchIndex--;
+      updateCommandUI();
+      updateResultsUI();
+      return;
+    }
     return;
   }
 
-  // Arrow Down - navigate results down
-  if (e.key === 'ArrowDown' && state.matchIndex + 1 < state.matches.length) {
-    state.matchIndex++;
-    updateCommandUI();
-    updateResultsUI();
+  // Arrow Down - show results or navigate down
+  if (e.key === 'ArrowDown') {
+    if (state.outputSelectionMode) {
+      // Navigate output items
+      if (state.outputItemIndex + 1 < state.outputItems.length) {
+        state.outputItemIndex++;
+        updateOutputSelectionUI();
+      }
+      return;
+    }
+
+    // Show results if not already visible
+    if (!state.showResults && state.matches.length > 0) {
+      state.showResults = true;
+      updateResultsUI();
+      return;
+    }
+
+    // Navigate down in results
+    if (state.showResults && state.matchIndex + 1 < state.matches.length) {
+      state.matchIndex++;
+      updateCommandUI();
+      updateResultsUI();
+      return;
+    }
+    return;
+  }
+
+  // Right Arrow or Enter in output selection mode - proceed to chaining
+  if (state.outputSelectionMode && (e.key === 'ArrowRight' || e.key === 'Enter')) {
+    selectOutputItem();
     return;
   }
 
@@ -436,6 +511,146 @@ function chainUndo() {
   }
 }
 
+// ===== Output Selection Mode Functions =====
+
+/**
+ * Enter output selection mode to let user pick an item from array output
+ * @param {Array} items - Array of items to select from
+ * @param {string} mimeType - MIME type of the items
+ * @param {string} sourceCommand - Command that produced this output
+ */
+function enterOutputSelectionMode(items, mimeType, sourceCommand) {
+  console.log('[cmd:panel] Entering output selection mode with', items.length, 'items');
+
+  state.outputSelectionMode = true;
+  state.outputItems = items;
+  state.outputItemIndex = 0;
+  state.outputMimeType = mimeType;
+  state.outputSourceCommand = sourceCommand;
+
+  // Clear command input
+  state.typed = '';
+  state.matches = [];
+  state.showResults = false;
+
+  // Update UI to show selectable items
+  updateOutputSelectionUI();
+}
+
+/**
+ * Exit output selection mode
+ */
+function exitOutputSelectionMode() {
+  console.log('[cmd:panel] Exiting output selection mode');
+
+  state.outputSelectionMode = false;
+  state.outputItems = [];
+  state.outputItemIndex = 0;
+  state.outputMimeType = null;
+  state.outputSourceCommand = null;
+
+  // Hide preview and results
+  hidePreview();
+  const resultsContainer = document.getElementById('results');
+  if (resultsContainer) {
+    resultsContainer.classList.remove('visible');
+    resultsContainer.innerHTML = '';
+  }
+}
+
+/**
+ * Select the currently highlighted output item and enter chain mode
+ */
+function selectOutputItem() {
+  if (!state.outputSelectionMode || state.outputItems.length === 0) return;
+
+  const selectedItem = state.outputItems[state.outputItemIndex];
+  console.log('[cmd:panel] Selected output item:', state.outputItemIndex, selectedItem);
+
+  // Exit output selection mode
+  const mimeType = state.outputMimeType;
+  const sourceCommand = state.outputSourceCommand;
+  exitOutputSelectionMode();
+
+  // Enter chain mode with the selected item
+  enterChainMode({
+    data: selectedItem,
+    mimeType: mimeType,
+    title: getItemTitle(selectedItem)
+  }, sourceCommand);
+}
+
+/**
+ * Get a human-readable title for an item
+ */
+function getItemTitle(item) {
+  if (typeof item === 'string') return item.slice(0, 50);
+  if (typeof item === 'object' && item !== null) {
+    // Try common title fields
+    return item.name || item.title || item.label || item.id || JSON.stringify(item).slice(0, 50);
+  }
+  return String(item).slice(0, 50);
+}
+
+/**
+ * Update UI for output selection mode
+ */
+function updateOutputSelectionUI() {
+  const resultsContainer = document.getElementById('results');
+  if (!resultsContainer) return;
+
+  resultsContainer.innerHTML = '';
+
+  if (!state.outputSelectionMode || state.outputItems.length === 0) {
+    resultsContainer.classList.remove('visible');
+    return;
+  }
+
+  // Show results container
+  resultsContainer.classList.add('visible');
+
+  // Create items
+  state.outputItems.slice(0, 50).forEach((item, index) => {
+    const itemEl = document.createElement('div');
+    itemEl.className = 'command-item';
+    if (index === state.outputItemIndex) {
+      itemEl.classList.add('selected');
+    }
+
+    // Render item content based on type
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'cmd-name';
+    nameSpan.textContent = getItemTitle(item);
+    itemEl.appendChild(nameSpan);
+
+    // Add type indicator
+    if (typeof item === 'object' && item !== null) {
+      const descSpan = document.createElement('span');
+      descSpan.className = 'cmd-desc';
+      const keys = Object.keys(item).slice(0, 3);
+      descSpan.textContent = keys.join(', ');
+      itemEl.appendChild(descSpan);
+    }
+
+    // Click to select
+    itemEl.addEventListener('click', () => {
+      state.outputItemIndex = index;
+      selectOutputItem();
+    });
+
+    resultsContainer.appendChild(itemEl);
+  });
+
+  // Show preview of selected item
+  if (state.outputItems[state.outputItemIndex]) {
+    showPreview(
+      state.outputItems[state.outputItemIndex],
+      state.outputMimeType,
+      `Item ${state.outputItemIndex + 1} of ${state.outputItems.length}`
+    );
+  }
+}
+
 /**
  * Update chain indicator UI
  */
@@ -444,11 +659,11 @@ function updateChainUI() {
   if (!chainIndicator) return;
 
   if (state.chainMode && state.chainContext) {
-    chainIndicator.style.display = 'flex';
+    chainIndicator.classList.add('visible');
     document.getElementById('chain-mime').textContent = state.chainContext.mimeType;
     document.getElementById('chain-title').textContent = state.chainContext.title || '';
   } else {
-    chainIndicator.style.display = 'none';
+    chainIndicator.classList.remove('visible');
   }
 }
 
@@ -475,10 +690,7 @@ function showPreview(data, mimeType, title) {
   if (previewTitle) previewTitle.textContent = title || '';
 
   // Show container
-  previewContainer.style.display = 'block';
-
-  // Resize window to accommodate preview
-  resizePanelForPreview();
+  previewContainer.classList.add('visible');
 }
 
 /**
@@ -487,20 +699,8 @@ function showPreview(data, mimeType, title) {
 function hidePreview() {
   const previewContainer = document.getElementById('preview-container');
   if (previewContainer) {
-    previewContainer.style.display = 'none';
+    previewContainer.classList.remove('visible');
   }
-
-  // Resize window back to normal
-  resizePanelForPreview();
-}
-
-/**
- * Resize panel window to fit content
- * Note: Window resize API not yet implemented - using CSS-based layout instead
- */
-function resizePanelForPreview() {
-  // CSS handles the layout via flex and max-height
-  // This function is a placeholder for future window resize support
 }
 
 // ===== MIME Type Renderers =====
@@ -634,7 +834,7 @@ function showExecutionState(commandName) {
   if (!execState) return;
 
   execState.classList.remove('error');
-  execState.style.display = 'flex';
+  execState.classList.add('visible');
 
   const spinner = execState.querySelector('.spinner');
   const execText = execState.querySelector('.exec-text');
@@ -658,7 +858,7 @@ function hideExecutionState() {
 
   const execState = document.getElementById('execution-state');
   if (execState) {
-    execState.style.display = 'none';
+    execState.classList.remove('visible');
     execState.classList.remove('error');
   }
 }
@@ -679,7 +879,7 @@ function showExecutionError(commandName, errorMsg) {
   if (!execState) return;
 
   execState.classList.add('error');
-  execState.style.display = 'flex';
+  execState.classList.add('visible');
 
   const spinner = execState.querySelector('.spinner');
   const execText = execState.querySelector('.exec-text');
@@ -746,7 +946,25 @@ async function execute(name, typed) {
 
     // Check if command produced chainable output
     if (result && result.output && result.output.data && result.output.mimeType) {
-      // Command produced output - enter chain mode
+      const outputData = result.output.data;
+
+      // If output is an array, enter output selection mode first
+      // User picks an item, then we enter chain mode with that item
+      if (Array.isArray(outputData) && outputData.length > 0) {
+        // Enter output selection mode to let user pick an item
+        enterOutputSelectionMode(outputData, result.output.mimeType, name);
+
+        // Clear input for selection
+        const commandInput = document.getElementById('command-input');
+        if (commandInput) {
+          commandInput.value = '';
+          commandInput.focus();
+        }
+        // Don't shutdown - stay open for selection
+        return;
+      }
+
+      // Single item output - enter chain mode directly
       enterChainMode(result.output, name);
 
       // Clear input for next command
@@ -1010,9 +1228,20 @@ function updateResultsUI() {
   const resultsContainer = document.getElementById('results');
   resultsContainer.innerHTML = '';
 
-  if (state.matches.length === 0) {
+  // Don't show if in output selection mode (that has its own UI)
+  if (state.outputSelectionMode) {
     return;
   }
+
+  // Hide results if no matches or not in showResults mode
+  // Exception: always show in chain mode since user needs to see available commands
+  if (state.matches.length === 0 || (!state.showResults && !state.chainMode)) {
+    resultsContainer.classList.remove('visible');
+    return;
+  }
+
+  // Show results container
+  resultsContainer.classList.add('visible');
 
   // Create and append result items
   state.matches.forEach((match, index) => {

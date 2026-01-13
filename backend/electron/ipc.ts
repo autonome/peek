@@ -72,6 +72,7 @@ import {
   updateDockVisibility,
   closeWindow,
   modWindow,
+  getSystemThemeBackgroundColor,
 } from './windows.js';
 
 import {
@@ -1115,6 +1116,8 @@ export function registerWindowHandlers(): void {
       width: parseInt(options.width) || APP_DEF_WIDTH,
       height: parseInt(options.height) || APP_DEF_HEIGHT,
       show: isHeadless() ? false : options.show !== false,
+      // Don't set backgroundColor for transparent windows - it would show through
+      backgroundColor: options.transparent ? undefined : getSystemThemeBackgroundColor(),
       webPreferences: {
         ...options.webPreferences,
         preload: getPreloadPath()

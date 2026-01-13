@@ -208,6 +208,7 @@ export {
   maybeHideApp,
   closeOrHideWindow,
   closeChildWindows,
+  getSystemThemeBackgroundColor,
 } from './windows.js';
 
 // Re-export frontend API types (the contract that preload.js implements)

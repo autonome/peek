@@ -16,7 +16,7 @@ import { initTray } from './tray.js';
 import { registerLocalShortcut, unregisterLocalShortcut, handleLocalShortcut, registerGlobalShortcut, unregisterGlobalShortcut, unregisterShortcutsForAddress } from './shortcuts.js';
 import { scopes, publish, subscribe, setExtensionBroadcaster, getSystemAddress } from './pubsub.js';
 import { APP_DEF_WIDTH, APP_DEF_HEIGHT, WEB_CORE_ADDRESS, getPreloadPath, isTestProfile, isDevProfile, isHeadless, getProfile } from './config.js';
-import { addEscHandler, winDevtoolsConfig, closeOrHideWindow } from './windows.js';
+import { addEscHandler, winDevtoolsConfig, closeOrHideWindow, getSystemThemeBackgroundColor } from './windows.js';
 
 // Configuration
 export interface AppConfig {
@@ -183,6 +183,7 @@ export async function createExtensionWindow(extId: string): Promise<BrowserWindo
 
   const win = new BrowserWindow({
     show: false,
+    backgroundColor: getSystemThemeBackgroundColor(),
     webPreferences: {
       preload: config.preloadPath
     }
@@ -429,6 +430,7 @@ export function createBackgroundWindow(): BrowserWindow {
 
   const winPrefs = {
     show: false,
+    backgroundColor: getSystemThemeBackgroundColor(),
     key: 'background-core',
     webPreferences: {
       preload: preloadPath,
@@ -491,6 +493,8 @@ export function createBackgroundWindow(): BrowserWindow {
       width: parseInt(String(featuresMap.width)) || APP_DEF_WIDTH,
       height: parseInt(String(featuresMap.height)) || APP_DEF_HEIGHT,
       show: isHeadless() ? false : featuresMap.show !== false,
+      // Don't set backgroundColor for transparent windows - it would show through
+      backgroundColor: featuresMap.transparent ? undefined : getSystemThemeBackgroundColor(),
       webPreferences: {
         preload: preloadPath
       }

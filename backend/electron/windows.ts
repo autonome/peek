@@ -4,17 +4,31 @@
  * Helper functions for managing BrowserWindow instances.
  */
 
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, nativeTheme } from 'electron';
 import {
   WEB_CORE_ADDRESS,
   SETTINGS_ADDRESS,
   isTestProfile,
   isHeadless,
 } from './config.js';
+
+// Default background colors for light and dark system themes
+// These are used to prevent the white flash when opening new windows
+const DARK_BACKGROUND = '#1e1e1e';
+const LIGHT_BACKGROUND = '#ffffff';
+
 import {
   getWindowInfo,
   getChildWindows,
 } from './main.js';
+
+/**
+ * Get the appropriate background color based on system theme
+ * This helps prevent the "white flash" when opening windows in dark mode
+ */
+export function getSystemThemeBackgroundColor(): string {
+  return nativeTheme.shouldUseDarkColors ? DARK_BACKGROUND : LIGHT_BACKGROUND;
+}
 
 // Preferences getter - set by index.js during initialization
 let _getPrefs: () => Record<string, unknown> = () => ({});

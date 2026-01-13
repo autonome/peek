@@ -4,6 +4,7 @@
 
 pub mod datastore;
 pub mod extensions;
+pub mod theme;
 pub mod window;
 
 use serde::Serialize;

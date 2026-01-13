@@ -529,6 +529,47 @@
     }
   };
 
+  // ==================== Theme ====================
+
+  api.theme = {
+    get: async () => {
+      try {
+        const result = await invoke('theme_get', {});
+        return { success: true, data: result };
+      } catch (e) {
+        console.error('[tauri] theme.get error:', e);
+        return { success: false, error: String(e) };
+      }
+    },
+
+    setTheme: async (themeId) => {
+      try {
+        return await invoke('theme_set_theme', { themeId });
+      } catch (e) {
+        console.error('[tauri] theme.setTheme error:', e);
+        return { success: false, error: String(e) };
+      }
+    },
+
+    setColorScheme: async (colorScheme) => {
+      try {
+        return await invoke('theme_set_color_scheme', { colorScheme });
+      } catch (e) {
+        console.error('[tauri] theme.setColorScheme error:', e);
+        return { success: false, error: String(e) };
+      }
+    },
+
+    list: async () => {
+      try {
+        return await invoke('theme_list', {});
+      } catch (e) {
+        console.error('[tauri] theme.list error:', e);
+        return { success: false, error: String(e) };
+      }
+    }
+  };
+
   // ==================== Escape ====================
 
   api.escape = {

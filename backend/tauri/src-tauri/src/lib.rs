@@ -8,10 +8,15 @@ mod datastore;
 mod extensions;
 mod protocol;
 mod state;
+mod theme;
 
 use state::AppState;
 use std::sync::Arc;
 use tauri::{ActivationPolicy, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+
+// Note: Tauri doesn't have backgroundColor support like Electron.
+// The white flash prevention is handled through CSS in the frontend.
+// Theme CSS with dark background colors will help mitigate this.
 
 /// The preload script that provides window.app API
 /// This is injected into all windows to match Electron's preload behavior
@@ -44,25 +49,6 @@ pub fn run() {
                                         if info.original.to_lowercase() == "option+q" || info.original.to_lowercase() == "alt+q" {
                                             println!("[tauri:shortcut] Quit shortcut triggered, exiting...");
                                             app.exit(0);
-                                            return;
-                                        }
-
-                                        // Check for ESC shortcut - close focused window
-                                        if info.original.to_lowercase() == "escape" {
-                                            println!("[tauri:shortcut] ESC triggered, closing focused window...");
-                                            // Find the focused window by iterating through all webview windows
-                                            for (label, window) in app.webview_windows() {
-                                                if window.is_focused().unwrap_or(false) {
-                                                    // Don't close the main background window or extension backgrounds
-                                                    if label != "main" && !label.starts_with("ext_") {
-                                                        println!("[tauri:shortcut] Closing focused window: {}", label);
-                                                        let _ = window.close();
-                                                    } else {
-                                                        println!("[tauri:shortcut] Skipping background window: {}", label);
-                                                    }
-                                                    break;
-                                                }
-                                            }
                                             return;
                                         }
 
@@ -158,15 +144,8 @@ pub fn run() {
                     }
                 }
 
-                // ESC shortcut to close focused window
-                let esc_shortcut = "Escape";
-                if let Ok(parsed) = esc_shortcut.parse::<tauri_plugin_global_shortcut::Shortcut>() {
-                    if app.global_shortcut().register(parsed.clone()).is_ok() {
-                        let tauri_key = parsed.to_string();
-                        state_arc.register_shortcut("Escape", &tauri_key, "system");
-                        println!("[tauri] Registered ESC shortcut for closing windows (key: {})", tauri_key);
-                    }
-                }
+                // NOTE: ESC is handled locally by preload.js keyup listener, not as a global shortcut.
+                // Global ESC would capture it system-wide even when Peek windows aren't focused.
             }
 
             // Create main window programmatically with preload script injection
@@ -253,21 +232,25 @@ pub fn run() {
             let discovered = extensions::discover_extensions(&extensions_dir);
             println!("[tauri] Discovered {} extensions", discovered.len());
 
+            // Discover themes from themes/ directory (same pattern as extensions)
+            let themes_dir = extensions_dir.parent()
+                .map(|p| p.join("themes"))
+                .unwrap_or_else(|| extensions_dir.join("../themes"));
+
+            let discovered_themes = theme::discover_themes(&themes_dir);
+            println!("[tauri] Discovered {} themes", discovered_themes.len());
+
+            // Restore saved theme preference (must be after themes are discovered)
+            {
+                let db = state_arc.db.lock().unwrap();
+                theme::restore_saved_theme(&db);
+            }
+
             // Get state for checking enabled status
             let state = app.state::<Arc<AppState>>();
 
-            for ext in discovered {
-                let is_enabled = {
-                    let db = state.db.lock().unwrap();
-                    extensions::is_extension_enabled(&db, &ext.id, ext.manifest.builtin)
-                };
-
-                if !is_enabled {
-                    println!("[tauri:ext] Skipping disabled extension: {}", ext.id);
-                    continue;
-                }
-
-                // Create extension background window
+            // Helper to create extension window
+            let create_extension_window = |app: &tauri::App, ext: &extensions::DiscoveredExtension, state: &Arc<AppState>, headless: bool| -> bool {
                 let background = ext.manifest.background.as_deref().unwrap_or("background.html");
                 let ext_url = format!("peek://ext/{}/{}", ext.id, background);
 
@@ -294,10 +277,85 @@ pub fn run() {
                 if window_result.is_ok() {
                     // Register the extension in state
                     state.register_extension(&ext.id, ext.manifest.clone(), &label);
+                    true
+                } else {
+                    false
+                }
+            };
+
+            // Phase 1: Early - emit startup phase event
+            let _ = app.emit("pubsub:ext:startup:phase", serde_json::json!({
+                "source": "system",
+                "scope": 3,
+                "data": { "phase": "early" }
+            }));
+
+            // Separate cmd extension from others for priority loading
+            let (cmd_ext, other_exts): (Vec<_>, Vec<_>) = discovered
+                .into_iter()
+                .partition(|ext| ext.id == "cmd");
+
+            // Load cmd extension first (it's the command registry)
+            for ext in &cmd_ext {
+                let is_enabled = {
+                    let db = state.db.lock().unwrap();
+                    extensions::is_extension_enabled(&db, &ext.id, ext.manifest.builtin)
+                };
+
+                if is_enabled {
+                    create_extension_window(app, ext, &state_arc, headless);
+                } else {
+                    println!("[tauri:ext] Skipping disabled extension: {}", ext.id);
                 }
             }
 
-            println!("[tauri] App setup complete");
+            // Phase 2: Commands - other extensions can now register commands
+            let _ = app.emit("pubsub:ext:startup:phase", serde_json::json!({
+                "source": "system",
+                "scope": 3,
+                "data": { "phase": "commands" }
+            }));
+
+            // Load other extensions
+            // Note: In Rust/Tauri, we load sequentially since window creation is synchronous
+            // but this is still much faster than Electron's approach
+            for ext in &other_exts {
+                let is_enabled = {
+                    let db = state.db.lock().unwrap();
+                    extensions::is_extension_enabled(&db, &ext.id, ext.manifest.builtin)
+                };
+
+                if !is_enabled {
+                    println!("[tauri:ext] Skipping disabled extension: {}", ext.id);
+                    continue;
+                }
+
+                create_extension_window(app, ext, &state_arc, headless);
+            }
+
+            // Phase 3: UI ready
+            let _ = app.emit("pubsub:ext:startup:phase", serde_json::json!({
+                "source": "system",
+                "scope": 3,
+                "data": { "phase": "ui" }
+            }));
+
+            // Phase 4: Complete
+            let _ = app.emit("pubsub:ext:startup:phase", serde_json::json!({
+                "source": "system",
+                "scope": 3,
+                "data": { "phase": "complete" }
+            }));
+
+            // Emit ext:all-loaded event
+            let loaded_count = state.extensions.lock().unwrap().len();
+            let _ = app.emit("pubsub:ext:all-loaded", serde_json::json!({
+                "source": "system",
+                "scope": 3,
+                "data": { "count": loaded_count }
+            }));
+
+            println!("[tauri] App setup complete - {} extensions loaded", loaded_count);
 
             Ok(())
         })
@@ -351,6 +409,11 @@ pub fn run() {
             // Shortcuts
             commands::shortcut_register,
             commands::shortcut_unregister,
+            // Theme
+            commands::theme::theme_get,
+            commands::theme::theme_set_theme,
+            commands::theme::theme_set_color_scheme,
+            commands::theme::theme_list,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -4,6 +4,8 @@
 //! - peek://app/... → Application files
 //! - peek://ext/{id}/... → Extension files
 //! - peek://extensions/... → Extension infrastructure
+//! - peek://theme/... → Current theme files
+//! - peek://theme/{themeId}/... → Specific theme files
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -11,6 +13,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::http::{Request, Response};
 use tauri::{Manager, UriSchemeContext, UriSchemeResponder};
+
+use crate::theme::{get_active_theme_id, get_theme_path};
 
 lazy_static::lazy_static! {
     /// Maps extension IDs to their filesystem paths for custom (non-bundled) extensions
@@ -70,6 +74,7 @@ fn parse_and_serve<R: tauri::Runtime>(
         "ext" => serve_extension_file(ctx, clean_path),
         "extensions" => serve_extensions_file(ctx, clean_path),
         "tauri" => serve_tauri_file(ctx, clean_path),
+        "theme" => serve_theme_file(clean_path),
         "system" => {
             // System URLs are virtual, return empty response
             Ok(Response::builder()
@@ -166,6 +171,73 @@ fn serve_tauri_file<R: tauri::Runtime>(
     serve_file(&file_path)
 }
 
+/// Serve theme files from peek://theme/... or peek://theme/{themeId}/...
+fn serve_theme_file(path: &str) -> Result<Response<Cow<'static, [u8]>>, String> {
+    let parts: Vec<&str> = path.split('/').collect();
+
+    // Determine theme ID and file path
+    let (theme_id, theme_path) = if !parts.is_empty() && get_theme_path(parts[0]).is_some() {
+        // peek://theme/{themeId}/{path} - specific theme
+        let theme_path = if parts.len() > 1 {
+            parts[1..].join("/")
+        } else {
+            "variables.css".to_string()
+        };
+        (parts[0].to_string(), theme_path)
+    } else {
+        // peek://theme/{path} - active theme
+        let theme_path = if path.is_empty() {
+            "variables.css".to_string()
+        } else {
+            path.to_string()
+        };
+        (get_active_theme_id(), theme_path)
+    };
+
+    let theme_base_path = match get_theme_path(&theme_id) {
+        Some(p) => p,
+        None => {
+            println!("[tauri:protocol] Theme not found: {}", theme_id);
+            return Ok(Response::builder()
+                .status(404)
+                .header("Content-Type", "text/plain")
+                .body(Cow::Borrowed(b"Theme not found" as &[u8]))
+                .unwrap());
+        }
+    };
+
+    let file_path = theme_base_path.join(&theme_path);
+
+    // Security: Prevent path traversal
+    let canonical_base = match theme_base_path.canonicalize() {
+        Ok(p) => p,
+        Err(e) => {
+            return Err(format!("Theme base path error: {}", e));
+        }
+    };
+    let canonical_path = match file_path.canonicalize() {
+        Ok(p) => p,
+        Err(e) => {
+            return Ok(Response::builder()
+                .status(404)
+                .header("Content-Type", "text/plain")
+                .body(Cow::Owned(format!("File not found: {}", e).into_bytes()))
+                .unwrap());
+        }
+    };
+
+    if !canonical_path.starts_with(&canonical_base) {
+        return Err("Forbidden: Path traversal attempt".to_string());
+    }
+
+    // For CSS and font files, add no-cache headers to ensure theme changes take effect
+    let is_cacheable = theme_path.ends_with(".css")
+        || theme_path.ends_with(".woff2")
+        || theme_path.ends_with(".woff");
+
+    serve_file_with_cache(&canonical_path, !is_cacheable)
+}
+
 /// Get the resource directory based on build mode
 fn get_resource_dir<R: tauri::Runtime>(
     ctx: &UriSchemeContext<'_, R>,
@@ -214,6 +286,11 @@ fn get_resource_dir<R: tauri::Runtime>(
 
 /// Serve a file from the filesystem
 fn serve_file(path: &Path) -> Result<Response<Cow<'static, [u8]>>, String> {
+    serve_file_with_cache(path, true)
+}
+
+/// Serve a file from the filesystem with optional caching
+fn serve_file_with_cache(path: &Path, allow_cache: bool) -> Result<Response<Cow<'static, [u8]>>, String> {
     // Check if file exists
     if !path.exists() {
         return Ok(Response::builder()
@@ -247,10 +324,18 @@ fn serve_file(path: &Path) -> Result<Response<Cow<'static, [u8]>>, String> {
         .first_or_octet_stream()
         .to_string();
 
-    Ok(Response::builder()
+    let mut builder = Response::builder()
         .status(200)
         .header("Content-Type", &mime_type)
-        .header("Access-Control-Allow-Origin", "*")
-        .body(Cow::Owned(content))
-        .unwrap())
+        .header("Access-Control-Allow-Origin", "*");
+
+    // Add no-cache headers if caching is disabled
+    if !allow_cache {
+        builder = builder
+            .header("Cache-Control", "no-store, no-cache, must-revalidate")
+            .header("Pragma", "no-cache")
+            .header("Expires", "0");
+    }
+
+    Ok(builder.body(Cow::Owned(content)).unwrap())
 }

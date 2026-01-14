@@ -58,6 +58,118 @@ const saveSettings = async (settings) => {
   }
 };
 
+// ===== Command Registry Cache =====
+// Cache command metadata to avoid re-registration overhead when versions match
+
+/**
+ * Load command cache from datastore
+ * @returns {Promise<{appVersion: string, extensionVersions: Object, commands: Array} | null>}
+ */
+const loadCommandCache = async () => {
+  try {
+    const result = await api.datastore.getRow('extension_settings', `cmd:command_cache`);
+    if (result.success && result.data && result.data.value) {
+      const cache = JSON.parse(result.data.value);
+      debug && console.log('[ext:cmd] Loaded command cache:', cache.commands?.length, 'commands');
+      return cache;
+    }
+  } catch (err) {
+    console.error('[ext:cmd] Failed to load command cache:', err);
+  }
+  return null;
+};
+
+/**
+ * Save command cache to datastore
+ * @param {string} appVersion - Current app version
+ * @param {Object} extensionVersions - Map of extension ID to version
+ */
+const saveCommandCache = async (appVersion, extensionVersions) => {
+  try {
+    const commands = Array.from(commandRegistry.values()).map(cmd => ({
+      name: cmd.name,
+      description: cmd.description,
+      source: cmd.source,
+      accepts: cmd.accepts,
+      produces: cmd.produces
+    }));
+
+    const cache = {
+      appVersion,
+      extensionVersions,
+      commands,
+      cachedAt: Date.now()
+    };
+
+    await api.datastore.setRow('extension_settings', 'cmd:command_cache', {
+      extensionId: 'cmd',
+      key: 'command_cache',
+      value: JSON.stringify(cache),
+      updatedAt: Date.now()
+    });
+
+    console.log('[ext:cmd] Saved command cache:', commands.length, 'commands');
+  } catch (err) {
+    console.error('[ext:cmd] Failed to save command cache:', err);
+  }
+};
+
+/**
+ * Get current app and extension versions
+ * @returns {Promise<{appVersion: string, extensionVersions: Object}>}
+ */
+const getCurrentVersions = async () => {
+  const appInfo = await api.app.getInfo();
+  const appVersion = appInfo.success ? appInfo.data.version : '0.0.0';
+
+  const extList = await api.extensions.list();
+  const extensionVersions = {};
+
+  if (extList.success && extList.data) {
+    for (const ext of extList.data) {
+      if (ext.manifest?.version) {
+        extensionVersions[ext.id] = ext.manifest.version;
+      }
+    }
+  }
+
+  return { appVersion, extensionVersions };
+};
+
+/**
+ * Check if cache is valid by comparing versions
+ * @param {Object} cache - Cached data with versions
+ * @param {string} appVersion - Current app version
+ * @param {Object} extensionVersions - Current extension versions
+ * @returns {boolean}
+ */
+const isCacheValid = (cache, appVersion, extensionVersions) => {
+  if (!cache) return false;
+  if (cache.appVersion !== appVersion) {
+    debug && console.log('[ext:cmd] Cache invalid: app version mismatch', cache.appVersion, '!=', appVersion);
+    return false;
+  }
+
+  // Check if all cached extension versions match
+  const cachedExtIds = Object.keys(cache.extensionVersions || {});
+  const currentExtIds = Object.keys(extensionVersions);
+
+  // Different set of extensions
+  if (cachedExtIds.length !== currentExtIds.length) {
+    debug && console.log('[ext:cmd] Cache invalid: extension count mismatch');
+    return false;
+  }
+
+  for (const extId of currentExtIds) {
+    if (cache.extensionVersions[extId] !== extensionVersions[extId]) {
+      debug && console.log('[ext:cmd] Cache invalid: extension version mismatch for', extId);
+      return false;
+    }
+  }
+
+  return true;
+};
+
 /**
  * Initialize the command registry subscriptions (PROVIDER PATTERN)
  *
@@ -236,6 +348,23 @@ const init = async () => {
   // This ensures we're ready to receive registrations from other extensions
   initCommandRegistry();
 
+  // 1b. Load cached commands if versions match
+  // This pre-populates the registry so panel can open immediately
+  const cache = await loadCommandCache();
+  if (cache && cache.commands) {
+    // Pre-populate from cache (will be updated by fresh registrations)
+    for (const cmd of cache.commands) {
+      commandRegistry.set(cmd.name, {
+        name: cmd.name,
+        description: cmd.description || '',
+        source: cmd.source,
+        accepts: cmd.accepts || [],
+        produces: cmd.produces || []
+      });
+    }
+    console.log('[ext:cmd] Pre-populated registry from cache:', commandRegistry.size, 'commands');
+  }
+
   // 2. Load settings from datastore
   currentSettings = await loadSettings();
 
@@ -246,6 +375,16 @@ const init = async () => {
   api.subscribe('cmd:settings-changed', () => {
     console.log('[ext:cmd] settings changed, reinitializing');
     reinit();
+  }, api.scopes.GLOBAL);
+
+  // 4b. Save command cache after all extensions have loaded
+  api.subscribe('ext:all-loaded', async () => {
+    debug && console.log('[ext:cmd] ext:all-loaded - saving command cache');
+    // Small delay to ensure all commands are registered
+    setTimeout(async () => {
+      const { appVersion, extensionVersions } = await getCurrentVersions();
+      await saveCommandCache(appVersion, extensionVersions);
+    }, 100);
   }, api.scopes.GLOBAL);
 
   // Listen for settings updates from Settings UI

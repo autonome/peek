@@ -5,7 +5,7 @@
  * Handlers are thin wrappers that delegate to backend functions.
  */
 
-import { ipcMain, nativeTheme, dialog, BrowserWindow } from 'electron';
+import { ipcMain, nativeTheme, dialog, BrowserWindow, app } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -1600,6 +1600,18 @@ export function registerMiscHandlers(onQuit: () => void): void {
       const message = error instanceof Error ? error.message : String(error);
       return { success: false, error: message };
     }
+  });
+
+  // App info handler - returns app version and other metadata
+  ipcMain.handle('app-info', async () => {
+    return {
+      success: true,
+      data: {
+        version: app.getVersion(),
+        name: app.getName(),
+        isPackaged: app.isPackaged
+      }
+    };
   });
 }
 

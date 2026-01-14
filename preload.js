@@ -72,6 +72,17 @@ api.debug = DEBUG;
 api.debugLevels = DEBUG_LEVELS;
 api.debugLevel = DEBUG_LEVEL;
 
+// App info API
+api.app = {
+  /**
+   * Get app info including version
+   * @returns {Promise<{success: boolean, data?: {version: string, name: string, isPackaged: boolean}, error?: string}>}
+   */
+  getInfo: () => {
+    return ipcRenderer.invoke('app-info');
+  }
+};
+
 api.shortcuts = {
   /**
    * Register a keyboard shortcut

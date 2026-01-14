@@ -46,9 +46,10 @@ The application uses a multi-window Electron architecture:
    - Settings UI at `peek://app/settings/settings.html`
    - Datastore viewer at `peek://app/datastore/viewer.html`
 
-3. **Preload Script** (`preload.js`):
-   - Bridges main/renderer with secure API exposure via contextBridge
-   - Provides shortcuts, window management, pubsub, and datastore APIs
+3. **Peek API** (`window.app`):
+   - Unified API exposed to all `peek://` pages
+   - Provides shortcuts, window management, pubsub, datastore, and theme APIs
+   - See `docs/PEEK-API.md` for complete reference
 
 ### Custom Protocol
 

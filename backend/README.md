@@ -5,7 +5,7 @@ Peek supports multiple backend implementations that share the same renderer code
 ## Design Principles
 
 1. **Backend Abstraction**: The `app/` directory contains all renderer code and must work unchanged with any backend
-2. **Shared API Contract**: All backends expose the same `window.app` API via preload script injection
+2. **Shared API Contract**: All backends expose the same Peek API (`window.app`) - see `docs/PEEK-API.md`
 3. **Shared Data**: Backends use the same SQLite schema and can share database files
 4. **Profile Isolation**: Data is separated by profile (dev, default, etc.)
 
@@ -21,7 +21,7 @@ peek/
 ├── backend/
 │   ├── electron/           # Electron backend
 │   │   ├── index.js        # Main process
-│   │   ├── preload.js      # API bridge (contextBridge)
+│   │   ├── preload.js      # Peek API implementation (Electron)
 │   │   ├── protocol.ts     # peek:// handler
 │   │   └── datastore.ts    # SQLite operations
 │   └── tauri/              # Tauri backend
@@ -32,8 +32,8 @@ peek/
 │       │   │   ├── datastore.rs# SQLite operations
 │       │   │   └── commands/   # IPC handlers
 │       │   └── Cargo.toml
-│       └── preload.js      # API adapter (injected)
-└── extensions/             # Extension code (uses window.app API)
+│       └── preload.js      # Peek API implementation (Tauri)
+└── extensions/             # Extension code (uses Peek API)
 ```
 
 ## Backend Responsibilities
@@ -64,12 +64,12 @@ All backends use the same schema (see `app/datastore/schema.js`):
 
 Database location: `{app_data}/{profile}/datastore.sqlite`
 
-### 4. Preload Script Injection
-Inject the `window.app` API before any page scripts run.
+### 4. Peek API Injection
+Inject the `window.app` API before any page scripts run. See `docs/PEEK-API.md` for the complete API reference.
 
 ## API Contract
 
-All backends must expose `window.app` with these methods:
+All backends must expose the Peek API (`window.app`) with these core methods:
 
 ```javascript
 window.app = {
@@ -157,8 +157,8 @@ Or use the helper script:
 2. Implement custom protocol handler for `peek://`
 3. Implement SQLite datastore with shared schema
 4. Implement window management commands
-5. Create preload script that exposes `window.app` API
-6. Inject preload before page scripts run
+5. Implement the Peek API (`window.app`) matching `docs/PEEK-API.md`
+6. Inject the API before page scripts run
 
 The renderer code (`app/`) should work without modification.
 

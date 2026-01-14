@@ -1,9 +1,10 @@
 /**
- * Mock Tauri Backend for Frontend Testing
+ * Mock Peek API for Frontend Testing
  *
- * This mock provides the same window.app API as the real Tauri preload,
- * but stores all data in memory. Used for testing the frontend in isolation.
+ * This mock provides the Peek API (window.app) with in-memory storage.
+ * Used for testing the frontend in isolation without a real backend.
  *
+ * See docs/PEEK-API.md for the API reference.
  * Injected via Playwright's addInitScript before page navigation.
  */
 (function() {

@@ -2,7 +2,7 @@
 
 use super::CommandResponse;
 use crate::state::AppState;
-use crate::PRELOAD_SCRIPT;
+use crate::PEEK_API_SCRIPT;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
@@ -116,7 +116,7 @@ pub async fn window_open(
         )
         .resizable(options.resizable.unwrap_or(true))
         .visible(visible)
-        .initialization_script(PRELOAD_SCRIPT);
+        .initialization_script(PEEK_API_SCRIPT);
 
     // Apply optional settings
     if let (Some(x), Some(y)) = (options.x, options.y) {

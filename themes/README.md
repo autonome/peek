@@ -150,7 +150,7 @@ Theme CSS and font files are served with `Cache-Control: no-store` headers to en
 
 ## Theme API
 
-The preload script exposes theme functionality via `window.app.theme`:
+The Peek API exposes theme functionality via `window.app.theme`:
 
 ```javascript
 // Get current theme state
@@ -168,7 +168,7 @@ const result = await api.theme.getAll();
 // Returns: { success: true, data: [{ id, name, version, ... }] }
 
 // Listen for theme changes (CSS will auto-reload)
-// This is handled automatically by preload.js
+// This is handled automatically by the Peek API
 ```
 
 ## Color Scheme Modes

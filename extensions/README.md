@@ -184,7 +184,9 @@ export default extension;
 
 ## Extension API
 
-Extensions access the API via `window.app`:
+Extensions access the Peek API via `window.app`. See `docs/PEEK-API.md` for the complete reference.
+
+Common APIs used by extensions:
 
 ### Commands
 ```javascript

@@ -414,7 +414,7 @@ pub async fn extension_load(
     id: String,
 ) -> Result<CommandResponse<ExtensionLoadResult>, String> {
     use tauri::{WebviewUrl, WebviewWindowBuilder};
-    use crate::PRELOAD_SCRIPT;
+    use crate::PEEK_API_SCRIPT;
 
     // Check if already loaded
     let existing = state.list_extensions();
@@ -483,7 +483,7 @@ pub async fn extension_load(
         .title(&format!("Extension: {}", manifest.name.as_deref().unwrap_or(&id)))
         .inner_size(800.0, 600.0)
         .visible(false)
-        .initialization_script(PRELOAD_SCRIPT);
+        .initialization_script(PEEK_API_SCRIPT);
 
     match ext_builder.build() {
         Ok(_) => {

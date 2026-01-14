@@ -1,9 +1,11 @@
 /**
- * Tauri Preload Adapter
+ * Peek API - Tauri Implementation
  *
- * Provides the same `window.app` API as Electron's preload.js.
- * This script is injected by Tauri's initialization_script mechanism
- * so it runs before any page scripts.
+ * Provides the Peek API (`window.app`) for Tauri backend.
+ * This script is injected via Tauri's initialization_script mechanism
+ * before any page scripts run.
+ *
+ * See docs/PEEK-API.md for the complete API reference.
  */
 (function() {
   'use strict';
@@ -676,5 +678,5 @@
   // Run sync after a short delay to ensure extensions are loaded
   setTimeout(syncExtensionState, 2000);
 
-  console.log('[tauri:preload] API initialized for:', sourceAddress);
+  console.log('[peek-api:tauri] Initialized for:', sourceAddress);
 })();

@@ -18,9 +18,10 @@ use tauri::{ActivationPolicy, Emitter, Manager, WebviewUrl, WebviewWindowBuilder
 // The white flash prevention is handled through CSS in the frontend.
 // Theme CSS with dark background colors will help mitigate this.
 
-/// The preload script that provides window.app API
-/// This is injected into all windows to match Electron's preload behavior
-pub const PRELOAD_SCRIPT: &str = include_str!("../../preload.js");
+/// The Peek API implementation script
+/// Provides window.app API to all peek:// pages
+/// See docs/PEEK-API.md for the complete API reference
+pub const PEEK_API_SCRIPT: &str = include_str!("../../preload.js");
 
 /// Initialize and run the Tauri application
 pub fn run() {
@@ -159,7 +160,7 @@ pub fn run() {
                 .title("Peek (Tauri)")
                 .inner_size(800.0, 600.0)
                 .visible(false)
-                .initialization_script(PRELOAD_SCRIPT);
+                .initialization_script(PEEK_API_SCRIPT);
 
             // In headless mode, prevent windows from being focusable
             if headless {
@@ -265,7 +266,7 @@ pub fn run() {
                     .title(&format!("Extension: {}", ext.manifest.name.as_deref().unwrap_or(&ext.id)))
                     .inner_size(800.0, 600.0)
                     .visible(false)
-                    .initialization_script(PRELOAD_SCRIPT);
+                    .initialization_script(PEEK_API_SCRIPT);
 
                 // In headless mode, prevent windows from being focusable
                 if headless {

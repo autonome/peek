@@ -119,6 +119,50 @@ const initIframeFeature = file => {
 const prefs = () => store ? store.get(storageKeys.PREFS) : defaults.prefs;
 const features = () => store ? store.get(storageKeys.ITEMS) : defaults.items;
 
+// ==================== Theme Commands ====================
+
+/**
+ * Set color scheme (light/dark/system)
+ */
+async function setColorScheme(scheme) {
+  const result = await api.theme.setColorScheme(scheme);
+  if (result.success) {
+    console.log(`Color scheme set to: ${scheme}`);
+  } else {
+    console.error('Failed to set color scheme:', result.error);
+  }
+}
+
+/**
+ * Cycle to the next available theme
+ */
+async function cycleTheme() {
+  const [currentState, themeList] = await Promise.all([
+    api.theme.get(),
+    api.theme.list()
+  ]);
+
+  if (!themeList.success || !themeList.data || themeList.data.length === 0) {
+    console.error('No themes available');
+    return;
+  }
+
+  const themes = themeList.data;
+  const currentId = currentState.data?.themeId || themes[0].id;
+
+  // Find current theme index and get next one
+  const currentIndex = themes.findIndex(t => t.id === currentId);
+  const nextIndex = (currentIndex + 1) % themes.length;
+  const nextTheme = themes[nextIndex];
+
+  const result = await api.theme.setTheme(nextTheme.id);
+  if (result.success) {
+    console.log(`Theme changed to: ${nextTheme.name} (${nextTheme.id})`);
+  } else {
+    console.error('Failed to set theme:', result.error);
+  }
+}
+
 // Register extension management commands for cmd palette
 const registerExtensionCommands = () => {
   // Settings command
@@ -174,7 +218,33 @@ const registerExtensionCommands = () => {
     }
   });
 
-  console.log('Extension commands registered');
+  // ---- Theme Commands ----
+
+  api.commands.register({
+    name: 'theme light',
+    description: 'Switch to light mode',
+    execute: () => setColorScheme('light')
+  });
+
+  api.commands.register({
+    name: 'theme dark',
+    description: 'Switch to dark mode',
+    execute: () => setColorScheme('dark')
+  });
+
+  api.commands.register({
+    name: 'theme system',
+    description: 'Follow system color scheme',
+    execute: () => setColorScheme('system')
+  });
+
+  api.commands.register({
+    name: 'theme next',
+    description: 'Switch to next theme',
+    execute: cycleTheme
+  });
+
+  console.log('Core commands registered');
 };
 
 const init = async () => {

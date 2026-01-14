@@ -14,6 +14,7 @@ import { Page } from '@playwright/test';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
+import { waitForCommandResults, waitForWindowCount, waitForVisible, waitForClass, waitForResultsWithContent, waitForSelectionChange, sleep } from '../helpers/window-utils';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -46,7 +47,6 @@ test.describe('Settings @desktop', () => {
 
     // Close via window.close()
     await settingsWindow.evaluate(() => window.close());
-    await new Promise(r => setTimeout(r, 500));
   });
 });
 
@@ -82,22 +82,19 @@ test.describe('Cmd Palette @desktop', () => {
     });
     expect(openResult.success).toBe(true);
 
-    await new Promise(r => setTimeout(r, 1000));
-
-    // Find the cmd window
+    // Find the cmd window (getWindow already polls until found)
     const cmdWindow = await app.getWindow('cmd/panel.html', 5000);
     expect(cmdWindow).toBeTruthy();
 
     // Wait for input to be ready
     await cmdWindow.waitForSelector('input', { timeout: 5000 });
 
-    // Type 'hello' command
+    // Type 'hello' command and wait for results to filter
     await cmdWindow.fill('input', 'hello');
-    await new Promise(r => setTimeout(r, 300));
+    await waitForCommandResults(cmdWindow, 1);
 
     // Press Enter to execute
     await cmdWindow.keyboard.press('Enter');
-    await new Promise(r => setTimeout(r, 500));
 
     // Close the cmd window
     if (openResult.id) {
@@ -151,10 +148,8 @@ test.describe('Peeks @desktop', () => {
     });
     expect(peekResult.success).toBe(true);
 
-    await new Promise(r => setTimeout(r, 2000));
-
-    // Verify window opened
-    const peekWindow = app.windows().find(w => w.url().includes('example.com'));
+    // Wait for window to open (getWindow polls)
+    const peekWindow = await app.getWindow('example.com', 5000);
     expect(peekWindow).toBeTruthy();
 
     // Close the peek
@@ -278,16 +273,13 @@ test.describe('Groups Navigation @desktop', () => {
     });
     expect(groupsResult.success).toBe(true);
 
-    await new Promise(r => setTimeout(r, 1500));
-
-    // Find the groups window
+    // Find the groups window (getWindow polls)
     const groupsWindow = await app.getWindow('groups/home.html', 5000);
     expect(groupsWindow).toBeTruthy();
     await groupsWindow.waitForLoadState('domcontentloaded');
 
     // Wait for cards to render
     await groupsWindow.waitForSelector('.cards', { timeout: 5000 });
-    await new Promise(r => setTimeout(r, 500));
 
     // Click on the test-group card
     const groupCard = await groupsWindow.$('.card.group-card[data-tag-id="' + tagId + '"]');
@@ -299,13 +291,12 @@ test.describe('Groups Navigation @desktop', () => {
       await groupCard.click();
     }
 
-    await new Promise(r => setTimeout(r, 500));
+    // Wait for navigation to addresses view (back button becomes visible)
+    await waitForVisible(groupsWindow, '.back-btn', true);
 
     // Verify we're in addresses view
     const backBtn = await groupsWindow.$('.back-btn');
     expect(backBtn).toBeTruthy();
-    const backBtnVisible = await backBtn!.evaluate((el: HTMLElement) => el.style.display !== 'none');
-    expect(backBtnVisible).toBe(true);
 
     // Click on an address card
     const addressCard = await groupsWindow.$('.card.address-card');
@@ -314,15 +305,16 @@ test.describe('Groups Navigation @desktop', () => {
     const windowCountBefore = app.windows().length;
     await addressCard!.click();
 
-    await new Promise(r => setTimeout(r, 1500));
+    // Wait for new window to open
+    await waitForWindowCount(() => app.windows(), windowCountBefore + 1, 5000);
 
     // Verify a new window was opened
     const windowCountAfter = app.windows().length;
     expect(windowCountAfter).toBeGreaterThan(windowCountBefore);
 
-    // Click Back button
+    // Click Back button and wait for it to hide
     await backBtn!.click();
-    await new Promise(r => setTimeout(r, 500));
+    await waitForVisible(groupsWindow, '.back-btn', false);
 
     // Verify we're back in groups view
     const backBtnAfterClick = await groupsWindow.$('.back-btn');
@@ -361,14 +353,10 @@ test.describe('Groups Navigation @desktop', () => {
 
 test.describe('External URL Opening @desktop', () => {
   test('open URL by calling executable', async () => {
-    const testUrl = 'https://external-test.example.com';
-
-    // Launch app with URL argument
+    // Launch app (fixture already waits for background and extensions)
     const app = await launchDesktopApp('test-external-url');
 
-    await new Promise(r => setTimeout(r, 5000));
-
-    // Verify app started correctly
+    // Verify app started correctly (fixture already ensured this)
     const bgWindow = app.windows().find(w => w.url().includes('background.html'));
     expect(bgWindow).toBeTruthy();
 
@@ -457,7 +445,6 @@ test.describe('Data Persistence @desktop', () => {
 
     // Close the app
     await app.close();
-    await new Promise(r => setTimeout(r, 1000));
 
     // PHASE 2: Relaunch with same profile
     app = await launchDesktopApp(PERSISTENCE_PROFILE);
@@ -532,7 +519,6 @@ test.describe('Data Persistence @desktop', () => {
     }
 
     await app.close();
-    await new Promise(r => setTimeout(r, 1000));
 
     // PHASE 2: Verify persistence
     app = await launchDesktopApp(ADDR_PROFILE);
@@ -645,7 +631,8 @@ test.describe('Core Functionality @desktop', () => {
     expect(openResult.success).toBe(true);
     expect(openResult.id).toBeDefined();
 
-    await new Promise(r => setTimeout(r, 500));
+    // Wait for window to open
+    await app.getWindow('about:blank', 5000);
 
     // List windows
     const listResult = await bgWindow.evaluate(async () => {
@@ -925,16 +912,13 @@ test.describe('Groups View @desktop', () => {
     });
     expect(groupsResult.success).toBe(true);
 
-    await new Promise(r => setTimeout(r, 1500));
-
-    // Find the groups window
+    // Find the groups window (getWindow polls)
     const groupsWindow = await app.getWindow('groups/home.html', 5000);
     expect(groupsWindow).toBeTruthy();
     await groupsWindow.waitForLoadState('domcontentloaded');
 
     // Wait for cards to render
     await groupsWindow.waitForSelector('.cards', { timeout: 5000 });
-    await new Promise(r => setTimeout(r, 500));
 
     // Get all group card tag IDs
     const groupCards = await groupsWindow.$$eval('.card.group-card', (cards: any[]) =>
@@ -986,16 +970,13 @@ test.describe('Groups View @desktop', () => {
     });
     expect(groupsResult.success).toBe(true);
 
-    await new Promise(r => setTimeout(r, 1500));
-
-    // Find the groups window
+    // Find the groups window (getWindow polls)
     const groupsWindow = await app.getWindow('groups/home.html', 5000);
     expect(groupsWindow).toBeTruthy();
     await groupsWindow.waitForLoadState('domcontentloaded');
 
     // Wait for cards to render
     await groupsWindow.waitForSelector('.cards', { timeout: 5000 });
-    await new Promise(r => setTimeout(r, 500));
 
     // Check for Untagged group (has special ID __untagged__)
     const untaggedCard = await groupsWindow.$('.card.group-card[data-tag-id="__untagged__"]');
@@ -1165,8 +1146,6 @@ test.describe('Command Chaining @desktop', () => {
     });
     expect(openResult.success).toBe(true);
 
-    await new Promise(r => setTimeout(r, 1500));
-
     const cmdWindow = await app.getWindow('cmd/panel.html', 5000);
     expect(cmdWindow).toBeTruthy();
 
@@ -1202,8 +1181,6 @@ test.describe('Command Chaining @desktop', () => {
       });
     });
     expect(openResult.success).toBe(true);
-
-    await new Promise(r => setTimeout(r, 1000));
 
     // Find the cmd window
     const cmdWindow = await app.getWindow('cmd/panel.html', 5000);
@@ -1243,8 +1220,6 @@ test.describe('Command Chaining @desktop', () => {
     });
     expect(openResult.success).toBe(true);
 
-    await new Promise(r => setTimeout(r, 1500));
-
     // Find the cmd window
     const cmdWindow = await app.getWindow('cmd/panel.html', 5000);
     expect(cmdWindow).toBeTruthy();
@@ -1279,8 +1254,6 @@ test.describe('Command Chaining @desktop', () => {
       });
     });
     expect(openResult.success).toBe(true);
-
-    await new Promise(r => setTimeout(r, 1000));
 
     const cmdWindow = await app.getWindow('cmd/panel.html', 5000);
     expect(cmdWindow).toBeTruthy();
@@ -1336,8 +1309,6 @@ test.describe('Command Chaining @desktop', () => {
     });
     expect(openResult.success).toBe(true);
 
-    await new Promise(r => setTimeout(r, 1500));
-
     const cmdWindow = await app.getWindow('cmd/panel.html', 5000);
     expect(cmdWindow).toBeTruthy();
 
@@ -1349,7 +1320,7 @@ test.describe('Command Chaining @desktop', () => {
 
     // Press down arrow to show results
     await cmdWindow.press('input', 'ArrowDown');
-    await new Promise(r => setTimeout(r, 300));
+    await waitForClass(cmdWindow, '#results', 'visible');
 
     // Verify results are visible
     const resultsVisible = await cmdWindow.$eval('#results', (el: HTMLElement) => el.classList.contains('visible'));
@@ -1357,7 +1328,7 @@ test.describe('Command Chaining @desktop', () => {
 
     // Press Enter to execute
     await cmdWindow.press('input', 'Enter');
-    await new Promise(r => setTimeout(r, 1000));
+    await waitForResultsWithContent(cmdWindow);
 
     // After lists executes, we should be in output selection mode
     // Results should show the items from the lists output
@@ -1393,8 +1364,6 @@ test.describe('Command Chaining @desktop', () => {
     });
     expect(openResult.success).toBe(true);
 
-    await new Promise(r => setTimeout(r, 1500));
-
     const cmdWindow = await app.getWindow('cmd/panel.html', 5000);
     expect(cmdWindow).toBeTruthy();
 
@@ -1402,13 +1371,13 @@ test.describe('Command Chaining @desktop', () => {
     await cmdWindow.waitForSelector('input', { timeout: 5000 });
     await cmdWindow.fill('input', 'lists');
     await cmdWindow.press('input', 'ArrowDown');
-    await new Promise(r => setTimeout(r, 300));
+    await waitForClass(cmdWindow, '#results', 'visible');
     await cmdWindow.press('input', 'Enter');
-    await new Promise(r => setTimeout(r, 1000));
+    await waitForResultsWithContent(cmdWindow);
 
     // Now in output selection mode - press Enter to select first item
     await cmdWindow.press('input', 'Enter');
-    await new Promise(r => setTimeout(r, 500));
+    await waitForClass(cmdWindow, '#chain-indicator', 'visible');
 
     // Should now be in chain mode
     const chainVisible = await cmdWindow.$eval('#chain-indicator', (el: HTMLElement) => el.classList.contains('visible'));
@@ -1446,8 +1415,6 @@ test.describe('Command Chaining @desktop', () => {
     });
     expect(openResult.success).toBe(true);
 
-    await new Promise(r => setTimeout(r, 1500));
-
     const cmdWindow = await app.getWindow('cmd/panel.html', 5000);
     expect(cmdWindow).toBeTruthy();
 
@@ -1455,20 +1422,21 @@ test.describe('Command Chaining @desktop', () => {
     await cmdWindow.waitForSelector('input', { timeout: 5000 });
     await cmdWindow.fill('input', 'lists');
     await cmdWindow.press('input', 'ArrowDown');
-    await new Promise(r => setTimeout(r, 300));
+    await waitForClass(cmdWindow, '#results', 'visible');
     await cmdWindow.press('input', 'Enter');
-    await new Promise(r => setTimeout(r, 1000));
+    await waitForResultsWithContent(cmdWindow);
 
     // Select first item
     await cmdWindow.press('input', 'Enter');
-    await new Promise(r => setTimeout(r, 500));
+    await waitForClass(cmdWindow, '#chain-indicator', 'visible');
 
     // Now in chain mode - type 'csv' and execute
     await cmdWindow.fill('input', 'csv');
     await cmdWindow.press('input', 'ArrowDown');
-    await new Promise(r => setTimeout(r, 300));
+    await waitForClass(cmdWindow, '#results', 'visible');
     await cmdWindow.press('input', 'Enter');
-    await new Promise(r => setTimeout(r, 1000));
+    // Wait for CSV table to appear in preview
+    await cmdWindow.waitForSelector('#preview-content table.preview-csv', { timeout: 5000 });
 
     // After csv executes, preview should show CSV content rendered as a table
     // The CSV renderer converts comma-separated values into HTML table cells
@@ -1515,8 +1483,6 @@ test.describe('Command Chaining @desktop', () => {
     });
     expect(openResult.success).toBe(true);
 
-    await new Promise(r => setTimeout(r, 1500));
-
     const cmdWindow = await app.getWindow('cmd/panel.html', 5000);
     expect(cmdWindow).toBeTruthy();
 
@@ -1524,11 +1490,11 @@ test.describe('Command Chaining @desktop', () => {
     await cmdWindow.waitForSelector('input', { timeout: 5000 });
     await cmdWindow.fill('input', 'lists');
     await cmdWindow.press('input', 'ArrowDown');
-    await new Promise(r => setTimeout(r, 300));
+    await waitForClass(cmdWindow, '#results', 'visible');
     await cmdWindow.press('input', 'Enter');
-    await new Promise(r => setTimeout(r, 1000));
+    await waitForResultsWithContent(cmdWindow);
     await cmdWindow.press('input', 'Enter');
-    await new Promise(r => setTimeout(r, 500));
+    await waitForClass(cmdWindow, '#chain-indicator', 'visible');
 
     // Verify in chain mode
     let chainVisible = await cmdWindow.$eval('#chain-indicator', (el: HTMLElement) => el.classList.contains('visible'));
@@ -1536,7 +1502,7 @@ test.describe('Command Chaining @desktop', () => {
 
     // Press Escape - should exit chain mode, not close panel
     await cmdWindow.press('input', 'Escape');
-    await new Promise(r => setTimeout(r, 300));
+    await waitForClass(cmdWindow, '#chain-indicator', 'visible', false);
 
     // Chain indicator should be hidden now
     chainVisible = await cmdWindow.$eval('#chain-indicator', (el: HTMLElement) => el.classList.contains('visible'));
@@ -1569,8 +1535,6 @@ test.describe('Command Chaining @desktop', () => {
     });
     expect(openResult.success).toBe(true);
 
-    await new Promise(r => setTimeout(r, 1500));
-
     const cmdWindow = await app.getWindow('cmd/panel.html', 5000);
     expect(cmdWindow).toBeTruthy();
 
@@ -1578,9 +1542,9 @@ test.describe('Command Chaining @desktop', () => {
     await cmdWindow.waitForSelector('input', { timeout: 5000 });
     await cmdWindow.fill('input', 'lists');
     await cmdWindow.press('input', 'ArrowDown');
-    await new Promise(r => setTimeout(r, 300));
+    await waitForClass(cmdWindow, '#results', 'visible');
     await cmdWindow.press('input', 'Enter');
-    await new Promise(r => setTimeout(r, 1000));
+    await waitForResultsWithContent(cmdWindow);
 
     // In output selection mode - first item should be selected
     let selectedItem = await cmdWindow.$('.command-item.selected');
@@ -1591,7 +1555,7 @@ test.describe('Command Chaining @desktop', () => {
 
     // Press down to select next item
     await cmdWindow.press('input', 'ArrowDown');
-    await new Promise(r => setTimeout(r, 200));
+    await waitForSelectionChange(cmdWindow, '.command-item.selected', firstSelectedText);
 
     // Selected item should change
     const secondSelectedText = await cmdWindow.$eval('.command-item.selected', (el: HTMLElement) => el.textContent || '');
@@ -1599,7 +1563,7 @@ test.describe('Command Chaining @desktop', () => {
 
     // Press up to go back
     await cmdWindow.press('input', 'ArrowUp');
-    await new Promise(r => setTimeout(r, 200));
+    await waitForSelectionChange(cmdWindow, '.command-item.selected', secondSelectedText);
 
     // Should be back to first item
     const backToFirst = await cmdWindow.$eval('.command-item.selected', (el: HTMLElement) => el.textContent || '');
@@ -1793,9 +1757,6 @@ test.describe('Theme Persistence @desktop', () => {
     // Close app
     await app.close();
 
-    // Wait a bit for cleanup
-    await new Promise(r => setTimeout(r, 500));
-
     // Second session: verify theme is restored
     app = await launchDesktopApp(profileName);
     bgWindow = await app.getBackgroundWindow();
@@ -1812,7 +1773,6 @@ test.describe('Theme Persistence @desktop', () => {
         width: 800, height: 600
       });
     });
-    await new Promise(r => setTimeout(r, 1000));
 
     const settingsWin = await app.getWindow('settings/settings.html', 5000);
     expect(settingsWin).toBeTruthy();

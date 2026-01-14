@@ -25,7 +25,7 @@ import path from 'path';
 import fs from 'fs';
 import http from 'http';
 import { fileURLToPath } from 'url';
-import { waitForWindow as waitForWindowHelper, sleep, getTestProfile } from '../helpers/window-utils';
+import { waitForWindow as waitForWindowHelper, sleep, getTestProfile, waitForAppReady } from '../helpers/window-utils';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -85,8 +85,22 @@ async function launchElectron(profile: string): Promise<DesktopApp> {
     }
   });
 
-  // Wait for app to initialize
-  await sleep(4000);
+  // Wait for background window to be ready (API loaded)
+  const bgWindow = await waitForWindowHelper(() => electronApp.windows(), 'app/background.html', 15000);
+  await waitForAppReady(bgWindow, 10000);
+
+  // Wait for extensions to load (at least cmd, groups, peeks, slides = 4 ext windows)
+  const waitForExtensions = async (minCount: number, timeout: number): Promise<void> => {
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+      const extWindows = electronApp.windows().filter(w =>
+        w.url().includes('peek://ext/') && w.url().includes('background.html')
+      );
+      if (extWindows.length >= minCount) return;
+      await sleep(100);
+    }
+  };
+  await waitForExtensions(4, 10000);
 
   const state: ElectronState = { app: electronApp };
 
@@ -259,9 +273,9 @@ async function launchTauriFrontend(profile: string): Promise<DesktopApp> {
     return { success: true, id: pages.length - 1 };
   });
 
-  // Navigate to background page
+  // Navigate to background page and wait for API
   await bgPage.goto(`http://localhost:${MOCK_PORT}/background.html`);
-  await sleep(2000);
+  await waitForAppReady(bgPage, 10000);
 
   // Simulate extension windows by creating pages for each builtin extension
   const extensions = ['groups', 'peeks', 'slides'];

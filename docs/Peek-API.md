@@ -428,11 +428,30 @@ window.app.debugLevel; // Current level
 
 Only available in core app pages (`peek://app/...`).
 
+### Hybrid Extension Architecture
+
+Peek uses a hybrid extension loading model:
+
+- **Built-in extensions** (`cmd`, `groups`, `peeks`, `slides`) run as iframes in a single extension host window for memory efficiency
+- **External extensions** (user-installed) run in separate BrowserWindows for crash isolation
+
+Both types are accessible via the same API - the loading mode is transparent to callers.
+
+### URL Schemes
+
+- Built-in consolidated: `peek://cmd/background.html`, `peek://groups/background.html`, etc.
+- External: `peek://ext/{id}/background.html`
+
+Each extension has a unique origin for isolation regardless of loading mode.
+
+### API Methods
+
 ```javascript
 // Check permission
 if (window.app.extensions._hasPermission()) {
-  // List running extensions
+  // List running extensions (includes both consolidated and separate window extensions)
   const exts = await window.app.extensions.list();
+  // Returns: { success: true, data: [{ id, manifest, status }, ...] }
 
   // Load/unload extensions
   await window.app.extensions.load('my-extension');

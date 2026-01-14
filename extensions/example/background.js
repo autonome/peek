@@ -115,16 +115,6 @@ const extension = {
    * Register commands - called when cmd extension is ready
    */
   registerCommands() {
-    // Basic hello command
-    api.commands.register({
-      name: 'example:hello',
-      description: 'Say hello',
-      execute: () => {
-        console.log('[example] Hello from command!');
-        alert('Hello World!');
-      }
-    });
-
     // Command that accepts images
     // The 'accepts' array specifies which mime types this command can receive
     api.commands.register({
@@ -160,8 +150,8 @@ const extension = {
     // Query in case cmd is already ready
     api.publish('cmd:query', {}, api.scopes.GLOBAL);
 
-    // Register a global shortcut to open the gallery
-    api.shortcuts.register('Option+G', openGallery, { global: true });
+    // Note: No global shortcut - use the cmd palette to access this extension
+    // (avoids conflicts with other extensions like groups which uses Option+g)
 
     console.log('[example] Extension loaded');
   },
@@ -170,10 +160,8 @@ const extension = {
     console.log('[example] Cleaning up...');
 
     if (hasPeekAPI) {
-      api.commands.unregister('example:hello');
       api.commands.unregister('example:save-image');
       api.commands.unregister('example:gallery');
-      api.shortcuts.unregister('Option+G', { global: true });
     }
   }
 };

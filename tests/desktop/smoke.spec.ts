@@ -67,7 +67,7 @@ test.describe('Cmd Palette @desktop', () => {
     if (app) await app.close();
   });
 
-  test('open cmd and execute hello command', async () => {
+  test('open cmd and execute gallery command', async () => {
     // Open cmd panel via window API
     const openResult = await bgWindow.evaluate(async () => {
       return await (window as any).app.window.open('peek://app/cmd/panel.html', {
@@ -89,8 +89,8 @@ test.describe('Cmd Palette @desktop', () => {
     // Wait for input to be ready
     await cmdWindow.waitForSelector('input', { timeout: 5000 });
 
-    // Type 'hello' command and wait for results to filter
-    await cmdWindow.fill('input', 'hello');
+    // Type 'example:gallery' command and wait for results to filter
+    await cmdWindow.fill('input', 'example:gallery');
     await waitForCommandResults(cmdWindow, 1);
 
     // Press Enter to execute
@@ -132,11 +132,12 @@ test.describe('Peeks @desktop', () => {
     });
     expect(addResult.success).toBe(true);
 
-    // Verify peeks extension is loaded
-    const peeksWindow = app.windows().find(w =>
-      w.url().includes('ext/peeks/background.html')
-    );
-    expect(peeksWindow).toBeTruthy();
+    // Verify peeks extension is loaded (hybrid mode: may be iframe or separate window)
+    const runningExts = await bgWindow.evaluate(async () => {
+      return await (window as any).app.extensions.list();
+    });
+    const peeksRunning = runningExts.data?.some((ext: any) => ext.id === 'peeks');
+    expect(peeksRunning).toBe(true);
 
     // Open a peek window for the address we created
     const peekResult = await bgWindow.evaluate(async () => {
@@ -196,11 +197,12 @@ test.describe('Slides @desktop', () => {
       expect(result.success).toBe(true);
     }
 
-    // Verify slides extension is loaded
-    const slidesWindow = app.windows().find(w =>
-      w.url().includes('ext/slides/background.html')
-    );
-    expect(slidesWindow).toBeTruthy();
+    // Verify slides extension is loaded (hybrid mode: may be iframe or separate window)
+    const runningExts = await bgWindow.evaluate(async () => {
+      return await (window as any).app.extensions.list();
+    });
+    const slidesRunning = runningExts.data?.some((ext: any) => ext.id === 'slides');
+    expect(slidesRunning).toBe(true);
 
     // Query addresses to verify they were added
     const queryResult = await bgWindow.evaluate(async () => {
@@ -570,14 +572,19 @@ test.describe('Core Functionality @desktop', () => {
   });
 
   test('app launches and extensions load', async () => {
-    const extWindows = app.getExtensionWindows();
-    expect(extWindows.length).toBeGreaterThanOrEqual(3);
+    // In hybrid mode:
+    // - Built-in extensions (groups, peeks, slides) are in extension host as iframes
+    // - External extensions (example) are in separate windows
+    const windows = app.windows();
 
-    // Verify specific extensions
-    const extUrls = extWindows.map(w => w.url());
-    expect(extUrls.some(u => u.includes('ext/groups'))).toBe(true);
-    expect(extUrls.some(u => u.includes('ext/peeks'))).toBe(true);
-    expect(extUrls.some(u => u.includes('ext/slides'))).toBe(true);
+    // Check extension host exists (for built-in extensions)
+    const hostWindow = windows.find(w => w.url().includes('extension-host.html'));
+    expect(hostWindow).toBeDefined();
+
+    // Check external extension window exists (example)
+    const extWindows = app.getExtensionWindows();
+    expect(extWindows.length).toBeGreaterThanOrEqual(1);
+    expect(extWindows.some(w => w.url().includes('ext/example'))).toBe(true);
   });
 
   test('database is accessible', async () => {
@@ -605,7 +612,7 @@ test.describe('Core Functionality @desktop', () => {
       // Retry a few times to allow extensions to finish loading
       for (let i = 0; i < 5; i++) {
         const cmds = await queryCommands() as any[];
-        if (cmds.some((c: any) => c.name === 'example:hello')) {
+        if (cmds.some((c: any) => c.name === 'example:gallery')) {
           return cmds;
         }
         await new Promise(r => setTimeout(r, 500));
@@ -615,9 +622,9 @@ test.describe('Core Functionality @desktop', () => {
     expect(Array.isArray(result)).toBe(true);
     expect(result.length).toBeGreaterThan(0);
 
-    // Should have hello command from example extension
-    const helloCmd = result.find((c: any) => c.name === 'example:hello');
-    expect(helloCmd).toBeTruthy();
+    // Should have gallery command from example extension
+    const galleryCmd = result.find((c: any) => c.name === 'example:gallery');
+    expect(galleryCmd).toBeTruthy();
   });
 
   test('window management works', async () => {
@@ -2003,7 +2010,7 @@ test.describe('Startup Phase Events @desktop', () => {
           resolve({
             cmdResponded: true,
             commandCount: msg.commands?.length || 0,
-            hasHelloCommand: msg.commands?.some((c: any) => c.name === 'example:hello')
+            hasGalleryCommand: msg.commands?.some((c: any) => c.name === 'example:gallery')
           });
         }, api.scopes.GLOBAL);
 
@@ -2013,7 +2020,185 @@ test.describe('Startup Phase Events @desktop', () => {
 
     expect(result.cmdResponded).toBe(true);
     expect(result.commandCount).toBeGreaterThan(0);
-    // hello command from example extension should be registered
-    expect(result.hasHelloCommand).toBe(true);
+    // gallery command from example extension should be registered
+    expect(result.hasGalleryCommand).toBe(true);
+  });
+
+  test('cmd extension is always running (cannot be disabled)', async () => {
+    // cmd is required infrastructure - verify it's always in the running extensions list
+    const result = await bgWindow.evaluate(async () => {
+      const api = (window as any).app;
+      const runningExts = await api.extensions.list();
+      return {
+        success: runningExts.success,
+        extensions: runningExts.data || [],
+        cmdRunning: runningExts.data?.some((ext: any) => ext.id === 'cmd'),
+        cmdStatus: runningExts.data?.find((ext: any) => ext.id === 'cmd')?.status
+      };
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.cmdRunning).toBe(true);
+    expect(result.cmdStatus).toBe('running');
+  });
+});
+
+// ============================================================================
+// Hybrid Extension Mode Tests
+// ============================================================================
+
+test.describe('Hybrid Extension Mode @desktop', () => {
+  let app: DesktopApp;
+  let bgWindow: Page;
+
+  test.beforeAll(async () => {
+    // Launch app - hybrid mode is now the default
+    app = await launchDesktopApp(`test-hybrid-${Date.now()}`);
+    bgWindow = await app.getBackgroundWindow();
+  });
+
+  test.afterAll(async () => {
+    if (app) await app.close();
+  });
+
+  test('extension host window exists for built-in extensions', async () => {
+    // Extension host should exist for consolidated built-in extensions
+    const windows = app.windows();
+    const hostWindow = windows.find(w => w.url().includes('peek://app/extension-host.html'));
+    expect(hostWindow).toBeDefined();
+  });
+
+  test('built-in extensions load as iframes in extension host', async () => {
+    // Get the extension host window
+    const windows = app.windows();
+    const hostWindow = windows.find(w => w.url().includes('peek://app/extension-host.html'));
+    expect(hostWindow).toBeDefined();
+
+    // Wait for iframes to load (with retry)
+    const iframeData = await hostWindow!.evaluate(async () => {
+      const maxWait = 10000;
+      const start = Date.now();
+      while (Date.now() - start < maxWait) {
+        const container = document.getElementById('extensions');
+        const iframes = container ? Array.from(container.querySelectorAll('iframe')) : [];
+        // Built-in extensions: cmd, groups, peeks, slides (4 total)
+        if (iframes.length >= 4) {
+          return {
+            count: iframes.length,
+            srcs: iframes.map(f => f.src)
+          };
+        }
+        await new Promise(r => setTimeout(r, 200));
+      }
+      const container = document.getElementById('extensions');
+      const iframes = container ? Array.from(container.querySelectorAll('iframe')) : [];
+      return {
+        count: iframes.length,
+        srcs: iframes.map(f => f.src)
+      };
+    });
+
+    // Should have iframes for cmd, groups, peeks, slides (4 built-in extensions)
+    expect(iframeData.count).toBe(4);
+    expect(iframeData.srcs.some(s => s.includes('peek://cmd/'))).toBe(true);
+    expect(iframeData.srcs.some(s => s.includes('peek://groups/'))).toBe(true);
+    expect(iframeData.srcs.some(s => s.includes('peek://peeks/'))).toBe(true);
+    expect(iframeData.srcs.some(s => s.includes('peek://slides/'))).toBe(true);
+  });
+
+  test('example extension loads as separate window (external)', async () => {
+    // Example extension should load in its own window, not in extension host
+    const windows = app.windows();
+
+    // Should have a separate window for example extension
+    const exampleWindow = windows.find(w =>
+      w.url().includes('peek://ext/example/background.html')
+    );
+    expect(exampleWindow).toBeDefined();
+  });
+
+  test('commands work from both consolidated and external extensions', async () => {
+    // Wait a bit for extensions to initialize and register commands
+    await sleep(1000);
+
+    // Query commands - should include commands from all extensions
+    const result = await bgWindow.evaluate(async () => {
+      const api = (window as any).app;
+
+      return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          resolve({ success: false, commandCount: 0 });
+        }, 10000);
+
+        api.subscribe('cmd:query-commands-response', (msg: any) => {
+          clearTimeout(timeout);
+          resolve({
+            success: true,
+            commandCount: msg.commands?.length || 0,
+            // example:gallery comes from external 'example' extension
+            hasGalleryCommand: msg.commands?.some((c: any) => c.name === 'example:gallery'),
+            // settings comes from core (via consolidated cmd)
+            hasSettingsCommand: msg.commands?.some((c: any) => c.name === 'settings')
+          });
+        }, api.scopes.GLOBAL);
+
+        api.publish('cmd:query-commands', {}, api.scopes.GLOBAL);
+      });
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.commandCount).toBeGreaterThan(0);
+    // example:gallery proves external extension commands work
+    expect(result.hasGalleryCommand).toBe(true);
+    // settings proves consolidated extension commands work
+    expect(result.hasSettingsCommand).toBe(true);
+  });
+
+  test('pubsub works between consolidated and external extensions', async () => {
+    // Test pubsub routing between extensions in different modes
+    // cmd (consolidated) receives query, responds to core
+    const result = await bgWindow.evaluate(async () => {
+      const api = (window as any).app;
+
+      return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          resolve({ received: false, commandCount: 0 });
+        }, 5000);
+
+        api.subscribe('cmd:query-commands-response', (msg: any) => {
+          clearTimeout(timeout);
+          resolve({
+            received: true,
+            commandCount: msg.commands?.length || 0
+          });
+        }, api.scopes.GLOBAL);
+
+        api.publish('cmd:query-commands', {}, api.scopes.GLOBAL);
+      });
+    });
+
+    expect(result.received).toBe(true);
+    expect(result.commandCount).toBeGreaterThan(0);
+  });
+
+  test('correct window count for hybrid mode', async () => {
+    // In hybrid mode we should have:
+    // - 1 background window (core)
+    // - 1 extension host window (consolidated built-ins)
+    // - 1 separate window for 'example' extension
+    // - Plus any UI windows (settings, etc.)
+    const windows = app.windows();
+
+    const bgWindows = windows.filter(w => w.url().includes('app/background.html'));
+    const hostWindows = windows.filter(w => w.url().includes('extension-host.html'));
+    const extWindows = windows.filter(w =>
+      w.url().includes('peek://ext/') && w.url().includes('background.html')
+    );
+
+    expect(bgWindows.length).toBe(1);
+    expect(hostWindows.length).toBe(1);
+    // Only example should be in separate window
+    expect(extWindows.length).toBe(1);
+    expect(extWindows[0].url()).toContain('example');
   });
 });

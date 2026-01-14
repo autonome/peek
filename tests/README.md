@@ -124,6 +124,24 @@ Electron Tests:                    Tauri Frontend Tests:
 
 **The gap is filled by Rust unit tests** in `backend/tauri/src-tauri/tests/smoke.rs` which test real datastore operations, persistence, and backend logic.
 
+## Hybrid Extension Mode Tests
+
+The test suite includes specific tests for the hybrid extension architecture in the `Hybrid Extension Mode @desktop` describe block:
+
+| Test | What it verifies |
+|------|-----------------|
+| `extension host window exists` | Extension host window loads at `peek://app/extension-host.html` |
+| `built-in extensions load as iframes` | `cmd`, `groups`, `peeks`, `slides` are iframes in extension host |
+| `example extension loads as separate window` | External extensions get separate BrowserWindows |
+| `commands work from both consolidated and external` | Commands from both loading modes are accessible |
+| `pubsub works between consolidated and external` | Cross-extension messaging works across loading modes |
+| `correct window count for hybrid mode` | Expected window count: 1 core + 1 host + 1 external |
+
+The test fixture (`tests/fixtures/desktop-app.ts`) handles hybrid mode by:
+1. Waiting for the extension host window to load
+2. Waiting for at least one external extension window (e.g., `example`)
+3. Providing `getExtensionWindows()` that returns separate window extensions only
+
 ## Coverage Matrix
 
 Both test frameworks cover equivalent functionality:

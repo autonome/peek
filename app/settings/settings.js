@@ -816,10 +816,14 @@ const renderExtensionsSettings = async () => {
         leftSide.style.cssText = 'display: flex; align-items: center; gap: 12px;';
 
         // Enable/disable checkbox
+        // cmd extension cannot be disabled - it's required infrastructure
+        const isCmdExtension = ext.id === 'cmd';
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.checked = ext.enabled;
-        checkbox.style.cssText = 'width: 16px; height: 16px; cursor: pointer;';
+        checkbox.disabled = isCmdExtension;
+        checkbox.title = isCmdExtension ? 'Required - cannot be disabled' : '';
+        checkbox.style.cssText = `width: 16px; height: 16px; cursor: ${isCmdExtension ? 'not-allowed' : 'pointer'}; ${isCmdExtension ? 'opacity: 0.5;' : ''}`;
         checkbox.addEventListener('change', async (e) => {
           const newEnabled = e.target.checked;
           checkbox.disabled = true;
@@ -896,6 +900,14 @@ const renderExtensionsSettings = async () => {
           badge.style.cssText = 'margin-left: 8px; font-size: 10px; padding: 2px 6px; background: var(--bg-tertiary); border-radius: 4px; color: var(--text-tertiary);';
           badge.textContent = 'built-in';
           cardTitle.appendChild(badge);
+        }
+
+        // Show "required" badge for cmd extension (cannot be disabled)
+        if (isCmdExtension) {
+          const requiredBadge = document.createElement('span');
+          requiredBadge.style.cssText = 'margin-left: 8px; font-size: 10px; padding: 2px 6px; background: var(--base0E, #c678dd); border-radius: 4px; color: white;';
+          requiredBadge.textContent = 'required';
+          cardTitle.appendChild(requiredBadge);
         }
 
         // Status indicator: running or stopped

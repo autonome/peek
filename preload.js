@@ -1048,6 +1048,24 @@ api.files = {
   }
 };
 
+// Extension host specific API for receiving direct IPC messages
+const isExtensionHost = sourceAddress === 'peek://app/extension-host.html';
+if (isExtensionHost) {
+  api.ipc = {
+    /**
+     * Listen for IPC messages from main process
+     * Used by extension host to receive ext:load commands
+     * @param {string} channel - IPC channel to listen on
+     * @param {function} callback - Handler for incoming messages
+     */
+    on: (channel, callback) => {
+      ipcRenderer.on(channel, (event, ...args) => {
+        callback(...args);
+      });
+    }
+  };
+}
+
 contextBridge.exposeInMainWorld('app', api);
 console.log(src, 'api exposed in', Date.now() - preloadStart, 'ms');
 

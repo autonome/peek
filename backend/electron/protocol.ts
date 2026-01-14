@@ -254,6 +254,25 @@ export function initProtocol(appRootDir: string): void {
       return net.fetch(fileURL);
     }
 
+    // Handle per-extension hosts: peek://{ext-id}/{path}
+    // This gives each extension a unique origin for iframe isolation
+    // Check if host matches a registered extension
+    const extBasePath = getExtensionPath(host);
+    if (extBasePath) {
+      const extPath = pathname || 'background.html';
+      const absolutePath = path.resolve(extBasePath, extPath);
+
+      // Security: ensure path stays within extension folder
+      const normalizedBase = path.normalize(extBasePath);
+      if (!absolutePath.startsWith(normalizedBase)) {
+        console.error('Path traversal attempt blocked:', absolutePath);
+        return new Response('Forbidden', { status: 403 });
+      }
+
+      const fileURL = pathToFileURL(absolutePath).toString();
+      return net.fetch(fileURL);
+    }
+
     let relativePath = pathname;
 
     // Handle node_modules paths

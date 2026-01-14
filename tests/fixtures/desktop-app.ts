@@ -68,9 +68,21 @@ function isHeadless(): boolean {
 }
 
 /**
- * Launch Electron backend
+ * Options for launching desktop app
  */
-async function launchElectron(profile: string): Promise<DesktopApp> {
+export interface LaunchOptions {
+  /** Legacy: force all extensions to separate windows (for testing) */
+  legacyMode?: boolean;
+}
+
+/**
+ * Launch Electron backend
+ *
+ * Default is hybrid mode:
+ * - Built-in extensions (cmd, groups, peeks, slides) → consolidated (iframes)
+ * - External extensions (example, user-installed) → separate windows
+ */
+async function launchElectron(profile: string, options: LaunchOptions = {}): Promise<DesktopApp> {
   // Translate unified HEADLESS to Electron's PEEK_HEADLESS
   const headless = isHeadless();
 
@@ -89,18 +101,24 @@ async function launchElectron(profile: string): Promise<DesktopApp> {
   const bgWindow = await waitForWindowHelper(() => electronApp.windows(), 'app/background.html', 15000);
   await waitForAppReady(bgWindow, 10000);
 
-  // Wait for extensions to load (at least cmd, groups, peeks, slides = 4 ext windows)
-  const waitForExtensions = async (minCount: number, timeout: number): Promise<void> => {
+  // Hybrid mode: wait for extension host (built-in) AND separate windows (external like 'example')
+  const waitForHybridExtensions = async (timeout: number): Promise<void> => {
     const start = Date.now();
     while (Date.now() - start < timeout) {
+      // Check for extension host window (consolidated built-ins)
+      const hostWindow = electronApp.windows().find(w =>
+        w.url().includes('peek://app/extension-host.html')
+      );
+      // Check for at least one external extension window (example)
       const extWindows = electronApp.windows().filter(w =>
         w.url().includes('peek://ext/') && w.url().includes('background.html')
       );
-      if (extWindows.length >= minCount) return;
+      // Ready when we have both host and at least one external
+      if (hostWindow && extWindows.length >= 1) return;
       await sleep(100);
     }
   };
-  await waitForExtensions(4, 10000);
+  await waitForHybridExtensions(10000);
 
   const state: ElectronState = { app: electronApp };
 
@@ -335,12 +353,12 @@ async function launchTauriFrontend(profile: string): Promise<DesktopApp> {
 /**
  * Launch desktop app based on BACKEND environment variable
  */
-export async function launchDesktopApp(profile?: string): Promise<DesktopApp> {
+export async function launchDesktopApp(profile?: string, options: LaunchOptions = {}): Promise<DesktopApp> {
   const backend = (process.env.BACKEND || 'electron') as Backend;
   const testProfile = profile || getTestProfile();
 
   if (backend === 'electron') {
-    return launchElectron(testProfile);
+    return launchElectron(testProfile, options);
   } else if (backend === 'tauri') {
     return launchTauriFrontend(testProfile);
   } else {

@@ -39,8 +39,10 @@
       /* Command display wrapper */
       .command-display {
         width: 100%;
-        height: 40px;
+        min-height: 40px;
         position: relative;
+        display: flex;
+        align-items: flex-start;
       }
 
       /* Command input field */
@@ -50,7 +52,7 @@
         left: 0;
         width: 100%;
         height: 40px;
-        line-height: 40px;
+        line-height: 1.4;
         border: none;
         outline: none;
         background: transparent;
@@ -59,9 +61,14 @@
         font-family: inherit;
         font-size: 20px;
         font-weight: 500;
-        padding: 0;
+        padding: 8px 0;
+        box-sizing: border-box;
         -webkit-app-region: no-drag;
         z-index: 2;
+      }
+
+      #command-input::placeholder {
+        color: rgba(255, 255, 255, 0.3);
       }
 
       /* Suggestion element that shows the matching command with highlighting */
@@ -71,7 +78,7 @@
         left: 0;
         width: 100%;
         height: 40px;
-        line-height: 40px;
+        line-height: 1.4;
         font-family: inherit;
         font-size: 20px;
         font-weight: 500;
@@ -80,6 +87,8 @@
         overflow: hidden;
         pointer-events: none;
         z-index: 1;
+        padding: 8px 0;
+        box-sizing: border-box;
       }
 
       #command-text .typed {
@@ -397,7 +406,7 @@
 
     <div class="center-wrapper">
       <div class="command-display">
-        <input id="command-input" type="text" autofocus spellcheck="false" />
+        <input id="command-input" type="text" autofocus spellcheck="false" placeholder="Type a command..." />
         <div id="command-text"></div>
       </div>
     </div>

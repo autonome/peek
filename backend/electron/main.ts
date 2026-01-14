@@ -43,6 +43,13 @@ const extensionWindows = new Map<string, {
   status: 'loading' | 'running' | 'crashed';
 }>();
 
+// Extension host window for built-in extensions (consolidated mode)
+let extensionHostWindow: BrowserWindow | null = null;
+
+// Built-in extensions that load in consolidated mode (iframes)
+// External extensions (including 'example') load in separate windows
+const CONSOLIDATED_EXTENSION_IDS = ['cmd', 'groups', 'peeks', 'slides'];
+
 // Window manager: windowId -> { source, params }
 const windowRegistry = new Map<number, {
   source: string;
@@ -80,11 +87,33 @@ export async function initialize(): Promise<void> {
   initDatabase(dbPath);
 
   // Set up extension broadcaster for pubsub
+  // Hybrid mode: broadcast to BOTH consolidated (iframes) AND separate windows
   setExtensionBroadcaster((topic, msg, source) => {
+    const sourceOrigin = source.startsWith('peek://') ? new URL(source).origin : source;
+
+    // Broadcast to consolidated extension iframes (built-in extensions)
+    if (extensionHostWindow && !extensionHostWindow.isDestroyed()) {
+      const mainFrame = extensionHostWindow.webContents.mainFrame;
+      for (const frame of mainFrame.framesInSubtree) {
+        if (frame !== mainFrame && frame.url) {
+          const frameOrigin = new URL(frame.url).origin;
+          // Don't echo back to sender
+          if (frameOrigin !== sourceOrigin) {
+            frame.send(`pubsub:${topic}`, {
+              ...(msg as object),
+              source
+            });
+          }
+        }
+      }
+    }
+
+    // Broadcast to separate extension windows (external extensions)
     for (const [extId, entry] of extensionWindows) {
       if (entry.win && !entry.win.isDestroyed() && entry.status === 'running') {
-        const extOrigin = `peek://ext/${extId}/`;
-        if (!source.startsWith(extOrigin)) {
+        const extOrigin = `peek://ext/${extId}`;
+        // Don't echo back to sender
+        if (extOrigin !== sourceOrigin) {
           entry.win.webContents.send(`pubsub:${topic}`, {
             ...(msg as object),
             source
@@ -289,10 +318,202 @@ export async function loadEnabledExtensions(): Promise<number> {
 }
 
 /**
+ * Create the consolidated extension host window
+ * All extensions load as iframes within this single window
+ */
+async function createExtensionHostWindow(): Promise<BrowserWindow> {
+  console.log('[ext:host] Creating consolidated extension host window');
+
+  const win = new BrowserWindow({
+    show: false,
+    backgroundColor: getSystemThemeBackgroundColor(),
+    webPreferences: {
+      preload: config.preloadPath,
+      nodeIntegrationInSubFrames: true,  // Preload runs in iframes too
+    }
+  });
+
+  // Forward console logs from extension host
+  win.webContents.on('console-message', (event) => {
+    // New API: event has message property
+    const msg = (event as { message?: string }).message || JSON.stringify(event);
+    console.log(`[ext:host] ${msg}`);
+  });
+
+  // Log load errors
+  win.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
+    console.error(`[ext:host] Failed to load: ${errorCode} ${errorDescription}`);
+  });
+
+  await win.loadURL('peek://app/extension-host.html');
+
+  extensionHostWindow = win;
+
+  return win;
+}
+
+/**
+ * Load extensions in consolidated mode (single window with iframes)
+ */
+async function loadExtensionsConsolidated(): Promise<number> {
+  const extStart = Date.now();
+
+  // Create the extension host window
+  const host = await createExtensionHostWindow();
+
+  // Get all extension IDs to load
+  const builtinExtIds = getRegisteredExtensionIds();
+  const enabledBuiltinIds = builtinExtIds.filter(id => isBuiltinExtensionEnabled(id));
+
+  // Get external extensions
+  const externalExts = getExternalExtensions();
+  const enabledExternalIds = externalExts
+    .filter(ext => ext.enabled && ext.path)
+    .map(ext => ext.id);
+
+  const allExtIds = [...enabledBuiltinIds, ...enabledExternalIds];
+
+  console.log(`[ext:host] Loading ${allExtIds.length} extensions as iframes`);
+
+  // Phase 1: Early
+  publish('system', scopes.GLOBAL, 'ext:startup:phase', { phase: 'early' });
+
+  // Send load commands to extension host
+  // Load cmd first (it's the command registry)
+  if (allExtIds.includes('cmd')) {
+    host.webContents.send('ext:load', { id: 'cmd', url: `peek://cmd/background.html` });
+    // Wait for cmd iframe to load
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+
+  // Phase 2: Commands
+  publish('system', scopes.GLOBAL, 'ext:startup:phase', { phase: 'commands' });
+
+  // Load remaining extensions
+  const otherIds = allExtIds.filter(id => id !== 'cmd');
+  for (const extId of otherIds) {
+    host.webContents.send('ext:load', { id: extId, url: `peek://${extId}/background.html` });
+  }
+
+  // Wait for iframes to load
+  await new Promise(resolve => setTimeout(resolve, 200));
+
+  console.log(`[ext:timing] consolidated total: ${Date.now() - extStart}ms`);
+
+  // Phase 3: UI
+  publish('system', scopes.GLOBAL, 'ext:startup:phase', { phase: 'ui' });
+
+  // Phase 4: Complete
+  publish('system', scopes.GLOBAL, 'ext:startup:phase', { phase: 'complete' });
+  publish('system', scopes.GLOBAL, 'ext:all-loaded', { count: allExtIds.length });
+
+  return allExtIds.length;
+}
+
+/**
+ * Load all enabled extensions (hybrid mode)
+ * - Built-in extensions (cmd, groups, peeks, slides) → consolidated (iframes)
+ * - External extensions (including example) → separate windows
+ */
+export async function loadExtensions(): Promise<number> {
+  const extStart = Date.now();
+
+  // Get all registered extension IDs
+  const registeredExtIds = getRegisteredExtensionIds();
+
+  // Split into consolidated (built-in) and external
+  const consolidatedIds = registeredExtIds.filter(id =>
+    CONSOLIDATED_EXTENSION_IDS.includes(id) && isBuiltinExtensionEnabled(id)
+  );
+  const externalBuiltinIds = registeredExtIds.filter(id =>
+    !CONSOLIDATED_EXTENSION_IDS.includes(id) && isBuiltinExtensionEnabled(id)
+  );
+
+  // Get external extensions from datastore
+  const externalExts = getExternalExtensions();
+  const enabledExternalExts = externalExts.filter(ext => ext.enabled && ext.path);
+
+  console.log(`[ext] Hybrid mode: ${consolidatedIds.length} consolidated, ${externalBuiltinIds.length + enabledExternalExts.length} external`);
+
+  // Phase 1: Early
+  publish('system', scopes.GLOBAL, 'ext:startup:phase', { phase: 'early' });
+
+  // Create extension host window for consolidated extensions
+  if (consolidatedIds.length > 0) {
+    const host = await createExtensionHostWindow();
+
+    // Load cmd first (command registry)
+    if (consolidatedIds.includes('cmd')) {
+      host.webContents.send('ext:load', { id: 'cmd', url: 'peek://cmd/background.html' });
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    // Phase 2: Commands
+    publish('system', scopes.GLOBAL, 'ext:startup:phase', { phase: 'commands' });
+
+    // Load remaining consolidated extensions
+    const otherConsolidatedIds = consolidatedIds.filter(id => id !== 'cmd');
+    for (const extId of otherConsolidatedIds) {
+      host.webContents.send('ext:load', { id: extId, url: `peek://${extId}/background.html` });
+    }
+
+    // Wait for consolidated extensions to load
+    await new Promise(resolve => setTimeout(resolve, 200));
+  } else {
+    // Phase 2: Commands (even if no consolidated)
+    publish('system', scopes.GLOBAL, 'ext:startup:phase', { phase: 'commands' });
+  }
+
+  // Load external built-in extensions (like 'example') as separate windows
+  for (const extId of externalBuiltinIds) {
+    await createExtensionWindow(extId);
+  }
+
+  // Load external extensions from datastore as separate windows
+  for (const ext of enabledExternalExts) {
+    if (!extensionWindows.has(ext.id)) {
+      registerExtensionPath(ext.id, ext.path!);
+      await createExtensionWindow(ext.id);
+    }
+  }
+
+  const totalCount = consolidatedIds.length + externalBuiltinIds.length + enabledExternalExts.length;
+  console.log(`[ext:timing] hybrid total: ${Date.now() - extStart}ms`);
+
+  // Phase 3: UI
+  publish('system', scopes.GLOBAL, 'ext:startup:phase', { phase: 'ui' });
+
+  // Phase 4: Complete
+  publish('system', scopes.GLOBAL, 'ext:startup:phase', { phase: 'complete' });
+  publish('system', scopes.GLOBAL, 'ext:all-loaded', { count: totalCount });
+
+  return totalCount;
+}
+
+/**
  * Get running extensions info
+ * Includes both consolidated (iframe) and separate window extensions
  */
 export function getRunningExtensions(): Array<{ id: string; manifest: unknown; status: string }> {
-  const running = [];
+  const running: Array<{ id: string; manifest: unknown; status: string }> = [];
+
+  // Add consolidated extensions (in extension host iframes)
+  if (extensionHostWindow && !extensionHostWindow.isDestroyed()) {
+    for (const extId of CONSOLIDATED_EXTENSION_IDS) {
+      if (isBuiltinExtensionEnabled(extId)) {
+        // loadExtensionManifest expects a path, not an ID
+        const extPath = getExtensionPath(extId);
+        const manifest = extPath ? loadExtensionManifest(extPath) : null;
+        running.push({
+          id: extId,
+          manifest: manifest || { id: extId },
+          status: 'running'
+        });
+      }
+    }
+  }
+
+  // Add separate window extensions
   for (const [extId, entry] of extensionWindows) {
     if (entry.status === 'running') {
       running.push({
@@ -302,6 +523,7 @@ export function getRunningExtensions(): Array<{ id: string; manifest: unknown; s
       });
     }
   }
+
   return running;
 }
 

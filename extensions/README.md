@@ -1,6 +1,50 @@
 # Peek Extensions
 
-Extensions are isolated modules that run in their own BrowserWindow processes and communicate with the core app via IPC and pubsub messaging.
+Extensions are isolated modules that communicate with the core app via IPC and pubsub messaging.
+
+## Hybrid Extension Architecture
+
+Peek uses a **hybrid extension loading model** that balances memory efficiency with crash isolation:
+
+### Built-in Extensions (Consolidated)
+Built-in extensions (`cmd`, `groups`, `peeks`, `slides`) run as **iframes in a single extension host window**:
+- Share a single Electron BrowserWindow process
+- Memory efficient (~80-120MB vs ~200-400MB for separate windows)
+- Origin isolation via unique URL hosts (`peek://cmd/`, `peek://groups/`, etc.)
+- If one crashes, others in the same host are affected
+
+### External Extensions (Separate Windows)
+External extensions (including `example` and user-installed) run in **separate BrowserWindows**:
+- Each has its own Electron process
+- Crash isolation - one extension crashing doesn't affect others
+- Uses `peek://ext/{id}/` URL scheme
+- Better for untrusted or experimental extensions
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Extension Host Window (peek://app/extension-host.html)      │
+│ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────┐ │
+│ │ <iframe>    │ │ <iframe>    │ │ <iframe>    │ │<iframe> │ │
+│ │ peek://cmd/ │ │peek://groups│ │peek://peeks/│ │peek://  │ │
+│ │             │ │             │ │             │ │slides/  │ │
+│ └─────────────┘ └─────────────┘ └─────────────┘ └─────────┘ │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────┐  ┌─────────────────┐
+│ BrowserWindow   │  │ BrowserWindow   │
+│ peek://ext/     │  │ peek://ext/     │
+│ example/        │  │ user-ext/       │
+│ (separate proc) │  │ (separate proc) │
+└─────────────────┘  └─────────────────┘
+```
+
+### Origin Isolation
+
+Each extension gets a unique origin regardless of loading mode:
+- Built-in: `peek://cmd/background.html` → origin `peek://cmd`
+- External: `peek://ext/example/background.html` → origin `peek://ext`
+
+This prevents cross-extension access to localStorage, DOM, and globals.
 
 ## Extension Structure
 
@@ -243,6 +287,19 @@ The `cmd` extension is the command registry - all other extensions register thei
 
 This is enforced in `isBuiltinExtensionEnabled()` which always returns `true` for cmd.
 
+### Hybrid Loading Process
+
+Extensions are loaded in hybrid mode by `loadExtensions()` in `backend/electron/main.ts`:
+
+1. **Create extension host window** - Single BrowserWindow at `peek://app/extension-host.html`
+2. **Load built-in extensions as iframes** - `cmd`, `groups`, `peeks`, `slides` loaded via IPC into the host
+3. **Load external extensions as separate windows** - Each gets its own BrowserWindow
+
+```typescript
+// Which extensions use consolidated mode (defined in main.ts)
+const CONSOLIDATED_EXTENSION_IDS = ['cmd', 'groups', 'peeks', 'slides'];
+```
+
 ### Built-in Extensions
 
 Built-in extensions are registered in `index.js`:
@@ -250,16 +307,14 @@ Built-in extensions are registered in `index.js`:
 registerExtensionPath('example', path.join(__dirname, 'extensions', 'example'));
 ```
 
-And listed in `loadEnabledExtensions()`:
-```javascript
-const builtinExtensions = ['groups', 'peeks', 'slides'];
-```
+Built-in extensions that are NOT in `CONSOLIDATED_EXTENSION_IDS` (like `example`) are treated as external and get separate windows. This is intentional - it exercises external extension code paths during development.
 
 ### External Extensions
 
 External extensions are:
 1. Added via Settings UI (stored in datastore `extensions` table)
 2. Loaded on startup if `enabled === 1` and have a valid `path`
+3. Always run in separate BrowserWindows for crash isolation
 
 ## Settings Integration
 

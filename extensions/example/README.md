@@ -20,7 +20,7 @@ const api = hasPeekAPI ? window.app : null;
 if (hasPeekAPI) {
   // Full Peek extension functionality
   api.commands.register({ ... });
-  api.shortcuts.register('Option+G', handler, { global: true });
+  // Access commands via the cmd palette (Option+Space)
 } else {
   // Fallback for standalone website mode
   console.log('Running without Peek API');
@@ -81,15 +81,10 @@ async function getStoredImages() {
 
 | Command | Description |
 |---------|-------------|
-| `example:hello` | Basic hello world command |
 | `example:save-image` | Save an image to the gallery (accepts image/*) |
 | `example:gallery` | Open the image gallery window |
 
-## Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `Option+G` | Open the image gallery |
+Access these commands via the cmd palette (`Option+Space`).
 
 ## Running Standalone
 

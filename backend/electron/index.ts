@@ -157,6 +157,7 @@ export {
   discoverBuiltinThemes,
   createExtensionWindow,
   loadEnabledExtensions,
+  loadExtensions,
   getRunningExtensions,
   destroyExtensionWindow,
   getExtensionWindow,

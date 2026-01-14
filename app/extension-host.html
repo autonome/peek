@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Extension Host</title>
+  <style>
+    /* Hide iframes - they're background scripts */
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+    iframe {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="extensions"></div>
+  <script>
+    /**
+     * Extension Host
+     *
+     * Loads extension background scripts as iframes within a single window.
+     * Each iframe gets a unique origin (peek://cmd/, peek://groups/, etc.)
+     * for isolation, while sharing a single renderer process for efficiency.
+     *
+     * With nodeIntegrationInSubFrames enabled, each iframe gets its own
+     * preload script instance, so the standard window.app API works.
+     */
+
+    const api = window.app;
+    const extensionFrames = new Map();  // extId -> iframe element
+    const loadedExtensions = new Set();
+
+    console.log('[ext:host] Extension host starting');
+
+    // Listen for extension load requests from main process via direct IPC
+    if (api.ipc && api.ipc.on) {
+      api.ipc.on('ext:load', (msg) => {
+        const { id, url } = msg;
+
+        if (loadedExtensions.has(id)) {
+          console.log('[ext:host] Extension already loaded:', id);
+          return;
+        }
+
+        console.log('[ext:host] Loading extension:', id, url);
+
+        const iframe = document.createElement('iframe');
+        iframe.src = url;
+        iframe.id = `ext-${id}`;
+        // No sandbox - we want full preload access via nodeIntegrationInSubFrames
+
+        iframe.onload = () => {
+          console.log('[ext:host] Extension loaded:', id);
+        };
+
+        iframe.onerror = (err) => {
+          console.error('[ext:host] Extension failed to load:', id, err);
+        };
+
+        document.getElementById('extensions').appendChild(iframe);
+        extensionFrames.set(id, iframe);
+        loadedExtensions.add(id);
+      });
+    } else {
+      console.error('[ext:host] api.ipc not available - cannot load extensions');
+    }
+
+    // Report ready
+    console.log('[ext:host] Extension host ready');
+  </script>
+</body>
+</html>

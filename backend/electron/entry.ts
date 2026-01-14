@@ -17,7 +17,7 @@ import {
   initialize,
   discoverBuiltinExtensions,
   discoverBuiltinThemes,
-  loadEnabledExtensions,
+  loadExtensions,
   // External URL handling
   setAppReady,
   registerExternalUrlHandlers,
@@ -286,7 +286,7 @@ const onReady = async () => {
     if (!extensionsLoaded) {
       extensionsLoaded = true;
       const extStart = Date.now();
-      await loadEnabledExtensions();
+      await loadExtensions();
       const extTime = Date.now() - extStart;
       const totalTime = Date.now() - ((global as Record<string, unknown>).__startupStart as number);
       console.log(`[startup] main: ${extStart - ((global as Record<string, unknown>).__startupStart as number)}ms, extensions: ${extTime}ms, total: ${totalTime}ms`);

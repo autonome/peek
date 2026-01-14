@@ -6,15 +6,30 @@
         "type": "string",
         "description": "Custom greeting message",
         "default": "Hello World"
+      },
+      "galleryColumns": {
+        "type": "number",
+        "description": "Number of columns in the gallery grid",
+        "default": 4,
+        "minimum": 2,
+        "maximum": 8
+      },
+      "showMetadata": {
+        "type": "boolean",
+        "description": "Show file size and date in gallery",
+        "default": true
       }
     }
   },
   "storageKeys": {
-    "PREFS": "prefs"
+    "PREFS": "prefs",
+    "IMAGES": "example_images"
   },
   "defaults": {
     "prefs": {
-      "greeting": "Hello World"
+      "greeting": "Hello World",
+      "galleryColumns": 4,
+      "showMetadata": true
     }
   }
 }

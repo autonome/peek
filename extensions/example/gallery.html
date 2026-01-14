@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline'; img-src 'self' data: blob:;">
+  <title>Image Gallery</title>
+  <link rel="stylesheet" href="peek://theme/variables.css">
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: var(--font-family, system-ui, -apple-system, sans-serif);
+      background: var(--background, #1e1e1e);
+      color: var(--foreground, #e0e0e0);
+      margin: 0;
+      padding: 20px;
+      min-height: 100vh;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 15px;
+      border-bottom: 1px solid var(--border, #333);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.5rem;
+      font-weight: 500;
+    }
+
+    .status {
+      font-size: 0.85rem;
+      color: var(--foreground-muted, #888);
+    }
+
+    .status.connected {
+      color: var(--success, #4caf50);
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    button {
+      background: var(--button-background, #333);
+      color: var(--button-foreground, #e0e0e0);
+      border: 1px solid var(--border, #444);
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: background 0.15s;
+    }
+
+    button:hover {
+      background: var(--button-hover-background, #444);
+    }
+
+    button:active {
+      background: var(--button-active-background, #555);
+    }
+
+    .drop-zone {
+      border: 2px dashed var(--border, #444);
+      border-radius: 12px;
+      padding: 40px;
+      text-align: center;
+      margin-bottom: 20px;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    .drop-zone.dragover {
+      border-color: var(--accent, #007acc);
+      background: var(--accent-background, rgba(0, 122, 204, 0.1));
+    }
+
+    .drop-zone p {
+      margin: 0 0 10px 0;
+      color: var(--foreground-muted, #888);
+    }
+
+    .gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 15px;
+    }
+
+    .gallery-item {
+      background: var(--surface, #252525);
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border, #333);
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+
+    .gallery-item:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    .gallery-item img {
+      width: 100%;
+      height: 150px;
+      object-fit: cover;
+      display: block;
+    }
+
+    .gallery-item .info {
+      padding: 10px;
+    }
+
+    .gallery-item .name {
+      font-size: 0.9rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .gallery-item .meta {
+      font-size: 0.75rem;
+      color: var(--foreground-muted, #888);
+      margin-top: 4px;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--foreground-muted, #888);
+    }
+
+    .empty-state p {
+      margin: 10px 0;
+    }
+
+    #file-input {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>📷 Image Gallery</h1>
+    <span id="status" class="status">Checking...</span>
+  </div>
+
+  <div class="actions">
+    <button id="add-btn">Add Image</button>
+    <button id="refresh-btn">Refresh</button>
+  </div>
+
+  <div id="drop-zone" class="drop-zone">
+    <p>Drag and drop images here</p>
+    <p>or click "Add Image" to browse</p>
+  </div>
+
+  <div id="gallery" class="gallery"></div>
+
+  <input type="file" id="file-input" accept="image/*" multiple>
+
+  <script type="module">
+    // Feature detection
+    const hasPeekAPI = typeof window.app !== 'undefined';
+    const api = hasPeekAPI ? window.app : null;
+
+    // In-memory storage for standalone mode
+    const localImages = new Map();
+
+    // Update status indicator
+    const statusEl = document.getElementById('status');
+    if (hasPeekAPI) {
+      statusEl.textContent = 'Connected to Peek';
+      statusEl.classList.add('connected');
+    } else {
+      statusEl.textContent = 'Standalone mode';
+    }
+
+    /**
+     * Store an image
+     */
+    async function storeImage(id, imageData) {
+      if (hasPeekAPI) {
+        await api.datastore.setRow('example_images', id, imageData);
+      } else {
+        localImages.set(id, imageData);
+      }
+    }
+
+    /**
+     * Get all stored images
+     */
+    async function getStoredImages() {
+      if (hasPeekAPI) {
+        const result = await api.datastore.getTable('example_images');
+        return result.success ? result.data : {};
+      } else {
+        return Object.fromEntries(localImages);
+      }
+    }
+
+    /**
+     * Generate unique ID
+     */
+    function generateId() {
+      return `img_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    }
+
+    /**
+     * Format file size
+     */
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    /**
+     * Format timestamp
+     */
+    function formatDate(timestamp) {
+      return new Date(timestamp).toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+
+    /**
+     * Read file as base64
+     */
+    function readFileAsBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          // Remove data URL prefix to get just base64
+          const base64 = reader.result.split(',')[1];
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    /**
+     * Handle file(s) being added
+     */
+    async function handleFiles(files) {
+      for (const file of files) {
+        if (!file.type.startsWith('image/')) {
+          console.log('Skipping non-image:', file.name);
+          continue;
+        }
+
+        try {
+          const base64 = await readFileAsBase64(file);
+          const id = generateId();
+          const imageData = {
+            data: base64,
+            mimeType: file.type,
+            name: file.name,
+            size: file.size,
+            timestamp: Date.now()
+          };
+
+          await storeImage(id, imageData);
+          console.log('[gallery] Stored image:', id, file.name);
+        } catch (err) {
+          console.error('[gallery] Failed to store image:', file.name, err);
+        }
+      }
+
+      await renderGallery();
+    }
+
+    /**
+     * Render the gallery
+     */
+    async function renderGallery() {
+      const galleryEl = document.getElementById('gallery');
+      const images = await getStoredImages();
+      const imageEntries = Object.entries(images);
+
+      if (imageEntries.length === 0) {
+        galleryEl.innerHTML = `
+          <div class="empty-state">
+            <p>No images yet</p>
+            <p>Add images by dragging them here or using the "Add Image" button</p>
+          </div>
+        `;
+        return;
+      }
+
+      // Sort by timestamp, newest first
+      imageEntries.sort((a, b) => (b[1].timestamp || 0) - (a[1].timestamp || 0));
+
+      galleryEl.innerHTML = imageEntries.map(([id, img]) => `
+        <div class="gallery-item" data-id="${id}">
+          <img src="data:${img.mimeType};base64,${img.data}" alt="${img.name || 'Image'}">
+          <div class="info">
+            <div class="name">${img.name || 'Untitled'}</div>
+            <div class="meta">
+              ${img.size ? formatSize(img.size) : ''}
+              ${img.timestamp ? '• ' + formatDate(img.timestamp) : ''}
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // File input handler
+    const fileInput = document.getElementById('file-input');
+    document.getElementById('add-btn').addEventListener('click', () => {
+      fileInput.click();
+    });
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        handleFiles(e.target.files);
+        e.target.value = ''; // Reset for next selection
+      }
+    });
+
+    // Refresh button
+    document.getElementById('refresh-btn').addEventListener('click', renderGallery);
+
+    // Drag and drop
+    const dropZone = document.getElementById('drop-zone');
+
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('dragover');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+
+      const files = Array.from(e.dataTransfer.files);
+      if (files.length > 0) {
+        handleFiles(files);
+      }
+    });
+
+    // Listen for new images from the extension
+    if (hasPeekAPI) {
+      api.subscribe('example:image-added', (msg) => {
+        console.log('[gallery] Image added event:', msg);
+        renderGallery();
+      }, api.scopes.GLOBAL);
+    }
+
+    // Initial render
+    renderGallery();
+
+    console.log('[gallery] Initialized - Peek API:', hasPeekAPI);
+  </script>
+</body>
+</html>

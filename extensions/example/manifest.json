@@ -1,8 +1,8 @@
 {
   "id": "example",
   "shortname": "example",
-  "name": "Example",
-  "description": "A hello world example extension",
+  "name": "Example Gallery",
+  "description": "Example extension demonstrating Peek API feature detection, image handling, and storage",
   "version": "1.0.0",
   "background": "background.html",
   "settingsSchema": "./settings-schema.json"

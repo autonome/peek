@@ -179,7 +179,10 @@ api.subscribe = (topic, callback, scope = api.scopes.SELF) => {
 
   ipcRenderer.on(replyTopic, (ev, msg) => {
     DEBUG && console.log('topic', topic, msg);
-    msg.source = sourceAddress;
+    // Only set source on object messages (not undefined/null/primitives)
+    if (msg && typeof msg === 'object') {
+      msg.source = sourceAddress;
+    }
     try {
       callback(msg);
     }
@@ -554,13 +557,31 @@ api.commands = {
     });
 
     ipcRenderer.on(replyTopic, async (ev, msg) => {
-      console.log('cmd:execute', command.name, msg);
+      DEBUG && console.log('cmd:execute', command.name, msg);
       const handler = window._cmdHandlers?.[command.name];
       if (handler) {
         try {
-          await handler(msg);
+          const result = await handler(msg);
+          // If caller expects a result (for chaining), publish it back
+          if (msg.expectResult && msg.resultTopic) {
+            ipcRenderer.send('publish', {
+              source: sourceAddress,
+              scope: 3,
+              topic: msg.resultTopic,
+              data: result
+            });
+          }
         } catch (err) {
           console.error('Error executing command', command.name, err);
+          // Still publish result on error so panel doesn't hang
+          if (msg.expectResult && msg.resultTopic) {
+            ipcRenderer.send('publish', {
+              source: sourceAddress,
+              scope: 3,
+              topic: msg.resultTopic,
+              data: { error: err.message }
+            });
+          }
         }
       }
     });

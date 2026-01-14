@@ -264,9 +264,12 @@
 
     listen(`pubsub:${topic}`, (event) => {
       const payload = event.payload || {};
-      // Unwrap the data and add source - publish wraps msg in { source, scope, data: msg }
-      const msg = payload.data || {};
-      msg.source = payload.source || sourceAddress;
+      // Unwrap the data - publish wraps msg in { source, scope, data: msg }
+      const msg = payload.data;
+      // Only set source on object messages (not undefined/null/primitives)
+      if (msg && typeof msg === 'object') {
+        msg.source = payload.source || sourceAddress;
+      }
       try {
         callback(msg);
       } catch (ex) {
@@ -326,14 +329,30 @@
 
       // Subscribe to execution messages from the cmd panel
       const executeTopic = `cmd:execute:${command.name}`;
-      listen(`pubsub:${executeTopic}`, (event) => {
+      listen(`pubsub:${executeTopic}`, async (event) => {
         const payload = event.payload || {};
         const ctx = payload.data || {};
         console.log(`[tauri] Executing command: ${command.name}`, ctx);
         try {
-          command.execute(ctx);
+          const result = await command.execute(ctx);
+          // If caller expects a result (for chaining), publish it back
+          if (ctx.expectResult && ctx.resultTopic) {
+            emit(`pubsub:${ctx.resultTopic}`, {
+              source: sourceAddress,
+              scope: api.scopes.GLOBAL,
+              data: result
+            }).catch(e => console.error('[tauri] result publish error:', e));
+          }
         } catch (e) {
           console.error(`[tauri] Command execution error for ${command.name}:`, e);
+          // Still publish result on error so panel doesn't hang
+          if (ctx.expectResult && ctx.resultTopic) {
+            emit(`pubsub:${ctx.resultTopic}`, {
+              source: sourceAddress,
+              scope: api.scopes.GLOBAL,
+              data: { error: e.message }
+            }).catch(err => console.error('[tauri] error result publish error:', err));
+          }
         }
       }).then(unlisten => {
         commandSubscriptions.set(command.name, unlisten);

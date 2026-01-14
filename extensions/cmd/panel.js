@@ -916,8 +916,12 @@ async function execute(name, typed) {
   const context = buildExecutionContext(name, typed);
   debug && console.log('execution context', context);
 
-  // Show execution state with spinner
-  showExecutionState(name);
+  // Delay showing execution state - only show if command takes > 150ms
+  // This prevents flash for fast commands
+  const SHOW_SPINNER_DELAY_MS = 150;
+  const showStateTimer = setTimeout(() => {
+    showExecutionState(name);
+  }, SHOW_SPINNER_DELAY_MS);
 
   // Set up timeout
   const timeoutPromise = new Promise((_, reject) => {
@@ -933,13 +937,14 @@ async function execute(name, typed) {
       timeoutPromise
     ]);
 
-    // Clear timeout
+    // Clear timers
+    clearTimeout(showStateTimer);
     if (state.executionTimeout) {
       clearTimeout(state.executionTimeout);
       state.executionTimeout = null;
     }
 
-    // Hide execution state
+    // Hide execution state (in case it was shown)
     hideExecutionState();
 
     debug && console.log('command result:', result);
@@ -990,6 +995,9 @@ async function execute(name, typed) {
 
     setTimeout(shutdown, 100);
   } catch (err) {
+    // Clear the show state timer on error too
+    clearTimeout(showStateTimer);
+
     console.error('[cmd:panel] Command execution error:', err);
 
     // Show error state

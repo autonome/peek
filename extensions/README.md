@@ -233,6 +233,16 @@ await api.extensions.setSettings(extId, key, value)
 
 ## Extension Loading
 
+### Load Order and the cmd Extension
+
+The `cmd` extension is the command registry - all other extensions register their commands with it via `api.commands.register()`. Because of this dependency:
+
+1. **cmd loads first** (sequential) - must be ready before other extensions register commands
+2. **Other extensions load in parallel** - for faster startup
+3. **cmd cannot be disabled** - it's required infrastructure, not optional functionality
+
+This is enforced in `isBuiltinExtensionEnabled()` which always returns `true` for cmd.
+
 ### Built-in Extensions
 
 Built-in extensions are registered in `index.js`:

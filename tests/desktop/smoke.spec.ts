@@ -604,28 +604,33 @@ test.describe('Core Functionality @desktop', () => {
 
   test('commands are registered', async () => {
     // Commands are now owned by the cmd extension via pubsub
-    // Query via cmd:query-commands topic
+    // Query via cmd:query-commands topic with retry for extension loading
     const result = await bgWindow.evaluate(async () => {
-      return new Promise((resolve) => {
-        const api = (window as any).app;
+      const api = (window as any).app;
 
-        // Subscribe to response
+      const queryCommands = () => new Promise((resolve) => {
         api.subscribe('cmd:query-commands-response', (msg: any) => {
           resolve(msg.commands || []);
         }, api.scopes.GLOBAL);
-
-        // Query commands
         api.publish('cmd:query-commands', {}, api.scopes.GLOBAL);
-
-        // Timeout fallback
-        setTimeout(() => resolve([]), 2000);
+        setTimeout(() => resolve([]), 1000);
       });
+
+      // Retry a few times to allow extensions to finish loading
+      for (let i = 0; i < 5; i++) {
+        const cmds = await queryCommands() as any[];
+        if (cmds.some((c: any) => c.name === 'example:hello')) {
+          return cmds;
+        }
+        await new Promise(r => setTimeout(r, 500));
+      }
+      return await queryCommands();
     });
     expect(Array.isArray(result)).toBe(true);
     expect(result.length).toBeGreaterThan(0);
 
     // Should have hello command from example extension
-    const helloCmd = result.find((c: any) => c.name === 'hello');
+    const helloCmd = result.find((c: any) => c.name === 'example:hello');
     expect(helloCmd).toBeTruthy();
   });
 
@@ -2038,7 +2043,7 @@ test.describe('Startup Phase Events @desktop', () => {
           resolve({
             cmdResponded: true,
             commandCount: msg.commands?.length || 0,
-            hasHelloCommand: msg.commands?.some((c: any) => c.name === 'hello')
+            hasHelloCommand: msg.commands?.some((c: any) => c.name === 'example:hello')
           });
         }, api.scopes.GLOBAL);
 

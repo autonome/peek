@@ -52,6 +52,7 @@
     "//-- Testing --//": "",
     "test": "yarn test:electron && yarn test:tauri",
     "test:electron": "HEADLESS=1 BACKEND=electron npx playwright test tests/desktop/",
+    "test:electron:x": "HEADLESS=1 BACKEND=electron npx playwright test tests/desktop/ -x",
     "test:tauri": "yarn test:tauri:frontend; yarn test:tauri:rust",
     "test:tauri:frontend": "HEADLESS=1 BACKEND=tauri npx playwright test tests/desktop/",
     "test:tauri:rust": "cd backend/tauri/src-tauri && cargo test --test smoke -- --nocapture",

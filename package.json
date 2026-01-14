@@ -13,6 +13,10 @@
   "build": {
     "appId": "com.autonome.peek",
     "productName": "Peek",
+    "files": [
+      "**/*",
+      "!backend/tauri/**/*"
+    ],
     "mac": {
       "icon": "assets/appicon.icns",
       "category": "public.app-category.productivity",

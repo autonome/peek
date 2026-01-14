@@ -153,6 +153,7 @@ const onQuit = quitApp;
 
 // Electron app load
 const onReady = async () => {
+  const startupStart = Date.now();
   console.log('onReady');
 
   // Hide dock early to prevent flash in app switcher
@@ -166,6 +167,9 @@ const onReady = async () => {
 
   // Register all IPC handlers from backend
   registerAllHandlers(onQuit);
+
+  // Store startup time for reporting
+  (global as Record<string, unknown>).__startupStart = startupStart;
 
   // Ensure single instance
   if (!requestSingleInstance()) {
@@ -281,8 +285,11 @@ const onReady = async () => {
     // Load extensions after core app is ready (only once)
     if (!extensionsLoaded) {
       extensionsLoaded = true;
-      console.log('[ext:win] Core app ready, loading extensions...');
+      const extStart = Date.now();
       await loadEnabledExtensions();
+      const extTime = Date.now() - extStart;
+      const totalTime = Date.now() - ((global as Record<string, unknown>).__startupStart as number);
+      console.log(`[startup] main: ${extStart - ((global as Record<string, unknown>).__startupStart as number)}ms, extensions: ${extTime}ms, total: ${totalTime}ms`);
     }
   });
 

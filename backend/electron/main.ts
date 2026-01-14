@@ -441,6 +441,11 @@ export function createBackgroundWindow(): BrowserWindow {
   const win = new BrowserWindow(winPrefs);
   win.loadURL(WEB_CORE_ADDRESS);
 
+  // Forward console logs from background window
+  win.webContents.on('console-message', (_event, _level, message) => {
+    console.log(`[core] ${message}`);
+  });
+
   // Setup devtools for the background window (debug mode, but not in tests or headless)
   if (config.isDev && !isTestProfile() && !isHeadless()) {
     win.webContents.openDevTools({ mode: 'detach', activate: false });

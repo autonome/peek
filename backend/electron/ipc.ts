@@ -28,6 +28,7 @@ import {
   getUntaggedAddresses,
   getTable,
   setRow,
+  getRow,
   getStats,
   isValidTable,
   getDb,
@@ -194,6 +195,21 @@ export function registerDatastoreHandlers(): void {
         return { success: false, error: `Invalid table: ${tableName}` };
       }
       const result = setRow(tableName, rowId, rowData);
+      return { success: true, data: result };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  ipcMain.handle('datastore-get-row', async (ev, data) => {
+    try {
+      const tableName = data.tableName || data.table;
+      const rowId = data.rowId || data.id;
+      if (!isValidTable(tableName)) {
+        return { success: false, error: `Invalid table: ${tableName}` };
+      }
+      const result = getRow(tableName, rowId);
       return { success: true, data: result };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

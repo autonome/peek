@@ -26,18 +26,28 @@ const KEYS_TO_MIGRATE = {
 
 const MIGRATION_KEY = 'migration:localstorage-to-datastore:v1';
 
+// Cache the completion status to avoid repeated datastore calls
+let migrationComplete = null;
+
 /**
- * Check if migration has already been completed
+ * Check if migration has already been completed (async, uses datastore)
  */
-export const isMigrationComplete = () => {
-  return localStorage.getItem(MIGRATION_KEY) === 'complete';
+export const isMigrationComplete = async () => {
+  if (migrationComplete !== null) return migrationComplete;
+  const result = await api.datastore.getRow('migrations', MIGRATION_KEY);
+  migrationComplete = result.success && result.data?.status === 'complete';
+  return migrationComplete;
 };
 
 /**
- * Mark migration as complete
+ * Mark migration as complete (async, uses datastore)
  */
-const markMigrationComplete = () => {
-  localStorage.setItem(MIGRATION_KEY, 'complete');
+const markMigrationComplete = async () => {
+  await api.datastore.setRow('migrations', MIGRATION_KEY, {
+    status: 'complete',
+    completedAt: Date.now()
+  });
+  migrationComplete = true;
 };
 
 /**
@@ -84,7 +94,7 @@ const migrateKey = async (oldId, namespace, key) => {
  * Run the migration for all core and feature settings
  */
 export const runMigration = async () => {
-  if (isMigrationComplete()) {
+  if (await isMigrationComplete()) {
     console.log('[migration] localStorage->datastore migration already complete');
     return { skipped: true };
   }
@@ -102,7 +112,7 @@ export const runMigration = async () => {
     }
   }
 
-  markMigrationComplete();
+  await markMigrationComplete();
   console.log('[migration] localStorage->datastore migration complete:', results);
 
   return { completed: true, results };

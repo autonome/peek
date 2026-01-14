@@ -4,6 +4,7 @@ const {
 } = require('electron');
 
 const src = 'preload';
+const preloadStart = Date.now();
 console.log(src, 'init', window);
 
 const DEBUG = !!process.env.DEBUG;
@@ -307,6 +308,9 @@ api.datastore = {
   },
   setRow: (tableName, rowId, rowData) => {
     return ipcRenderer.invoke('datastore-set-row', { tableName, rowId, rowData });
+  },
+  getRow: (tableName, rowId) => {
+    return ipcRenderer.invoke('datastore-get-row', { tableName, rowId });
   },
   getStats: () => {
     return ipcRenderer.invoke('datastore-get-stats');
@@ -1034,10 +1038,10 @@ api.files = {
 };
 
 contextBridge.exposeInMainWorld('app', api);
-console.log(src, 'api exposed');
+console.log(src, 'api exposed in', Date.now() - preloadStart, 'ms');
 
 window.addEventListener('load', () => {
-  console.log(src, 'load', window);
+  console.log(src, 'window.load in', Date.now() - preloadStart, 'ms');
 });
 
 /*

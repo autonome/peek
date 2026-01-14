@@ -25,24 +25,19 @@ const migrations = [
  * Run all pending migrations
  */
 export const runMigrations = async () => {
-  console.log('[migrations] Checking for pending migrations...');
-
+  const start = Date.now();
   for (const migration of migrations) {
-    if (migration.check && migration.check()) {
-      console.log(`[migrations] ${migration.name}: already complete`);
+    if (migration.check && await migration.check()) {
       continue;
     }
 
-    console.log(`[migrations] ${migration.name}: running...`);
     try {
-      const result = await migration.run();
-      console.log(`[migrations] ${migration.name}: complete`, result);
+      await migration.run();
     } catch (e) {
       console.error(`[migrations] ${migration.name}: failed`, e);
     }
   }
-
-  console.log('[migrations] All migrations checked');
+  console.log(`[migrations] total: ${Date.now() - start}ms`);
 };
 
 export default { runMigrations };

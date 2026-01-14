@@ -211,6 +211,12 @@ const createTableStatements = `
   CREATE INDEX IF NOT EXISTS idx_extension_settings_extensionId ON extension_settings(extensionId);
   CREATE UNIQUE INDEX IF NOT EXISTS idx_extension_settings_unique ON extension_settings(extensionId, key);
 
+  CREATE TABLE IF NOT EXISTS migrations (
+    id TEXT PRIMARY KEY,
+    status TEXT NOT NULL,
+    completedAt INTEGER
+  );
+
   CREATE TABLE IF NOT EXISTS themes (
     id TEXT PRIMARY KEY,
     name TEXT,
@@ -747,6 +753,11 @@ export function setRow(tableName: TableName, rowId: string, rowData: Record<stri
   const values = columns.map(col => row[col]);
 
   getDb().prepare(`INSERT OR REPLACE INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders})`).run(...values);
+}
+
+export function getRow(tableName: TableName, rowId: string): Record<string, unknown> | null {
+  const result = getDb().prepare(`SELECT * FROM ${tableName} WHERE id = ?`).get(rowId);
+  return (result as Record<string, unknown>) || null;
 }
 
 export function getStats(): DatastoreStats {

@@ -198,7 +198,8 @@ export type TableName =
   | 'scripts_data'
   | 'feeds'
   | 'extensions'
-  | 'extension_settings';
+  | 'extension_settings'
+  | 'migrations';
 
 export const tableNames: TableName[] = [
   'addresses',
@@ -210,5 +211,6 @@ export const tableNames: TableName[] = [
   'scripts_data',
   'feeds',
   'extensions',
-  'extension_settings'
+  'extension_settings',
+  'migrations'
 ];

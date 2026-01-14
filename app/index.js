@@ -248,24 +248,23 @@ const registerExtensionCommands = () => {
 };
 
 const init = async () => {
-  console.log('init');
+  const initStart = Date.now();
 
   // Run migrations first (moves localStorage -> datastore)
   await migrations.runMigrations();
 
   // Create datastore-backed store
   store = await createDatastoreStore('core', defaults);
-  console.log('core store initialized from datastore');
 
   const p = prefs();
-
-  console.log('prefs', p);
 
   // main process uses these for initialization
   api.publish(topicCorePrefs, {
     id: id,
     prefs: p
   }, api.scopes.SYSTEM);
+
+  console.log(`[startup] core init: ${Date.now() - initStart}ms`);
 
   // Listen for system- or feature-level requests to open windows.
   api.subscribe('open', msg => {

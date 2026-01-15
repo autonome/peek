@@ -6,10 +6,10 @@
  */
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
 import './commands.js'; // Load commands module to dispatch cmd-update-commands event
+import { log } from 'peek://app/log.js';
 
-console.log('[cmd:panel] loaded');
+log('cmd:panel', 'loaded');
 
-const debug = window.app.debug;
 const api = window.app;
 
 // Storage keys for persistent adaptive matching
@@ -92,11 +92,11 @@ let state = {
 loadAdaptiveData().then(data => {
   state.adaptiveFeedback = data.feedback;
   state.matchCounts = data.counts;
-  console.log('[cmd:panel] Loaded adaptive data');
+  log('cmd:panel', 'Loaded adaptive data');
 });
 
 window.addEventListener('cmd-update-commands', function(e) {
-  debug && console.log('[cmd:panel] received updated commands');
+  log('cmd:panel', 'received updated commands');
   state.commands = e.detail;
 });
 
@@ -248,7 +248,7 @@ function handleSpecialKey(e) {
     const trimmedText = commandInput.value.trim();
     const urlResult = getValidURL(trimmedText);
     if (urlResult.valid && state.commands['open']) {
-      debug && console.log('Detected URL, using open command:', urlResult.url);
+      log('cmd:panel', 'Detected URL, using open command:', urlResult.url);
       state.lastExecuted = 'open';
       updateMatchCount('open');
       updateAdaptiveFeedback(trimmedText.split(' ')[0], 'open');
@@ -427,7 +427,7 @@ function findChainingCommands(mimeType) {
  * @param {string} sourceCommand - Name of the command that produced this output
  */
 function enterChainMode(output, sourceCommand) {
-  console.log('[cmd:panel] Entering chain mode with output:', output.mimeType, output.title);
+  log('cmd:panel', 'Entering chain mode with output:', output.mimeType, output.title);
 
   state.chainMode = true;
   state.chainContext = {
@@ -442,7 +442,7 @@ function enterChainMode(output, sourceCommand) {
 
   // Find commands that can accept this output
   const chainingCommands = findChainingCommands(output.mimeType);
-  console.log('[cmd:panel] Found', chainingCommands.length, 'commands accepting', output.mimeType);
+  log('cmd:panel', 'Found', chainingCommands.length, 'commands accepting', output.mimeType);
 
   // Clear input and update matches to show chaining commands
   state.typed = '';
@@ -464,7 +464,7 @@ function enterChainMode(output, sourceCommand) {
  * Exit chain mode and reset state
  */
 function exitChainMode() {
-  console.log('[cmd:panel] Exiting chain mode');
+  log('cmd:panel', 'Exiting chain mode');
 
   state.chainMode = false;
   state.chainContext = null;
@@ -520,7 +520,7 @@ function chainUndo() {
  * @param {string} sourceCommand - Command that produced this output
  */
 function enterOutputSelectionMode(items, mimeType, sourceCommand) {
-  console.log('[cmd:panel] Entering output selection mode with', items.length, 'items');
+  log('cmd:panel', 'Entering output selection mode with', items.length, 'items');
 
   state.outputSelectionMode = true;
   state.outputItems = items;
@@ -541,7 +541,7 @@ function enterOutputSelectionMode(items, mimeType, sourceCommand) {
  * Exit output selection mode
  */
 function exitOutputSelectionMode() {
-  console.log('[cmd:panel] Exiting output selection mode');
+  log('cmd:panel', 'Exiting output selection mode');
 
   state.outputSelectionMode = false;
   state.outputItems = [];
@@ -565,7 +565,7 @@ function selectOutputItem() {
   if (!state.outputSelectionMode || state.outputItems.length === 0) return;
 
   const selectedItem = state.outputItems[state.outputItemIndex];
-  console.log('[cmd:panel] Selected output item:', state.outputItemIndex, selectedItem);
+  log('cmd:panel', 'Selected output item:', state.outputItemIndex, selectedItem);
 
   // Exit output selection mode
   const mimeType = state.outputMimeType;
@@ -677,7 +677,7 @@ function showPreview(data, mimeType, title) {
   const previewTitle = document.getElementById('preview-title');
 
   if (!previewContainer || !previewContent) {
-    console.log('[cmd:panel] Preview container not found');
+    log('cmd:panel', 'Preview container not found');
     return;
   }
 
@@ -901,7 +901,7 @@ function showExecutionError(commandName, errorMsg) {
  * Cancel current execution
  */
 function cancelExecution() {
-  console.log('[cmd:panel] Cancelling execution');
+  log('cmd:panel', 'Cancelling execution');
   hideExecutionState();
 }
 
@@ -909,12 +909,12 @@ function cancelExecution() {
  * Executes a command
  */
 async function execute(name, typed) {
-  api.log('execute() called with:', name, typed);
+  log('cmd:panel', 'execute() called with:', name, typed);
   if (!state.commands[name]) return;
 
-  api.log('executing cmd', name, typed);
+  log('cmd:panel', 'executing cmd', name, typed);
   const context = buildExecutionContext(name, typed);
-  debug && console.log('execution context', context);
+  log('cmd:panel', 'execution context', context);
 
   // Delay showing execution state - only show if command takes > 150ms
   // This prevents flash for fast commands
@@ -947,7 +947,7 @@ async function execute(name, typed) {
     // Hide execution state (in case it was shown)
     hideExecutionState();
 
-    debug && console.log('command result:', result);
+    log('cmd:panel', 'command result:', result);
 
     // Check if command produced chainable output
     if (result && result.output && result.output.data && result.output.mimeType) {
@@ -998,7 +998,7 @@ async function execute(name, typed) {
     // Clear the show state timer on error too
     clearTimeout(showStateTimer);
 
-    console.error('[cmd:panel] Command execution error:', err);
+    log.error('cmd:panel', 'Command execution error:', err);
 
     // Show error state
     showExecutionError(name, err.message || 'Unknown error');
@@ -1018,8 +1018,7 @@ async function shutdown() {
  * Finds commands matching the typed text
  */
 function findMatchingCommands(text) {
-  const r = debug; // Only log if in debug mode
-  r && console.log('findMatchingCommands', text, state.commands.length);
+  log('cmd:panel', 'findMatchingCommands', text, Object.keys(state.commands).length);
 
   let matches = [];
 
@@ -1032,14 +1031,14 @@ function findMatchingCommands(text) {
   const commandPart = text.split(' ')[0];
   const hasParameters = text.includes(' ');
 
-  r && console.log('Command part:', commandPart, 'Has parameters:', hasParameters);
+  log('cmd:panel', 'Command part:', commandPart, 'Has parameters:', hasParameters);
 
   // Iterate over all commands, searching for matches
   for (const name of Object.keys(state.commands)) {
     // Match when:
     // 1. typed string is anywhere in a command name
     // 2. command name is at beginning of typed string (for commands with parameters)
-    r && console.log('testing option...', name);
+    log('cmd:panel', 'testing option...', name);
 
     const matchesCommand = name.toLowerCase().indexOf(commandPart.toLowerCase()) !== -1;
     const isCommandWithParams = hasParameters && text.toLowerCase().startsWith(name.toLowerCase() + ' ');

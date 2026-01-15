@@ -15,6 +15,9 @@ export {
   TOPICS,
 } from '../config.js';
 
+// Debug mode - set DEBUG=1 to enable logging
+export const DEBUG = !!process.env.DEBUG;
+
 // Runtime configuration (set during app initialization)
 let _preloadPath: string = '';
 let _profile: string = '';

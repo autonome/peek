@@ -10,6 +10,7 @@ import {
   SETTINGS_ADDRESS,
   isTestProfile,
   isHeadless,
+  DEBUG,
 } from './config.js';
 
 // Default background colors for light and dark system themes
@@ -83,7 +84,7 @@ export function askRendererToHandleEscape(bw: BrowserWindow): Promise<{ handled:
  * Supports escapeMode: 'close' (default), 'navigate', 'auto'
  */
 export function addEscHandler(bw: BrowserWindow): void {
-  console.log('adding esc handler to window:', bw.id);
+  DEBUG && console.log('adding esc handler to window:', bw.id);
   bw.webContents.on('before-input-event', async (e, i) => {
     if (i.key === 'Escape' && i.type === 'keyUp') {
       // Get window info
@@ -91,16 +92,16 @@ export function addEscHandler(bw: BrowserWindow): void {
       const params = entry?.params || {};
       const escapeMode = (params.escapeMode as string) || 'close';
 
-      console.log(`ESC pressed - window ${bw.id}, escapeMode: ${escapeMode}`);
+      DEBUG && console.log(`ESC pressed - window ${bw.id}, escapeMode: ${escapeMode}`);
 
       // For 'navigate' mode, ask renderer first
       if (escapeMode === 'navigate') {
         const response = await askRendererToHandleEscape(bw);
-        console.log(`Renderer escape response:`, response);
+        DEBUG && console.log(`Renderer escape response:`, response);
 
         if (response.handled) {
           // Renderer handled the escape (internal navigation)
-          console.log('Renderer handled escape, not closing');
+          DEBUG && console.log('Renderer handled escape, not closing');
           return;
         }
       }
@@ -109,21 +110,21 @@ export function addEscHandler(bw: BrowserWindow): void {
       if (escapeMode === 'auto') {
         if (params.transient) {
           // Transient mode - close immediately
-          console.log('Auto mode (transient) - closing');
+          DEBUG && console.log('Auto mode (transient) - closing');
         } else {
           // Active mode - ask renderer first
           const response = await askRendererToHandleEscape(bw);
-          console.log(`Renderer escape response (auto/active):`, response);
+          DEBUG && console.log(`Renderer escape response (auto/active):`, response);
 
           if (response.handled) {
-            console.log('Renderer handled escape, not closing');
+            DEBUG && console.log('Renderer handled escape, not closing');
             return;
           }
         }
       }
 
       // Close or hide the window
-      console.log('Closing/hiding window');
+      DEBUG && console.log('Closing/hiding window');
       closeOrHideWindow(bw.id);
     }
   });
@@ -136,7 +137,7 @@ export function winDevtoolsConfig(bw: BrowserWindow): void {
   const windowData = getWindowInfo(bw.id);
   const params = windowData ? windowData.params : {};
 
-  console.log('winDevtoolsConfig:', bw.id, 'openDevTools:', params.openDevTools, 'address:', params.address);
+  DEBUG && console.log('winDevtoolsConfig:', bw.id, 'openDevTools:', params.openDevTools, 'address:', params.address);
 
   // Check if devTools should be opened (never in test profiles or headless mode)
   if (params.openDevTools === true && !isTestProfile() && !isHeadless()) {
@@ -148,7 +149,7 @@ export function winDevtoolsConfig(bw: BrowserWindow): void {
       activate: false
     };
 
-    console.log(`Opening DevTools for window ${bw.id} with options:`, devToolsOptions);
+    DEBUG && console.log(`Opening DevTools for window ${bw.id} with options:`, devToolsOptions);
 
     // Open DevTools after a slight delay to let the main window settle
     setTimeout(() => {
@@ -173,12 +174,12 @@ export function winDevtoolsConfig(bw: BrowserWindow): void {
  * This will actually close the window regardless of "keep alive" opener params
  */
 export function closeWindow(params: { id?: number }, callback?: (success: boolean) => void): void {
-  console.log('closeWindow', params, callback != null);
+  DEBUG && console.log('closeWindow', params, callback != null);
 
   let retval = false;
 
   if (params.id !== undefined && getWindowInfo(params.id)) {
-    console.log('closeWindow(): closing', params.id);
+    DEBUG && console.log('closeWindow(): closing', params.id);
 
     const entry = getWindowInfo(params.id);
     if (!entry) {
@@ -231,13 +232,13 @@ export function updateDockVisibility(excludeId: number | null = null): void {
   const prefs = _getPrefs();
   const prefShowDock = prefs?.showInDockAndSwitcher === true;
 
-  console.log('updateDockVisibility:', { visibleCount, prefShowDock, excludeId });
+  DEBUG && console.log('updateDockVisibility:', { visibleCount, prefShowDock, excludeId });
 
   if (visibleCount > 0 || prefShowDock) {
-    console.log('Showing dock');
+    DEBUG && console.log('Showing dock');
     app.dock.show();
   } else {
-    console.log('Hiding dock');
+    DEBUG && console.log('Hiding dock');
     app.dock.hide();
   }
 }
@@ -249,13 +250,13 @@ export function maybeHideApp(excludeId: number): void {
   if (process.platform !== 'darwin') return;
 
   const visibleCount = getVisibleWindowCount(excludeId);
-  console.log('maybeHideApp: visible windows (excluding', excludeId + '):', visibleCount);
+  DEBUG && console.log('maybeHideApp: visible windows (excluding', excludeId + '):', visibleCount);
 
   if (visibleCount === 0) {
-    console.log('No other visible windows, hiding app');
+    DEBUG && console.log('No other visible windows, hiding app');
     app.hide();
   } else {
-    console.log('Other windows visible, not hiding app');
+    DEBUG && console.log('Other windows visible, not hiding app');
   }
 
   // Also update dock visibility
@@ -266,36 +267,36 @@ export function maybeHideApp(excludeId: number): void {
  * Close or hide a window based on its parameters
  */
 export function closeOrHideWindow(id: number): void {
-  console.log('closeOrHideWindow called for ID:', id);
+  DEBUG && console.log('closeOrHideWindow called for ID:', id);
 
   try {
     const win = BrowserWindow.fromId(id);
     if (!win || win.isDestroyed()) {
-      console.log('Window already destroyed or invalid');
+      DEBUG && console.log('Window already destroyed or invalid');
       return;
     }
 
     const entry = getWindowInfo(id);
-    console.log('Window entry from manager:', entry);
+    DEBUG && console.log('Window entry from manager:', entry);
 
     if (!entry) {
-      console.log('Window not found in window manager, closing directly');
+      DEBUG && console.log('Window not found in window manager, closing directly');
       win.close();
       return;
     }
 
     const params = entry.params;
-    console.log('Window parameters - modal:', params.modal, 'keepLive:', params.keepLive);
+    DEBUG && console.log('Window parameters - modal:', params.modal, 'keepLive:', params.keepLive);
 
     // Never close the background window
     if (params.address === WEB_CORE_ADDRESS) {
-      console.log('Refusing to close background window');
+      DEBUG && console.log('Refusing to close background window');
       return;
     }
 
     // Special case for settings window - always close it on ESC
     if (params.address === SETTINGS_ADDRESS) {
-      console.log(`CLOSING settings window ${id}`);
+      DEBUG && console.log(`CLOSING settings window ${id}`);
       closeChildWindows(params.address as string);
       win.close();
       // Hide app to return focus to previous app (only if no other visible windows)
@@ -310,13 +311,13 @@ export function closeOrHideWindow(id: number): void {
     } else {
       // close any open windows this window opened
       closeChildWindows(params.address as string);
-      console.log(`CLOSING window ${id} (${params.address})`);
+      DEBUG && console.log(`CLOSING window ${id} (${params.address})`);
       win.close();
       // Hide app to return focus to previous app (only if no other visible windows)
       maybeHideApp(id);
     }
 
-    console.log('closeOrHideWindow completed');
+    DEBUG && console.log('closeOrHideWindow completed');
   } catch (error) {
     console.error('Error in closeOrHideWindow:', error);
   }
@@ -326,7 +327,7 @@ export function closeOrHideWindow(id: number): void {
  * Close all child windows of a given address
  */
 export function closeChildWindows(aAddress: string): void {
-  console.log('closeChildWindows()', aAddress);
+  DEBUG && console.log('closeChildWindows()', aAddress);
 
   if (aAddress === WEB_CORE_ADDRESS) {
     return;
@@ -337,7 +338,7 @@ export function closeChildWindows(aAddress: string): void {
 
   for (const child of childWindows) {
     const address = child.data.params.address as string;
-    console.log('closing child window', address, 'for', aAddress);
+    DEBUG && console.log('closing child window', address, 'for', aAddress);
 
     // recurseme
     closeChildWindows(address);

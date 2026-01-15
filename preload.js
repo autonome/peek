@@ -5,10 +5,13 @@ const {
 
 const src = 'preload';
 const preloadStart = Date.now();
-console.log(src, 'init', window);
 
 const DEBUG = !!process.env.DEBUG;
-console.log('preload DEBUG:', process.env.DEBUG, '->', DEBUG);
+// If DEBUG is "1" or "true", enable all categories; otherwise it's a comma-separated list
+const DEBUG_CATEGORIES = (process.env.DEBUG && process.env.DEBUG !== '1' && process.env.DEBUG !== 'true')
+  ? process.env.DEBUG
+  : '';
+DEBUG && console.log(src, 'init, DEBUG:', DEBUG, 'categories:', DEBUG_CATEGORIES || '(all)');
 const DEBUG_LEVELS = {
   BASIC: 1,
   FIRST_RUN: 2
@@ -88,6 +91,7 @@ api.log = (...args) => {
 };
 
 api.debug = DEBUG;
+api.debugCategories = DEBUG_CATEGORIES;
 api.debugLevels = DEBUG_LEVELS;
 api.debugLevel = DEBUG_LEVEL;
 
@@ -112,7 +116,7 @@ api.shortcuts = {
    */
   register: (shortcut, cb, options = {}) => {
     const isGlobal = options.global === true;
-    console.log(src, `registering ${isGlobal ? 'global' : 'local'} shortcut ${shortcut} for ${window.location}`);
+    DEBUG && console.log(src, `registering ${isGlobal ? 'global' : 'local'} shortcut ${shortcut} for ${window.location}`);
 
     const replyTopic = `${shortcut}${rndm()}`;
 
@@ -124,9 +128,9 @@ api.shortcuts = {
     });
 
     ipcRenderer.on(replyTopic, (ev, msg) => {
-      console.log(src, 'shortcut execution reply');
+      DEBUG && console.log(src, 'shortcut execution reply');
       cb();
-      console.log(src, 'shortcut execution reply done');
+      DEBUG && console.log(src, 'shortcut execution reply done');
     });
   },
   /**
@@ -137,7 +141,7 @@ api.shortcuts = {
    */
   unregister: (shortcut, options = {}) => {
     const isGlobal = options.global === true;
-    console.log(`unregistering ${isGlobal ? 'global' : 'local'} shortcut`, shortcut, 'for', window.location);
+    DEBUG && console.log(`unregistering ${isGlobal ? 'global' : 'local'} shortcut`, shortcut, 'for', window.location);
     ipcRenderer.send('unregistershortcut', {
       source: sourceAddress,
       shortcut,
@@ -147,7 +151,7 @@ api.shortcuts = {
 };
 
 api.closeWindow = (id, callback) => {
-  console.log(src, ['api.closewindow', id, 'for', window.location].join(', '));
+  DEBUG && console.log(src, ['api.closewindow', id, 'for', window.location].join(', '));
 
   const replyTopic = `${id}${rndm()}`;
 
@@ -162,7 +166,7 @@ api.closeWindow = (id, callback) => {
   });
 
   ipcRenderer.once(replyTopic, (ev, msg) => {
-    console.log(src, 'api.closewindow', 'resp from main', msg);
+    DEBUG && console.log(src, 'api.closewindow', 'resp from main', msg);
     if (callback) {
       callback(msg);
     }
@@ -176,7 +180,7 @@ api.scopes = {
 };
 
 api.publish = (topic, msg, scope = api.scopes.SELF) => {
-  console.log(sourceAddress, 'publish', topic)
+  DEBUG && console.log(sourceAddress, 'publish', topic)
 
   // TODO: c'mon
   if (!topic) {
@@ -192,7 +196,7 @@ api.publish = (topic, msg, scope = api.scopes.SELF) => {
 };
 
 api.subscribe = (topic, callback, scope = api.scopes.SELF) => {
-  console.log(src, 'subscribe', topic)
+  DEBUG && console.log(src, 'subscribe', topic)
 
   // TODO: c'mon
   if (!topic || !callback) {
@@ -225,7 +229,7 @@ api.subscribe = (topic, callback, scope = api.scopes.SELF) => {
 
 api.window = {
   open: (url, options = {}) => {
-    console.log('window.open', url, options);
+    DEBUG && console.log('window.open', url, options);
     return ipcRenderer.invoke('window-open', {
       source: sourceAddress,
       url,
@@ -233,7 +237,7 @@ api.window = {
     });
   },
   close: (id = null) => {
-    console.log('window.close', id);
+    DEBUG && console.log('window.close', id);
     if (id === null) {
       window.close();
       return;
@@ -244,28 +248,28 @@ api.window = {
     });
   },
   hide: (id) => {
-    console.log('window.hide', id);
+    DEBUG && console.log('window.hide', id);
     return ipcRenderer.invoke('window-hide', {
       source: sourceAddress,
       id
     });
   },
   show: (id) => {
-    console.log('window.show', id);
+    DEBUG && console.log('window.show', id);
     return ipcRenderer.invoke('window-show', {
       source: sourceAddress,
       id
     });
   },
   exists: (id) => {
-    console.log('window.exists', id);
+    DEBUG && console.log('window.exists', id);
     return ipcRenderer.invoke('window-exists', {
       source: sourceAddress,
       id
     });
   },
   move: (id, x, y) => {
-    console.log('window.move', id, x, y);
+    DEBUG && console.log('window.move', id, x, y);
     return ipcRenderer.invoke('window-move', {
       source: sourceAddress,
       id,
@@ -274,21 +278,21 @@ api.window = {
     });
   },
   focus: (id) => {
-    console.log('window.focus', id);
+    DEBUG && console.log('window.focus', id);
     return ipcRenderer.invoke('window-focus', {
       source: sourceAddress,
       id
     });
   },
   blur: (id) => {
-    console.log('window.blur', id);
+    DEBUG && console.log('window.blur', id);
     return ipcRenderer.invoke('window-blur', {
       source: sourceAddress,
       id
     });
   },
   list: (options = {}) => {
-    console.log('window.list', options);
+    DEBUG && console.log('window.list', options);
     return ipcRenderer.invoke('window-list', {
       source: sourceAddress,
       ...options
@@ -297,9 +301,9 @@ api.window = {
 };
 
 api.modifyWindow = (winName, params) => {
-  console.log('modifyWindow(): window', winName, params);
+  DEBUG && console.log('modifyWindow(): window', winName, params);
   //w.name = `${sourceAddress}:${rndm()}`;
-  console.log('NAME', winName);
+  DEBUG && console.log('NAME', winName);
   ipcRenderer.send('modifywindow', {
     source: sourceAddress,
     name: winName,
@@ -496,13 +500,13 @@ api.theme = {
 
     // Listen for theme changes (different theme selected) - reload CSS
     ipcRenderer.on('theme:themeChanged', (ev, { themeId }) => {
-      console.log('[preload] Theme changed to:', themeId, '- reloading stylesheets');
+      DEBUG && console.log('[preload] Theme changed to:', themeId, '- reloading stylesheets');
       reloadStylesheets();
     });
 
     // Listen for theme reload requests
     ipcRenderer.on('theme:reload', (ev, { themeId }) => {
-      console.log('[preload] Theme reload requested:', themeId);
+      DEBUG && console.log('[preload] Theme reload requested:', themeId);
       reloadStylesheets();
     });
   } catch (e) {
@@ -1090,10 +1094,10 @@ if (isExtensionHost) {
 }
 
 contextBridge.exposeInMainWorld('app', api);
-console.log(src, 'api exposed in', Date.now() - preloadStart, 'ms');
+DEBUG && console.log(src, 'api exposed in', Date.now() - preloadStart, 'ms');
 
 window.addEventListener('load', () => {
-  console.log(src, 'window.load in', Date.now() - preloadStart, 'ms');
+  DEBUG && console.log(src, 'window.load in', Date.now() - preloadStart, 'ms');
 });
 
 /*

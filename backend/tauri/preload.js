@@ -84,7 +84,9 @@
 
   logToMain('[peek-api:tauri] initPeekApi called for', sourceAddress);
 
-  const DEBUG = false;
+  // DEBUG config - will be set by Tauri via window.__PEEK_DEBUG__
+  const DEBUG = window.__PEEK_DEBUG__ || false;
+  const DEBUG_CATEGORIES = window.__PEEK_DEBUG_CATEGORIES__ || '';
   const DEBUG_LEVELS = { BASIC: 1, FIRST_RUN: 2 };
   const DEBUG_LEVEL = DEBUG_LEVELS.BASIC;
   const rndm = () => Math.random().toString(16).slice(2);
@@ -118,6 +120,7 @@
   };
 
   api.debug = DEBUG;
+  api.debugCategories = DEBUG_CATEGORIES;
   api.debugLevels = DEBUG_LEVELS;
   api.debugLevel = DEBUG_LEVEL;
 

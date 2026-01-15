@@ -15,7 +15,7 @@ import { discoverExtensions, loadExtensionManifest, isBuiltinExtensionEnabled, g
 import { initTray } from './tray.js';
 import { registerLocalShortcut, unregisterLocalShortcut, handleLocalShortcut, registerGlobalShortcut, unregisterGlobalShortcut, unregisterShortcutsForAddress } from './shortcuts.js';
 import { scopes, publish, subscribe, setExtensionBroadcaster, getSystemAddress } from './pubsub.js';
-import { APP_DEF_WIDTH, APP_DEF_HEIGHT, WEB_CORE_ADDRESS, getPreloadPath, isTestProfile, isDevProfile, isHeadless, getProfile } from './config.js';
+import { APP_DEF_WIDTH, APP_DEF_HEIGHT, WEB_CORE_ADDRESS, getPreloadPath, isTestProfile, isDevProfile, isHeadless, getProfile, DEBUG } from './config.js';
 import { addEscHandler, winDevtoolsConfig, closeOrHideWindow, getSystemThemeBackgroundColor } from './windows.js';
 
 // Configuration
@@ -164,7 +164,7 @@ export function discoverBuiltinExtensions(extensionsDir: string): void {
  */
 export function discoverBuiltinThemes(themesDir: string): void {
   if (!fs.existsSync(themesDir)) {
-    console.log('Themes directory not found:', themesDir);
+    DEBUG && console.log('Themes directory not found:', themesDir);
     return;
   }
 
@@ -176,7 +176,7 @@ export function discoverBuiltinThemes(themesDir: string): void {
     const manifestPath = path.join(themePath, 'manifest.json');
 
     if (!fs.existsSync(manifestPath)) {
-      console.log('Theme missing manifest.json:', entry.name);
+      DEBUG && console.log('Theme missing manifest.json:', entry.name);
       continue;
     }
 
@@ -184,7 +184,7 @@ export function discoverBuiltinThemes(themesDir: string): void {
       const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
       const themeId = manifest.id || entry.name;
       registerThemePath(themeId, themePath);
-      console.log('Discovered theme:', themeId);
+      DEBUG && console.log('Discovered theme:', themeId);
     } catch (err) {
       console.error('Failed to load theme manifest:', entry.name, err);
     }
@@ -196,7 +196,7 @@ export function discoverBuiltinThemes(themesDir: string): void {
  */
 export async function createExtensionWindow(extId: string): Promise<BrowserWindow | null> {
   if (extensionWindows.has(extId)) {
-    console.log(`[ext:win] Extension ${extId} already has a window`);
+    DEBUG && console.log(`[ext:win] Extension ${extId} already has a window`);
     return extensionWindows.get(extId)!.win;
   }
 
@@ -208,7 +208,7 @@ export async function createExtensionWindow(extId: string): Promise<BrowserWindo
 
   const manifest = loadExtensionManifest(extPath);
 
-  console.log(`[ext:win] Creating window for extension: ${extId}`);
+  DEBUG && console.log(`[ext:win] Creating window for extension: ${extId}`);
 
   const win = new BrowserWindow({
     show: false,
@@ -219,8 +219,8 @@ export async function createExtensionWindow(extId: string): Promise<BrowserWindo
   });
 
   // Forward console logs
-  win.webContents.on('console-message', (event, level, message) => {
-    console.log(`[ext:${extId}] ${message}`);
+  win.webContents.on('console-message', (event) => {
+    DEBUG && console.log(`[ext:${extId}] ${event.message}`);
   });
 
   // Track crashes
@@ -234,7 +234,7 @@ export async function createExtensionWindow(extId: string): Promise<BrowserWindo
 
   // Track close
   win.on('closed', () => {
-    console.log(`[ext:win] Extension ${extId} window closed`);
+    DEBUG && console.log(`[ext:win] Extension ${extId} window closed`);
     extensionWindows.delete(extId);
   });
 
@@ -242,7 +242,7 @@ export async function createExtensionWindow(extId: string): Promise<BrowserWindo
 
   try {
     await win.loadURL(`peek://ext/${extId}/background.html`);
-    console.log(`[ext:win] Extension ${extId} loaded successfully`);
+    DEBUG && console.log(`[ext:win] Extension ${extId} loaded successfully`);
     const entry = extensionWindows.get(extId);
     if (entry) {
       entry.status = 'running';
@@ -275,7 +275,7 @@ export async function loadEnabledExtensions(): Promise<number> {
   if (builtinExtIds.includes('cmd') && isBuiltinExtensionEnabled('cmd')) {
     const cmdStart = Date.now();
     await createExtensionWindow('cmd');
-    console.log(`[ext:timing] cmd: ${Date.now() - cmdStart}ms`);
+    DEBUG && console.log(`[ext:timing] cmd: ${Date.now() - cmdStart}ms`);
   }
 
   // Phase 2: Commands - other extensions should register commands
@@ -287,7 +287,7 @@ export async function loadEnabledExtensions(): Promise<number> {
 
   const parallelStart = Date.now();
   await Promise.all(enabledBuiltinIds.map(id => createExtensionWindow(id)));
-  console.log(`[ext:timing] parallel (${enabledBuiltinIds.join(',')}): ${Date.now() - parallelStart}ms`);
+  DEBUG && console.log(`[ext:timing] parallel (${enabledBuiltinIds.join(',')}): ${Date.now() - parallelStart}ms`);
 
   // Load external extensions in parallel
   const externalExts = getExternalExtensions();
@@ -300,10 +300,10 @@ export async function loadEnabledExtensions(): Promise<number> {
   if (enabledExternalExts.length > 0) {
     const extExtStart = Date.now();
     await Promise.all(enabledExternalExts.map(ext => createExtensionWindow(ext.id)));
-    console.log(`[ext:timing] external: ${Date.now() - extExtStart}ms`);
+    DEBUG && console.log(`[ext:timing] external: ${Date.now() - extExtStart}ms`);
   }
 
-  console.log(`[ext:timing] total: ${Date.now() - extStart}ms`);
+  DEBUG && console.log(`[ext:timing] total: ${Date.now() - extStart}ms`);
 
   // Phase 3: UI - extensions can now initialize UI elements
   publish('system', scopes.GLOBAL, 'ext:startup:phase', { phase: 'ui' });
@@ -322,7 +322,7 @@ export async function loadEnabledExtensions(): Promise<number> {
  * All extensions load as iframes within this single window
  */
 async function createExtensionHostWindow(): Promise<BrowserWindow> {
-  console.log('[ext:host] Creating consolidated extension host window');
+  DEBUG && console.log('[ext:host] Creating consolidated extension host window');
 
   const win = new BrowserWindow({
     show: false,
@@ -335,9 +335,7 @@ async function createExtensionHostWindow(): Promise<BrowserWindow> {
 
   // Forward console logs from extension host
   win.webContents.on('console-message', (event) => {
-    // New API: event has message property
-    const msg = (event as { message?: string }).message || JSON.stringify(event);
-    console.log(`[ext:host] ${msg}`);
+    DEBUG && console.log(`[ext:host] ${event.message}`);
   });
 
   // Log load errors
@@ -373,7 +371,7 @@ async function loadExtensionsConsolidated(): Promise<number> {
 
   const allExtIds = [...enabledBuiltinIds, ...enabledExternalIds];
 
-  console.log(`[ext:host] Loading ${allExtIds.length} extensions as iframes`);
+  DEBUG && console.log(`[ext:host] Loading ${allExtIds.length} extensions as iframes`);
 
   // Phase 1: Early
   publish('system', scopes.GLOBAL, 'ext:startup:phase', { phase: 'early' });
@@ -398,7 +396,7 @@ async function loadExtensionsConsolidated(): Promise<number> {
   // Wait for iframes to load
   await new Promise(resolve => setTimeout(resolve, 200));
 
-  console.log(`[ext:timing] consolidated total: ${Date.now() - extStart}ms`);
+  DEBUG && console.log(`[ext:timing] consolidated total: ${Date.now() - extStart}ms`);
 
   // Phase 3: UI
   publish('system', scopes.GLOBAL, 'ext:startup:phase', { phase: 'ui' });
@@ -433,7 +431,7 @@ export async function loadExtensions(): Promise<number> {
   const externalExts = getExternalExtensions();
   const enabledExternalExts = externalExts.filter(ext => ext.enabled && ext.path);
 
-  console.log(`[ext] Hybrid mode: ${consolidatedIds.length} consolidated, ${externalBuiltinIds.length + enabledExternalExts.length} external`);
+  DEBUG && console.log(`[ext] Hybrid mode: ${consolidatedIds.length} consolidated, ${externalBuiltinIds.length + enabledExternalExts.length} external`);
 
   // Phase 1: Early
   publish('system', scopes.GLOBAL, 'ext:startup:phase', { phase: 'early' });
@@ -478,7 +476,7 @@ export async function loadExtensions(): Promise<number> {
   }
 
   const totalCount = consolidatedIds.length + externalBuiltinIds.length + enabledExternalExts.length;
-  console.log(`[ext:timing] hybrid total: ${Date.now() - extStart}ms`);
+  DEBUG && console.log(`[ext:timing] hybrid total: ${Date.now() - extStart}ms`);
 
   // Phase 3: UI
   publish('system', scopes.GLOBAL, 'ext:startup:phase', { phase: 'ui' });
@@ -533,11 +531,11 @@ export function getRunningExtensions(): Array<{ id: string; manifest: unknown; s
 export function destroyExtensionWindow(extId: string): boolean {
   const entry = extensionWindows.get(extId);
   if (!entry) {
-    console.log(`[ext:win] No window to destroy for: ${extId}`);
+    DEBUG && console.log(`[ext:win] No window to destroy for: ${extId}`);
     return false;
   }
 
-  console.log(`[ext:win] Destroying window for: ${extId}`);
+  DEBUG && console.log(`[ext:win] Destroying window for: ${extId}`);
 
   if (entry.win && !entry.win.isDestroyed()) {
     entry.win.webContents.send('pubsub:app:shutdown', {});
@@ -656,8 +654,8 @@ export function createBackgroundWindow(): BrowserWindow {
   win.loadURL(WEB_CORE_ADDRESS);
 
   // Forward console logs from background window
-  win.webContents.on('console-message', (_event, _level, message) => {
-    console.log(`[core] ${message}`);
+  win.webContents.on('console-message', (event) => {
+    DEBUG && console.log(`[core] ${event.message}`);
   });
 
   // Setup devtools for the background window (debug mode, but not in tests or headless)
@@ -672,7 +670,7 @@ export function createBackgroundWindow(): BrowserWindow {
 
   // Set up handlers for windows opened from the background window
   win.webContents.setWindowOpenHandler((details) => {
-    console.log('Background window opening child window:', details.url);
+    DEBUG && console.log('Background window opening child window:', details.url);
 
     // Parse window features into options
     const featuresMap: Record<string, unknown> = {};
@@ -692,13 +690,13 @@ export function createBackgroundWindow(): BrowserWindow {
         });
     }
 
-    console.log('Parsed features map:', featuresMap);
+    DEBUG && console.log('Parsed features map:', featuresMap);
 
     // Check if window with this key already exists
     if (featuresMap.key) {
       const existingWindow = findWindowByKey(WEB_CORE_ADDRESS, featuresMap.key as string);
       if (existingWindow) {
-        console.log('Reusing existing window with key:', featuresMap.key);
+        DEBUG && console.log('Reusing existing window with key:', featuresMap.key);
         if (!isHeadless()) {
           existingWindow.window.show();
         }
@@ -727,7 +725,7 @@ export function createBackgroundWindow(): BrowserWindow {
       winOptions.y = parseInt(String(featuresMap.y));
     }
 
-    console.log('Background window creating child with options:', winOptions);
+    DEBUG && console.log('Background window creating child with options:', winOptions);
 
     // Make sure we register browser window created handler to track the new window
     const onCreated = (_e: Electron.Event, newWin: BrowserWindow) => {
@@ -756,7 +754,7 @@ export function createBackgroundWindow(): BrowserWindow {
             setTimeout(() => {
               if (!newWin.isDestroyed()) {
                 newWin.on('blur', () => {
-                  console.log('Modal window lost focus:', details.url);
+                  DEBUG && console.log('Modal window lost focus:', details.url);
                   closeOrHideWindow(newWin.id);
                 });
               }
@@ -793,7 +791,7 @@ export function getBackgroundWindow(): BrowserWindow | null {
  * Handle URLs opened from external apps (e.g., when Peek is default browser)
  */
 export function handleExternalUrl(url: string, sourceId = 'os'): void {
-  console.log('External URL received:', url, 'from:', sourceId);
+  DEBUG && console.log('External URL received:', url, 'from:', sourceId);
 
   if (!_appReady) {
     _pendingUrls.push({ url, sourceId });
@@ -849,7 +847,7 @@ export function registerSecondInstanceHandler(): void {
       arg.startsWith('http://') || arg.startsWith('https://')
     );
     if (url) {
-      console.log('second-instance URL:', url);
+      DEBUG && console.log('second-instance URL:', url);
       handleExternalUrl(url, 'os');
     }
   });
@@ -863,7 +861,7 @@ export function handleCliUrl(): void {
     arg.startsWith('http://') || arg.startsWith('https://')
   );
   if (urlArg) {
-    console.log('CLI URL argument:', urlArg);
+    DEBUG && console.log('CLI URL argument:', urlArg);
     // Defer until background app is ready
     setTimeout(() => handleExternalUrl(urlArg, 'cli'), 1000);
   }
@@ -876,7 +874,7 @@ export function handleCliUrl(): void {
  */
 export function registerWindowAllClosedHandler(onQuit: () => void): void {
   app.on('window-all-closed', () => {
-    console.log('window-all-closed', process.platform);
+    DEBUG && console.log('window-all-closed', process.platform);
     if (process.platform !== 'darwin') {
       onQuit();
     }
@@ -904,7 +902,7 @@ export function registerActivateHandler(): void {
 export function requestSingleInstance(): boolean {
   // Skip single-instance lock in dev/test profiles to allow running alongside production
   if (isDevProfile() || isTestProfile()) {
-    console.log('Skipping single-instance lock for profile:', getProfile());
+    DEBUG && console.log('Skipping single-instance lock for profile:', getProfile());
     return true;
   }
 
@@ -921,7 +919,7 @@ export function requestSingleInstance(): boolean {
  * Quit the application gracefully
  */
 export function quitApp(): void {
-  console.log('quitApp');
+  DEBUG && console.log('quitApp');
 
   // Publish shutdown event and close database
   shutdown();

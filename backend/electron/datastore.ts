@@ -22,6 +22,7 @@ import type {
   ContentOptions,
 } from '../types/index.js';
 import { tableNames } from '../types/index.js';
+import { DEBUG } from './config.js';
 
 // SQL Schema
 const createTableStatements = `
@@ -242,7 +243,7 @@ let db: Database.Database | null = null;
 // ==================== Lifecycle ====================
 
 export function initDatabase(dbPath: string): Database.Database {
-  console.log('main', 'initializing database at:', dbPath);
+  DEBUG && console.log('main', 'initializing database at:', dbPath);
 
   db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
@@ -250,7 +251,7 @@ export function initDatabase(dbPath: string): Database.Database {
 
   migrateTinyBaseData();
 
-  console.log('main', 'database initialized successfully');
+  DEBUG && console.log('main', 'database initialized successfully');
   return db;
 }
 
@@ -258,7 +259,7 @@ export function closeDatabase(): void {
   if (db) {
     db.close();
     db = null;
-    console.log('main', 'database closed');
+    DEBUG && console.log('main', 'database closed');
   }
 }
 
@@ -353,28 +354,28 @@ function migrateTinyBaseData(): void {
   // Check if we already migrated
   const existingData = db.prepare('SELECT COUNT(*) as count FROM addresses').get() as { count: number };
   if (existingData.count > 0) {
-    console.log('main', 'TinyBase data already migrated, skipping');
+    DEBUG && console.log('main', 'TinyBase data already migrated, skipping');
     return;
   }
 
-  console.log('main', 'Migrating TinyBase data to direct tables...');
+  DEBUG && console.log('main', 'Migrating TinyBase data to direct tables...');
 
   try {
     const tinybaseRow = db.prepare('SELECT * FROM tinybase').get() as Record<string, unknown> | undefined;
     if (!tinybaseRow) {
-      console.log('main', 'No TinyBase data found');
+      DEBUG && console.log('main', 'No TinyBase data found');
       return;
     }
 
     const rawData = Object.values(tinybaseRow)[1] as string;
     if (!rawData) {
-      console.log('main', 'TinyBase data is empty');
+      DEBUG && console.log('main', 'TinyBase data is empty');
       return;
     }
 
     const [tables] = JSON.parse(rawData) as [Record<string, Record<string, Record<string, unknown>>>];
     if (!tables) {
-      console.log('main', 'No tables in TinyBase data');
+      DEBUG && console.log('main', 'No tables in TinyBase data');
       return;
     }
 
@@ -390,7 +391,7 @@ function migrateTinyBaseData(): void {
       const entries = Object.entries(tableData);
       if (entries.length === 0) continue;
 
-      console.log('main', `  Migrating ${entries.length} rows from ${tableName}`);
+      DEBUG && console.log('main', `  Migrating ${entries.length} rows from ${tableName}`);
 
       for (const [id, row] of entries) {
         try {
@@ -409,7 +410,7 @@ function migrateTinyBaseData(): void {
     }
 
     db.exec('DROP TABLE IF EXISTS tinybase');
-    console.log('main', 'TinyBase migration complete, removed tinybase table');
+    DEBUG && console.log('main', 'TinyBase migration complete, removed tinybase table');
   } catch (error) {
     console.error('main', 'TinyBase migration failed:', (error as Error).message);
   }

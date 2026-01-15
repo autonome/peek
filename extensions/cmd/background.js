@@ -13,11 +13,11 @@
  */
 
 import { id, labels, schemas, storageKeys, defaults } from './config.js';
+import { log } from 'peek://app/log.js';
 
 const api = window.app;
-const debug = api.debug;
 
-console.log('[ext:cmd] background', labels.name);
+log('ext:cmd', 'background', labels.name);
 
 // ===== Command Registry (PROVIDER PATTERN) =====
 // This extension owns the command registry. Other extensions register
@@ -54,7 +54,7 @@ const loadSettings = async () => {
 const saveSettings = async (settings) => {
   const result = await api.settings.set(settings);
   if (!result.success) {
-    console.error('[ext:cmd] Failed to save settings:', result.error);
+    log.error('ext:cmd', 'Failed to save settings:', result.error);
   }
 };
 
@@ -70,11 +70,11 @@ const loadCommandCache = async () => {
     const result = await api.datastore.getRow('extension_settings', `cmd:command_cache`);
     if (result.success && result.data && result.data.value) {
       const cache = JSON.parse(result.data.value);
-      debug && console.log('[ext:cmd] Loaded command cache:', cache.commands?.length, 'commands');
+      log('ext:cmd', 'Loaded command cache:', cache.commands?.length, 'commands');
       return cache;
     }
   } catch (err) {
-    console.error('[ext:cmd] Failed to load command cache:', err);
+    log.error('ext:cmd', 'Failed to load command cache:', err);
   }
   return null;
 };
@@ -108,9 +108,9 @@ const saveCommandCache = async (appVersion, extensionVersions) => {
       updatedAt: Date.now()
     });
 
-    console.log('[ext:cmd] Saved command cache:', commands.length, 'commands');
+    log('ext:cmd', 'Saved command cache:', commands.length, 'commands');
   } catch (err) {
-    console.error('[ext:cmd] Failed to save command cache:', err);
+    log.error('ext:cmd', 'Failed to save command cache:', err);
   }
 };
 
@@ -146,7 +146,7 @@ const getCurrentVersions = async () => {
 const isCacheValid = (cache, appVersion, extensionVersions) => {
   if (!cache) return false;
   if (cache.appVersion !== appVersion) {
-    debug && console.log('[ext:cmd] Cache invalid: app version mismatch', cache.appVersion, '!=', appVersion);
+    log('ext:cmd', 'Cache invalid: app version mismatch', cache.appVersion, '!=', appVersion);
     return false;
   }
 
@@ -156,13 +156,13 @@ const isCacheValid = (cache, appVersion, extensionVersions) => {
 
   // Different set of extensions
   if (cachedExtIds.length !== currentExtIds.length) {
-    debug && console.log('[ext:cmd] Cache invalid: extension count mismatch');
+    log('ext:cmd', 'Cache invalid: extension count mismatch');
     return false;
   }
 
   for (const extId of currentExtIds) {
     if (cache.extensionVersions[extId] !== extensionVersions[extId]) {
-      debug && console.log('[ext:cmd] Cache invalid: extension version mismatch for', extId);
+      log('ext:cmd', 'Cache invalid: extension version mismatch for', extId);
       return false;
     }
   }
@@ -185,7 +185,7 @@ const initCommandRegistry = () => {
   api.subscribe('cmd:register-batch', (msg) => {
     if (!msg.commands || !Array.isArray(msg.commands)) return;
 
-    debug && console.log('[ext:cmd] cmd:register-batch received:', msg.commands.length, 'commands');
+    log('ext:cmd', 'cmd:register-batch received:', msg.commands.length, 'commands');
 
     for (const cmd of msg.commands) {
       commandRegistry.set(cmd.name, {
@@ -200,7 +200,7 @@ const initCommandRegistry = () => {
 
   // Handle individual command registrations from extensions
   api.subscribe('cmd:register', (msg) => {
-    debug && console.log('[ext:cmd] cmd:register received:', msg.name);
+    log('ext:cmd', 'cmd:register received:', msg.name);
     commandRegistry.set(msg.name, {
       name: msg.name,
       description: msg.description || '',
@@ -213,25 +213,25 @@ const initCommandRegistry = () => {
 
   // Handle command unregistrations
   api.subscribe('cmd:unregister', (msg) => {
-    debug && console.log('[ext:cmd] cmd:unregister received:', msg.name);
+    log('ext:cmd', 'cmd:unregister received:', msg.name);
     commandRegistry.delete(msg.name);
   }, api.scopes.GLOBAL);
 
   // Handle queries from late-arriving consumers
   // Re-publish ready signal so they know we're available
   api.subscribe('cmd:query', () => {
-    debug && console.log('[ext:cmd] cmd:query received, re-publishing ready');
+    log('ext:cmd', 'cmd:query received, re-publishing ready');
     api.publish('cmd:ready', { id: 'cmd' }, api.scopes.GLOBAL);
   }, api.scopes.GLOBAL);
 
   // Handle command list queries from the panel
   api.subscribe('cmd:query-commands', () => {
-    debug && console.log('[ext:cmd] cmd:query-commands received');
+    log('ext:cmd', 'cmd:query-commands received');
     const commands = Array.from(commandRegistry.values());
     api.publish('cmd:query-commands-response', { commands }, api.scopes.GLOBAL);
   }, api.scopes.GLOBAL);
 
-  console.log('[ext:cmd] Command registry initialized');
+  log('ext:cmd', 'Command registry initialized');
 };
 
 /**
@@ -243,7 +243,7 @@ const openPanelWindow = (prefs) => {
   const width = prefs.width || 600;
 
   const params = {
-    debug,
+    debug: log.debug,
     key: panelAddress,
     height,
     width,
@@ -277,16 +277,16 @@ const openPanelWindow = (prefs) => {
     modal: true,
     type: 'panel',
 
-    openDevTools: debug,
+    openDevTools: log.debug,
     detachedDevTools: true,
   };
 
   api.window.open(panelAddress, params)
     .then(result => {
-      console.log('[ext:cmd] Command window opened:', result);
+      log('ext:cmd', 'Command window opened:', result);
     })
     .catch(error => {
-      console.error('[ext:cmd] Failed to open command window:', error);
+      log.error('ext:cmd', 'Failed to open command window:', error);
     });
 };
 
@@ -303,14 +303,14 @@ const initShortcut = (prefs) => {
     openPanelWindow(prefs);
   }, { global: true });
 
-  console.log('[ext:cmd] Registered shortcut:', prefs.shortcutKey);
+  log('ext:cmd', 'Registered shortcut:', prefs.shortcutKey);
 };
 
 /**
  * Unregister shortcut and clean up
  */
 const uninit = () => {
-  console.log('[ext:cmd] uninit');
+  log('ext:cmd', 'uninit');
 
   if (registeredShortcut) {
     api.shortcuts.unregister(registeredShortcut, { global: true });
@@ -325,7 +325,7 @@ const uninit = () => {
  * Reinitialize (called when settings change)
  */
 const reinit = async () => {
-  console.log('[ext:cmd] reinit');
+  log('ext:cmd', 'reinit');
 
   // Unregister old shortcut
   if (registeredShortcut) {
@@ -342,7 +342,7 @@ const reinit = async () => {
  * Initialize the extension
  */
 const init = async () => {
-  console.log('[ext:cmd] init');
+  log('ext:cmd', 'init');
 
   // 1. Initialize command registry subscriptions FIRST
   // This ensures we're ready to receive registrations from other extensions
@@ -362,7 +362,7 @@ const init = async () => {
         produces: cmd.produces || []
       });
     }
-    console.log('[ext:cmd] Pre-populated registry from cache:', commandRegistry.size, 'commands');
+    log('ext:cmd', 'Pre-populated registry from cache:', commandRegistry.size, 'commands');
   }
 
   // 2. Load settings from datastore
@@ -373,13 +373,13 @@ const init = async () => {
 
   // 4. Listen for settings changes to hot-reload
   api.subscribe('cmd:settings-changed', () => {
-    console.log('[ext:cmd] settings changed, reinitializing');
+    log('ext:cmd', 'settings changed, reinitializing');
     reinit();
   }, api.scopes.GLOBAL);
 
   // 4b. Save command cache after all extensions have loaded
   api.subscribe('ext:all-loaded', async () => {
-    debug && console.log('[ext:cmd] ext:all-loaded - saving command cache');
+    log('ext:cmd', 'ext:all-loaded - saving command cache');
     // Small delay to ensure all commands are registered
     setTimeout(async () => {
       const { appVersion, extensionVersions } = await getCurrentVersions();
@@ -389,7 +389,7 @@ const init = async () => {
 
   // Listen for settings updates from Settings UI
   api.subscribe('cmd:settings-update', async (msg) => {
-    console.log('[ext:cmd] settings-update received:', msg);
+    log('ext:cmd', 'settings-update received:', msg);
 
     try {
       if (msg.data) {
@@ -408,7 +408,7 @@ const init = async () => {
 
       api.publish('cmd:settings-changed', currentSettings, api.scopes.GLOBAL);
     } catch (err) {
-      console.error('[ext:cmd] settings-update error:', err);
+      log.error('ext:cmd', 'settings-update error:', err);
     }
   }, api.scopes.GLOBAL);
 
@@ -418,7 +418,7 @@ const init = async () => {
   const pendingDownloads = new Map();
 
   api.subscribe('cmd:save-file', async (msg) => {
-    console.log('[ext:cmd] save-file request:', msg.filename);
+    log('ext:cmd', 'save-file request:', msg.filename);
 
     try {
       // Generate unique ID and store the data
@@ -439,13 +439,13 @@ const init = async () => {
         alwaysOnTop: true
       });
     } catch (err) {
-      console.error('[ext:cmd] save-file error:', err);
+      log.error('ext:cmd', 'save-file error:', err);
     }
   }, api.scopes.GLOBAL);
 
   // Download window requests data when ready
   api.subscribe('cmd:download-ready', (msg) => {
-    console.log('[ext:cmd] download-ready:', msg.id);
+    log('ext:cmd', 'download-ready:', msg.id);
 
     const data = pendingDownloads.get(msg.id);
     if (data) {
@@ -454,13 +454,13 @@ const init = async () => {
       // Clean up
       pendingDownloads.delete(msg.id);
     } else {
-      console.error('[ext:cmd] No pending download for id:', msg.id);
+      log.error('ext:cmd', 'No pending download for id:', msg.id);
     }
   }, api.scopes.GLOBAL);
 
   // 6. LAST: Publish ready signal (PROVIDER PATTERN)
   // This tells all waiting consumers that cmd is ready to receive registrations
-  console.log('[ext:cmd] Publishing cmd:ready');
+  log('ext:cmd', 'Publishing cmd:ready');
   api.publish('cmd:ready', { id: 'cmd' }, api.scopes.GLOBAL);
 };
 

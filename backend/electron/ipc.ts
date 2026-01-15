@@ -64,6 +64,7 @@ import {
   getPreloadPath,
   IPC_CHANNELS,
   isHeadless,
+  DEBUG,
 } from './config.js';
 
 import {
@@ -1110,7 +1111,7 @@ export function registerDarkModeHandlers(): void {
  */
 export function registerWindowHandlers(): void {
   ipcMain.handle('window-open', async (ev, msg) => {
-    console.log('window-open', msg);
+    DEBUG && console.log('window-open', msg);
 
     const { url, options } = msg;
 
@@ -1118,7 +1119,7 @@ export function registerWindowHandlers(): void {
     if (options.key) {
       const existingWindow = findWindowByKey(msg.source, options.key);
       if (existingWindow) {
-        console.log('Reusing existing window with key:', options.key);
+        DEBUG && console.log('Reusing existing window with key:', options.key);
         if (!isHeadless()) {
           existingWindow.window.show();
         }
@@ -1156,16 +1157,16 @@ export function registerWindowHandlers(): void {
       }
     }
 
-    console.log('Creating window with options:', winOptions);
+    DEBUG && console.log('Creating window with options:', winOptions);
 
     // Create new window
     const win = new BrowserWindow(winOptions);
 
     // Forward console logs from window to main process stdout (for debugging)
-    win.webContents.on('console-message', (_event, _level, message) => {
+    win.webContents.on('console-message', (event) => {
       // Only forward for peek:// URLs to avoid noise
       if (url.startsWith('peek://')) {
-        console.log(`[${url.replace('peek://', '')}] ${message}`);
+        DEBUG && console.log(`[${url.replace('peek://', '')}] ${event.message}`);
       }
     });
 
@@ -1183,7 +1184,7 @@ export function registerWindowHandlers(): void {
         address: url,
         transient: isTransient
       };
-      console.log('Adding window to manager:', win.id, 'modal:', windowParams.modal, 'keepLive:', windowParams.keepLive);
+      DEBUG && console.log('Adding window to manager:', win.id, 'modal:', windowParams.modal, 'keepLive:', windowParams.keepLive);
       registerWindow(win.id, msg.source, windowParams);
 
       // Add escape key handler to all windows
@@ -1199,7 +1200,7 @@ export function registerWindowHandlers(): void {
         setTimeout(() => {
           if (!win.isDestroyed()) {
             win.on('blur', () => {
-              console.log('window-open: blur for modal window', url);
+              DEBUG && console.log('window-open: blur for modal window', url);
               closeOrHideWindow(win.id);
             });
           }
@@ -1218,7 +1219,7 @@ export function registerWindowHandlers(): void {
   });
 
   ipcMain.handle('window-close', async (_ev, msg) => {
-    console.log('window-close', msg);
+    DEBUG && console.log('window-close', msg);
 
     try {
       if (!msg.id) {
@@ -1240,7 +1241,7 @@ export function registerWindowHandlers(): void {
   });
 
   ipcMain.handle('window-hide', async (_ev, msg) => {
-    console.log('window-hide', msg);
+    DEBUG && console.log('window-hide', msg);
 
     try {
       if (!msg.id) {
@@ -1268,7 +1269,7 @@ export function registerWindowHandlers(): void {
   });
 
   ipcMain.handle('window-show', async (_ev, msg) => {
-    console.log('window-show', msg);
+    DEBUG && console.log('window-show', msg);
 
     try {
       if (!msg.id) {
@@ -1297,7 +1298,7 @@ export function registerWindowHandlers(): void {
   });
 
   ipcMain.handle('window-move', async (_ev, msg) => {
-    console.log('window-move', msg);
+    DEBUG && console.log('window-move', msg);
 
     try {
       if (!msg.id) {
@@ -1329,7 +1330,7 @@ export function registerWindowHandlers(): void {
   });
 
   ipcMain.handle('window-focus', async (_ev, msg) => {
-    console.log('window-focus', msg);
+    DEBUG && console.log('window-focus', msg);
 
     try {
       if (!msg.id) {
@@ -1359,7 +1360,7 @@ export function registerWindowHandlers(): void {
   });
 
   ipcMain.handle('window-blur', async (_ev, msg) => {
-    console.log('window-blur', msg);
+    DEBUG && console.log('window-blur', msg);
 
     try {
       if (!msg.id) {
@@ -1387,7 +1388,7 @@ export function registerWindowHandlers(): void {
   });
 
   ipcMain.handle('window-exists', async (_ev, msg) => {
-    console.log('window-exists', msg);
+    DEBUG && console.log('window-exists', msg);
 
     try {
       if (!msg.id) {
@@ -1414,7 +1415,7 @@ export function registerWindowHandlers(): void {
   });
 
   ipcMain.handle('window-list', async (_ev, msg) => {
-    console.log('window-list', msg);
+    DEBUG && console.log('window-list', msg);
 
     try {
       const windows: Array<{
@@ -1461,16 +1462,16 @@ export function registerMiscHandlers(onQuit: () => void): void {
   // Renderer log forwarding - prints renderer console.log to terminal
   ipcMain.on(IPC_CHANNELS.RENDERER_LOG, (_ev, msg) => {
     const shortSource = msg.source?.replace('peek://app/', '') || 'unknown';
-    console.log(`[${shortSource}]`, ...(msg.args || []));
+    DEBUG && console.log(`[${shortSource}]`, ...(msg.args || []));
   });
 
   // Register shortcut
   ipcMain.on(IPC_CHANNELS.REGISTER_SHORTCUT, (ev, msg) => {
     const isGlobal = msg.global === true;
-    console.log('ipc register shortcut', msg.shortcut, isGlobal ? '(global)' : '(local)');
+    DEBUG && console.log('ipc register shortcut', msg.shortcut, isGlobal ? '(global)' : '(local)');
 
     const callback = () => {
-      console.log('on(registershortcut): shortcut executed', msg.shortcut, msg.replyTopic);
+      DEBUG && console.log('on(registershortcut): shortcut executed', msg.shortcut, msg.replyTopic);
       ev.reply(msg.replyTopic, { foo: 'bar' });
     };
 
@@ -1484,12 +1485,12 @@ export function registerMiscHandlers(onQuit: () => void): void {
   // Unregister shortcut
   ipcMain.on(IPC_CHANNELS.UNREGISTER_SHORTCUT, (_ev, msg) => {
     const isGlobal = msg.global === true;
-    console.log('ipc unregister shortcut', msg.shortcut, isGlobal ? '(global)' : '(local)');
+    DEBUG && console.log('ipc unregister shortcut', msg.shortcut, isGlobal ? '(global)' : '(local)');
 
     if (isGlobal) {
       const err = unregisterGlobalShortcut(msg.shortcut);
       if (err) {
-        console.log('ipc unregister global shortcut error:', err.message);
+        DEBUG && console.log('ipc unregister global shortcut error:', err.message);
       }
     } else {
       unregisterLocalShortcut(msg.shortcut);
@@ -1499,7 +1500,7 @@ export function registerMiscHandlers(onQuit: () => void): void {
   // Close window
   ipcMain.on(IPC_CHANNELS.CLOSE_WINDOW, (ev, msg) => {
     closeWindow(msg.params, (output) => {
-      console.log('main.closeWindow api callback, output:', output);
+      DEBUG && console.log('main.closeWindow api callback, output:', output);
       if (msg && msg.replyTopic) {
         ev.reply(msg.replyTopic, output);
       }
@@ -1508,48 +1509,48 @@ export function registerMiscHandlers(onQuit: () => void): void {
 
   // PubSub publish
   ipcMain.on(IPC_CHANNELS.PUBLISH, (_ev, msg) => {
-    console.log('ipc:publish', msg);
+    DEBUG && console.log('ipc:publish', msg);
     publish(msg.source, msg.scope, msg.topic, msg.data);
   });
 
   // PubSub subscribe
   ipcMain.on(IPC_CHANNELS.SUBSCRIBE, (ev, msg) => {
-    console.log('ipc:subscribe', msg);
+    DEBUG && console.log('ipc:subscribe', msg);
 
     subscribe(msg.source, msg.scope, msg.topic, (data: unknown) => {
-      console.log('ipc:subscribe:notification', msg);
+      DEBUG && console.log('ipc:subscribe:notification', msg);
       ev.reply(msg.replyTopic, data);
     });
   });
 
   // Console log from renderer
   ipcMain.on(IPC_CHANNELS.CONSOLE, (_ev, msg) => {
-    console.log('r:', msg.source, msg.text);
+    DEBUG && console.log('r:', msg.source, msg.text);
   });
 
   // App quit request
   ipcMain.on(IPC_CHANNELS.APP_QUIT, (_ev, msg) => {
-    console.log('app-quit requested from:', msg?.source);
+    DEBUG && console.log('app-quit requested from:', msg?.source);
     onQuit();
   });
 
   // App restart request
   ipcMain.on(IPC_CHANNELS.APP_RESTART, (_ev, msg) => {
-    console.log('app-restart requested from:', msg?.source);
+    DEBUG && console.log('app-restart requested from:', msg?.source);
     app.relaunch();
     onQuit();
   });
 
   // Modify window
   ipcMain.on(IPC_CHANNELS.MODIFY_WINDOW, (ev, msg) => {
-    console.log('modifywindow', msg);
+    DEBUG && console.log('modifywindow', msg);
 
     const key = Object.prototype.hasOwnProperty.call(msg, 'name') ? msg.name : null;
 
     if (key != null) {
       const existingWindow = findWindowByKey(msg.source, key);
       if (existingWindow) {
-        console.log('FOUND WINDOW FOR KEY', key);
+        DEBUG && console.log('FOUND WINDOW FOR KEY', key);
         const bw = existingWindow.window;
         let r = false;
         try {

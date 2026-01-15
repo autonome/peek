@@ -8,6 +8,7 @@
  */
 
 import { globalShortcut } from 'electron';
+import { DEBUG } from './config.js';
 
 // Maps for tracking shortcuts
 // Global shortcuts: shortcut string -> source address
@@ -135,7 +136,7 @@ export function registerGlobalShortcut(
   source: string,
   callback: () => void
 ): Error | undefined {
-  console.log('registerGlobalShortcut', shortcut);
+  DEBUG && console.log('registerGlobalShortcut', shortcut);
 
   if (globalShortcut.isRegistered(shortcut)) {
     console.error('Shortcut already registered, unregistering first:', shortcut);
@@ -143,7 +144,7 @@ export function registerGlobalShortcut(
   }
 
   const ret = globalShortcut.register(shortcut, () => {
-    console.log('shortcut executed', shortcut);
+    DEBUG && console.log('shortcut executed', shortcut);
     callback();
   });
 
@@ -160,7 +161,7 @@ export function registerGlobalShortcut(
  * Unregister a global shortcut
  */
 export function unregisterGlobalShortcut(shortcut: string): Error | undefined {
-  console.log('unregisterGlobalShortcut', shortcut);
+  DEBUG && console.log('unregisterGlobalShortcut', shortcut);
 
   if (!globalShortcut.isRegistered(shortcut)) {
     console.error('Unable to unregister shortcut because not registered:', shortcut);
@@ -180,10 +181,10 @@ export function registerLocalShortcut(
   source: string,
   callback: () => void
 ): void {
-  console.log('registerLocalShortcut', shortcut);
+  DEBUG && console.log('registerLocalShortcut', shortcut);
 
   if (localShortcuts.has(shortcut)) {
-    console.log('local shortcut already registered, replacing:', shortcut);
+    DEBUG && console.log('local shortcut already registered, replacing:', shortcut);
   }
 
   const parsed = parseShortcut(shortcut);
@@ -194,7 +195,7 @@ export function registerLocalShortcut(
  * Unregister a local shortcut
  */
 export function unregisterLocalShortcut(shortcut: string): void {
-  console.log('unregisterLocalShortcut', shortcut);
+  DEBUG && console.log('unregisterLocalShortcut', shortcut);
 
   if (!localShortcuts.has(shortcut)) {
     console.error('local shortcut not registered:', shortcut);
@@ -229,7 +230,7 @@ export function unregisterShortcutsForAddress(address: string): void {
   // Unregister global shortcuts
   for (const [shortcut, source] of globalShortcuts) {
     if (source === address) {
-      console.log('unregistering global shortcut', shortcut, 'for', address);
+      DEBUG && console.log('unregistering global shortcut', shortcut, 'for', address);
       unregisterGlobalShortcut(shortcut);
     }
   }
@@ -237,7 +238,7 @@ export function unregisterShortcutsForAddress(address: string): void {
   // Unregister local shortcuts
   for (const [shortcut, data] of localShortcuts) {
     if (data.source === address) {
-      console.log('unregistering local shortcut', shortcut, 'for', address);
+      DEBUG && console.log('unregistering local shortcut', shortcut, 'for', address);
       localShortcuts.delete(shortcut);
     }
   }

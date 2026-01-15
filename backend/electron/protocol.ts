@@ -13,6 +13,7 @@ import { protocol, net } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { getDb } from './datastore.js';
+import { DEBUG } from './config.js';
 
 export const APP_SCHEME = 'peek';
 export const APP_PROTOCOL = `${APP_SCHEME}:`;
@@ -52,7 +53,7 @@ export function registerScheme(): void {
  */
 export function registerExtensionPath(id: string, fsPath: string): void {
   extensionPaths.set(id, fsPath);
-  console.log('Registered extension path:', id, fsPath);
+  DEBUG && console.log('Registered extension path:', id, fsPath);
 }
 
 /**
@@ -67,7 +68,7 @@ export function getRegisteredExtensionIds(): string[] {
  */
 export function registerThemePath(id: string, fsPath: string): void {
   themePaths.set(id, fsPath);
-  console.log('Registered theme path:', id, fsPath);
+  DEBUG && console.log('Registered theme path:', id, fsPath);
 }
 
 /**
@@ -107,7 +108,7 @@ export function setActiveThemeId(id: string): boolean {
     return false;
   }
   activeThemeId = id;
-  console.log('Active theme set to:', id);
+  DEBUG && console.log('Active theme set to:', id);
   return true;
 }
 
@@ -168,7 +169,7 @@ export function initProtocol(appRootDir: string): void {
 
       const extBasePath = getExtensionPath(extId);
       if (!extBasePath) {
-        console.log('Extension not found:', extId);
+        DEBUG && console.log('Extension not found:', extId);
         return new Response('Extension not found', { status: 404 });
       }
 
@@ -221,7 +222,7 @@ export function initProtocol(appRootDir: string): void {
 
       const themeBasePath = getThemePath(themeId);
       if (!themeBasePath) {
-        console.log('Theme not found:', themeId);
+        DEBUG && console.log('Theme not found:', themeId);
         return new Response('Theme not found', { status: 404 });
       }
 

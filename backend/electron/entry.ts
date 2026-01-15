@@ -107,7 +107,7 @@ const PROFILE = profileIsLegit(process.env.PROFILE)
   ? process.env.PROFILE
   : (app.isPackaged && !isDevPackagedBuild() ? 'default' : 'dev');
 
-console.log('PROFILE', PROFILE, app.isPackaged ? (isDevPackagedBuild() ? '(dev-packaged)' : '(packaged)') : '(source)');
+DEBUG && console.log('PROFILE', PROFILE, app.isPackaged ? (isDevPackagedBuild() ? '(dev-packaged)' : '(packaged)') : '(source)');
 
 // Set profile in backend config
 setProfile(PROFILE);
@@ -169,7 +169,7 @@ const onQuit = () => {
 // Electron app load
 const onReady = async () => {
   const startupStart = Date.now();
-  console.log('onReady');
+  DEBUG && console.log('onReady');
 
   // Hide dock early to prevent flash in app switcher
   // Will be shown/hidden properly once prefs are loaded
@@ -206,7 +206,7 @@ const onReady = async () => {
   // Register as default handler for http/https URLs (if not already and user hasn't declined)
   // Skip for test profiles to avoid system dialogs during automated testing
   if (isTestProfile()) {
-    console.log('Skipping default browser check for test profile:', PROFILE);
+    DEBUG && console.log('Skipping default browser check for test profile:', PROFILE);
   }
 
   const defaultBrowserPrefFile = path.join(profileDataPath, 'default-browser-pref.json');
@@ -218,7 +218,7 @@ const onReady = async () => {
       const pref = JSON.parse(fs.readFileSync(defaultBrowserPrefFile, 'utf8'));
       if (pref.declined === true) {
         shouldPromptForDefault = false;
-        console.log('User previously declined default browser prompt');
+        DEBUG && console.log('User previously declined default browser prompt');
       }
     }
   } catch {
@@ -231,7 +231,7 @@ const onReady = async () => {
     const isDefaultHttps = app.isDefaultProtocolClient('https');
 
     if (!isDefaultHttp || !isDefaultHttps) {
-      console.log('Registering as default protocol client for http/https');
+      DEBUG && console.log('Registering as default protocol client for http/https');
       app.setAsDefaultProtocolClient('http');
       app.setAsDefaultProtocolClient('https');
 
@@ -241,7 +241,7 @@ const onReady = async () => {
         const nowDefaultHttps = app.isDefaultProtocolClient('https');
         if (!nowDefaultHttp && !nowDefaultHttps) {
           // User declined, save preference
-          console.log('User declined default browser, saving preference');
+          DEBUG && console.log('User declined default browser, saving preference');
           try {
             fs.writeFileSync(defaultBrowserPrefFile, JSON.stringify({ declined: true, timestamp: Date.now() }));
           } catch {
@@ -250,7 +250,7 @@ const onReady = async () => {
         }
       }, 2000);
     } else {
-      console.log('Already default protocol client for http/https');
+      DEBUG && console.log('Already default protocol client for http/https');
     }
   }
 
@@ -264,7 +264,7 @@ const onReady = async () => {
   // TODO: kinda janky, needs rethink
   subscribe(systemAddress, scopes.SYSTEM, strings.topics.prefs, async (msg: unknown) => {
     const prefsMsg = msg as { prefs: Record<string, unknown> };
-    console.log('PREFS', prefsMsg);
+    DEBUG && console.log('PREFS', prefsMsg);
 
     // cache all prefs
     _prefs = prefsMsg.prefs;
@@ -274,7 +274,7 @@ const onReady = async () => {
 
     // initialize system tray
     if (prefsMsg.prefs.showTrayIcon === true) {
-      console.log('showing tray');
+      DEBUG && console.log('showing tray');
       initTray(ROOT_DIR, {
         tooltip: labels.tray.tooltip,
         onClick: () => {
@@ -289,10 +289,10 @@ const onReady = async () => {
     const newQuitShortcut = (prefsMsg.prefs.quitShortcut as string) || strings.defaults.quitShortcut;
     if (newQuitShortcut !== _quitShortcut) {
       if (_quitShortcut) {
-        console.log('unregistering old quit shortcut:', _quitShortcut);
+        DEBUG && console.log('unregistering old quit shortcut:', _quitShortcut);
         unregisterLocalShortcut(_quitShortcut);
       }
-      console.log('registering new quit shortcut:', newQuitShortcut);
+      DEBUG && console.log('registering new quit shortcut:', newQuitShortcut);
       registerLocalShortcut(newQuitShortcut, 'system', onQuit);
       _quitShortcut = newQuitShortcut;
     }
@@ -304,7 +304,7 @@ const onReady = async () => {
       await loadExtensions();
       const extTime = Date.now() - extStart;
       const totalTime = Date.now() - ((global as Record<string, unknown>).__startupStart as number);
-      console.log(`[startup] main: ${extStart - ((global as Record<string, unknown>).__startupStart as number)}ms, extensions: ${extTime}ms, total: ${totalTime}ms`);
+      DEBUG && console.log(`[startup] main: ${extStart - ((global as Record<string, unknown>).__startupStart as number)}ms, extensions: ${extTime}ms, total: ${totalTime}ms`);
     }
   });
 

@@ -4,18 +4,17 @@ import windowManager from "./windows.js";
 import api from './api.js';
 import fc from './features.js';
 import migrations from './migrations/index.js';
+import { log } from './log.js';
 
 const { id, labels, schemas, storageKeys, defaults } = appConfig;
 
-console.log('core', id, labels.name);
-
-const debug = api.debug;
+log('core', id, labels.name);
 
 // Store is created asynchronously in init()
 let store = null;
 
 // Datastore is now initialized in main process and accessible via api.datastore
-console.log('core', 'datastore available via api.datastore');
+log('core', 'datastore available via api.datastore');
 
 // Import and expose history tracking helpers
 import historyTracking from './datastore/history.js';
@@ -35,39 +34,39 @@ const builtinExtensions = ['cmd', 'groups', 'peeks', 'slides'];
 let _settingsWin = null;
 
 const openSettingsWindow = async (prefs) => {
-  console.log('openSettingsWindow()');
+  log('core', 'openSettingsWindow()');
 
   // Fixed size for settings window - content doesn't need to scale with screen
   const width = 900;
   const height = 650;
 
   const params = {
-    debug,
+    debug: log.debug,
     key: settingsAddress,
     transparent: true,
     height,
     width
   };
 
-  console.log('Opening settings window with params:', params);
+  log('core', 'Opening settings window with params:', params);
 
   try {
     // Use the window creation API from windows.js
     const windowController = await windowManager.createWindow(settingsAddress, params);
 
-    console.log('Settings window opened successfully with controller:', windowController);
+    log('core', 'Settings window opened successfully with controller:', windowController);
     _settingsWin = windowController;
 
     // Focus the window to bring it to front
     await windowController.focus();
   } catch (error) {
-    console.error('Failed to open settings window:', error);
+    log.error('core', 'Failed to open settings window:', error);
   }
 };
 
 const initSettingsShortcut = (prefs) => {
   api.shortcuts.register(prefs.shortcutKey, () => {
-    console.log('settings shortcut executed');
+    log('core', 'settings shortcut executed');
     openSettingsWindow(prefs);
   });
 };
@@ -80,23 +79,23 @@ const initFeature = f => {
   // Skip extension-based features (they're loaded by main process ExtensionManager)
   const extId = f.name.toLowerCase();
   if (builtinExtensions.includes(extId)) {
-    debug && console.log('skipping extension-based feature (loaded by main process):', f.name);
+    log('core', 'skipping extension-based feature (loaded by main process):', f.name);
     return;
   }
 
   // Check if feature exists in the features collection
   if (!fc[f.id]) {
-    console.log('feature not found in collection:', f.name, f.id);
+    log('core', 'feature not found in collection:', f.name, f.id);
     return;
   }
 
-  console.log('initializing feature ', f);
+  log('core', 'initializing feature ', f);
 
   fc[f.id].init();
 };
 
 const uninitFeature = f => {
-  console.log('TODO: uninitFeature', f);
+  log('core', 'TODO: uninitFeature', f);
 
   // TODO uninitialize each active feature and close its window
 };
@@ -104,15 +103,15 @@ const uninitFeature = f => {
 // unused, worth testing more tho
 const initIframeFeature = file => {
   const pathPrefix = 'file:///Users/dietrich/misc/peek/';
-  console.log('initiframe');
+  log('core', 'initiframe');
   const i = document.createElement('iframe');
   const src = pathPrefix + file;
-  console.log('iframe src', src);
+  log('core', 'iframe src', src);
   document.body.appendChild(i);
   i.src = src;
-  console.log('iframe inited');
+  log('core', 'iframe inited');
   i.addEventListener('load', () => {
-    console.log('iframe loaded');
+    log('core', 'iframe loaded');
   });
 };
 
@@ -127,9 +126,9 @@ const features = () => store ? store.get(storageKeys.ITEMS) : defaults.items;
 async function setColorScheme(scheme) {
   const result = await api.theme.setColorScheme(scheme);
   if (result.success) {
-    console.log(`Color scheme set to: ${scheme}`);
+    log('core', `Color scheme set to: ${scheme}`);
   } else {
-    console.error('Failed to set color scheme:', result.error);
+    log.error('core', 'Failed to set color scheme:', result.error);
   }
 }
 
@@ -143,7 +142,7 @@ async function cycleTheme() {
   ]);
 
   if (!themeList.success || !themeList.data || themeList.data.length === 0) {
-    console.error('No themes available');
+    log.error('core', 'No themes available');
     return;
   }
 
@@ -157,9 +156,9 @@ async function cycleTheme() {
 
   const result = await api.theme.setTheme(nextTheme.id);
   if (result.success) {
-    console.log(`Theme changed to: ${nextTheme.name} (${nextTheme.id})`);
+    log('core', `Theme changed to: ${nextTheme.name} (${nextTheme.id})`);
   } else {
-    console.error('Failed to set theme:', result.error);
+    log.error('core', 'Failed to set theme:', result.error);
   }
 }
 
@@ -182,16 +181,16 @@ const registerExtensionCommands = () => {
     execute: async (ctx) => {
       const extName = ctx.search?.trim();
       if (!extName) {
-        console.log('extension reload: no extension name provided');
+        log('core', 'extension reload: no extension name provided');
         return;
       }
 
-      console.log(`Reloading extension: ${extName}`);
+      log('core', `Reloading extension: ${extName}`);
       const result = await api.extensions.reload(extName.toLowerCase());
       if (result.success) {
-        console.log(`Extension reloaded: ${extName}`);
+        log('core', `Extension reloaded: ${extName}`);
       } else {
-        console.error(`Failed to reload extension: ${result.error}`);
+        log.error('core', `Failed to reload extension: ${result.error}`);
       }
     }
   });
@@ -203,13 +202,13 @@ const registerExtensionCommands = () => {
     execute: async (ctx) => {
       const listResult = await api.extensions.list();
       if (listResult.success && listResult.data) {
-        console.log('Running extensions:');
+        log('core', 'Running extensions:');
         listResult.data.forEach(ext => {
           const manifest = ext.manifest || {};
-          console.log(`  - ${manifest.name || ext.id} (${ext.id}) v${manifest.version || '?'}`);
+          log('core', `  - ${manifest.name || ext.id} (${ext.id}) v${manifest.version || '?'}`);
         });
       } else {
-        console.log('No extensions running');
+        log('core', 'No extensions running');
       }
 
       // Open settings to Extensions section
@@ -258,7 +257,7 @@ const registerExtensionCommands = () => {
     execute: () => api.restart()
   });
 
-  console.log('Core commands registered');
+  log('core', 'Core commands registered');
 };
 
 const init = async () => {
@@ -278,21 +277,21 @@ const init = async () => {
     prefs: p
   }, api.scopes.SYSTEM);
 
-  console.log(`[startup] core init: ${Date.now() - initStart}ms`);
+  log('timing', `core init: ${Date.now() - initStart}ms`);
 
   // Listen for system- or feature-level requests to open windows.
   api.subscribe('open', msg => {
     // eg from the tray icon.
     if (msg.address && msg.address == settingsAddress) {
       openSettingsWindow(p).catch(err => {
-        console.error('Error opening settings window from open event:', err);
+        log.error('core', 'Error opening settings window from open event:', err);
       });
     }
   });
 
   // Handle URLs opened from external apps (e.g., when Peek is default browser)
   api.subscribe('external:open-url', async (msg) => {
-    console.log('external:open-url', msg);
+    log('core', 'external:open-url', msg);
     const { url, trackingSource, trackingSourceId } = msg;
 
     try {
@@ -303,7 +302,7 @@ const init = async () => {
         trackingSourceId
       });
     } catch (error) {
-      console.error('Error opening external URL:', error);
+      log.error('core', 'Error opening external URL:', error);
     }
   });
 
@@ -311,13 +310,13 @@ const init = async () => {
   try {
     await openSettingsWindow(p);
   } catch (error) {
-    console.error('Error opening startup settings window:', error);
+    log.error('core', 'Error opening startup settings window:', error);
   }
 
   // Feature enable/disable handler
   // Extensions are now managed by main process ExtensionManager via IPC
   api.subscribe(topicFeatureToggle, async msg => {
-    console.log('feature toggle', msg)
+    log('core', 'feature toggle', msg)
 
     // Find feature by ID (UUID) or by name (extension ID like "groups")
     const f = features().find(f =>
@@ -325,14 +324,14 @@ const init = async () => {
       f.name.toLowerCase() === msg.featureId?.toLowerCase()
     );
     if (f) {
-      console.log('feature toggle', f);
+      log('core', 'feature toggle', f);
 
       // Check if this feature is backed by an extension
       const extId = f.name.toLowerCase();
       const isExtension = builtinExtensions.includes(extId);
 
       if (msg.enabled == false) {
-        console.log('disabling', f.name);
+        log('core', 'disabling', f.name);
         if (isExtension) {
           // Use main process IPC to unload extension
           await api.extensions.unload(extId);
@@ -341,7 +340,7 @@ const init = async () => {
         }
       }
       else if (msg.enabled == true) {
-        console.log('enabling', f.name);
+        log('core', 'enabling', f.name);
         if (isExtension) {
           // Use main process IPC to load extension
           await api.extensions.load(extId);
@@ -351,7 +350,7 @@ const init = async () => {
       }
     }
     else {
-      console.log('feature toggle - no feature found for', msg.featureId);
+      log('core', 'feature toggle - no feature found for', msg.featureId);
     }
   });
 
@@ -362,7 +361,7 @@ const init = async () => {
 
   // Extensions are now loaded by main process ExtensionManager
   // It receives the 'core:ready' signal and calls loadEnabledExtensions()
-  console.log('Core features initialized. Extensions loaded by main process.');
+  log('core', 'Core features initialized. Extensions loaded by main process.');
 
   // Register extension dev commands - wait for cmd:ready
   api.subscribe('cmd:ready', () => {
@@ -375,6 +374,6 @@ const init = async () => {
 
 window.addEventListener('load', () => {
   init().catch(error => {
-    console.error('Error during application initialization:', error);
+    log.error('core', 'Error during application initialization:', error);
   });
 });

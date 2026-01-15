@@ -8,6 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { BrowserWindow } from 'electron';
+import { DEBUG } from './config.js';
 
 let watchers: fs.FSWatcher[] = [];
 let debounceTimer: NodeJS.Timeout | null = null;
@@ -20,9 +21,9 @@ export function startHotReload(rootDir: string): void {
   const appDir = path.join(rootDir, 'app');
   const extensionsDir = path.join(rootDir, 'extensions');
 
-  console.log('[hotreload] Starting hot reload...');
-  console.log('[hotreload] Watching:', appDir);
-  console.log('[hotreload] Watching:', extensionsDir);
+  DEBUG && console.log('[hotreload] Starting hot reload...');
+  DEBUG && console.log('[hotreload] Watching:', appDir);
+  DEBUG && console.log('[hotreload] Watching:', extensionsDir);
 
   // Watch app directory
   if (fs.existsSync(appDir)) {
@@ -52,7 +53,7 @@ export function startHotReload(rootDir: string): void {
     }
   }
 
-  console.log('[hotreload] Watching for changes (html, js, css)');
+  DEBUG && console.log('[hotreload] Watching for changes (html, js, css)');
 }
 
 /**
@@ -67,7 +68,7 @@ export function stopHotReload(): void {
     clearTimeout(debounceTimer);
     debounceTimer = null;
   }
-  console.log('[hotreload] Stopped');
+  DEBUG && console.log('[hotreload] Stopped');
 }
 
 /**
@@ -96,7 +97,7 @@ function scheduleReload(changedFile: string): void {
  * Reload all peek:// windows
  */
 function reloadWindows(changedFile: string): void {
-  console.log(`[hotreload] File changed: ${changedFile}`);
+  DEBUG && console.log(`[hotreload] File changed: ${changedFile}`);
 
   const windows = BrowserWindow.getAllWindows();
   let reloadedCount = 0;
@@ -113,5 +114,5 @@ function reloadWindows(changedFile: string): void {
     }
   }
 
-  console.log(`[hotreload] Reloaded ${reloadedCount} window(s)`);
+  DEBUG && console.log(`[hotreload] Reloaded ${reloadedCount} window(s)`);
 }

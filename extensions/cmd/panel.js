@@ -1146,22 +1146,29 @@ function updateMatchCount(name) {
 /**
  * Updates the command text UI with proper highlighting
  * Shows typed text in white, suggestion completion in grey
+ * Positions custom cursor at the start of the match
  */
 function updateCommandUI() {
   const commandText = document.getElementById('command-text');
+  const customCursor = document.getElementById('custom-cursor');
   commandText.innerHTML = '';
 
-  // If no typed text, show nothing
+  // If no typed text, hide cursor and show nothing
   if (!state.typed) {
+    if (customCursor) customCursor.style.display = 'none';
     return;
   }
 
-  // If no matches, just show the typed text
+  // Show cursor when typing
+  if (customCursor) customCursor.style.display = 'block';
+
+  // If no matches, just show the typed text with cursor at end
   if (state.matches.length === 0) {
     const typedSpan = document.createElement('span');
     typedSpan.className = 'typed';
     typedSpan.textContent = state.typed;
     commandText.appendChild(typedSpan);
+    positionCursor(state.typed.length);
     return;
   }
 
@@ -1171,6 +1178,7 @@ function updateCommandUI() {
     typedSpan.className = 'typed';
     typedSpan.textContent = state.typed;
     commandText.appendChild(typedSpan);
+    positionCursor(state.typed.length);
     return;
   }
 
@@ -1205,6 +1213,9 @@ function updateCommandUI() {
       paramsSpan.textContent = typedParams;
       commandText.appendChild(paramsSpan);
     }
+
+    // Cursor at start (position 0)
+    positionCursor(0);
   } else if (matchIndex > 0) {
     // Typed text matches in the middle - show full command with typed part highlighted
     const beforeSpan = document.createElement('span');
@@ -1227,13 +1238,41 @@ function updateCommandUI() {
       paramsSpan.textContent = typedParams;
       commandText.appendChild(paramsSpan);
     }
+
+    // Cursor at start of match
+    positionCursor(matchIndex);
   } else {
     // No match position found, just show typed text
     const typedSpan = document.createElement('span');
     typedSpan.className = 'typed';
     typedSpan.textContent = state.typed;
     commandText.appendChild(typedSpan);
+    positionCursor(state.typed.length);
   }
+}
+
+/**
+ * Position the custom cursor at a character index in the command text
+ */
+function positionCursor(charIndex) {
+  const customCursor = document.getElementById('custom-cursor');
+  const commandText = document.getElementById('command-text');
+  if (!customCursor || !commandText) return;
+
+  // Create a temporary span to measure text width up to charIndex
+  const textContent = commandText.textContent || '';
+  const textToMeasure = textContent.substring(0, charIndex);
+
+  // Create measuring element with same styling
+  const measurer = document.createElement('span');
+  measurer.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;font-family:inherit;font-size:20px;font-weight:500;';
+  measurer.textContent = textToMeasure;
+  commandText.appendChild(measurer);
+
+  const width = measurer.offsetWidth;
+  commandText.removeChild(measurer);
+
+  customCursor.style.left = width + 'px';
 }
 
 /**

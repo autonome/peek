@@ -52,12 +52,12 @@
         left: 0;
         width: 100%;
         height: 40px;
-        line-height: 1.4;
+        line-height: 24px;
         border: none;
         outline: none;
         background: transparent;
         color: transparent;
-        caret-color: white;
+        caret-color: transparent;
         font-family: inherit;
         font-size: 20px;
         font-weight: 500;
@@ -78,7 +78,7 @@
         left: 0;
         width: 100%;
         height: 40px;
-        line-height: 1.4;
+        line-height: 24px;
         font-family: inherit;
         font-size: 20px;
         font-weight: 500;
@@ -93,6 +93,24 @@
 
       #command-text .typed {
         color: white;
+      }
+
+      /* Custom cursor positioned at match location */
+      #custom-cursor {
+        position: absolute;
+        top: 8px;
+        left: 0;
+        width: 2px;
+        height: 24px;
+        background: white;
+        animation: blink 1s step-end infinite;
+        pointer-events: none;
+        z-index: 3;
+      }
+
+      @keyframes blink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0; }
       }
 
       /* Styling for the matched part */
@@ -408,6 +426,7 @@
       <div class="command-display">
         <input id="command-input" type="text" autofocus spellcheck="false" placeholder="Type a command..." />
         <div id="command-text"></div>
+        <div id="custom-cursor"></div>
       </div>
     </div>
     <div id="results"></div>

@@ -1518,3 +1518,13 @@ window.addEventListener('load', init);
 window.addEventListener('blur', () => {
   console.log('core settings blur');
 });
+
+// Listen for navigation requests from commands
+api.subscribe('settings:navigate', (msg) => {
+  if (msg.section) {
+    showSection(msg.section);
+  }
+}, api.scopes.GLOBAL);
+
+// Expose showSection for external navigation
+window.showSettingsSection = showSection;

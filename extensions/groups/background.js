@@ -170,11 +170,46 @@ const openGroup = async (groupName) => {
 
 const commandDefinitions = [
   {
-    name: 'groups',
+    name: 'open groups',
     description: 'Open the groups manager',
     execute: async (ctx) => {
       console.log('[ext:groups] Opening groups manager');
       openGroupsWindow();
+    }
+  },
+  {
+    name: 'list groups',
+    description: 'List all groups (chainable)',
+    accepts: [],
+    produces: ['application/json'],
+    execute: async (ctx) => {
+      const groups = await getAllGroups();
+      if (groups.length === 0) {
+        return { output: 'No groups yet. Tag some pages to create groups.', mimeType: 'text/plain' };
+      }
+
+      // Get address counts for each group
+      const groupsWithCounts = await Promise.all(groups.map(async (g) => {
+        const result = await api.datastore.getAddressesByTag(g.id);
+        const count = result.success ? result.data.length : 0;
+        return { id: g.id, name: g.name, color: g.color, count };
+      }));
+
+      // Filter to non-empty groups
+      const nonEmpty = groupsWithCounts.filter(g => g.count > 0);
+      if (nonEmpty.length === 0) {
+        return { output: 'No groups with pages yet.', mimeType: 'text/plain' };
+      }
+
+      // Return chainable JSON output
+      return {
+        success: true,
+        output: {
+          data: nonEmpty,
+          mimeType: 'application/json',
+          title: `Groups (${nonEmpty.length} items)`
+        }
+      };
     }
   },
   {
@@ -212,6 +247,9 @@ const commandDefinitions = [
   }
 ];
 
+// Track dynamic group commands separately
+let dynamicGroupCommands = [];
+
 // ===== Registration =====
 
 let registeredShortcut = null;
@@ -224,19 +262,70 @@ const initShortcut = (shortcut) => {
   registeredShortcut = shortcut;
 };
 
-const initCommands = () => {
+/**
+ * Register dynamic commands for each existing group
+ * Creates "group GroupName" commands that are searchable
+ */
+const registerDynamicGroupCommands = async () => {
+  // Unregister old dynamic commands first
+  for (const name of dynamicGroupCommands) {
+    api.commands.unregister(name);
+  }
+  dynamicGroupCommands = [];
+
+  // Get all groups with addresses
+  const groups = await getAllGroups();
+  const groupsWithCounts = await Promise.all(groups.map(async (g) => {
+    const result = await api.datastore.getAddressesByTag(g.id);
+    const count = result.success ? result.data.length : 0;
+    return { ...g, count };
+  }));
+
+  // Register a command for each non-empty group
+  const nonEmpty = groupsWithCounts.filter(g => g.count > 0);
+  for (const group of nonEmpty) {
+    const cmdName = `group ${group.name}`;
+    const cmd = {
+      name: cmdName,
+      description: `Open ${group.count} pages in "${group.name}"`,
+      execute: async () => {
+        await openGroup(group.name);
+      }
+    };
+    api.commands.register(cmd);
+    dynamicGroupCommands.push(cmdName);
+  }
+
+  if (nonEmpty.length > 0) {
+    debug && console.log('[ext:groups] Registered dynamic group commands:', dynamicGroupCommands);
+  }
+};
+
+const initCommands = async () => {
+  // Register static commands
   commandDefinitions.forEach(cmd => {
     api.commands.register(cmd);
     registeredCommands.push(cmd.name);
   });
   console.log('[ext:groups] Registered commands:', registeredCommands);
+
+  // Register dynamic group commands
+  await registerDynamicGroupCommands();
 };
 
 const uninitCommands = () => {
+  // Unregister static commands
   registeredCommands.forEach(name => {
     api.commands.unregister(name);
   });
   registeredCommands = [];
+
+  // Unregister dynamic commands
+  for (const name of dynamicGroupCommands) {
+    api.commands.unregister(name);
+  }
+  dynamicGroupCommands = [];
+
   console.log('[ext:groups] Unregistered commands');
 };
 

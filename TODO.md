@@ -6,6 +6,17 @@
 - [ ] Pre-compiled TypeScript: skip tsc during dev if no changes
 - [ ] Lazy extension loading: load on first access instead of startup
 
+## Groups
+
+- [ ] Define relationship between page groups and tags (are they the same? different views?)
+- [ ] Searchable/indexable command API for dynamic content (e.g., group names, bookmarks)
+- [ ] Refresh dynamic group commands when groups change (after tagging)
+
+## Commands
+
+- [ ] Add commands for settings nav sections: core, extensions, themes, datastore, diagnostic
+- [ ] Add commands to open specific extension settings
+
 ## v? - Entity centrism (NER streams)
 
 - [ ] Entity catalog definition

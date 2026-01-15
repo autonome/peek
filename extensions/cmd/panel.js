@@ -95,6 +95,25 @@ loadAdaptiveData().then(data => {
   log('cmd:panel', 'Loaded adaptive data');
 });
 
+// Window sizing constants
+const COLLAPSED_HEIGHT = 60;  // Just the command bar
+const EXPANDED_HEIGHT = 400;  // With results/preview
+
+/**
+ * Resize the window based on content visibility
+ */
+function updateWindowSize() {
+  const resultsVisible = document.getElementById('results')?.classList.contains('visible');
+  const previewVisible = document.getElementById('preview-container')?.classList.contains('visible');
+  const chainVisible = document.getElementById('chain-indicator')?.classList.contains('visible');
+  const execVisible = document.getElementById('execution-state')?.classList.contains('visible');
+
+  const needsExpanded = resultsVisible || previewVisible || chainVisible || execVisible || state.outputSelectionMode;
+  const targetHeight = needsExpanded ? EXPANDED_HEIGHT : COLLAPSED_HEIGHT;
+
+  api.window.resize(600, targetHeight);
+}
+
 window.addEventListener('cmd-update-commands', function(e) {
   log('cmd:panel', 'received updated commands');
   state.commands = e.detail;
@@ -339,22 +358,31 @@ function handleSpecialKey(e) {
     return;
   }
 
-  // Tab key - autocomplete
+  // Tab key - autocomplete or cycle through matches
   if (e.key === 'Tab' && state.matches.length > 0) {
-    // Get any parameters after the command (text after a space)
-    // If no params yet, add a space so user can start typing params immediately
-    const params = commandInput.value.includes(' ')
-      ? commandInput.value.substring(commandInput.value.indexOf(' '))
-      : ' ';
+    const currentMatch = state.matches[state.matchIndex];
+    const currentValue = commandInput.value.trim();
 
-    // Set the command to the full match plus any parameters
-    state.typed = state.matches[state.matchIndex] + params;
+    // Check if we already completed to a match (need to cycle to next)
+    // This is true if current value starts with current match + space or equals current match
+    const alreadyCompleted = currentValue === currentMatch ||
+                            currentValue.startsWith(currentMatch + ' ');
+
+    if (alreadyCompleted && state.matches.length > 1) {
+      // Cycle to next match
+      state.matchIndex = (state.matchIndex + 1) % state.matches.length;
+    }
+    // else: first completion, stay on current matchIndex
+
+    const match = state.matches[state.matchIndex];
+
+    // Set to the match with a trailing space
+    state.typed = match + ' ';
     commandInput.value = state.typed;
 
-    // Update UI and matches
-    state.matches = findMatchingCommands(state.typed);
+    // Update UI but DON'T recalculate matches - keep cycling through current set
     updateCommandUI();
-    updateResultsUI();
+    // Don't call updateResultsUI() here - it would recalculate matches
 
     // Place cursor at the end
     setTimeout(() => {
@@ -665,6 +693,7 @@ function updateChainUI() {
   } else {
     chainIndicator.classList.remove('visible');
   }
+  updateWindowSize();
 }
 
 /**
@@ -691,6 +720,7 @@ function showPreview(data, mimeType, title) {
 
   // Show container
   previewContainer.classList.add('visible');
+  updateWindowSize();
 }
 
 /**
@@ -701,6 +731,7 @@ function hidePreview() {
   if (previewContainer) {
     previewContainer.classList.remove('visible');
   }
+  updateWindowSize();
 }
 
 // ===== MIME Type Renderers =====
@@ -841,6 +872,7 @@ function showExecutionState(commandName) {
 
   if (spinner) spinner.style.display = 'block';
   if (execText) execText.textContent = `Running "${commandName}"...`;
+  updateWindowSize();
 }
 
 /**
@@ -861,6 +893,7 @@ function hideExecutionState() {
     execState.classList.remove('visible');
     execState.classList.remove('error');
   }
+  updateWindowSize();
 }
 
 /**
@@ -888,6 +921,7 @@ function showExecutionError(commandName, errorMsg) {
   if (execText) {
     execText.innerHTML = `<span class="exec-error">"${escapeHtml(commandName)}" failed: ${escapeHtml(errorMsg)}</span>`;
   }
+  updateWindowSize();
 
   // Auto-hide error after 5 seconds
   setTimeout(() => {
@@ -1182,9 +1216,26 @@ function updateCommandUI() {
   }
 
   // Check if we have parameters (text after the command)
-  const hasParameters = state.typed.includes(' ');
-  const typedCommand = hasParameters ? state.typed.substring(0, state.typed.indexOf(' ')) : state.typed;
-  const typedParams = hasParameters ? state.typed.substring(state.typed.indexOf(' ')) : '';
+  // For multi-word commands like "open groups", we need to check if typed text
+  // matches the full command name before splitting on spaces
+  let typedCommand, typedParams;
+  const trimmedTyped = state.typed.trim();
+
+  // Check if typed text matches full command or command + params
+  if (trimmedTyped.toLowerCase() === selectedMatch.toLowerCase()) {
+    // Exact match - typed text IS the command (possibly with trailing space)
+    typedCommand = trimmedTyped;
+    typedParams = state.typed.substring(trimmedTyped.length); // Just the trailing space if any
+  } else if (state.typed.toLowerCase().startsWith(selectedMatch.toLowerCase() + ' ')) {
+    // Command with parameters - text after command name + space is params
+    typedCommand = selectedMatch;
+    typedParams = state.typed.substring(selectedMatch.length);
+  } else {
+    // Partial match - use first space as split point (original behavior)
+    const hasParameters = state.typed.includes(' ');
+    typedCommand = hasParameters ? state.typed.substring(0, state.typed.indexOf(' ')) : state.typed;
+    typedParams = hasParameters ? state.typed.substring(state.typed.indexOf(' ')) : '';
+  }
 
   // Find where the typed text matches in the command
   const lowerMatch = selectedMatch.toLowerCase();
@@ -1264,7 +1315,7 @@ function positionCursor(charIndex) {
 
   // Create measuring element with same styling
   const measurer = document.createElement('span');
-  measurer.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;font-family:inherit;font-size:20px;font-weight:500;';
+  measurer.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;font-family:inherit;font-size:18px;font-weight:500;';
   measurer.textContent = textToMeasure;
   commandText.appendChild(measurer);
 
@@ -1290,6 +1341,7 @@ function updateResultsUI() {
   // Exception: always show in chain mode since user needs to see available commands
   if (state.matches.length === 0 || (!state.showResults && !state.chainMode)) {
     resultsContainer.classList.remove('visible');
+    updateWindowSize();
     return;
   }
 
@@ -1362,6 +1414,9 @@ function updateResultsUI() {
 
     resultsContainer.appendChild(item);
   });
+
+  // Update window size based on visibility
+  updateWindowSize();
 }
 
 /**

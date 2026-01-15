@@ -238,14 +238,17 @@ const initCommandRegistry = () => {
  * Open the command panel window
  */
 const openPanelWindow = (prefs) => {
-  // Use larger default height to accommodate results list and preview
-  const height = prefs.height || 400;
+  // Initial height just for the command bar (~50px visible)
+  // Window will resize when results appear
+  const initialHeight = 60;
+  const maxHeight = prefs.height || 400;
   const width = prefs.width || 600;
 
   const params = {
     debug: log.debug,
     key: panelAddress,
-    height,
+    height: initialHeight,
+    maxHeight,
     width,
 
     // Keep resident in the background
@@ -258,7 +261,7 @@ const openPanelWindow = (prefs) => {
     // Make sure the window stays on top
     alwaysOnTop: true,
 
-    // Center the window
+    // Center the window (works correctly with small initial height)
     center: true,
 
     // Set a reasonable minimum size

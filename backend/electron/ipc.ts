@@ -1329,6 +1329,43 @@ export function registerWindowHandlers(): void {
     }
   });
 
+  ipcMain.handle('window-resize', async (ev, msg) => {
+    DEBUG && console.log('window-resize', msg);
+
+    try {
+      // If no ID provided, resize the sender's window
+      let win: BrowserWindow | null = null;
+      if (msg.id) {
+        const winData = getWindowInfo(msg.id);
+        if (!winData) {
+          return { success: false, error: 'Window not found in window manager' };
+        }
+        win = BrowserWindow.fromId(msg.id);
+        if (!win) {
+          removeWindow(msg.id);
+          return { success: false, error: 'Window not found' };
+        }
+      } else {
+        // Get window from sender
+        win = BrowserWindow.fromWebContents(ev.sender);
+        if (!win) {
+          return { success: false, error: 'Could not determine sender window' };
+        }
+      }
+
+      if (typeof msg.width !== 'number' || typeof msg.height !== 'number') {
+        return { success: false, error: 'Valid width and height are required' };
+      }
+
+      win.setSize(msg.width, msg.height);
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to resize window:', error);
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
   ipcMain.handle('window-focus', async (_ev, msg) => {
     DEBUG && console.log('window-focus', msg);
 

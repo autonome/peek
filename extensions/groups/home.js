@@ -30,16 +30,34 @@ let state = {
   currentTag: null,
   addresses: [],
   untaggedCount: 0,
-  selectedIndex: 0
+  selectedIndex: 0,
+  searchQuery: ''
 };
+
+// Expose state for debugging in tests
+window._groupsState = state;
 
 // Handle ESC - cooperative escape handling with window manager
 // Returns { handled: true } if we navigated internally
 // Returns { handled: false } if at root (groups list) and window should close
 api.escape.onEscape(() => {
+  // If search has content, clear it first
+  const searchInput = document.querySelector('.search-input');
+  if (state.searchQuery) {
+    state.searchQuery = '';
+    searchInput.value = '';
+    renderCurrentView();
+    return { handled: true };
+  }
+
   if (state.view === VIEW_ADDRESSES) {
     // Navigate back to groups list
-    showGroups();
+    // Use setTimeout to ensure handler returns before async work starts
+    setTimeout(() => {
+      showGroups().catch(err => {
+        console.error('[groups] Error navigating back to groups:', err);
+      });
+    }, 0);
     return { handled: true };
   }
   // At root (groups list) - let window close
@@ -98,6 +116,12 @@ const getGridColumns = (cards) => {
  * Handle keyboard navigation (vim-style hjkl for grid movement)
  */
 const handleKeydown = (e) => {
+  // Don't intercept when typing in search (except arrow keys and enter)
+  const isSearchFocused = document.activeElement === document.querySelector('.search-input');
+  if (isSearchFocused && !['ArrowUp', 'ArrowDown', 'Enter'].includes(e.key)) {
+    return;
+  }
+
   const cards = getCards();
   if (cards.length === 0) return;
 
@@ -122,6 +146,7 @@ const handleKeydown = (e) => {
       break;
     case 'h':
     case 'ArrowLeft':
+      if (isSearchFocused) return; // Let cursor move in search
       e.preventDefault();
       if (state.selectedIndex > 0) {
         state.selectedIndex--;
@@ -130,6 +155,7 @@ const handleKeydown = (e) => {
       break;
     case 'l':
     case 'ArrowRight':
+      if (isSearchFocused) return; // Let cursor move in search
       e.preventDefault();
       if (state.selectedIndex < cards.length - 1) {
         state.selectedIndex++;
@@ -149,15 +175,29 @@ const init = async () => {
   // Load tags from datastore
   await loadTags();
 
-  // Set up event listeners
-  document.querySelector('.new-group-btn').addEventListener('click', createNewGroup);
-  document.querySelector('.back-btn').addEventListener('click', showGroups);
+  // Set up search input
+  const searchInput = document.querySelector('.search-input');
+  searchInput.addEventListener('input', (e) => {
+    state.searchQuery = e.target.value;
+    renderCurrentView();
+  });
 
   // Keyboard navigation
   document.addEventListener('keydown', handleKeydown);
 
   // Show groups view
   showGroups();
+};
+
+/**
+ * Render the current view (used after search filtering)
+ */
+const renderCurrentView = () => {
+  if (state.view === VIEW_GROUPS) {
+    renderGroups();
+  } else {
+    renderAddresses();
+  }
 };
 
 /**
@@ -204,20 +244,24 @@ const loadAddressesForTag = async (tagId) => {
 };
 
 /**
- * Create a new group (tag)
+ * Filter groups by search query
  */
-const createNewGroup = async () => {
-  const name = prompt('Enter group name:');
-  if (!name || !name.trim()) return;
+const filterGroups = (groups) => {
+  if (!state.searchQuery) return groups;
+  const q = state.searchQuery.toLowerCase();
+  return groups.filter(tag => tag.name.toLowerCase().includes(q));
+};
 
-  const result = await api.datastore.getOrCreateTag(name.trim());
-  if (result.success) {
-    debug && console.log('Created tag:', result.data);
-    await loadTags();
-    showGroups();
-  } else {
-    console.error('Failed to create tag:', result.error);
-  }
+/**
+ * Filter addresses by search query (title or URL)
+ */
+const filterAddresses = (addresses) => {
+  if (!state.searchQuery) return addresses;
+  const q = state.searchQuery.toLowerCase();
+  return addresses.filter(addr =>
+    (addr.title || '').toLowerCase().includes(q) ||
+    addr.uri.toLowerCase().includes(q)
+  );
 };
 
 /**
@@ -226,34 +270,51 @@ const createNewGroup = async () => {
 const showGroups = async () => {
   state.view = VIEW_GROUPS;
   state.currentTag = null;
+  state.searchQuery = '';
 
   // Refresh tags
   await loadTags();
 
-  // Update UI
-  document.querySelector('.header-title').textContent = 'Groups';
-  document.querySelector('.back-btn').style.display = 'none';
-  document.querySelector('.new-group-btn').style.display = 'block';
+  // Update search placeholder
+  const searchInput = document.querySelector('.search-input');
+  searchInput.value = '';
+  searchInput.placeholder = 'Search groups...';
 
-  // Clear and populate cards
+  renderGroups();
+};
+
+// Expose for testing (Playwright escape doesn't trigger Electron before-input-event)
+window.showGroups = showGroups;
+
+/**
+ * Render groups cards (separate from showGroups for filtering)
+ */
+const renderGroups = () => {
   const container = document.querySelector('.cards');
   container.innerHTML = '';
 
-  // Always show Untagged group first if there are untagged addresses
+  // Build list of all groups (untagged first if it has items)
+  let allGroups = [];
   if (state.untaggedCount > 0) {
-    const untaggedCard = createGroupCard({ ...UNTAGGED_GROUP, frequency: state.untaggedCount });
-    container.appendChild(untaggedCard);
+    allGroups.push({ ...UNTAGGED_GROUP, frequency: state.untaggedCount });
   }
 
-  // Filter out empty groups (tags with no addresses)
+  // Add non-empty tags
   const nonEmptyTags = state.tags.filter(tag => tag.addressCount > 0);
+  allGroups = allGroups.concat(nonEmptyTags);
 
-  if (nonEmptyTags.length === 0 && state.untaggedCount === 0) {
-    container.innerHTML = '<div class="empty-state">No groups yet. Create one to get started.</div>';
+  // Apply search filter
+  const filteredGroups = filterGroups(allGroups);
+
+  if (filteredGroups.length === 0) {
+    const message = state.searchQuery
+      ? 'No groups match your search.'
+      : 'No groups yet. Tag some pages to create groups.';
+    container.innerHTML = `<div class="empty-state">${message}</div>`;
     return;
   }
 
-  nonEmptyTags.forEach(tag => {
+  filteredGroups.forEach(tag => {
     const card = createGroupCard(tag);
     container.appendChild(card);
   });
@@ -269,6 +330,7 @@ const showGroups = async () => {
 const showAddresses = async (tag) => {
   state.view = VIEW_ADDRESSES;
   state.currentTag = tag;
+  state.searchQuery = '';
 
   // Load addresses - handle special untagged group
   if (tag.isSpecial && tag.id === '__untagged__') {
@@ -282,21 +344,33 @@ const showAddresses = async (tag) => {
     await loadAddressesForTag(tag.id);
   }
 
-  // Update UI
-  document.querySelector('.header-title').textContent = tag.name;
-  document.querySelector('.back-btn').style.display = 'block';
-  document.querySelector('.new-group-btn').style.display = 'none';
+  // Update search placeholder with group name
+  const searchInput = document.querySelector('.search-input');
+  searchInput.value = '';
+  searchInput.placeholder = `Search in ${tag.name}...`;
 
-  // Clear and populate cards
+  renderAddresses();
+};
+
+/**
+ * Render address cards (separate from showAddresses for filtering)
+ */
+const renderAddresses = () => {
   const container = document.querySelector('.cards');
   container.innerHTML = '';
 
-  if (state.addresses.length === 0) {
-    container.innerHTML = '<div class="empty-state">No addresses in this group yet.</div>';
+  // Apply search filter
+  const filteredAddresses = filterAddresses(state.addresses);
+
+  if (filteredAddresses.length === 0) {
+    const message = state.searchQuery
+      ? 'No pages match your search.'
+      : 'No pages in this group yet.';
+    container.innerHTML = `<div class="empty-state">${message}</div>`;
     return;
   }
 
-  state.addresses.forEach(address => {
+  filteredAddresses.forEach(address => {
     const card = createAddressCard(address);
     container.appendChild(card);
   });

@@ -217,6 +217,78 @@ const registerExtensionCommands = () => {
     }
   });
 
+  // ---- Settings Section Commands ----
+
+  // Helper to open settings and navigate to a section
+  const openSettingsSection = async (section) => {
+    const p = prefs();
+    await openSettingsWindow(p);
+    // Small delay to ensure window is ready
+    setTimeout(() => {
+      api.publish('settings:navigate', { section }, api.scopes.GLOBAL);
+    }, 100);
+  };
+
+  api.commands.register({
+    name: 'settings core',
+    description: 'Open Core settings',
+    execute: () => openSettingsSection('core')
+  });
+
+  api.commands.register({
+    name: 'settings extensions',
+    description: 'Open Extensions settings',
+    execute: () => openSettingsSection('extensions')
+  });
+
+  api.commands.register({
+    name: 'settings themes',
+    description: 'Open Themes settings',
+    execute: () => openSettingsSection('themes')
+  });
+
+  api.commands.register({
+    name: 'settings peeks',
+    description: 'Open Peeks settings',
+    execute: () => openSettingsSection('peeks')
+  });
+
+  api.commands.register({
+    name: 'settings slides',
+    description: 'Open Slides settings',
+    execute: () => openSettingsSection('slides')
+  });
+
+  api.commands.register({
+    name: 'settings groups',
+    description: 'Open Groups settings',
+    execute: () => openSettingsSection('groups')
+  });
+
+  api.commands.register({
+    name: 'datastore',
+    description: 'Open Datastore viewer',
+    execute: async () => {
+      await api.window.open('peek://app/datastore/viewer.html', {
+        width: 900,
+        height: 600,
+        key: 'datastore-viewer'
+      });
+    }
+  });
+
+  api.commands.register({
+    name: 'diagnostic',
+    description: 'Open Diagnostic tool',
+    execute: async () => {
+      await api.window.open('peek://app/diagnostic.html', {
+        width: 900,
+        height: 700,
+        key: 'diagnostic-tool'
+      });
+    }
+  });
+
   // ---- Theme Commands ----
 
   api.commands.register({

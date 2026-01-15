@@ -293,12 +293,12 @@ test.describe('Groups Navigation @desktop', () => {
       await groupCard.click();
     }
 
-    // Wait for navigation to addresses view (back button becomes visible)
-    await waitForVisible(groupsWindow, '.back-btn', true);
+    // Wait for navigation to addresses view (address cards appear)
+    await groupsWindow.waitForSelector('.card.address-card', { timeout: 5000 });
 
-    // Verify we're in addresses view
-    const backBtn = await groupsWindow.$('.back-btn');
-    expect(backBtn).toBeTruthy();
+    // Verify we're in addresses view by checking search placeholder
+    const placeholderInGroup = await groupsWindow.$eval('.search-input', (el: HTMLInputElement) => el.placeholder);
+    expect(placeholderInGroup).toContain('Search in');
 
     // Click on an address card
     const addressCard = await groupsWindow.$('.card.address-card');
@@ -314,18 +314,25 @@ test.describe('Groups Navigation @desktop', () => {
     const windowCountAfter = app.windows().length;
     expect(windowCountAfter).toBeGreaterThan(windowCountBefore);
 
-    // Click Back button and wait for it to hide
-    await backBtn!.click();
-    await waitForVisible(groupsWindow, '.back-btn', false);
+    // Navigate back to groups view
+    // Note: Playwright's keyboard.press('Escape') doesn't reliably trigger
+    // Electron's before-input-event handler, so we call the navigation function directly
+    await groupsWindow.evaluate(async () => {
+      const showGroups = (window as any).showGroups;
+      if (showGroups) {
+        await showGroups();
+      }
+    });
 
-    // Verify we're back in groups view
-    const backBtnAfterClick = await groupsWindow.$('.back-btn');
-    const backBtnHidden = await backBtnAfterClick!.evaluate((el: HTMLElement) => el.style.display === 'none');
-    expect(backBtnHidden).toBe(true);
+    // Small delay for async operations
+    await new Promise(resolve => setTimeout(resolve, 100));
 
-    // Verify header shows "Groups"
-    const headerTitle = await groupsWindow.$eval('.header-title', (el: HTMLElement) => el.textContent);
-    expect(headerTitle).toBe('Groups');
+    // Wait for groups view (group cards appear, address cards disappear)
+    await groupsWindow.waitForSelector('.card.group-card', { timeout: 5000 });
+
+    // Verify we're back in groups view by checking search placeholder
+    const placeholderInGroups = await groupsWindow.$eval('.search-input', (el: HTMLInputElement) => el.placeholder);
+    expect(placeholderInGroups).toBe('Search groups...');
 
     // Clean up
     if (groupsResult.id) {

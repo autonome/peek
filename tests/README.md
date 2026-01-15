@@ -292,6 +292,20 @@ test.describe('Settings @desktop', () => {
 });
 ```
 
+## Test Environment Behavior
+
+### Dock and Menubar
+
+During tests (when `PROFILE` starts with `test`), the macOS dock icon is **always hidden**.
+This prevents the dock from appearing during test runs and interfering with test execution
+or causing visual distractions. The `updateDockVisibility()` function in
+`backend/electron/windows.ts` checks `isTestProfile()` and always hides the dock.
+
+### DevTools
+
+DevTools are automatically disabled in test profiles to prevent them from stealing focus
+or slowing down tests.
+
 ## Troubleshooting
 
 ### Tests hang or timeout
@@ -306,3 +320,20 @@ test.describe('Settings @desktop', () => {
 ### Data conflicts between tests
 - Ensure unique PROFILE per test suite
 - Use `launchDesktopApp('unique-name')` for isolation
+
+### Playwright keyboard.press('Escape') doesn't work
+Playwright's `keyboard.press('Escape')` doesn't reliably trigger Electron's `before-input-event`
+handler on `webContents`. This affects escape-based navigation in modal windows.
+
+**Workaround:** Expose the navigation function on `window` and call it directly from the test:
+```javascript
+// In the page code:
+window.showGroups = showGroups;
+
+// In the test:
+await page.evaluate(async () => {
+  await (window as any).showGroups();
+});
+```
+
+This tests the navigation logic without relying on the escape key mechanism.

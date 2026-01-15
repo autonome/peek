@@ -277,6 +277,15 @@ api.window = {
       y
     });
   },
+  resize: (width, height, id = null) => {
+    DEBUG && console.log('window.resize', width, height, id);
+    return ipcRenderer.invoke('window-resize', {
+      source: sourceAddress,
+      id,
+      width,
+      height
+    });
+  },
   focus: (id) => {
     DEBUG && console.log('window.focus', id);
     return ipcRenderer.invoke('window-focus', {

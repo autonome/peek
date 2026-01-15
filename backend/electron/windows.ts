@@ -220,13 +220,27 @@ export function getVisibleWindowCount(excludeId: number | null = null): number {
   }).length;
 }
 
+// Track if dock is already hidden for test profiles (avoid repeated hide calls causing animation)
+let _testDockHidden = false;
+
 /**
  * Update dock visibility based on visible windows and pref
  * Show dock if: visible windows exist OR pref is enabled
  * Hide dock if: no visible windows AND pref is disabled
+ * Always hide dock in test profiles to prevent test interference
  */
 export function updateDockVisibility(excludeId: number | null = null): void {
   if (process.platform !== 'darwin' || !app.dock) return;
+
+  // Always hide dock in test profiles to prevent interference with tests
+  // Only hide once to avoid dock animation glitches from repeated hide calls
+  if (isTestProfile()) {
+    if (!_testDockHidden) {
+      app.dock.hide();
+      _testDockHidden = true;
+    }
+    return;
+  }
 
   const visibleCount = getVisibleWindowCount(excludeId);
   const prefs = _getPrefs();

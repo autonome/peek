@@ -16,6 +16,7 @@ This API is implemented by both the Electron and Tauri backends, ensuring fronte
 - [Escape Handling](#escape-handling)
 - [Logging](#logging)
 - [Debug Mode](#debug-mode)
+- [App Control](#app-control)
 - [Extensions API](#extensions-api)
 - [Settings API](#settings-api)
 - [Response Format](#response-format)
@@ -420,6 +421,28 @@ if (window.app.debug) {
 // Debug levels
 window.app.debugLevels = { BASIC: 1, FIRST_RUN: 2 };
 window.app.debugLevel; // Current level
+```
+
+---
+
+## App Control
+
+Control application lifecycle.
+
+### `window.app.quit()`
+
+Quit the application.
+
+```javascript
+window.app.quit();
+```
+
+### `window.app.restart()`
+
+Restart the application (relaunch and quit).
+
+```javascript
+window.app.restart();
 ```
 
 ---

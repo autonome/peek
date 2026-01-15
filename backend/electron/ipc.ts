@@ -1533,6 +1533,13 @@ export function registerMiscHandlers(onQuit: () => void): void {
     onQuit();
   });
 
+  // App restart request
+  ipcMain.on(IPC_CHANNELS.APP_RESTART, (_ev, msg) => {
+    console.log('app-restart requested from:', msg?.source);
+    app.relaunch();
+    onQuit();
+  });
+
   // Modify window
   ipcMain.on(IPC_CHANNELS.MODIFY_WINDOW, (ev, msg) => {
     console.log('modifywindow', msg);

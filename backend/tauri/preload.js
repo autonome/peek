@@ -661,6 +661,13 @@
     });
   };
 
+  api.restart = () => {
+    console.log('[tauri] restart requested');
+    invoke('app_restart', {}).catch(e => {
+      console.error('[tauri] restart error:', e);
+    });
+  };
+
   // ==================== Keyboard Handling ====================
 
   // Local shortcut handler

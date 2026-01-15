@@ -2,6 +2,8 @@
 
 ## Commands
 
+All Electron commands automatically build TypeScript before running.
+
 ```bash
 # Install dependencies
 yarn install
@@ -11,6 +13,9 @@ yarn debug
 
 # Start the application normally
 yarn start
+
+# Build TypeScript only (usually not needed - commands auto-build)
+yarn build
 
 # Package the application (output: out/mac-arm64/)
 yarn package

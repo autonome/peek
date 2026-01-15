@@ -408,6 +408,7 @@ pub fn run() {
             commands::extensions::extension_reload,
             // App control
             commands::app_quit,
+            commands::app_restart,
             // Shortcuts
             commands::shortcut_register,
             commands::shortcut_unregister,

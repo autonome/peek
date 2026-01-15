@@ -627,6 +627,45 @@ test.describe('Core Functionality @desktop', () => {
     expect(galleryCmd).toBeTruthy();
   });
 
+  test('quit and restart commands are registered', async () => {
+    // Query commands via cmd extension
+    const result = await bgWindow.evaluate(async () => {
+      const api = (window as any).app;
+
+      return new Promise((resolve) => {
+        api.subscribe('cmd:query-commands-response', (msg: any) => {
+          const commands = msg.commands || [];
+          resolve({
+            hasQuit: commands.some((c: any) => c.name === 'quit'),
+            hasRestart: commands.some((c: any) => c.name === 'restart'),
+            quitCmd: commands.find((c: any) => c.name === 'quit'),
+            restartCmd: commands.find((c: any) => c.name === 'restart')
+          });
+        }, api.scopes.GLOBAL);
+        api.publish('cmd:query-commands', {}, api.scopes.GLOBAL);
+        setTimeout(() => resolve({ hasQuit: false, hasRestart: false }), 2000);
+      });
+    });
+
+    expect(result.hasQuit).toBe(true);
+    expect(result.hasRestart).toBe(true);
+    expect(result.quitCmd?.description).toBe('Quit the application');
+    expect(result.restartCmd?.description).toBe('Restart the application');
+  });
+
+  test('api.quit and api.restart functions exist', async () => {
+    const result = await bgWindow.evaluate(() => {
+      const api = (window as any).app;
+      return {
+        hasQuit: typeof api.quit === 'function',
+        hasRestart: typeof api.restart === 'function'
+      };
+    });
+
+    expect(result.hasQuit).toBe(true);
+    expect(result.hasRestart).toBe(true);
+  });
+
   test('window management works', async () => {
     // Open a test window
     const openResult = await bgWindow.evaluate(async () => {

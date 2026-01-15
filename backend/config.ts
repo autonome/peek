@@ -22,6 +22,7 @@ export const IPC_CHANNELS = {
   CONSOLE: 'console',
   RENDERER_LOG: 'renderer-log',
   APP_QUIT: 'app-quit',
+  APP_RESTART: 'app-restart',
   MODIFY_WINDOW: 'modifywindow',
 } as const;
 

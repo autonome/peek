@@ -244,6 +244,20 @@ const registerExtensionCommands = () => {
     execute: cycleTheme
   });
 
+  // ---- App Control Commands ----
+
+  api.commands.register({
+    name: 'quit',
+    description: 'Quit the application',
+    execute: () => api.quit()
+  });
+
+  api.commands.register({
+    name: 'restart',
+    description: 'Restart the application',
+    execute: () => api.restart()
+  });
+
   console.log('Core commands registered');
 };
 

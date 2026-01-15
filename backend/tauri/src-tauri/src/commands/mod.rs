@@ -104,6 +104,14 @@ pub async fn app_quit(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Restart the application
+#[tauri::command]
+pub async fn app_restart(app: AppHandle) -> Result<(), String> {
+    println!("[tauri] Restart requested");
+    app.restart();
+    Ok(())
+}
+
 /// Register a global shortcut
 #[tauri::command]
 pub async fn shortcut_register(

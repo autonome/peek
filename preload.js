@@ -558,6 +558,10 @@ api.quit = () => {
   ipcRenderer.send('app-quit', { source: sourceAddress });
 };
 
+api.restart = () => {
+  ipcRenderer.send('app-restart', { source: sourceAddress });
+};
+
 // Command registration API for extensions
 // Commands API
 // Extensions should wait for cmd:ready before registering commands.

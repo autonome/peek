@@ -87,15 +87,25 @@ const strings = {
 const profileIsLegit = (p: unknown): p is string =>
   p !== undefined && typeof p === 'string' && p.length > 0;
 
+// Check if running from dev output directory (packaged but not installed)
+// This catches: out/mac-arm64/Peek.app running from project directory
+const isDevPackagedBuild = (): boolean => {
+  if (!app.isPackaged) return false;
+  const execPath = app.getPath('exe');
+  // Running from out/ directory means it's a dev packaged build
+  return execPath.includes('/out/') || execPath.includes('\\out\\');
+};
+
 // Profile selection:
 // 1. Explicit PROFILE env var takes precedence
-// 2. Packaged app uses 'default' (production)
-// 3. Running from source uses 'dev' (development)
+// 2. Packaged app in /Applications uses 'default' (production)
+// 3. Packaged app in out/ directory uses 'dev' (dev packaged build)
+// 4. Running from source uses 'dev' (development)
 const PROFILE = profileIsLegit(process.env.PROFILE)
   ? process.env.PROFILE
-  : (app.isPackaged ? 'default' : 'dev');
+  : (app.isPackaged && !isDevPackagedBuild() ? 'default' : 'dev');
 
-console.log('PROFILE', PROFILE, app.isPackaged ? '(packaged)' : '(source)');
+console.log('PROFILE', PROFILE, app.isPackaged ? (isDevPackagedBuild() ? '(dev-packaged)' : '(packaged)') : '(source)');
 
 // Set profile in backend config
 setProfile(PROFILE);

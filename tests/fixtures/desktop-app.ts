@@ -23,6 +23,7 @@
 import { test as base, _electron as electron, ElectronApplication, Page, chromium, Browser, BrowserContext } from '@playwright/test';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import http from 'http';
 import { fileURLToPath } from 'url';
 import { waitForWindow as waitForWindowHelper, sleep, getTestProfile, waitForAppReady } from '../helpers/window-utils';
@@ -56,7 +57,72 @@ export interface DesktopApp {
 // Internal state for Electron
 interface ElectronState {
   app: ElectronApplication;
+  tempDir: string | null;  // Temp directory for test data (cleaned up on close)
+  profile: string;         // Profile name for cleanup tracking
 }
+
+/**
+ * Global map of profile → tempDir
+ * Allows reusing the same temp directory when relaunching with the same profile
+ * (needed for persistence tests that restart the app)
+ */
+const profileTempDirs = new Map<string, string>();
+
+/**
+ * Get or create a temp directory for a profile
+ * Reuses existing temp dir if same profile is launched again (for restart tests)
+ */
+function getOrCreateTempDir(profile: string): string {
+  // Reuse existing temp dir for same profile (enables persistence tests)
+  if (profileTempDirs.has(profile)) {
+    return profileTempDirs.get(profile)!;
+  }
+
+  const tempBase = os.tmpdir();
+  const tempDir = path.join(tempBase, `peek-test-${profile}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+  profileTempDirs.set(profile, tempDir);
+  return tempDir;
+}
+
+/**
+ * Recursively delete a directory
+ */
+function removeTempDir(dirPath: string): void {
+  try {
+    fs.rmSync(dirPath, { recursive: true, force: true });
+  } catch (err) {
+    console.warn(`[test] Failed to clean up temp directory: ${dirPath}`, err);
+  }
+}
+
+/**
+ * Clean up a profile's temp directory
+ * Removes from the tracking map and deletes the directory
+ */
+function cleanupProfile(profile: string): void {
+  const tempDir = profileTempDirs.get(profile);
+  if (tempDir) {
+    profileTempDirs.delete(profile);
+    removeTempDir(tempDir);
+  }
+}
+
+/**
+ * Clean up all remaining temp directories
+ * Called on process exit to ensure no leftovers
+ */
+function cleanupAllTempDirs(): void {
+  for (const [profile, tempDir] of profileTempDirs.entries()) {
+    removeTempDir(tempDir);
+  }
+  profileTempDirs.clear();
+}
+
+// Register cleanup on process exit
+process.on('exit', cleanupAllTempDirs);
+process.on('SIGINT', () => { cleanupAllTempDirs(); process.exit(0); });
+process.on('SIGTERM', () => { cleanupAllTempDirs(); process.exit(0); });
 
 /**
  * Check if running in headless mode
@@ -76,22 +142,56 @@ export interface LaunchOptions {
 }
 
 /**
+ * Check if running packaged build
+ * Uses PACKAGED env var
+ */
+function isPackaged(): boolean {
+  const val = process.env.PACKAGED;
+  return val === '1' || val === 'true';
+}
+
+/**
  * Launch Electron backend
  *
  * Default is hybrid mode:
  * - Built-in extensions (cmd, groups, peeks, slides) → consolidated (iframes)
  * - External extensions (example, user-installed) → separate windows
+ *
+ * Supports packaged builds via PACKAGED=1 env var.
+ *
+ * Test data is stored in OS temp directory and cleaned up when test closes.
  */
 async function launchElectron(profile: string, options: LaunchOptions = {}): Promise<DesktopApp> {
   // Translate unified HEADLESS to Electron's PEEK_HEADLESS
   const headless = isHeadless();
+  const packaged = isPackaged();
+
+  // Get or create temp directory for test data
+  // Reuses same dir if same profile is relaunched (for persistence tests)
+  const tempDir = getOrCreateTempDir(profile);
+
+  // For packaged builds, use the executable path
+  // For source builds, pass the project root as the first arg
+  // Also add --user-data-dir to redirect data to temp directory
+  const baseArgs = packaged
+    ? []
+    : [ROOT];
+
+  const launchConfig = packaged
+    ? {
+        executablePath: path.join(ROOT, 'out/mac-arm64/Peek.app/Contents/MacOS/Peek'),
+        args: [`--user-data-dir=${tempDir}`]
+      }
+    : {
+        args: [...baseArgs, `--user-data-dir=${tempDir}`]
+      };
 
   const electronApp = await electron.launch({
-    args: [ROOT],
+    ...launchConfig,
     env: {
       ...process.env,
       PROFILE: profile,
-      DEBUG: '1',
+      DEBUG: process.env.DEBUG || '1',
       // Electron uses PEEK_HEADLESS for headless mode
       ...(headless ? { PEEK_HEADLESS: '1' } : {})
     }
@@ -120,7 +220,7 @@ async function launchElectron(profile: string, options: LaunchOptions = {}): Pro
   };
   await waitForHybridExtensions(10000);
 
-  const state: ElectronState = { app: electronApp };
+  const state: ElectronState = { app: electronApp, tempDir, profile };
 
   return {
     backend: 'electron',
@@ -143,6 +243,8 @@ async function launchElectron(profile: string, options: LaunchOptions = {}): Pro
 
     close: async () => {
       await electronApp.close();
+      // Note: Temp directory cleanup happens via process exit handlers
+      // This allows persistence tests to relaunch with same profile
     }
   };
 }

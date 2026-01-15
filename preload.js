@@ -49,16 +49,35 @@ function flushRegistrations() {
 
 // Context detection for permission tiers
 const isCore = sourceAddress.startsWith('peek://app/');
-const isExtension = sourceAddress.startsWith('peek://ext/');
+
+// Extension detection: supports both legacy (peek://ext/{id}/...) and hybrid (peek://{extId}/...) modes
+// In hybrid mode, extension URLs are peek://{extId}/... where extId is NOT 'app' or 'ext'
+const isLegacyExtension = sourceAddress.startsWith('peek://ext/');
+const isHybridExtension = (() => {
+  const match = sourceAddress.match(/^peek:\/\/([^/]+)/);
+  if (!match) return false;
+  const host = match[1];
+  // Hybrid extension hosts are anything except 'app' and 'ext' (reserved for core)
+  return host !== 'app' && host !== 'ext';
+})();
+const isExtension = isLegacyExtension || isHybridExtension;
 
 /**
  * Get the extension ID from the current context
  * @returns {string|null} Extension ID or null if not in an extension context
  */
 const getExtensionId = () => {
-  if (!isExtension) return null;
-  const match = sourceAddress.match(/peek:\/\/ext\/([^/]+)/);
-  return match ? match[1] : null;
+  if (isLegacyExtension) {
+    // Legacy format: peek://ext/{id}/...
+    const match = sourceAddress.match(/peek:\/\/ext\/([^/]+)/);
+    return match ? match[1] : null;
+  }
+  if (isHybridExtension) {
+    // Hybrid format: peek://{extId}/...
+    const match = sourceAddress.match(/^peek:\/\/([^/]+)/);
+    return match ? match[1] : null;
+  }
+  return null;
 };
 
 let api = {};

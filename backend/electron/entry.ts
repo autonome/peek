@@ -54,6 +54,8 @@ import {
   updateDockVisibility,
 } from './index.js';
 
+import { startHotReload, stopHotReload } from './hotreload.js';
+
 // Catch unhandled errors and promise rejections without showing alert dialogs
 unhandled({
   showDialog: false,
@@ -156,8 +158,11 @@ let _quitShortcut: string | null = null;
 // Set up prefs getter for backend window helpers
 setPrefsGetter(() => _prefs);
 
-// Define onQuit as alias to quitApp for use in IPC handlers and shortcuts
-const onQuit = quitApp;
+// Define onQuit for use in IPC handlers and shortcuts
+const onQuit = () => {
+  stopHotReload();
+  quitApp();
+};
 
 // ***** init *****
 
@@ -305,6 +310,11 @@ const onReady = async () => {
 
   // Create the core background window
   createBackgroundWindow();
+
+  // Start hot reload in dev mode
+  if (DEBUG) {
+    startHotReload(ROOT_DIR);
+  }
 
   // Register default quit shortcut (local - only works when app has focus)
   // Will be updated when prefs arrive

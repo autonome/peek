@@ -2,13 +2,22 @@
 
 ## Commands
 
+Bare commands (`dev`, `start`, `debug`, `kill`, `restart`) default to Electron. Use `BACKEND=tauri` to switch:
+
+```bash
+yarn debug                # Electron (default)
+BACKEND=tauri yarn debug  # Tauri
+yarn debug:electron       # Explicit Electron
+yarn debug:tauri          # Explicit Tauri
+```
+
 All Electron commands automatically build TypeScript before running.
 
 ```bash
 # Install dependencies
 yarn install
 
-# Run in development mode (with devtools)
+# Run in development mode (with devtools + hot reload)
 yarn debug
 
 # Start the application normally
@@ -16,7 +25,25 @@ yarn start
 
 # Build TypeScript only (usually not needed - commands auto-build)
 yarn build
+```
 
+## Hot Reload (Electron only)
+
+In dev mode (`yarn debug` or `DEBUG=1`), hot reload is enabled:
+- Watches `app/` and `extensions/` directories
+- Auto-reloads all windows when `.html`, `.js`, or `.css` files change
+- No restart needed for renderer-side changes
+
+Note: Changes to `backend/` TypeScript files still require rebuilding (`yarn build`) and restarting the app. Hot reload is not yet implemented for the Tauri backend.
+
+```bash
+# Typical dev workflow:
+yarn debug          # Start app with hot reload
+# Edit files in app/ or extensions/
+# Windows auto-reload on save
+```
+
+```bash
 # Package the application (output: out/mac-arm64/)
 yarn package
 

@@ -483,7 +483,6 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "Peek@workspace:."
   dependencies:
-    "@electron/fuses": "npm:^1.8.0"
     "@electron/rebuild": "npm:^4.0.2"
     "@playwright/test": "npm:^1.57.0"
     "@types/better-sqlite3": "npm:^7.6.13"
@@ -492,7 +491,6 @@ __metadata:
     electron: "npm:^35.7.5"
     electron-builder: "npm:26.0.12"
     electron-unhandled: "npm:^5.0.0"
-    lil-gui: "npm:^0.19.2"
     playwright: "npm:^1.57.0"
     typescript: "npm:^5.9.3"
   languageName: unknown
@@ -2372,13 +2370,6 @@ __metadata:
   version: 1.0.5
   resolution: "lazy-val@npm:1.0.5"
   checksum: 10c0/28ba7a0e704895a444eed47d110274090f485b991f2ea6fff2ab0878c529c53f60f2eb2d944cbbd68b91408e7455eabc62861c48289d4757fa9c818b97454f24
-  languageName: node
-  linkType: hard
-
-"lil-gui@npm:^0.19.2":
-  version: 0.19.2
-  resolution: "lil-gui@npm:0.19.2"
-  checksum: 10c0/382062222f11393ca2748ac7cdd9af0dd2711530f0c85a070470b48902ee51c66a1ddfec0928570870c940fe2b790a7e557e207b774d1cee0e3718e1b1cd32c3
   languageName: node
   linkType: hard
 

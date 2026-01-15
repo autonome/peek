@@ -1,5 +1,11 @@
 # Roadmap
 
+## Performance
+
+- [ ] Reduce startup time (currently ~550ms build)
+- [ ] Pre-compiled TypeScript: skip tsc during dev if no changes
+- [ ] Lazy extension loading: load on first access instead of startup
+
 ## v? - Entity centrism (NER streams)
 
 - [ ] Entity catalog definition

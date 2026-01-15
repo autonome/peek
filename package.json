@@ -32,14 +32,12 @@
     "dev:electron": "./scripts/timed.sh sh -c 'yarn build && DEBUG=1 electron .'",
     "dev:tauri": "./scripts/timed.sh sh -c 'cd backend/tauri/src-tauri && cargo run'",
     "dev:hot": "yarn build && nodemon --exec 'yarn build && DEBUG=1 electron .'",
-
     "//-- Production --//": "",
     "start": "[ \"${BACKEND:-}\" = \"tauri\" ] && yarn start:tauri || yarn start:electron",
     "start:electron": "./scripts/timed.sh sh -c 'yarn build && electron .'",
     "start:tauri": "./scripts/timed.sh sh -c 'cd backend/tauri/src-tauri && cargo run --release'",
     "start:tauri:log": "cd backend/tauri/src-tauri && ./target/release/peek-tauri 2>&1",
     "start:tauri:test": "pkill -INT -f peek-tauri 2>/dev/null; sleep 1; cd backend/tauri/src-tauri && ./target/release/peek-tauri &> /tmp/tauri.log & sleep 5 && tail -50 /tmp/tauri.log && pkill -INT -f peek-tauri",
-
     "//-- Build --//": "",
     "build": "./scripts/timed.sh tsc -p backend/tsconfig.json",
     "build:watch": "tsc -p backend/tsconfig.json --watch",
@@ -48,7 +46,6 @@
     "build:electron:dist": "./scripts/timed.sh electron-builder",
     "build:tauri": "./scripts/timed.sh sh -c 'cd backend/tauri/src-tauri && cargo tauri build'",
     "build:tauri:check": "./scripts/timed.sh sh -c 'cd backend/tauri/src-tauri && cargo check'",
-
     "//-- Packaged Electron --//": "",
     "kill:packaged": "pkill -f 'out/mac-arm64/Peek.app' || true",
     "kill:prod": "pkill -f '/Applications/Peek.app' || true",
@@ -64,7 +61,6 @@
     "packaged:log": "tail -f /tmp/packaged-debug.log",
     "test:packaged": "yarn kill:packaged; HEADLESS=1 PACKAGED=1 npx playwright test tests/desktop/",
     "test:packaged:debug": "yarn kill:packaged; HEADLESS=1 PACKAGED=1 DEBUG=1 npx playwright test tests/desktop/",
-
     "//-- Testing --//": "",
     "test": "./scripts/timed.sh sh -c 'yarn build && yarn test:electron && yarn test:tauri'",
     "test:electron": "./scripts/timed.sh sh -c 'yarn build && HEADLESS=1 BACKEND=electron npx playwright test tests/desktop/'",
@@ -75,7 +71,6 @@
     "test:visible": "./scripts/timed.sh sh -c 'yarn build && HEADLESS=0 BACKEND=electron npx playwright test tests/desktop/ --headed'",
     "test:debug": "./scripts/timed.sh sh -c 'yarn build && HEADLESS=0 npx playwright test --debug'",
     "test:grep": "./scripts/timed.sh sh -c 'yarn build && HEADLESS=1 npx playwright test tests/desktop/ --grep'",
-
     "//-- Misc (BACKEND=electron|tauri, defaults to electron) --//": "",
     "kill": "[ \"${BACKEND:-}\" = \"tauri\" ] && yarn kill:tauri || yarn kill:electron",
     "kill:electron": "pkill -f '/Users/dietrich/misc/peek/node_modules/.bin/electron' || true",
@@ -100,11 +95,9 @@
   },
   "dependencies": {
     "better-sqlite3": "^12.5.0",
-    "electron-unhandled": "^5.0.0",
-    "lil-gui": "^0.19.2"
+    "electron-unhandled": "^5.0.0"
   },
   "devDependencies": {
-    "@electron/fuses": "^1.8.0",
     "@electron/rebuild": "^4.0.2",
     "@playwright/test": "^1.57.0",
     "@types/better-sqlite3": "^7.6.13",

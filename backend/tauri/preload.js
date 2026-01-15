@@ -44,16 +44,49 @@
     setupEscapeHandler();
   }
 
-  // Skip API setup if already initialized or not in Tauri
-  if (window.app || !window.__TAURI__) {
+  // Skip API setup if already initialized
+  if (window.app) {
     return;
   }
+
+  // Wait for __TAURI__ to be available (initialization_script can run before Tauri injects it)
+  const waitForTauri = (callback, maxAttempts = 50) => {
+    if (window.__TAURI__) {
+      callback();
+      return;
+    }
+    if (maxAttempts <= 0) {
+      console.error('[peek-api:tauri] Timeout waiting for __TAURI__ - API not initialized');
+      return;
+    }
+    setTimeout(() => waitForTauri(callback, maxAttempts - 1), 10);
+  };
+
+  // If __TAURI__ is already available, init immediately
+  if (window.__TAURI__) {
+    initPeekApi();
+  } else {
+    waitForTauri(initPeekApi);
+  }
+  return;  // Let the callback handle the rest
+
+  function initPeekApi() {
+  // Main API initialization starts here
+  const sourceAddress = window.location.toString();
+
+  // Use Tauri invoke to log so it appears in stdout
+  const logToMain = (...args) => {
+    window.__TAURI__.core.invoke('log_message', {
+      source: sourceAddress,
+      args: args.map(a => String(a))
+    }).catch(() => {});
+  };
+
+  logToMain('[peek-api:tauri] initPeekApi called for', sourceAddress);
 
   const DEBUG = false;
   const DEBUG_LEVELS = { BASIC: 1, FIRST_RUN: 2 };
   const DEBUG_LEVEL = DEBUG_LEVELS.BASIC;
-
-  const sourceAddress = window.location.toString();
   const rndm = () => Math.random().toString(16).slice(2);
 
   // Context detection
@@ -167,7 +200,7 @@
 
   api.window = {
     open: async (url, options = {}) => {
-      console.log('[tauri] window.open', url);
+      logToMain('[tauri] window.open called:', url, JSON.stringify(options));
       try {
         const result = await invoke('window_open', { source: sourceAddress, url, options });
         // Tauri returns { success, data: { id } } - transform to match Electron's { success, id }
@@ -251,14 +284,14 @@
   // ==================== PubSub ====================
 
   api.publish = (topic, msg, scope = api.scopes.SELF) => {
-    console.log('[tauri] publish', topic);
+    logToMain('[tauri:pubsub] publish:', topic);
     emit(`pubsub:${topic}`, { source: sourceAddress, scope, data: msg }).catch(e => {
-      console.error('[tauri] publish error:', e);
+      logToMain('[tauri:pubsub] publish error:', topic, String(e));
     });
   };
 
   api.subscribe = (topic, callback, scope = api.scopes.SELF) => {
-    console.log('[tauri] subscribe', topic);
+    logToMain('[tauri:pubsub] subscribe:', topic);
 
     const key = `${sourceAddress}:${topic}`;
 
@@ -293,7 +326,26 @@
     queryVisits: (filter) => invoke('datastore_query_visits', { filter }),
     addContent: (options) => invoke('datastore_add_content', { options }),
     queryContent: (filter) => invoke('datastore_query_content', { filter }),
-    getTable: (tableName) => invoke('datastore_get_table', { tableName }),
+    getTable: (tableName) => {
+      logToMain('[tauri:datastore] getTable called:', tableName);
+      return invoke('datastore_get_table', { tableName }).then(r => {
+        logToMain('[tauri:datastore] getTable result:', tableName, r.success ? 'success' : r.error);
+        return r;
+      }).catch(e => {
+        logToMain('[tauri:datastore] getTable error:', tableName, String(e));
+        throw e;
+      });
+    },
+    getRow: (tableName, rowId) => {
+      logToMain('[tauri:datastore] getRow called:', tableName, rowId);
+      return invoke('datastore_get_row', { tableName, rowId }).then(r => {
+        logToMain('[tauri:datastore] getRow result:', tableName, rowId, r.success ? 'success' : r.error);
+        return r;
+      }).catch(e => {
+        logToMain('[tauri:datastore] getRow error:', tableName, rowId, String(e));
+        throw e;
+      });
+    },
     setRow: (tableName, rowId, rowData) => invoke('datastore_set_row', { tableName, rowId, rowData }),
     getStats: () => invoke('datastore_get_stats', {}),
     getOrCreateTag: (name) => invoke('datastore_get_or_create_tag', { name }),
@@ -697,5 +749,6 @@
   // Run sync after a short delay to ensure extensions are loaded
   setTimeout(syncExtensionState, 2000);
 
-  console.log('[peek-api:tauri] Initialized for:', sourceAddress);
+  logToMain('[peek-api:tauri] API initialized for', sourceAddress);
+  }  // End initPeekApi function
 })();

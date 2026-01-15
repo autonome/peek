@@ -195,6 +195,12 @@ const CREATE_TABLE_STATEMENTS: &str = r#"
   );
   CREATE INDEX IF NOT EXISTS idx_extension_settings_extensionId ON extension_settings(extensionId);
   CREATE UNIQUE INDEX IF NOT EXISTS idx_extension_settings_unique ON extension_settings(extensionId, key);
+
+  CREATE TABLE IF NOT EXISTS migrations (
+    id TEXT PRIMARY KEY,
+    status TEXT DEFAULT 'pending',
+    completedAt INTEGER DEFAULT 0
+  );
 "#;
 
 // ==================== Types ====================
@@ -914,6 +920,7 @@ pub fn get_table(
         "feeds",
         "extensions",
         "extension_settings",
+        "migrations",
     ];
     if !valid_tables.contains(&table_name) {
         return Err(rusqlite::Error::InvalidParameterName(format!(
@@ -957,6 +964,68 @@ pub fn get_table(
     Ok(result)
 }
 
+pub fn get_row(
+    conn: &Connection,
+    table_name: &str,
+    row_id: &str,
+) -> Result<Option<HashMap<String, serde_json::Value>>> {
+    // Validate table name to prevent SQL injection
+    let valid_tables = [
+        "addresses",
+        "visits",
+        "content",
+        "tags",
+        "address_tags",
+        "blobs",
+        "scripts_data",
+        "feeds",
+        "extensions",
+        "extension_settings",
+        "migrations",
+    ];
+    if !valid_tables.contains(&table_name) {
+        return Err(rusqlite::Error::InvalidParameterName(format!(
+            "Invalid table: {}",
+            table_name
+        )));
+    }
+
+    let sql = format!("SELECT * FROM {} WHERE id = ?1", table_name);
+    let mut stmt = conn.prepare(&sql)?;
+
+    let column_names: Vec<String> = stmt.column_names().iter().map(|s| s.to_string()).collect();
+
+    let result = stmt.query_row(params![row_id], |row| {
+        let mut row_data: HashMap<String, serde_json::Value> = HashMap::new();
+
+        for (i, col_name) in column_names.iter().enumerate() {
+            let value: rusqlite::types::Value = row.get(i)?;
+            let json_value = match value {
+                rusqlite::types::Value::Null => serde_json::Value::Null,
+                rusqlite::types::Value::Integer(i) => serde_json::Value::Number(i.into()),
+                rusqlite::types::Value::Real(f) => {
+                    serde_json::Number::from_f64(f).map_or(serde_json::Value::Null, |n| {
+                        serde_json::Value::Number(n)
+                    })
+                }
+                rusqlite::types::Value::Text(s) => serde_json::Value::String(s),
+                rusqlite::types::Value::Blob(b) => {
+                    serde_json::Value::String(base64::encode_config(&b, base64::STANDARD))
+                }
+            };
+            row_data.insert(col_name.clone(), json_value);
+        }
+
+        Ok(row_data)
+    });
+
+    match result {
+        Ok(row_data) => Ok(Some(row_data)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
 pub fn set_row(
     conn: &Connection,
     table_name: &str,
@@ -975,6 +1044,7 @@ pub fn set_row(
         "feeds",
         "extensions",
         "extension_settings",
+        "migrations",
     ];
     if !valid_tables.contains(&table_name) {
         return Err(rusqlite::Error::InvalidParameterName(format!(

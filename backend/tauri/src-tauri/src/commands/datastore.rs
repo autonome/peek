@@ -235,6 +235,20 @@ pub async fn datastore_get_table(
 }
 
 #[tauri::command]
+pub async fn datastore_get_row(
+    state: tauri::State<'_, Arc<AppState>>,
+    table_name: String,
+    row_id: String,
+) -> Result<CommandResponse<Option<HashMap<String, serde_json::Value>>>, String> {
+    let db = state.db.lock().unwrap();
+
+    match datastore::get_row(&db, &table_name, &row_id) {
+        Ok(row) => Ok(CommandResponse::success(row)),
+        Err(e) => Ok(CommandResponse::error(format!("Failed to get row: {}", e))),
+    }
+}
+
+#[tauri::command]
 pub async fn datastore_set_row(
     state: tauri::State<'_, Arc<AppState>>,
     table_name: String,

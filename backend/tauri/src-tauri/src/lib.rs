@@ -384,6 +384,7 @@ pub fn run() {
             commands::datastore::datastore_get_addresses_by_tag,
             commands::datastore::datastore_get_untagged_addresses,
             commands::datastore::datastore_get_table,
+            commands::datastore::datastore_get_row,
             commands::datastore::datastore_set_row,
             commands::datastore::datastore_get_stats,
             // Utility commands

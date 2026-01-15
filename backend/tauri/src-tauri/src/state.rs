@@ -29,6 +29,8 @@ pub struct RegisteredCommand {
 pub struct LoadedExtension {
     pub id: String,
     pub manifest: ExtensionManifest,
+    pub status: String,
+    #[serde(skip_serializing)]
     pub window_label: String,
 }
 
@@ -117,6 +119,7 @@ impl AppState {
             LoadedExtension {
                 id: id.to_string(),
                 manifest,
+                status: "running".to_string(),
                 window_label: window_label.to_string(),
             },
         );

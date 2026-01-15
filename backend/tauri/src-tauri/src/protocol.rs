@@ -2,7 +2,8 @@
 //!
 //! Handles routing for:
 //! - peek://app/... → Application files
-//! - peek://ext/{id}/... → Extension files
+//! - peek://ext/{id}/... → Extension files (legacy)
+//! - peek://{ext-id}/... → Extension files with per-extension origin (e.g., peek://cmd/, peek://groups/)
 //! - peek://extensions/... → Extension infrastructure
 //! - peek://theme/... → Current theme files
 //! - peek://theme/{themeId}/... → Specific theme files
@@ -83,8 +84,70 @@ fn parse_and_serve<R: tauri::Runtime>(
                 .body(Cow::Borrowed(b"" as &[u8]))
                 .unwrap())
         }
-        _ => Err(format!("Unknown host: {}", host)),
+        _ => {
+            // Check if host is a per-extension origin (e.g., peek://cmd/, peek://groups/)
+            // This provides unique origins for each extension for better isolation
+            if let Some(result) = try_serve_per_extension_host(ctx, host, clean_path) {
+                result
+            } else {
+                Err(format!("Unknown host: {}", host))
+            }
+        }
     }
+}
+
+/// Try to serve files for a per-extension host (e.g., peek://cmd/, peek://groups/)
+/// Returns None if the host is not a recognized extension ID
+fn try_serve_per_extension_host<R: tauri::Runtime>(
+    ctx: &UriSchemeContext<'_, R>,
+    ext_id: &str,
+    path: &str,
+) -> Option<Result<Response<Cow<'static, [u8]>>, String>> {
+    // Check if this is a custom extension with a registered path
+    let ext_base_path = {
+        let paths = EXTENSION_PATHS.lock().unwrap();
+        if let Some(custom_path) = paths.get(ext_id) {
+            Some(PathBuf::from(custom_path))
+        } else {
+            // Check if it's a bundled extension
+            let resource_dir = match get_resource_dir(ctx) {
+                Ok(dir) => dir,
+                Err(e) => return Some(Err(e)),
+            };
+            let bundled_path = resource_dir.join("extensions").join(ext_id);
+            if bundled_path.exists() {
+                Some(bundled_path)
+            } else {
+                None
+            }
+        }
+    };
+
+    let ext_base_path = ext_base_path?;
+
+    // Default to background.html if no path specified
+    let ext_path = if path.is_empty() {
+        "background.html"
+    } else {
+        path
+    };
+
+    // Security: Prevent path traversal
+    let requested_path = ext_base_path.join(ext_path);
+    let canonical_base = match ext_base_path.canonicalize() {
+        Ok(p) => p,
+        Err(e) => return Some(Err(format!("Extension not found: {} ({})", ext_id, e))),
+    };
+    let canonical_path = match requested_path.canonicalize() {
+        Ok(p) => p,
+        Err(e) => return Some(Err(format!("File not found: {} ({})", ext_path, e))),
+    };
+
+    if !canonical_path.starts_with(&canonical_base) {
+        return Some(Err("Forbidden: Path traversal attempt".to_string()));
+    }
+
+    Some(serve_file(&canonical_path))
 }
 
 /// Serve files from the app/ directory

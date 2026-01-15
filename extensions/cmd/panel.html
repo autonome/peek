@@ -95,24 +95,6 @@
         color: white;
       }
 
-      /* Custom cursor positioned at match location */
-      #custom-cursor {
-        position: absolute;
-        top: 2px;
-        left: 0;
-        width: 2px;
-        height: 24px;
-        background: white;
-        animation: blink 1s step-end infinite;
-        pointer-events: none;
-        z-index: 3;
-      }
-
-      @keyframes blink {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0; }
-      }
-
       /* Styling for the matched part */
       #command-text .matched {
         text-decoration: underline;
@@ -426,7 +408,6 @@
       <div class="command-display">
         <input id="command-input" type="text" autofocus spellcheck="false" placeholder="Type a command..." />
         <div id="command-text"></div>
-        <div id="custom-cursor"></div>
       </div>
     </div>
     <div id="results"></div>

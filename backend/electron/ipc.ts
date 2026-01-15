@@ -1128,7 +1128,9 @@ export function registerWindowHandlers(): void {
     }
 
     // Prepare browser window options
+    // Default to frameless windows unless explicitly requested
     const winOptions: Electron.BrowserWindowConstructorOptions = {
+      frame: false, // Default to no titlebar
       ...options,
       width: parseInt(options.width) || APP_DEF_WIDTH,
       height: parseInt(options.height) || APP_DEF_HEIGHT,
@@ -1150,7 +1152,6 @@ export function registerWindowHandlers(): void {
     }
 
     if (options.modal === true) {
-      winOptions.frame = false;
       // Use panel type on macOS to improve focus restoration when closed
       if (process.platform === 'darwin') {
         winOptions.type = 'panel';

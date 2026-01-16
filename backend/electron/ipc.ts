@@ -93,12 +93,48 @@ import {
   subscribe,
 } from './pubsub.js';
 
+// ============================================================================
+// Window Focus Tracking for Window-Targeted Commands
+// ============================================================================
+//
+// Commands like "theme dark here" or "devtools" need to operate on a specific
+// window - the one the user was looking at before opening the cmd palette.
+//
+// The challenge: commands execute in background.html (not the visible window),
+// and the cmd palette is a modal window that gains focus when opened.
+//
+// Solution: Track the last focused "visible" window, but EXCLUDE modal windows
+// from updating this tracker. This way, when the cmd palette opens, it doesn't
+// override the target window.
+//
+// Flow:
+//   1. User focuses groups window  →  lastFocusedVisibleWindowId = groups
+//   2. User opens cmd palette      →  modal window gets focus
+//                                  →  lastFocusedVisibleWindowId unchanged!
+//   3. User runs "theme dark here" →  targets groups window correctly
+//
+// Two trackers are maintained:
+//   - lastContentWindowId: Last focused http/https page (for devtools)
+//   - lastFocusedVisibleWindowId: Last focused visible window (for per-window cmds)
+//
+// IPC handlers:
+//   - get-window-id: Returns the calling window's ID
+//   - get-focused-visible-window-id: Returns lastFocusedVisibleWindowId
+//   - get-target-window-info: Returns {id, title, url} for UX display
+// ============================================================================
+
 // Track the last focused content window (for devtools command)
 // Content windows are those with http/https URLs (not peek:// internal pages)
 let lastContentWindowId: number | null = null;
 
+// Track the last focused visible window (for per-window commands)
+// This includes extension windows (peek://{extId}/...) and web pages,
+// but excludes internal background windows and modal windows
+let lastFocusedVisibleWindowId: number | null = null;
+
 /**
- * Update tracking when a window gains focus
+ * Update tracking when a content window (http/https) gains focus.
+ * Used by devtools command to know which web page to target.
  */
 function trackContentWindowFocus(win: BrowserWindow): void {
   const url = win.webContents.getURL();
@@ -107,6 +143,24 @@ function trackContentWindowFocus(win: BrowserWindow): void {
     lastContentWindowId = win.id;
     DEBUG && console.log('Updated lastContentWindowId:', lastContentWindowId, url);
   }
+}
+
+/**
+ * Update tracking when a visible (non-background) window gains focus.
+ * Used by per-window commands like "theme dark here".
+ *
+ * IMPORTANT: Modal windows should NOT call this function, otherwise
+ * opening the cmd palette would override the target window.
+ */
+function trackVisibleWindowFocus(win: BrowserWindow): void {
+  const url = win.webContents.getURL();
+  // Exclude internal background windows
+  if (url === 'peek://app/background.html' || url === 'peek://app/extension-host.html') {
+    return;
+  }
+  // Track extension windows (peek://{id}/...) and web pages
+  lastFocusedVisibleWindowId = win.id;
+  DEBUG && console.log('Updated lastFocusedVisibleWindowId:', lastFocusedVisibleWindowId, url);
 }
 
 /**
@@ -858,6 +912,23 @@ export function registerThemeHandlers(): void {
     };
   });
 
+  // Set color scheme for a specific window only (doesn't affect global setting)
+  ipcMain.handle('theme:setWindowColorScheme', (_ev, { windowId, colorScheme }: { windowId: number; colorScheme: string }) => {
+    if (!['system', 'light', 'dark', 'global'].includes(colorScheme)) {
+      return { success: false, error: 'Invalid color scheme' };
+    }
+
+    const win = BrowserWindow.fromId(windowId);
+    if (!win || win.isDestroyed()) {
+      return { success: false, error: 'Window not found' };
+    }
+
+    // Send to specific window only
+    win.webContents.send('theme:windowChanged', { colorScheme });
+
+    return { success: true, windowId, colorScheme };
+  });
+
   // Set active theme
   ipcMain.handle('theme:setTheme', (_ev, themeId: string) => {
     if (!setActiveThemeId(themeId)) {
@@ -1261,9 +1332,18 @@ export function registerWindowHandlers(): void {
       // Track content window focus for devtools command
       win.on('focus', () => {
         trackContentWindowFocus(win);
+        // Only track non-modal windows for visible window targeting
+        // Modal windows (like cmd palette) shouldn't override the target window
+        const winInfo = getWindowInfo(win.id);
+        if (!winInfo?.params?.modal) {
+          trackVisibleWindowFocus(win);
+        }
       });
-      // Also track immediately if this is a content window
+      // Also track immediately if this is a content/visible window (non-modal only)
       trackContentWindowFocus(win);
+      if (!options.modal) {
+        trackVisibleWindowFocus(win);
+      }
 
       // Set up DevTools if requested
       winDevtoolsConfig(win);
@@ -1620,6 +1700,30 @@ export function registerMiscHandlers(onQuit: () => void): void {
   ipcMain.on(IPC_CHANNELS.RENDERER_LOG, (_ev, msg) => {
     const shortSource = msg.source?.replace('peek://app/', '') || 'unknown';
     DEBUG && console.log(`[${shortSource}]`, ...(msg.args || []));
+  });
+
+  // Get current window ID (the window that sent the IPC message)
+  ipcMain.handle('get-window-id', (ev) => {
+    const win = BrowserWindow.fromWebContents(ev.sender);
+    return win ? win.id : null;
+  });
+
+  // Get last focused visible window ID (for per-window commands)
+  // Returns the most recently focused window that isn't a background/internal window
+  ipcMain.handle('get-focused-visible-window-id', () => {
+    return lastFocusedVisibleWindowId;
+  });
+
+  // Get info about the target window for window-scoped commands (for future UX)
+  ipcMain.handle('get-target-window-info', () => {
+    if (!lastFocusedVisibleWindowId) return null;
+    const win = BrowserWindow.fromId(lastFocusedVisibleWindowId);
+    if (!win || win.isDestroyed()) return null;
+    return {
+      id: lastFocusedVisibleWindowId,
+      title: win.getTitle(),
+      url: win.webContents.getURL()
+    };
   });
 
   // Register shortcut

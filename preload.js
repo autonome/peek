@@ -495,8 +495,31 @@ api.theme = {
     ipcRenderer.on('theme:reload', (ev, data) => {
       callback(data);
     });
+  },
+
+  /**
+   * Set color scheme for current window only (doesn't affect global setting)
+   * When called from background.html (via commands), targets the last focused visible window.
+   * @param {string} colorScheme - 'light', 'dark', 'system', or 'global' (to use global theme)
+   * @returns {Promise<{success: boolean, windowId?: number, colorScheme?: string, error?: string}>}
+   */
+  setWindowColorScheme: async (colorScheme) => {
+    // Use focused visible window ID if calling from background context,
+    // otherwise use the current window ID
+    let windowId = await ipcRenderer.invoke('get-focused-visible-window-id');
+    if (!windowId) {
+      // Fallback to current window (for direct calls from visible windows)
+      windowId = await ipcRenderer.invoke('get-window-id');
+    }
+    if (!windowId) {
+      return { success: false, error: 'No visible window to target' };
+    }
+    return ipcRenderer.invoke('theme:setWindowColorScheme', { windowId, colorScheme });
   }
 };
+
+// Track per-window color scheme override (null = use global)
+let windowColorSchemeOverride = null;
 
 // Apply theme on page load
 (async () => {
@@ -505,12 +528,43 @@ api.theme = {
     if (theme && theme.colorScheme !== 'system') {
       document.documentElement.setAttribute('data-theme', theme.colorScheme);
     }
-    // Listen for color scheme changes
+
+    // Listen for global color scheme changes
     ipcRenderer.on('theme:changed', (ev, { colorScheme }) => {
+      // Only apply global changes if this window doesn't have an override
+      if (windowColorSchemeOverride !== null) {
+        DEBUG && console.log('[preload] Ignoring global theme change, window has override:', windowColorSchemeOverride);
+        return;
+      }
       if (colorScheme === 'system') {
         document.documentElement.removeAttribute('data-theme');
       } else {
         document.documentElement.setAttribute('data-theme', colorScheme);
+      }
+    });
+
+    // Listen for window-specific color scheme changes
+    ipcRenderer.on('theme:windowChanged', (ev, { colorScheme }) => {
+      DEBUG && console.log('[preload] Window-specific color scheme:', colorScheme);
+      if (colorScheme === 'global') {
+        // Clear override, revert to global theme
+        windowColorSchemeOverride = null;
+        // Re-fetch and apply global theme
+        ipcRenderer.invoke('theme:get').then(theme => {
+          if (theme && theme.colorScheme !== 'system') {
+            document.documentElement.setAttribute('data-theme', theme.colorScheme);
+          } else {
+            document.documentElement.removeAttribute('data-theme');
+          }
+        });
+      } else {
+        // Set window-specific override
+        windowColorSchemeOverride = colorScheme;
+        if (colorScheme === 'system') {
+          document.documentElement.removeAttribute('data-theme');
+        } else {
+          document.documentElement.setAttribute('data-theme', colorScheme);
+        }
       }
     });
 
@@ -529,6 +583,30 @@ api.theme = {
     // Theme not available yet (before app ready)
   }
 })();
+
+// Auto-apply persisted color scheme preference for this URL
+window.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const url = window.location.href;
+    // Only check for http/https URLs (not peek:// internal pages)
+    if (!url || url.startsWith('peek://')) return;
+
+    const result = await ipcRenderer.invoke('datastore-query-addresses', {});
+    if (!result.success || !result.data) return;
+
+    const addr = result.data.find(a => a.uri === url);
+    if (addr && addr.metadata) {
+      const meta = JSON.parse(addr.metadata);
+      if (meta.colorScheme && (meta.colorScheme === 'light' || meta.colorScheme === 'dark')) {
+        DEBUG && console.log('[preload] Applying persisted color scheme for URL:', meta.colorScheme);
+        windowColorSchemeOverride = meta.colorScheme;
+        document.documentElement.setAttribute('data-theme', meta.colorScheme);
+      }
+    }
+  } catch (e) {
+    // Ignore errors (datastore not ready, etc.)
+  }
+});
 
 /**
  * Reload all stylesheets by removing and re-adding link elements

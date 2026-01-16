@@ -17,6 +17,22 @@
 - [ ] Add commands for settings nav sections: core, extensions, themes, datastore, diagnostic
 - [ ] Add commands to open specific extension settings
 
+## Window-Targeted Commands UX
+
+Commands like "theme dark here" operate on the "target window" - the window the user was looking at before opening the cmd palette. Currently this works but there's no visual indication.
+
+Phase 2 UX improvements:
+- [ ] Commands declare `scope: 'window' | 'page' | 'global'` in registration
+- [ ] Cmd panel shows "Target: [window title]" header when window-scoped command is selected
+- [ ] Uses `get-target-window-info` IPC handler (already implemented)
+
+Files to modify:
+- `preload.js` - Add `scope` to command registration API
+- `app/index.js` - Add `scope: 'window'` to per-window theme commands
+- `extensions/cmd/background.js` - Store command scope in registry
+- `extensions/cmd/panel.js` - Query target info, show header indicator
+- `extensions/cmd/panel.css` - Style for target indicator
+
 ## Devtools
 
 - [ ] Devtools button in extension settings cards (open devtools for extension window)

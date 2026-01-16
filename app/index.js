@@ -315,6 +315,89 @@ const registerExtensionCommands = () => {
     execute: cycleTheme
   });
 
+  // ---- Per-Window Theme Commands ----
+
+  api.commands.register({
+    name: 'theme light here',
+    description: 'Light mode for this window only',
+    execute: async () => {
+      const result = await api.theme.setWindowColorScheme('light');
+      if (!result.success) {
+        return { output: `Failed: ${result.error}`, mimeType: 'text/plain' };
+      }
+    }
+  });
+
+  api.commands.register({
+    name: 'theme dark here',
+    description: 'Dark mode for this window only',
+    execute: async () => {
+      const result = await api.theme.setWindowColorScheme('dark');
+      if (!result.success) {
+        return { output: `Failed: ${result.error}`, mimeType: 'text/plain' };
+      }
+    }
+  });
+
+  api.commands.register({
+    name: 'theme reset here',
+    description: 'Reset to global theme for this window',
+    execute: async () => {
+      const result = await api.theme.setWindowColorScheme('global');
+      if (!result.success) {
+        return { output: `Failed: ${result.error}`, mimeType: 'text/plain' };
+      }
+    }
+  });
+
+  api.commands.register({
+    name: 'theme light here persist',
+    description: 'Light mode for this URL (saved)',
+    execute: async () => {
+      const result = await api.theme.setWindowColorScheme('light');
+      if (!result.success) {
+        return { output: `Failed: ${result.error}`, mimeType: 'text/plain' };
+      }
+      // Save to address metadata
+      const url = window.location.href;
+      if (url && !url.startsWith('peek://')) {
+        const addrs = await api.datastore.queryAddresses({});
+        const addr = addrs.data?.find(a => a.uri === url);
+        if (addr) {
+          const metadata = JSON.parse(addr.metadata || '{}');
+          metadata.colorScheme = 'light';
+          await api.datastore.updateAddress(addr.id, { metadata: JSON.stringify(metadata) });
+          return { output: 'Light mode saved for this URL', mimeType: 'text/plain' };
+        }
+      }
+      return { output: 'Light mode set (URL not tracked)', mimeType: 'text/plain' };
+    }
+  });
+
+  api.commands.register({
+    name: 'theme dark here persist',
+    description: 'Dark mode for this URL (saved)',
+    execute: async () => {
+      const result = await api.theme.setWindowColorScheme('dark');
+      if (!result.success) {
+        return { output: `Failed: ${result.error}`, mimeType: 'text/plain' };
+      }
+      // Save to address metadata
+      const url = window.location.href;
+      if (url && !url.startsWith('peek://')) {
+        const addrs = await api.datastore.queryAddresses({});
+        const addr = addrs.data?.find(a => a.uri === url);
+        if (addr) {
+          const metadata = JSON.parse(addr.metadata || '{}');
+          metadata.colorScheme = 'dark';
+          await api.datastore.updateAddress(addr.id, { metadata: JSON.stringify(metadata) });
+          return { output: 'Dark mode saved for this URL', mimeType: 'text/plain' };
+        }
+      }
+      return { output: 'Dark mode set (URL not tracked)', mimeType: 'text/plain' };
+    }
+  });
+
   // ---- Extension Commands ----
 
   api.commands.register({

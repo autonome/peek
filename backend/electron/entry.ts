@@ -245,13 +245,14 @@ const onReady = async () => {
   restoreSavedTheme();
 
   // Register as default handler for http/https URLs (if not already and user hasn't declined)
-  // Skip for test profiles to avoid system dialogs during automated testing
-  if (isTestProfile()) {
-    DEBUG && console.log('Skipping default browser check for test profile:', PROFILE);
+  // Only prompt in production packaged builds - skip for dev, test, and dev-packaged builds
+  const isProductionBuild = app.isPackaged && !isDevPackagedBuild();
+  if (!isProductionBuild) {
+    DEBUG && console.log('Skipping default browser check for non-production build:', PROFILE);
   }
 
   const defaultBrowserPrefFile = path.join(profileDataPath, 'default-browser-pref.json');
-  let shouldPromptForDefault = !isTestProfile();
+  let shouldPromptForDefault = isProductionBuild && !isTestProfile();
 
   // Check if user has previously declined
   try {

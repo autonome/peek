@@ -18,6 +18,10 @@ import {
   discoverBuiltinExtensions,
   discoverBuiltinThemes,
   loadExtensions,
+  // Dev extension support
+  registerDevExtension,
+  loadDevExtensions,
+  cleanupDevExtensions,
   // External URL handling
   setAppReady,
   registerExternalUrlHandlers,
@@ -52,6 +56,8 @@ import {
   // Window helpers
   setPrefsGetter,
   updateDockVisibility,
+  // Extension loading
+  loadExtensionManifest,
 } from './index.js';
 
 import { startHotReload, stopHotReload } from './hotreload.js';
@@ -68,6 +74,24 @@ unhandled({
 const ROOT_DIR = app.getAppPath();
 
 const DEBUG = !!process.env.DEBUG;
+
+// Parse --load-extension CLI arguments for dev workflow
+// Usage: yarn start -- --load-extension=/path/to/extension
+// Multiple extensions: yarn start -- --load-extension=/path1 --load-extension=/path2
+const devExtensionPaths: string[] = [];
+for (const arg of process.argv) {
+  if (arg.startsWith('--load-extension=')) {
+    const extPath = arg.slice('--load-extension='.length);
+    // Expand ~ to home directory
+    const expandedPath = extPath.startsWith('~')
+      ? path.join(app.getPath('home'), extPath.slice(1))
+      : extPath;
+    // Resolve to absolute path
+    const absolutePath = path.resolve(expandedPath);
+    devExtensionPaths.push(absolutePath);
+    DEBUG && console.log(`[cli] Dev extension path: ${absolutePath}`);
+  }
+}
 
 // script loaded into every app window
 const preloadPath = path.join(ROOT_DIR, 'preload.js');
@@ -160,6 +184,8 @@ setPrefsGetter(() => _prefs);
 
 // Define onQuit for use in IPC handlers and shortcuts
 const onQuit = () => {
+  // Clean up dev extensions before quitting
+  cleanupDevExtensions();
   stopHotReload();
   quitApp();
 };
@@ -196,6 +222,21 @@ const onReady = async () => {
 
   // Discover and register built-in extensions from extensions/ folder
   discoverBuiltinExtensions(path.join(ROOT_DIR, 'extensions'));
+
+  // Register dev extensions from CLI arguments
+  // These are transient (not persisted) and load with devtools open
+  for (const extPath of devExtensionPaths) {
+    try {
+      const manifest = loadExtensionManifest(extPath);
+      if (manifest && manifest.id) {
+        registerDevExtension(manifest.id, extPath);
+      } else {
+        console.error(`[cli] Invalid extension at ${extPath}: missing id in manifest`);
+      }
+    } catch (err) {
+      console.error(`[cli] Failed to load extension manifest at ${extPath}:`, err);
+    }
+  }
 
   // Discover and register built-in themes from themes/ folder
   discoverBuiltinThemes(path.join(ROOT_DIR, 'themes'));
@@ -302,6 +343,13 @@ const onReady = async () => {
       extensionsLoaded = true;
       const extStart = Date.now();
       await loadExtensions();
+
+      // Load dev extensions after normal extensions (always with devtools)
+      if (devExtensionPaths.length > 0) {
+        const devCount = await loadDevExtensions();
+        DEBUG && console.log(`[ext:dev] Loaded ${devCount} dev extension(s)`);
+      }
+
       const extTime = Date.now() - extStart;
       const totalTime = Date.now() - ((global as Record<string, unknown>).__startupStart as number);
       DEBUG && console.log(`[startup] main: ${extStart - ((global as Record<string, unknown>).__startupStart as number)}ms, extensions: ${extTime}ms, total: ${totalTime}ms`);

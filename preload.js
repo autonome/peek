@@ -306,6 +306,13 @@ api.window = {
       source: sourceAddress,
       ...options
     });
+  },
+  devtools: (id = null) => {
+    DEBUG && console.log('window.devtools', id);
+    return ipcRenderer.invoke('window-devtools', {
+      source: sourceAddress,
+      id
+    });
   }
 };
 
@@ -799,41 +806,27 @@ api.extensions = {
 
   /**
    * Reload an extension (permission required)
+   * Destroys the extension window and recreates it, reloading all code.
    * @param {string} id - Extension ID to reload
-   * @returns {Promise<{success: boolean, error?: string}>}
+   * @returns {Promise<{success: boolean, data?: object, error?: string}>}
    */
   reload: (id) => {
     if (!api.extensions._hasPermission()) {
       return Promise.resolve({ success: false, error: 'Permission denied: only core app can manage extensions' });
     }
-    return new Promise((resolve) => {
-      const replyTopic = `ext:reload:reply:${rndm()}`;
+    return ipcRenderer.invoke('extension-reload', { id });
+  },
 
-      ipcRenderer.send('subscribe', {
-        source: sourceAddress,
-        scope: 1,
-        topic: replyTopic,
-        replyTopic: replyTopic
-      });
-
-      const handler = (ev, msg) => {
-        ipcRenderer.removeListener(replyTopic, handler);
-        resolve(msg);
-      };
-      ipcRenderer.on(replyTopic, handler);
-
-      ipcRenderer.send('publish', {
-        source: sourceAddress,
-        scope: 1,
-        topic: 'ext:reload',
-        data: { id, replyTopic }
-      });
-
-      setTimeout(() => {
-        ipcRenderer.removeListener(replyTopic, handler);
-        resolve({ success: false, error: 'Timeout reloading extension' });
-      }, 10000);
-    });
+  /**
+   * Open devtools for an extension (permission required)
+   * @param {string} id - Extension ID
+   * @returns {Promise<{success: boolean, data?: object, error?: string}>}
+   */
+  devtools: (id) => {
+    if (!api.extensions._hasPermission()) {
+      return Promise.resolve({ success: false, error: 'Permission denied: only core app can manage extensions' });
+    }
+    return ipcRenderer.invoke('extension-window-devtools', { id });
   },
 
   /**

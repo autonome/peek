@@ -1,0 +1,9 @@
+{
+  "id": "windows",
+  "shortname": "windows",
+  "name": "Windows",
+  "description": "Full-screen window switcher with transparent overlay",
+  "version": "1.0.0",
+  "background": "background.html",
+  "builtin": true
+}

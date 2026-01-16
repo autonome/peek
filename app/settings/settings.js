@@ -711,7 +711,7 @@ const renderExtensionsSettings = async () => {
       const allExtensions = [];
 
       // Get all builtin extension IDs from the loader
-      const builtinExtIds = ['cmd', 'groups', 'peeks', 'slides'];
+      const builtinExtIds = ['cmd', 'groups', 'peeks', 'slides', 'windows'];
 
       // Add builtin extensions (whether running or not)
       builtinExtIds.forEach(extId => {

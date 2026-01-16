@@ -660,6 +660,28 @@ test.describe('Core Functionality @desktop', () => {
     expect(result.restartCmd?.description).toBe('Restart the application');
   });
 
+  test('reload extension command is registered', async () => {
+    const result = await bgWindow.evaluate(async () => {
+      const api = (window as any).app;
+
+      return new Promise((resolve) => {
+        api.subscribe('cmd:query-commands-response', (msg: any) => {
+          const commands = msg.commands || [];
+          const reloadCmd = commands.find((c: any) => c.name === 'reload extension');
+          resolve({
+            hasReloadExtension: !!reloadCmd,
+            description: reloadCmd?.description
+          });
+        }, api.scopes.GLOBAL);
+        api.publish('cmd:query-commands', {}, api.scopes.GLOBAL);
+        setTimeout(() => resolve({ hasReloadExtension: false }), 2000);
+      });
+    });
+
+    expect(result.hasReloadExtension).toBe(true);
+    expect(result.description).toBe('Reload an external extension by ID');
+  });
+
   test('api.quit and api.restart functions exist', async () => {
     const result = await bgWindow.evaluate(() => {
       const api = (window as any).app;
@@ -2127,8 +2149,8 @@ test.describe('Hybrid Extension Mode @desktop', () => {
       while (Date.now() - start < maxWait) {
         const container = document.getElementById('extensions');
         const iframes = container ? Array.from(container.querySelectorAll('iframe')) : [];
-        // Built-in extensions: cmd, groups, peeks, slides (4 total)
-        if (iframes.length >= 4) {
+        // Built-in extensions: cmd, groups, peeks, slides, windows (5 total)
+        if (iframes.length >= 5) {
           return {
             count: iframes.length,
             srcs: iframes.map(f => f.src)
@@ -2144,12 +2166,13 @@ test.describe('Hybrid Extension Mode @desktop', () => {
       };
     });
 
-    // Should have iframes for cmd, groups, peeks, slides (4 built-in extensions)
-    expect(iframeData.count).toBe(4);
+    // Should have iframes for cmd, groups, peeks, slides, windows (5 built-in extensions)
+    expect(iframeData.count).toBe(5);
     expect(iframeData.srcs.some(s => s.includes('peek://cmd/'))).toBe(true);
     expect(iframeData.srcs.some(s => s.includes('peek://groups/'))).toBe(true);
     expect(iframeData.srcs.some(s => s.includes('peek://peeks/'))).toBe(true);
     expect(iframeData.srcs.some(s => s.includes('peek://slides/'))).toBe(true);
+    expect(iframeData.srcs.some(s => s.includes('peek://windows/'))).toBe(true);
   });
 
   test('example extension loads as separate window (external)', async () => {
@@ -2161,6 +2184,36 @@ test.describe('Hybrid Extension Mode @desktop', () => {
       w.url().includes('peek://ext/example/background.html')
     );
     expect(exampleWindow).toBeDefined();
+  });
+
+  test('api.extensions.reload() reloads external extension', async () => {
+    // Reload the example extension (external, not consolidated)
+    const reloadResult = await bgWindow.evaluate(async () => {
+      return await (window as any).app.extensions.reload('example');
+    });
+
+    expect(reloadResult.success).toBe(true);
+    expect(reloadResult.data?.id).toBe('example');
+
+    // Wait for extension to reload
+    await sleep(500);
+
+    // Verify the extension window still exists after reload
+    const windows = app.windows();
+    const exampleWindow = windows.find(w =>
+      w.url().includes('peek://ext/example/background.html')
+    );
+    expect(exampleWindow).toBeDefined();
+  });
+
+  test('api.extensions.reload() fails for consolidated extensions', async () => {
+    // Consolidated extensions (like cmd, groups) cannot be reloaded
+    const reloadResult = await bgWindow.evaluate(async () => {
+      return await (window as any).app.extensions.reload('cmd');
+    });
+
+    expect(reloadResult.success).toBe(false);
+    expect(reloadResult.error).toContain('Failed to reload');
   });
 
   test('commands work from both consolidated and external extensions', async () => {

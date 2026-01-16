@@ -315,6 +315,44 @@ const registerExtensionCommands = () => {
     execute: cycleTheme
   });
 
+  // ---- Extension Commands ----
+
+  api.commands.register({
+    name: 'reload extension',
+    description: 'Reload an external extension by ID',
+    execute: async (ctx) => {
+      // Get running extensions to show which can be reloaded
+      const result = await api.extensions.list();
+      if (!result.success) {
+        return { output: 'Failed to get extensions list', mimeType: 'text/plain' };
+      }
+
+      // Filter to only external extensions (not consolidated)
+      const external = result.data.running?.filter(ext => !ext.isConsolidated) || [];
+      if (external.length === 0) {
+        return { output: 'No external extensions running to reload', mimeType: 'text/plain' };
+      }
+
+      // If input provided, try to reload that extension
+      const input = ctx?.input?.trim();
+      if (input) {
+        const ext = external.find(e => e.id === input || e.id.includes(input));
+        if (ext) {
+          const reloadResult = await api.extensions.reload(ext.id);
+          if (reloadResult.success) {
+            return { output: `Reloaded extension: ${ext.id}`, mimeType: 'text/plain' };
+          }
+          return { output: `Failed to reload: ${reloadResult.error}`, mimeType: 'text/plain' };
+        }
+        return { output: `Extension not found: ${input}`, mimeType: 'text/plain' };
+      }
+
+      // No input - show available extensions
+      const list = external.map(e => e.id).join('\n');
+      return { output: `External extensions (type ID to reload):\n${list}`, mimeType: 'text/plain' };
+    }
+  });
+
   // ---- App Control Commands ----
 
   api.commands.register({

@@ -17,6 +17,12 @@
 - [ ] Add commands for settings nav sections: core, extensions, themes, datastore, diagnostic
 - [ ] Add commands to open specific extension settings
 
+## Devtools
+
+- [ ] Devtools button in extension settings cards (open devtools for extension window)
+- [ ] Devtools command to open devtools for a specific extension
+- [ ] Fix `api.extensions.devtools()` - currently not working for consolidated extensions
+
 ## v? - Entity centrism (NER streams)
 
 - [ ] Entity catalog definition

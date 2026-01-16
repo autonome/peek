@@ -48,7 +48,11 @@ let extensionHostWindow: BrowserWindow | null = null;
 
 // Built-in extensions that load in consolidated mode (iframes)
 // External extensions (including 'example') load in separate windows
-const CONSOLIDATED_EXTENSION_IDS = ['cmd', 'groups', 'peeks', 'slides'];
+const CONSOLIDATED_EXTENSION_IDS = ['cmd', 'groups', 'peeks', 'slides', 'windows'];
+
+// Dev extensions loaded via --load-extension CLI flag
+// These are transient (not persisted) and always have devtools open
+const devExtensions = new Map<string, { path: string }>();
 
 // Window manager: windowId -> { source, params }
 const windowRegistry = new Map<number, {
@@ -247,6 +251,12 @@ export async function createExtensionWindow(extId: string): Promise<BrowserWindo
     if (entry) {
       entry.status = 'running';
     }
+
+    // Open devtools for extension in debug mode (not in tests or headless)
+    if (config.isDev && !isTestProfile() && !isHeadless()) {
+      win.webContents.openDevTools({ mode: 'detach', activate: false });
+    }
+
     return win;
   } catch (error) {
     console.error(`[ext:win] Failed to load extension ${extId}:`, error);
@@ -346,6 +356,11 @@ async function createExtensionHostWindow(): Promise<BrowserWindow> {
   await win.loadURL('peek://app/extension-host.html');
 
   extensionHostWindow = win;
+
+  // Open devtools for extension host in debug mode (not in tests or headless)
+  if (config.isDev && !isTestProfile() && !isHeadless()) {
+    win.webContents.openDevTools({ mode: 'detach', activate: false });
+  }
 
   return win;
 }
@@ -556,6 +571,127 @@ export function destroyExtensionWindow(extId: string): boolean {
 export function getExtensionWindow(extId: string): BrowserWindow | null {
   const entry = extensionWindows.get(extId);
   return entry ? entry.win : null;
+}
+
+/**
+ * Get the extension host window (for consolidated/builtin extensions)
+ */
+export function getExtensionHostWindow(): BrowserWindow | null {
+  return extensionHostWindow;
+}
+
+/**
+ * Check if an extension runs in consolidated mode (iframe in host)
+ */
+export function isConsolidatedExtension(extId: string): boolean {
+  return CONSOLIDATED_EXTENSION_IDS.includes(extId);
+}
+
+/**
+ * Check if an extension is a dev extension (loaded via CLI)
+ */
+export function isDevExtension(extId: string): boolean {
+  return devExtensions.has(extId);
+}
+
+/**
+ * Register a dev extension path for CLI --load-extension
+ * These are transient and not persisted to datastore
+ */
+export function registerDevExtension(extId: string, extPath: string): void {
+  devExtensions.set(extId, { path: extPath });
+  // Also register the path so protocol handler can find it
+  registerExtensionPath(extId, extPath);
+  DEBUG && console.log(`[ext:dev] Registered dev extension: ${extId} from ${extPath}`);
+}
+
+/**
+ * Load a dev extension with devtools always open
+ */
+export async function loadDevExtension(extId: string): Promise<BrowserWindow | null> {
+  const devExt = devExtensions.get(extId);
+  if (!devExt) {
+    console.error(`[ext:dev] Dev extension not registered: ${extId}`);
+    return null;
+  }
+
+  // Create the extension window
+  const win = await createExtensionWindow(extId);
+  if (!win) {
+    return null;
+  }
+
+  // Always open devtools for dev extensions (regardless of debug mode)
+  if (!isHeadless()) {
+    win.webContents.openDevTools({ mode: 'detach', activate: false });
+  }
+
+  DEBUG && console.log(`[ext:dev] Loaded dev extension: ${extId}`);
+  return win;
+}
+
+/**
+ * Load all registered dev extensions
+ */
+export async function loadDevExtensions(): Promise<number> {
+  let count = 0;
+  for (const [extId] of devExtensions) {
+    const win = await loadDevExtension(extId);
+    if (win) count++;
+  }
+  return count;
+}
+
+/**
+ * Unload and clean up all dev extensions
+ */
+export function cleanupDevExtensions(): void {
+  for (const [extId] of devExtensions) {
+    destroyExtensionWindow(extId);
+    DEBUG && console.log(`[ext:dev] Cleaned up dev extension: ${extId}`);
+  }
+  devExtensions.clear();
+}
+
+/**
+ * Get list of dev extension IDs
+ */
+export function getDevExtensionIds(): string[] {
+  return Array.from(devExtensions.keys());
+}
+
+/**
+ * Reload an extension by destroying and recreating its window
+ * Returns the new window on success, null on failure
+ */
+export async function reloadExtension(extId: string): Promise<BrowserWindow | null> {
+  DEBUG && console.log(`[ext:reload] Reloading extension: ${extId}`);
+
+  // Check if it's a consolidated extension (not supported for reload)
+  if (isConsolidatedExtension(extId)) {
+    console.error(`[ext:reload] Cannot reload consolidated extension: ${extId} (reload the app instead)`);
+    return null;
+  }
+
+  // Destroy existing window if any
+  const existingEntry = extensionWindows.get(extId);
+  if (existingEntry) {
+    if (existingEntry.win && !existingEntry.win.isDestroyed()) {
+      existingEntry.win.destroy();
+    }
+    extensionWindows.delete(extId);
+  }
+
+  // Small delay to ensure cleanup
+  await new Promise(resolve => setTimeout(resolve, 100));
+
+  // For dev extensions, use loadDevExtension to ensure devtools opens
+  if (isDevExtension(extId)) {
+    return loadDevExtension(extId);
+  }
+
+  // For normal extensions, use createExtensionWindow
+  return createExtensionWindow(extId);
 }
 
 /**

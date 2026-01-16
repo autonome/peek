@@ -374,6 +374,20 @@ const init = async () => {
   // 3. Register the global shortcut
   initShortcut(currentSettings.prefs);
 
+  // 3b. Register built-in commands
+  api.commands.register({
+    name: 'devtools',
+    description: 'Open devtools for last active content window',
+    execute: async () => {
+      const result = await api.window.devtools();
+      if (result.success) {
+        log('ext:cmd', 'Opened devtools for:', result.url);
+      } else {
+        log.error('ext:cmd', 'Failed to open devtools:', result.error);
+      }
+    }
+  });
+
   // 4. Listen for settings changes to hot-reload
   api.subscribe('cmd:settings-changed', () => {
     log('ext:cmd', 'settings changed, reinitializing');

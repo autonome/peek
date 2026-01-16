@@ -116,8 +116,17 @@ const getGridColumns = (cards) => {
  * Handle keyboard navigation (vim-style hjkl for grid movement)
  */
 const handleKeydown = (e) => {
+  const searchInput = document.querySelector('.search-input');
+  const isSearchFocused = document.activeElement === searchInput;
+
+  // Focus search with / or Cmd+F
+  if ((e.key === '/' || (e.key === 'f' && (e.metaKey || e.ctrlKey))) && !isSearchFocused) {
+    e.preventDefault();
+    searchInput.focus();
+    return;
+  }
+
   // Don't intercept when typing in search (except arrow keys and enter)
-  const isSearchFocused = document.activeElement === document.querySelector('.search-input');
   if (isSearchFocused && !['ArrowUp', 'ArrowDown', 'Enter'].includes(e.key)) {
     return;
   }

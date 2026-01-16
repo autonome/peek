@@ -182,6 +182,8 @@ export function initProtocol(appRootDir: string): void {
         return new Response('Forbidden', { status: 403 });
       }
 
+      DEBUG && console.log(`[protocol] ext ${extId}/${extPath} -> ${absolutePath}`);
+
       const fileURL = pathToFileURL(absolutePath).toString();
       return net.fetch(fileURL);
     }

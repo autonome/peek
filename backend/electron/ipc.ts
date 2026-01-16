@@ -5,7 +5,7 @@
  * Handlers are thin wrappers that delegate to backend functions.
  */
 
-import { ipcMain, nativeTheme, dialog, BrowserWindow, app } from 'electron';
+import { ipcMain, nativeTheme, dialog, BrowserWindow, app, screen } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -50,7 +50,10 @@ import {
   createExtensionWindow,
   destroyExtensionWindow,
   getExtensionWindow,
+  getExtensionHostWindow,
+  isConsolidatedExtension,
   getRunningExtensions,
+  reloadExtension,
   registerWindow,
   getWindowInfo,
   removeWindow,
@@ -64,6 +67,7 @@ import {
   getPreloadPath,
   IPC_CHANNELS,
   isHeadless,
+  isTestProfile,
   DEBUG,
 } from './config.js';
 
@@ -88,6 +92,22 @@ import {
   publish,
   subscribe,
 } from './pubsub.js';
+
+// Track the last focused content window (for devtools command)
+// Content windows are those with http/https URLs (not peek:// internal pages)
+let lastContentWindowId: number | null = null;
+
+/**
+ * Update tracking when a window gains focus
+ */
+function trackContentWindowFocus(win: BrowserWindow): void {
+  const url = win.webContents.getURL();
+  // Only track content windows (http/https), not internal peek:// pages
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    lastContentWindowId = win.id;
+    DEBUG && console.log('Updated lastContentWindowId:', lastContentWindowId, url);
+  }
+}
 
 /**
  * Register datastore IPC handlers
@@ -544,6 +564,53 @@ export function registerExtensionHandlers(): void {
     try {
       const running = getRunningExtensions();
       return { success: true, data: running };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  ipcMain.handle('extension-window-devtools', async (ev, data) => {
+    try {
+      const extId = data.id;
+
+      // Consolidated extensions run in the extension host window
+      if (isConsolidatedExtension(extId)) {
+        const hostWin = getExtensionHostWindow();
+        if (!hostWin || hostWin.isDestroyed()) {
+          return { success: false, error: 'Extension host is not running' };
+        }
+        hostWin.webContents.openDevTools({ mode: 'detach' });
+        return { success: true, data: { id: extId, isConsolidated: true } };
+      }
+
+      // External extensions have their own windows
+      const win = getExtensionWindow(extId);
+      if (!win) {
+        return { success: false, error: `Extension ${extId} is not running` };
+      }
+      win.webContents.openDevTools({ mode: 'detach' });
+      return { success: true, data: { id: extId } };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // Reload an extension (destroy window and recreate)
+  ipcMain.handle('extension-reload', async (ev, data) => {
+    try {
+      const extId = data.id;
+      if (!extId) {
+        return { success: false, error: 'Missing extension id' };
+      }
+
+      const win = await reloadExtension(extId);
+      if (!win) {
+        return { success: false, error: `Failed to reload extension: ${extId}` };
+      }
+
+      return { success: true, data: { id: extId } };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return { success: false, error: message };
@@ -1191,8 +1258,21 @@ export function registerWindowHandlers(): void {
       // Add escape key handler to all windows
       addEscHandler(win);
 
+      // Track content window focus for devtools command
+      win.on('focus', () => {
+        trackContentWindowFocus(win);
+      });
+      // Also track immediately if this is a content window
+      trackContentWindowFocus(win);
+
       // Set up DevTools if requested
       winDevtoolsConfig(win);
+
+      // Auto-open devtools for peek:// URLs in debug mode (not tests/headless)
+      // This helps debug extension windows
+      if (DEBUG && url.startsWith('peek://') && !isTestProfile() && !isHeadless()) {
+        win.webContents.openDevTools({ mode: 'detach', activate: false });
+      }
 
       // Set up modal behavior if requested
       // Delay blur handler attachment to avoid race condition where focus events
@@ -1206,6 +1286,15 @@ export function registerWindowHandlers(): void {
             });
           }
         }, 100);
+      }
+
+      // Maximize window if requested (fills screen without OS fullscreen)
+      // Use explicit bounds instead of win.maximize() because panel-type windows
+      // on macOS don't respond to maximize() properly
+      if (options.maximize === true && !isHeadless()) {
+        const display = screen.getPrimaryDisplay();
+        const { width, height } = display.workAreaSize;
+        win.setBounds({ x: 0, y: 0, width, height });
       }
 
       // Show dock when window opens
@@ -1392,6 +1481,36 @@ export function registerWindowHandlers(): void {
       return { success: true };
     } catch (error) {
       console.error('Failed to focus window:', error);
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  ipcMain.handle('window-devtools', async (_ev, msg) => {
+    DEBUG && console.log('window-devtools', msg, 'lastContentWindowId:', lastContentWindowId);
+
+    try {
+      // If no ID provided, use the last content window
+      const targetId = msg?.id || lastContentWindowId;
+
+      if (!targetId) {
+        return { success: false, error: 'No content window available' };
+      }
+
+      const win = BrowserWindow.fromId(targetId);
+      if (!win || win.isDestroyed()) {
+        // Clear tracking if the window is gone
+        if (targetId === lastContentWindowId) {
+          lastContentWindowId = null;
+        }
+        return { success: false, error: 'Window not found or destroyed' };
+      }
+
+      // Open devtools for the target window
+      win.webContents.openDevTools({ mode: 'detach' });
+      return { success: true, id: targetId, url: win.webContents.getURL() };
+    } catch (error) {
+      console.error('Failed to open devtools:', error);
       const message = error instanceof Error ? error.message : String(error);
       return { success: false, error: message };
     }

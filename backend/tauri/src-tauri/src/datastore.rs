@@ -201,6 +201,36 @@ const CREATE_TABLE_STATEMENTS: &str = r#"
     status TEXT DEFAULT 'pending',
     completedAt INTEGER DEFAULT 0
   );
+
+  CREATE TABLE IF NOT EXISTS items (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL CHECK(type IN ('note', 'tagset', 'image')),
+    content TEXT,
+    mimeType TEXT DEFAULT '',
+    metadata TEXT DEFAULT '{}',
+    syncId TEXT DEFAULT '',
+    syncSource TEXT DEFAULT '',
+    createdAt INTEGER NOT NULL,
+    updatedAt INTEGER NOT NULL,
+    deletedAt INTEGER DEFAULT 0,
+    starred INTEGER DEFAULT 0,
+    archived INTEGER DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
+  CREATE INDEX IF NOT EXISTS idx_items_syncId ON items(syncId);
+  CREATE INDEX IF NOT EXISTS idx_items_deletedAt ON items(deletedAt);
+  CREATE INDEX IF NOT EXISTS idx_items_createdAt ON items(createdAt DESC);
+  CREATE INDEX IF NOT EXISTS idx_items_starred ON items(starred);
+
+  CREATE TABLE IF NOT EXISTS item_tags (
+    id TEXT PRIMARY KEY,
+    itemId TEXT NOT NULL,
+    tagId TEXT NOT NULL,
+    createdAt INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_item_tags_itemId ON item_tags(itemId);
+  CREATE INDEX IF NOT EXISTS idx_item_tags_tagId ON item_tags(tagId);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_item_tags_unique ON item_tags(itemId, tagId);
 "#;
 
 // ==================== Types ====================
@@ -327,6 +357,59 @@ pub struct VisitFilter {
     pub source: Option<String>,
     pub since: Option<i64>,
     pub limit: Option<i64>,
+}
+
+// ==================== Item Types (mobile-style lightweight content) ====================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Item {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub item_type: String,
+    pub content: Option<String>,
+    pub mime_type: String,
+    pub metadata: String,
+    pub sync_id: String,
+    pub sync_source: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub deleted_at: i64,
+    pub starred: i64,
+    pub archived: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemTag {
+    pub id: String,
+    pub item_id: String,
+    pub tag_id: String,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemOptions {
+    pub content: Option<String>,
+    pub mime_type: Option<String>,
+    pub metadata: Option<String>,
+    pub sync_id: Option<String>,
+    pub sync_source: Option<String>,
+    pub starred: Option<i64>,
+    pub archived: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemFilter {
+    #[serde(rename = "type")]
+    pub item_type: Option<String>,
+    pub starred: Option<i64>,
+    pub archived: Option<i64>,
+    pub include_deleted: Option<bool>,
+    pub limit: Option<i64>,
+    pub sort_by: Option<String>,
 }
 
 // ==================== Helpers ====================
@@ -1118,6 +1201,344 @@ pub fn get_stats(conn: &Connection) -> Result<DatastoreStats> {
         total_content,
         synced_content,
     })
+}
+
+// ==================== Item Operations (mobile-style lightweight content) ====================
+
+pub fn add_item(conn: &Connection, item_type: &str, options: &ItemOptions) -> Result<String> {
+    let item_id = generate_id("item");
+    let timestamp = now();
+
+    conn.execute(
+        r#"INSERT INTO items
+           (id, type, content, mimeType, metadata, syncId, syncSource, createdAt, updatedAt, deletedAt, starred, archived)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0, ?10, ?11)"#,
+        params![
+            item_id,
+            item_type,
+            options.content.as_deref(),
+            options.mime_type.as_deref().unwrap_or(""),
+            options.metadata.as_deref().unwrap_or("{}"),
+            options.sync_id.as_deref().unwrap_or(""),
+            options.sync_source.as_deref().unwrap_or(""),
+            timestamp,
+            timestamp,
+            options.starred.unwrap_or(0),
+            options.archived.unwrap_or(0),
+        ],
+    )?;
+
+    Ok(item_id)
+}
+
+pub fn get_item(conn: &Connection, id: &str) -> Result<Option<Item>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, type, content, mimeType, metadata, syncId, syncSource, createdAt, updatedAt, deletedAt, starred, archived FROM items WHERE id = ?1 AND deletedAt = 0",
+    )?;
+
+    let mut rows = stmt.query(params![id])?;
+    match rows.next()? {
+        Some(row) => Ok(Some(Item {
+            id: row.get(0)?,
+            item_type: row.get(1)?,
+            content: row.get(2)?,
+            mime_type: row.get(3)?,
+            metadata: row.get(4)?,
+            sync_id: row.get(5)?,
+            sync_source: row.get(6)?,
+            created_at: row.get(7)?,
+            updated_at: row.get(8)?,
+            deleted_at: row.get(9)?,
+            starred: row.get(10)?,
+            archived: row.get(11)?,
+        })),
+        None => Ok(None),
+    }
+}
+
+pub fn update_item(conn: &Connection, id: &str, options: &ItemOptions) -> Result<bool> {
+    let timestamp = now();
+    let mut updates = Vec::new();
+    let mut values: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    let mut idx = 1;
+
+    if let Some(ref content) = options.content {
+        updates.push(format!("content = ?{}", idx));
+        values.push(Box::new(content.clone()));
+        idx += 1;
+    }
+    if let Some(ref mime_type) = options.mime_type {
+        updates.push(format!("mimeType = ?{}", idx));
+        values.push(Box::new(mime_type.clone()));
+        idx += 1;
+    }
+    if let Some(ref metadata) = options.metadata {
+        updates.push(format!("metadata = ?{}", idx));
+        values.push(Box::new(metadata.clone()));
+        idx += 1;
+    }
+    if let Some(ref sync_id) = options.sync_id {
+        updates.push(format!("syncId = ?{}", idx));
+        values.push(Box::new(sync_id.clone()));
+        idx += 1;
+    }
+    if let Some(ref sync_source) = options.sync_source {
+        updates.push(format!("syncSource = ?{}", idx));
+        values.push(Box::new(sync_source.clone()));
+        idx += 1;
+    }
+    if let Some(starred) = options.starred {
+        updates.push(format!("starred = ?{}", idx));
+        values.push(Box::new(starred));
+        idx += 1;
+    }
+    if let Some(archived) = options.archived {
+        updates.push(format!("archived = ?{}", idx));
+        values.push(Box::new(archived));
+        idx += 1;
+    }
+
+    if updates.is_empty() {
+        return Ok(false);
+    }
+
+    updates.push(format!("updatedAt = ?{}", idx));
+    values.push(Box::new(timestamp));
+    idx += 1;
+
+    values.push(Box::new(id.to_string()));
+
+    let sql = format!(
+        "UPDATE items SET {} WHERE id = ?{} AND deletedAt = 0",
+        updates.join(", "),
+        idx
+    );
+
+    let params_ref: Vec<&dyn rusqlite::ToSql> = values.iter().map(|p| p.as_ref()).collect();
+    let changes = conn.execute(&sql, params_ref.as_slice())?;
+    Ok(changes > 0)
+}
+
+pub fn delete_item(conn: &Connection, id: &str) -> Result<bool> {
+    let timestamp = now();
+    let changes = conn.execute(
+        "UPDATE items SET deletedAt = ?1, updatedAt = ?1 WHERE id = ?2 AND deletedAt = 0",
+        params![timestamp, id],
+    )?;
+    Ok(changes > 0)
+}
+
+pub fn hard_delete_item(conn: &Connection, id: &str) -> Result<bool> {
+    conn.execute("DELETE FROM item_tags WHERE itemId = ?1", params![id])?;
+    let changes = conn.execute("DELETE FROM items WHERE id = ?1", params![id])?;
+    Ok(changes > 0)
+}
+
+pub fn query_items(conn: &Connection, filter: &ItemFilter) -> Result<Vec<Item>> {
+    let mut conditions = Vec::new();
+    let mut values: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    let mut idx = 1;
+
+    // By default, exclude soft-deleted items
+    if !filter.include_deleted.unwrap_or(false) {
+        conditions.push("deletedAt = 0".to_string());
+    }
+
+    if let Some(ref item_type) = filter.item_type {
+        conditions.push(format!("type = ?{}", idx));
+        values.push(Box::new(item_type.clone()));
+        idx += 1;
+    }
+    if let Some(starred) = filter.starred {
+        conditions.push(format!("starred = ?{}", idx));
+        values.push(Box::new(starred));
+        idx += 1;
+    }
+    if let Some(archived) = filter.archived {
+        conditions.push(format!("archived = ?{}", idx));
+        values.push(Box::new(archived));
+        // idx is not used after this but kept for pattern consistency
+    }
+
+    let where_clause = if conditions.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", conditions.join(" AND "))
+    };
+
+    let order_by = match filter.sort_by.as_deref() {
+        Some("updated") => "updatedAt DESC",
+        _ => "createdAt DESC",
+    };
+
+    let limit_clause = filter
+        .limit
+        .map(|l| format!("LIMIT {}", l))
+        .unwrap_or_default();
+
+    let sql = format!(
+        "SELECT id, type, content, mimeType, metadata, syncId, syncSource, createdAt, updatedAt, deletedAt, starred, archived FROM items {} ORDER BY {} {}",
+        where_clause, order_by, limit_clause
+    );
+
+    let params_ref: Vec<&dyn rusqlite::ToSql> = values.iter().map(|p| p.as_ref()).collect();
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(params_ref.as_slice(), |row| {
+        Ok(Item {
+            id: row.get(0)?,
+            item_type: row.get(1)?,
+            content: row.get(2)?,
+            mime_type: row.get(3)?,
+            metadata: row.get(4)?,
+            sync_id: row.get(5)?,
+            sync_source: row.get(6)?,
+            created_at: row.get(7)?,
+            updated_at: row.get(8)?,
+            deleted_at: row.get(9)?,
+            starred: row.get(10)?,
+            archived: row.get(11)?,
+        })
+    })?;
+
+    rows.collect()
+}
+
+// ==================== Item-Tag Operations ====================
+
+pub fn tag_item(conn: &Connection, item_id: &str, tag_id: &str) -> Result<(ItemTag, bool)> {
+    let timestamp = now();
+
+    // Check if link already exists
+    let mut stmt = conn.prepare(
+        "SELECT id, itemId, tagId, createdAt FROM item_tags WHERE itemId = ?1 AND tagId = ?2",
+    )?;
+    let mut rows = stmt.query(params![item_id, tag_id])?;
+
+    if let Some(row) = rows.next()? {
+        let existing = ItemTag {
+            id: row.get(0)?,
+            item_id: row.get(1)?,
+            tag_id: row.get(2)?,
+            created_at: row.get(3)?,
+        };
+        return Ok((existing, true));
+    }
+
+    let link_id = generate_id("item_tag");
+    conn.execute(
+        "INSERT INTO item_tags (id, itemId, tagId, createdAt) VALUES (?1, ?2, ?3, ?4)",
+        params![link_id, item_id, tag_id, timestamp],
+    )?;
+
+    // Update tag frequency and frecency
+    if let Ok(Some(tag)) = get_tag_by_id(conn, tag_id) {
+        let new_frequency = tag.frequency + 1;
+        let frecency_score = calculate_frecency(new_frequency, timestamp);
+        conn.execute(
+            "UPDATE tags SET frequency = ?1, lastUsedAt = ?2, frecencyScore = ?3, updatedAt = ?2 WHERE id = ?4",
+            params![new_frequency, timestamp, frecency_score, tag_id],
+        )?;
+    }
+
+    let new_link = ItemTag {
+        id: link_id,
+        item_id: item_id.to_string(),
+        tag_id: tag_id.to_string(),
+        created_at: timestamp,
+    };
+    Ok((new_link, false))
+}
+
+pub fn untag_item(conn: &Connection, item_id: &str, tag_id: &str) -> Result<bool> {
+    let changes = conn.execute(
+        "DELETE FROM item_tags WHERE itemId = ?1 AND tagId = ?2",
+        params![item_id, tag_id],
+    )?;
+    Ok(changes > 0)
+}
+
+pub fn get_item_tags(conn: &Connection, item_id: &str) -> Result<Vec<Tag>> {
+    let mut stmt = conn.prepare(
+        r#"SELECT t.id, t.name, t.slug, t.color, t.parentId, t.description, t.metadata,
+                  t.createdAt, t.updatedAt, t.frequency, t.lastUsedAt, t.frecencyScore
+           FROM tags t
+           JOIN item_tags it ON t.id = it.tagId
+           WHERE it.itemId = ?1"#,
+    )?;
+
+    let rows = stmt.query_map(params![item_id], |row| {
+        Ok(Tag {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            slug: row.get(2)?,
+            color: row.get(3)?,
+            parent_id: row.get(4)?,
+            description: row.get(5)?,
+            metadata: row.get(6)?,
+            created_at: row.get(7)?,
+            updated_at: row.get(8)?,
+            frequency: row.get(9)?,
+            last_used_at: row.get(10)?,
+            frecency_score: row.get(11)?,
+        })
+    })?;
+
+    rows.collect()
+}
+
+pub fn get_items_by_tag(conn: &Connection, tag_id: &str) -> Result<Vec<Item>> {
+    let mut stmt = conn.prepare(
+        r#"SELECT i.id, i.type, i.content, i.mimeType, i.metadata, i.syncId, i.syncSource,
+                  i.createdAt, i.updatedAt, i.deletedAt, i.starred, i.archived
+           FROM items i
+           JOIN item_tags it ON i.id = it.itemId
+           WHERE it.tagId = ?1 AND i.deletedAt = 0"#,
+    )?;
+
+    let rows = stmt.query_map(params![tag_id], |row| {
+        Ok(Item {
+            id: row.get(0)?,
+            item_type: row.get(1)?,
+            content: row.get(2)?,
+            mime_type: row.get(3)?,
+            metadata: row.get(4)?,
+            sync_id: row.get(5)?,
+            sync_source: row.get(6)?,
+            created_at: row.get(7)?,
+            updated_at: row.get(8)?,
+            deleted_at: row.get(9)?,
+            starred: row.get(10)?,
+            archived: row.get(11)?,
+        })
+    })?;
+
+    rows.collect()
+}
+
+// Helper to get a tag by ID (used by tag_item)
+fn get_tag_by_id(conn: &Connection, tag_id: &str) -> Result<Option<Tag>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, name, slug, color, parentId, description, metadata, createdAt, updatedAt, frequency, lastUsedAt, frecencyScore FROM tags WHERE id = ?1",
+    )?;
+    let mut rows = stmt.query(params![tag_id])?;
+
+    match rows.next()? {
+        Some(row) => Ok(Some(Tag {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            slug: row.get(2)?,
+            color: row.get(3)?,
+            parent_id: row.get(4)?,
+            description: row.get(5)?,
+            metadata: row.get(6)?,
+            created_at: row.get(7)?,
+            updated_at: row.get(8)?,
+            frequency: row.get(9)?,
+            last_used_at: row.get(10)?,
+            frecency_score: row.get(11)?,
+        })),
+        None => Ok(None),
+    }
 }
 
 // Simple base64 encoding (avoiding external dependency for now)

@@ -357,7 +357,19 @@
     getTagsByFrecency: (limit) => invoke('datastore_get_tags_by_frecency', { limit }),
     getAddressTags: (addressId) => invoke('datastore_get_address_tags', { addressId }),
     getAddressesByTag: (tagId) => invoke('datastore_get_addresses_by_tag', { tagId }),
-    getUntaggedAddresses: (limit) => invoke('datastore_get_untagged_addresses', { limit })
+    getUntaggedAddresses: (limit) => invoke('datastore_get_untagged_addresses', { limit }),
+
+    // Item operations (mobile-style lightweight content: notes, tagsets, images)
+    addItem: (type, options = {}) => invoke('datastore_add_item', { type, options }),
+    getItem: (id) => invoke('datastore_get_item', { id }),
+    updateItem: (id, options) => invoke('datastore_update_item', { id, options }),
+    deleteItem: (id) => invoke('datastore_delete_item', { id }),
+    hardDeleteItem: (id) => invoke('datastore_hard_delete_item', { id }),
+    queryItems: (filter = {}) => invoke('datastore_query_items', { filter }),
+    tagItem: (itemId, tagId) => invoke('datastore_tag_item', { itemId, tagId }),
+    untagItem: (itemId, tagId) => invoke('datastore_untag_item', { itemId, tagId }),
+    getItemTags: (itemId) => invoke('datastore_get_item_tags', { itemId }),
+    getItemsByTag: (tagId) => invoke('datastore_get_items_by_tag', { tagId })
   };
 
   // ==================== Commands ====================

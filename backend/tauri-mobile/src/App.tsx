@@ -1,0 +1,1124 @@
+import { useState, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import "./App.css";
+
+type TabType = "page" | "text" | "tagset";
+
+interface ItemMetadata {
+  title?: string;
+  selectedText?: string;
+  sourceApp?: string;
+  sharedAt?: string;
+}
+
+interface SavedUrl {
+  id: string;
+  url: string;
+  tags: string[];
+  saved_at: string;
+  metadata?: ItemMetadata;
+}
+
+interface SavedText {
+  id: string;
+  content: string;
+  tags: string[];
+  saved_at: string;
+  metadata?: ItemMetadata;
+}
+
+interface SavedTagset {
+  id: string;
+  tags: string[];
+  saved_at: string;
+  metadata?: ItemMetadata;
+}
+
+interface TagStats {
+  name: string;
+  frequency: number;
+  last_used: string;
+  frecency_score: number;
+}
+
+interface SyncResult {
+  success: boolean;
+  synced_count: number;
+  message: string;
+}
+
+function App() {
+  // Tab state
+  const [activeTab, setActiveTab] = useState<TabType>("page");
+
+  // Data state
+  const [savedUrls, setSavedUrls] = useState<SavedUrl[]>([]);
+  const [savedTexts, setSavedTexts] = useState<SavedText[]>([]);
+  const [savedTagsets, setSavedTagsets] = useState<SavedTagset[]>([]);
+  const [allTags, setAllTags] = useState<TagStats[]>([]);
+
+  // Page editing state
+  const [editingUrlId, setEditingUrlId] = useState<string | null>(null);
+  const [editingUrlValue, setEditingUrlValue] = useState("");
+  const [editingTags, setEditingTags] = useState<Set<string>>(new Set());
+  const [editingUrlTags, setEditingUrlTags] = useState<TagStats[]>([]); // Domain-boosted tags for editing
+  const [newTagInput, setNewTagInput] = useState("");
+
+  // Text creation/editing state
+  const [newTextContent, setNewTextContent] = useState("");
+  const [newTextTags, setNewTextTags] = useState<Set<string>>(new Set());
+  const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  const [editingTextContent, setEditingTextContent] = useState("");
+
+  // Tagset creation/editing state
+  const [newTagsetTags, setNewTagsetTags] = useState<Set<string>>(new Set());
+  const [newTagsetInput, setNewTagsetInput] = useState("");
+  const [editingTagsetId, setEditingTagsetId] = useState<string | null>(null);
+  const [editingTagsetTags, setEditingTagsetTags] = useState<Set<string>>(new Set());
+  const [editingTagsetInput, setEditingTagsetInput] = useState("");
+
+  // UI state
+  const [isDark, setIsDark] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [webhookUrlInput, setWebhookUrlInput] = useState("");
+  const [webhookApiKey, setWebhookApiKey] = useState("");
+  const [webhookApiKeyInput, setWebhookApiKeyInput] = useState("");
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [lastSync, setLastSync] = useState<string | null>(null);
+
+  // Detect system dark mode via native iOS API
+  useEffect(() => {
+    const checkDarkMode = async () => {
+      try {
+        const nativeDark = await invoke<boolean>("is_dark_mode");
+        setIsDark(nativeDark);
+      } catch (error) {
+        // Fallback to JS media query
+        const jsMediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+        setIsDark(jsMediaQuery.matches);
+      }
+    };
+
+    checkDarkMode();
+
+    // Listen for system theme changes via media query
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = () => checkDarkMode();
+    mediaQuery.addEventListener("change", handleChange);
+
+    // Also check when app resumes from background
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        checkDarkMode();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      mediaQuery.removeEventListener("change", handleChange);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
+  // Apply dark class to body
+  useEffect(() => {
+    document.body.classList.toggle("dark", isDark);
+  }, [isDark]);
+
+  // Load data on mount and when app returns to foreground
+  useEffect(() => {
+    const loadData = () => {
+      loadSavedUrls();
+      loadSavedTexts();
+      loadSavedTagsets();
+      loadAllTags();
+    };
+
+    const tryAutoSync = async () => {
+      try {
+        await invoke("auto_sync_if_needed");
+      } catch (error) {
+        // Silently ignore auto-sync errors
+        console.log("Auto-sync check:", error);
+      }
+    };
+
+    loadData();
+    loadWebhookUrl();
+    loadWebhookApiKey();
+    loadLastSync();
+    tryAutoSync();
+
+    // Reload when app comes back to foreground (to pick up items from share extension)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        loadData();
+        tryAutoSync();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
+  const loadWebhookUrl = async () => {
+    try {
+      const url = await invoke<string | null>("get_webhook_url");
+      if (url) {
+        setWebhookUrl(url);
+        setWebhookUrlInput(url);
+      }
+    } catch (error) {
+      console.error("Failed to load webhook URL:", error);
+    }
+  };
+
+  const loadWebhookApiKey = async () => {
+    try {
+      const key = await invoke<string | null>("get_webhook_api_key");
+      if (key) {
+        setWebhookApiKey(key);
+        setWebhookApiKeyInput(key);
+      }
+    } catch (error) {
+      console.error("Failed to load webhook API key:", error);
+    }
+  };
+
+  const loadLastSync = async () => {
+    try {
+      const sync = await invoke<string | null>("get_last_sync");
+      setLastSync(sync);
+    } catch (error) {
+      console.error("Failed to load last sync:", error);
+    }
+  };
+
+  const saveWebhookSettings = async () => {
+    try {
+      await invoke("set_webhook_url", { url: webhookUrlInput });
+      await invoke("set_webhook_api_key", { key: webhookApiKeyInput });
+      setWebhookUrl(webhookUrlInput);
+      setWebhookApiKey(webhookApiKeyInput);
+      setSyncMessage("Settings saved");
+      setTimeout(() => setSyncMessage(null), 2000);
+    } catch (error) {
+      console.error("Failed to save webhook settings:", error);
+      setSyncMessage("Failed to save settings");
+      setTimeout(() => setSyncMessage(null), 3000);
+    }
+  };
+
+  const syncToWebhook = async () => {
+    if (!webhookUrl) {
+      setSyncMessage("Please save a webhook URL first");
+      setTimeout(() => setSyncMessage(null), 3000);
+      return;
+    }
+
+    setIsSyncing(true);
+    setSyncMessage(null);
+
+    try {
+      const result = await invoke<SyncResult>("sync_to_webhook");
+      setSyncMessage(result.message);
+      await loadLastSync(); // Refresh last sync timestamp
+      setTimeout(() => setSyncMessage(null), 3000);
+    } catch (error) {
+      console.error("Failed to sync:", error);
+      setSyncMessage(`Sync failed: ${error}`);
+      setTimeout(() => setSyncMessage(null), 5000);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const loadSavedUrls = async () => {
+    try {
+      const urls = await invoke<SavedUrl[]>("get_saved_urls");
+      setSavedUrls(urls);
+    } catch (error) {
+      console.error("Failed to load saved URLs:", error);
+    }
+  };
+
+  const loadSavedTexts = async () => {
+    try {
+      const texts = await invoke<SavedText[]>("get_saved_texts");
+      setSavedTexts(texts);
+    } catch (error) {
+      console.error("Failed to load saved texts:", error);
+    }
+  };
+
+  const loadSavedTagsets = async () => {
+    try {
+      const tagsets = await invoke<SavedTagset[]>("get_saved_tagsets");
+      setSavedTagsets(tagsets);
+    } catch (error) {
+      console.error("Failed to load saved tagsets:", error);
+    }
+  };
+
+  const loadAllTags = async () => {
+    try {
+      const tags = await invoke<TagStats[]>("get_tags_by_frecency");
+      setAllTags(tags);
+    } catch (error) {
+      console.error("Failed to load tags:", error);
+    }
+  };
+
+  const startEditing = async (item: SavedUrl) => {
+    setEditingUrlId(item.id);
+    setEditingUrlValue(item.url);
+    setEditingTags(new Set(item.tags));
+    setNewTagInput("");
+
+    // Fetch domain-boosted tags for this URL
+    try {
+      const tags = await invoke<TagStats[]>("get_tags_by_frecency_for_url", { url: item.url });
+      setEditingUrlTags(tags);
+    } catch (error) {
+      console.error("Failed to load domain-boosted tags:", error);
+      setEditingUrlTags(allTags); // Fallback to regular tags
+    }
+  };
+
+  const cancelEditing = () => {
+    setEditingUrlId(null);
+    setEditingUrlValue("");
+    setEditingTags(new Set());
+    setEditingUrlTags([]);
+    setNewTagInput("");
+  };
+
+  const deleteUrl = async (id: string) => {
+    console.log("[Frontend] deleteUrl called for id:", id);
+    try {
+      await invoke("delete_url", { id });
+      console.log("[Frontend] delete_url invoke succeeded");
+      await loadSavedUrls();
+      cancelEditing();
+    } catch (error) {
+      console.error("[Frontend] Failed to delete URL:", error);
+    }
+  };
+
+  const toggleTag = (tagName: string) => {
+    const newTags = new Set(editingTags);
+    if (newTags.has(tagName)) {
+      newTags.delete(tagName);
+    } else {
+      newTags.add(tagName);
+    }
+    setEditingTags(newTags);
+  };
+
+  const addNewTag = () => {
+    const newTags = new Set(editingTags);
+    const parts = newTagInput.split(",");
+    let added = false;
+
+    for (const part of parts) {
+      const trimmed = part.trim().toLowerCase();
+      if (trimmed && !newTags.has(trimmed)) {
+        newTags.add(trimmed);
+        added = true;
+      }
+    }
+
+    if (added) {
+      setEditingTags(newTags);
+    }
+    setNewTagInput("");
+  };
+
+  const handleNewTagKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addNewTag();
+    }
+  };
+
+  const saveChanges = async () => {
+    if (!editingUrlId) return;
+
+    // If there's text in the new tag field, add it first (matches share extension behavior)
+    const finalTags = new Set(editingTags);
+    if (newTagInput.trim()) {
+      const parts = newTagInput.split(",");
+      for (const part of parts) {
+        const trimmed = part.trim().toLowerCase();
+        if (trimmed) {
+          finalTags.add(trimmed);
+        }
+      }
+      setNewTagInput("");
+    }
+
+    const tagsArray = Array.from(finalTags);
+    console.log("[Frontend] saveChanges called");
+    console.log("[Frontend] editingUrlId:", editingUrlId);
+    console.log("[Frontend] url:", editingUrlValue);
+    console.log("[Frontend] tags to save:", tagsArray);
+
+    try {
+      await invoke("update_url", {
+        id: editingUrlId,
+        url: editingUrlValue,
+        tags: tagsArray,
+      });
+      console.log("[Frontend] update_url invoke succeeded");
+      await loadSavedUrls();
+      await loadAllTags();
+      cancelEditing();
+    } catch (error) {
+      console.error("[Frontend] Failed to update URL:", error);
+    }
+  };
+
+  // Text functions
+  const toggleNewTextTag = (tagName: string) => {
+    const newTags = new Set(newTextTags);
+    if (newTags.has(tagName)) {
+      newTags.delete(tagName);
+    } else {
+      newTags.add(tagName);
+    }
+    setNewTextTags(newTags);
+  };
+
+  const saveNewText = async () => {
+    if (!newTextContent.trim()) return;
+
+    try {
+      // Pass extra tags that aren't in the text content
+      const extraTags = Array.from(newTextTags);
+      await invoke("save_text", { content: newTextContent, extra_tags: extraTags });
+      setNewTextContent("");
+      setNewTextTags(new Set());
+      await loadSavedTexts();
+      await loadAllTags();
+    } catch (error) {
+      console.error("Failed to save text:", error);
+    }
+  };
+
+  const startEditingText = (item: SavedText) => {
+    setEditingTextId(item.id);
+    setEditingTextContent(item.content);
+  };
+
+  const cancelEditingText = () => {
+    setEditingTextId(null);
+    setEditingTextContent("");
+  };
+
+  const saveTextChanges = async () => {
+    if (!editingTextId) return;
+
+    try {
+      await invoke("update_text", {
+        id: editingTextId,
+        content: editingTextContent,
+      });
+      await loadSavedTexts();
+      await loadAllTags();
+      cancelEditingText();
+    } catch (error) {
+      console.error("Failed to update text:", error);
+    }
+  };
+
+  const deleteText = async (id: string) => {
+    try {
+      await invoke("delete_url", { id }); // delete_url works for all item types
+      await loadSavedTexts();
+      cancelEditingText();
+    } catch (error) {
+      console.error("Failed to delete text:", error);
+    }
+  };
+
+  // Tagset functions
+  const toggleNewTagsetTag = (tagName: string) => {
+    const newTags = new Set(newTagsetTags);
+    if (newTags.has(tagName)) {
+      newTags.delete(tagName);
+    } else {
+      newTags.add(tagName);
+    }
+    setNewTagsetTags(newTags);
+  };
+
+  const addNewTagsetTag = () => {
+    const newTags = new Set(newTagsetTags);
+    const parts = newTagsetInput.split(",");
+    for (const part of parts) {
+      const trimmed = part.trim().toLowerCase();
+      if (trimmed) {
+        newTags.add(trimmed);
+      }
+    }
+    setNewTagsetTags(newTags);
+    setNewTagsetInput("");
+  };
+
+  const saveNewTagset = async () => {
+    // Include any text in the input field
+    const finalTags = new Set(newTagsetTags);
+    if (newTagsetInput.trim()) {
+      const parts = newTagsetInput.split(",");
+      for (const part of parts) {
+        const trimmed = part.trim().toLowerCase();
+        if (trimmed) {
+          finalTags.add(trimmed);
+        }
+      }
+    }
+
+    if (finalTags.size === 0) return;
+
+    try {
+      await invoke("save_tagset", { tags: Array.from(finalTags) });
+      setNewTagsetTags(new Set());
+      setNewTagsetInput("");
+      await loadSavedTagsets();
+      await loadAllTags();
+    } catch (error) {
+      console.error("Failed to save tagset:", error);
+    }
+  };
+
+  const startEditingTagset = (item: SavedTagset) => {
+    setEditingTagsetId(item.id);
+    setEditingTagsetTags(new Set(item.tags));
+    setEditingTagsetInput("");
+  };
+
+  const cancelEditingTagset = () => {
+    setEditingTagsetId(null);
+    setEditingTagsetTags(new Set());
+    setEditingTagsetInput("");
+  };
+
+  const toggleEditingTagsetTag = (tagName: string) => {
+    const newTags = new Set(editingTagsetTags);
+    if (newTags.has(tagName)) {
+      newTags.delete(tagName);
+    } else {
+      newTags.add(tagName);
+    }
+    setEditingTagsetTags(newTags);
+  };
+
+  const addEditingTagsetTag = () => {
+    const newTags = new Set(editingTagsetTags);
+    const parts = editingTagsetInput.split(",");
+    for (const part of parts) {
+      const trimmed = part.trim().toLowerCase();
+      if (trimmed) {
+        newTags.add(trimmed);
+      }
+    }
+    setEditingTagsetTags(newTags);
+    setEditingTagsetInput("");
+  };
+
+  const saveTagsetChanges = async () => {
+    if (!editingTagsetId) return;
+
+    // Include any text in the input field
+    const finalTags = new Set(editingTagsetTags);
+    if (editingTagsetInput.trim()) {
+      const parts = editingTagsetInput.split(",");
+      for (const part of parts) {
+        const trimmed = part.trim().toLowerCase();
+        if (trimmed) {
+          finalTags.add(trimmed);
+        }
+      }
+    }
+
+    if (finalTags.size === 0) {
+      console.error("At least one tag is required");
+      return;
+    }
+
+    try {
+      await invoke("update_tagset", {
+        id: editingTagsetId,
+        tags: Array.from(finalTags),
+      });
+      await loadSavedTagsets();
+      await loadAllTags();
+      cancelEditingTagset();
+    } catch (error) {
+      console.error("Failed to update tagset:", error);
+    }
+  };
+
+  const deleteTagset = async (id: string) => {
+    try {
+      await invoke("delete_url", { id }); // delete_url works for all item types
+      await loadSavedTagsets();
+      cancelEditingTagset();
+    } catch (error) {
+      console.error("Failed to delete tagset:", error);
+    }
+  };
+
+  // Helper to extract hashtags from text for display
+  const extractHashtags = (content: string): string[] => {
+    const matches = content.match(/#(\w+)/g);
+    return matches ? matches.map((m) => m.slice(1).toLowerCase()) : [];
+  };
+
+  const renderUrlItem = (item: SavedUrl) => {
+    const isEditing = editingUrlId === item.id;
+
+    if (isEditing) {
+      // Use domain-boosted tags for unused tag suggestions
+      const unusedTags = editingUrlTags.filter((tag) => !editingTags.has(tag.name));
+
+      return (
+        <div key={item.id} className="saved-url-item editing">
+          <div className="edit-section">
+            <input
+              type="url"
+              className="edit-url-input"
+              value={editingUrlValue}
+              onChange={(e) => setEditingUrlValue(e.target.value)}
+              placeholder="URL"
+              autoCapitalize="none"
+              autoCorrect="off"
+            />
+          </div>
+
+          <div className="edit-section">
+            <div className="editing-tags">
+              {editingTags.size === 0 ? (
+                <span className="no-tags">No tags selected</span>
+              ) : (
+                Array.from(editingTags).sort().map((tag) => (
+                  <span key={tag} className="editing-tag">
+                    {tag}
+                    <button onClick={() => toggleTag(tag)}>&times;</button>
+                  </span>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="edit-section">
+            <div className="new-tag-input">
+              <input
+                type="text"
+                value={newTagInput}
+                onChange={(e) => setNewTagInput(e.target.value)}
+                onKeyDown={handleNewTagKeyDown}
+                placeholder="Add tag..."
+                autoCapitalize="none"
+                autoCorrect="off"
+              />
+              <button onClick={addNewTag} disabled={!newTagInput.trim()}>
+                Add
+              </button>
+            </div>
+          </div>
+
+          {unusedTags.length > 0 && (
+            <div className="edit-section">
+              <div className="all-tags-list">
+                {unusedTags.map((tag) => (
+                  <span
+                    key={tag.name}
+                    className="tag-chip"
+                    onClick={() => toggleTag(tag.name)}
+                  >
+                    {tag.name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="edit-buttons">
+            <button className="delete-btn" onClick={() => deleteUrl(item.id)}>
+              Delete
+            </button>
+            <button className="cancel-btn" onClick={cancelEditing}>
+              Cancel
+            </button>
+            <button className="save-btn" onClick={saveChanges}>
+              Save
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    const title = item.metadata?.title;
+
+    return (
+      <div key={item.id} className="saved-url-item">
+        <div className="url-row">
+          <div className="url-info">
+            {title && <div className="url-title">{title}</div>}
+            <a href={item.url} target="_blank" rel="noopener noreferrer" className={title ? "url-with-title" : ""}>
+              {item.url}
+            </a>
+          </div>
+          <button className="edit-btn" onClick={() => startEditing(item)}>
+            Edit
+          </button>
+        </div>
+        <div className="saved-url-tags">
+          {item.tags.map((tag) => (
+            <span key={tag} className="saved-url-tag">
+              {tag}
+            </span>
+          ))}
+        </div>
+        <div className="saved-url-date">
+          {new Date(item.saved_at).toLocaleDateString()}
+        </div>
+      </div>
+    );
+  };
+
+  const renderTextItem = (item: SavedText) => {
+    const isEditing = editingTextId === item.id;
+    const tags = extractHashtags(item.content);
+
+    if (isEditing) {
+      return (
+        <div key={item.id} className="saved-text-item editing">
+          <div className="edit-section">
+            <textarea
+              className="edit-text-input"
+              value={editingTextContent}
+              onChange={(e) => setEditingTextContent(e.target.value)}
+              placeholder="Text with #hashtags..."
+              rows={4}
+            />
+          </div>
+          <div className="edit-section">
+            <p className="hashtag-hint">Hashtags in text become tags automatically</p>
+          </div>
+          <div className="edit-buttons">
+            <button className="delete-btn" onClick={() => deleteText(item.id)}>
+              Delete
+            </button>
+            <button className="cancel-btn" onClick={cancelEditingText}>
+              Cancel
+            </button>
+            <button className="save-btn" onClick={saveTextChanges}>
+              Save
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div key={item.id} className="saved-text-item">
+        <div className="text-row">
+          <div className="text-content">{item.content}</div>
+          <button className="edit-btn" onClick={() => startEditingText(item)}>
+            Edit
+          </button>
+        </div>
+        {tags.length > 0 && (
+          <div className="saved-text-tags">
+            {tags.map((tag) => (
+              <span key={tag} className="saved-text-tag">
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="saved-text-date">
+          {new Date(item.saved_at).toLocaleDateString()}
+        </div>
+      </div>
+    );
+  };
+
+  const renderTagsetItem = (item: SavedTagset) => {
+    const isEditing = editingTagsetId === item.id;
+
+    if (isEditing) {
+      const unusedTags = allTags.filter((tag) => !editingTagsetTags.has(tag.name));
+
+      return (
+        <div key={item.id} className="saved-tagset-item editing">
+          <div className="edit-section">
+            <div className="editing-tags">
+              {editingTagsetTags.size === 0 ? (
+                <span className="no-tags">No tags selected</span>
+              ) : (
+                Array.from(editingTagsetTags).sort().map((tag) => (
+                  <span key={tag} className="editing-tag">
+                    {tag}
+                    <button onClick={() => toggleEditingTagsetTag(tag)}>&times;</button>
+                  </span>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="edit-section">
+            <div className="new-tag-input">
+              <input
+                type="text"
+                value={editingTagsetInput}
+                onChange={(e) => setEditingTagsetInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addEditingTagsetTag();
+                  }
+                }}
+                placeholder="Add tag..."
+                autoCapitalize="none"
+                autoCorrect="off"
+              />
+              <button onClick={addEditingTagsetTag} disabled={!editingTagsetInput.trim()}>
+                Add
+              </button>
+            </div>
+          </div>
+
+          {unusedTags.length > 0 && (
+            <div className="edit-section">
+              <div className="all-tags-list">
+                {unusedTags.map((tag) => (
+                  <span
+                    key={tag.name}
+                    className="tag-chip"
+                    onClick={() => toggleEditingTagsetTag(tag.name)}
+                  >
+                    {tag.name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="edit-buttons">
+            <button className="delete-btn" onClick={() => deleteTagset(item.id)}>
+              Delete
+            </button>
+            <button className="cancel-btn" onClick={cancelEditingTagset}>
+              Cancel
+            </button>
+            <button className="save-btn" onClick={saveTagsetChanges}>
+              Save
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div key={item.id} className="saved-tagset-item">
+        <div className="tagset-row">
+          <div className="tagset-tags">
+            {item.tags.map((tag) => (
+              <span key={tag} className="saved-tagset-tag">
+                {tag}
+              </span>
+            ))}
+          </div>
+          <button className="edit-btn" onClick={() => startEditingTagset(item)}>
+            Edit
+          </button>
+        </div>
+        <div className="saved-tagset-date">
+          {new Date(item.saved_at).toLocaleDateString()}
+        </div>
+      </div>
+    );
+  };
+
+  const closeSettings = () => {
+    setShowSettings(false);
+    // Reload data in case webhook was used
+    loadSavedUrls();
+    loadAllTags();
+  };
+
+  if (showSettings) {
+    return (
+      <div className="app">
+        <header>
+          <button className="header-btn back-btn" onClick={closeSettings}>
+            Back
+          </button>
+          <h1>Settings</h1>
+          <div className="header-spacer"></div>
+        </header>
+
+        <main className="settings-view">
+          <div className="settings-section">
+            <h2>Webhook Sync</h2>
+            <p className="settings-description">
+              Enter a webhook URL to sync your saved items. Items are automatically sent when saved, and you can also sync all items manually.
+            </p>
+
+            <div className="webhook-input">
+              <input
+                type="url"
+                value={webhookUrlInput}
+                onChange={(e) => setWebhookUrlInput(e.target.value)}
+                placeholder="https://example.com/webhook"
+                autoCapitalize="none"
+                autoCorrect="off"
+              />
+            </div>
+
+            <div className="webhook-input api-key-field">
+              <input
+                type={showApiKey ? "text" : "password"}
+                value={webhookApiKeyInput}
+                onChange={(e) => setWebhookApiKeyInput(e.target.value)}
+                placeholder="API key (optional)"
+                autoCapitalize="none"
+                autoCorrect="off"
+              />
+              <button
+                type="button"
+                className="toggle-visibility-btn"
+                onClick={() => setShowApiKey(!showApiKey)}
+              >
+                {showApiKey ? (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                    <line x1="1" y1="1" x2="23" y2="23"></line>
+                  </svg>
+                ) : (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                )}
+              </button>
+            </div>
+
+            <button
+              onClick={saveWebhookSettings}
+              disabled={webhookUrlInput === webhookUrl && webhookApiKeyInput === webhookApiKey}
+              className="save-settings-btn"
+            >
+              Save Settings
+            </button>
+
+            {lastSync && (
+              <p className="last-sync-info">
+                Last synced: {new Date(lastSync).toLocaleString()}
+              </p>
+            )}
+
+            <button
+              className="sync-btn"
+              onClick={syncToWebhook}
+              disabled={!webhookUrl || isSyncing}
+            >
+              {isSyncing ? "Syncing..." : lastSync ? "Sync Now" : `Sync All Items (${savedUrls.length + savedTexts.length + savedTagsets.length})`}
+            </button>
+
+            {syncMessage && (
+              <div className={`sync-message ${syncMessage.includes("failed") || syncMessage.includes("Failed") ? "error" : "success"}`}>
+                {syncMessage}
+              </div>
+            )}
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  return (
+    <div className="app">
+      <header>
+        <h1>Peek</h1>
+        <button className="header-btn settings-btn" onClick={() => setShowSettings(true)}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+      </header>
+
+      <nav className="tab-nav">
+        <button
+          className={`tab-btn ${activeTab === "page" ? "active" : ""}`}
+          onClick={() => setActiveTab("page")}
+        >
+          Pages <span className="tab-count">({savedUrls.length})</span>
+        </button>
+        <button
+          className={`tab-btn ${activeTab === "text" ? "active" : ""}`}
+          onClick={() => setActiveTab("text")}
+        >
+          Notes <span className="tab-count">({savedTexts.length})</span>
+        </button>
+        <button
+          className={`tab-btn ${activeTab === "tagset" ? "active" : ""}`}
+          onClick={() => setActiveTab("tagset")}
+        >
+          Tags <span className="tab-count">({savedTagsets.length})</span>
+        </button>
+      </nav>
+
+      <main className="saved-view">
+        {/* Pages Tab */}
+        {activeTab === "page" && (
+          <div className="saved-urls-list">
+            {savedUrls.length === 0 ? (
+              <div className="empty-state">
+                <p>No saved pages yet.</p>
+                <p>Share a URL from any app to get started!</p>
+              </div>
+            ) : (
+              savedUrls.map((item) => renderUrlItem(item))
+            )}
+          </div>
+        )}
+
+        {/* Notes Tab */}
+        {activeTab === "text" && (
+          <div className="saved-texts-list">
+            {/* New text form */}
+            <div className="new-text-form">
+              <textarea
+                className="new-text-input"
+                value={newTextContent}
+                onChange={(e) => setNewTextContent(e.target.value)}
+                placeholder="Add text with #hashtags..."
+                rows={3}
+              />
+              {newTextTags.size > 0 && (
+                <div className="selected-new-tags" style={{ marginTop: '0.5rem' }}>
+                  {Array.from(newTextTags).sort().map((tag) => (
+                    <span key={tag} className="new-tagset-tag">
+                      {tag}
+                      <button onClick={() => toggleNewTextTag(tag)}>&times;</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              {allTags.length > 0 && (
+                <div className="all-tags-list" style={{ marginTop: '0.75rem' }}>
+                  {allTags.filter((t) => !newTextTags.has(t.name)).map((tag) => (
+                    <span
+                      key={tag.name}
+                      className="tag-chip"
+                      onClick={() => toggleNewTextTag(tag.name)}
+                    >
+                      {tag.name}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <button
+                className="save-text-btn"
+                onClick={saveNewText}
+                disabled={!newTextContent.trim()}
+              >
+                Save
+              </button>
+            </div>
+
+            {savedTexts.length === 0 ? (
+              <div className="empty-state">
+                <p>No saved text yet.</p>
+                <p>Add text with #hashtags above!</p>
+              </div>
+            ) : (
+              savedTexts.map((item) => renderTextItem(item))
+            )}
+          </div>
+        )}
+
+        {/* Tags Tab */}
+        {activeTab === "tagset" && (
+          <div className="saved-tagsets-list">
+            {/* New tagset form */}
+            <div className="new-tagset-form">
+              <div className="selected-new-tags">
+                {newTagsetTags.size === 0 ? (
+                  <span className="no-tags-hint">Select or add tags below</span>
+                ) : (
+                  Array.from(newTagsetTags).sort().map((tag) => (
+                    <span key={tag} className="new-tagset-tag">
+                      {tag}
+                      <button onClick={() => toggleNewTagsetTag(tag)}>&times;</button>
+                    </span>
+                  ))
+                )}
+              </div>
+              <div className="new-tag-input">
+                <input
+                  type="text"
+                  value={newTagsetInput}
+                  onChange={(e) => setNewTagsetInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addNewTagsetTag();
+                    }
+                  }}
+                  placeholder="New tag..."
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                />
+                <button onClick={addNewTagsetTag} disabled={!newTagsetInput.trim()}>
+                  Add
+                </button>
+              </div>
+              <button
+                className="save-tagset-btn"
+                onClick={saveNewTagset}
+                disabled={newTagsetTags.size === 0 && !newTagsetInput.trim()}
+              >
+                Save Tag Set
+              </button>
+            </div>
+            {allTags.length > 0 && (
+              <div className="tagset-tag-cloud">
+                {allTags.filter((t) => !newTagsetTags.has(t.name)).map((tag) => (
+                  <span
+                    key={tag.name}
+                    className="tag-chip"
+                    onClick={() => toggleNewTagsetTag(tag.name)}
+                  >
+                    {tag.name}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {savedTagsets.length === 0 ? (
+              <div className="empty-state">
+                <p>No saved tag sets yet.</p>
+                <p>Create a tag set above!</p>
+              </div>
+            ) : (
+              savedTagsets.map((item) => renderTagsetItem(item))
+            )}
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+
+export default App;

@@ -386,6 +386,38 @@ api.datastore = {
   },
   getUntaggedAddresses: () => {
     return ipcRenderer.invoke('datastore-get-untagged-addresses', {});
+  },
+
+  // Item operations (mobile-style lightweight content: notes, tagsets, images)
+  addItem: (type, options = {}) => {
+    return ipcRenderer.invoke('datastore-add-item', { type, options });
+  },
+  getItem: (id) => {
+    return ipcRenderer.invoke('datastore-get-item', { id });
+  },
+  updateItem: (id, options) => {
+    return ipcRenderer.invoke('datastore-update-item', { id, options });
+  },
+  deleteItem: (id) => {
+    return ipcRenderer.invoke('datastore-delete-item', { id });
+  },
+  hardDeleteItem: (id) => {
+    return ipcRenderer.invoke('datastore-hard-delete-item', { id });
+  },
+  queryItems: (filter = {}) => {
+    return ipcRenderer.invoke('datastore-query-items', { filter });
+  },
+  tagItem: (itemId, tagId) => {
+    return ipcRenderer.invoke('datastore-tag-item', { itemId, tagId });
+  },
+  untagItem: (itemId, tagId) => {
+    return ipcRenderer.invoke('datastore-untag-item', { itemId, tagId });
+  },
+  getItemTags: (itemId) => {
+    return ipcRenderer.invoke('datastore-get-item-tags', { itemId });
+  },
+  getItemsByTag: (tagId) => {
+    return ipcRenderer.invoke('datastore-get-items-by-tag', { tagId });
   }
 };
 

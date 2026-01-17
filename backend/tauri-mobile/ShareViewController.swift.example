@@ -1,0 +1,67 @@
+import UIKit
+import Social
+import UniformTypeIdentifiers
+
+class ShareViewController: UIViewController {
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        handleSharedContent()
+    }
+
+    private func handleSharedContent() {
+        guard let extensionItem = extensionContext?.inputItems.first as? NSExtensionItem,
+              let itemProviders = extensionItem.attachments else {
+            closeExtension()
+            return
+        }
+
+        // Look for URLs
+        for provider in itemProviders {
+            if provider.canLoadObject(ofClass: URL.self) {
+                // Use loadObject with explicit class type
+                provider.loadObject(ofClass: URL.self) { [weak self] (url, error) in
+                    if let error = error {
+                        print("Error loading URL: \(error)")
+                        DispatchQueue.main.async {
+                            self?.closeExtension()
+                        }
+                        return
+                    }
+
+                    if let url = url {
+                        print("Successfully loaded URL: \(url.absoluteString)")
+                        self?.sendURLToMainApp(url: url.absoluteString)
+                    } else {
+                        print("URL was nil after loading")
+                    }
+
+                    DispatchQueue.main.async {
+                        self?.closeExtension()
+                    }
+                }
+                return
+            }
+        }
+
+        closeExtension()
+    }
+
+    private func sendURLToMainApp(url: String) {
+        print("Sharing URL to main app: \(url)")
+
+        // Use App Groups to share data
+        if let sharedDefaults = UserDefaults(suiteName: "group.com.dietrich.peek") {
+            sharedDefaults.set(url, forKey: "shared_url")
+            sharedDefaults.set(Date().timeIntervalSince1970, forKey: "shared_url_timestamp")
+            sharedDefaults.synchronize()
+            print("URL saved to App Groups: \(url)")
+        } else {
+            print("Failed to access App Groups - make sure group.com.dietrich.peek is configured")
+        }
+    }
+
+    private func closeExtension() {
+        extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
+    }
+}

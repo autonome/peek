@@ -112,7 +112,8 @@ pub async fn app_restart(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Register a global shortcut
+/// Register a global shortcut (desktop only)
+#[cfg(desktop)]
 #[tauri::command]
 pub async fn shortcut_register(
     app: AppHandle,
@@ -157,7 +158,21 @@ pub async fn shortcut_register(
     Ok(CommandResponse::success(true))
 }
 
-/// Unregister a global shortcut
+/// Register a global shortcut - mobile stub (no global shortcuts on mobile)
+#[cfg(mobile)]
+#[tauri::command]
+pub async fn shortcut_register(
+    _app: AppHandle,
+    _state: tauri::State<'_, Arc<AppState>>,
+    _shortcut: String,
+    _source: String,
+) -> Result<CommandResponse<bool>, String> {
+    // Global shortcuts not supported on mobile
+    Ok(CommandResponse::success(true))
+}
+
+/// Unregister a global shortcut (desktop only)
+#[cfg(desktop)]
 #[tauri::command]
 pub async fn shortcut_unregister(
     app: AppHandle,
@@ -192,4 +207,16 @@ pub async fn shortcut_unregister(
             Ok(CommandResponse::error(format!("Failed to unregister: {}", e)))
         }
     }
+}
+
+/// Unregister a global shortcut - mobile stub
+#[cfg(mobile)]
+#[tauri::command]
+pub async fn shortcut_unregister(
+    _app: AppHandle,
+    _state: tauri::State<'_, Arc<AppState>>,
+    _shortcut: String,
+) -> Result<CommandResponse<bool>, String> {
+    // Global shortcuts not supported on mobile
+    Ok(CommandResponse::success(true))
 }

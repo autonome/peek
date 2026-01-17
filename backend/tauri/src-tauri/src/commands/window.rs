@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
+#[cfg(desktop)]
+use tauri::WebviewWindow;
+
 /// Window open options - matches Electron's window options
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -79,11 +82,12 @@ pub async fn window_open(
     println!("[tauri:window] Using label: {}", label);
 
     // Check if window with this key already exists and reuse it
-    if let Some(existing) = app.get_webview_window(&label) {
-        // Window exists - only show and focus if not in headless mode
+    if let Some(_existing) = app.get_webview_window(&label) {
+        // Window exists - only show and focus if not in headless mode (desktop only)
+        #[cfg(desktop)]
         if !state.headless {
-            let _ = existing.show();
-            let _ = existing.set_focus();
+            let _ = _existing.show();
+            let _ = _existing.set_focus();
         }
 
         return Ok(CommandResponse::success(WindowOpenResult { id: label }));
@@ -109,37 +113,46 @@ pub async fn window_open(
 
     // Create window builder with preload script injection
     let mut builder = WebviewWindowBuilder::new(&app, &label, webview_url.clone())
-        .title(options.title.as_deref().unwrap_or("Peek"))
-        .inner_size(
-            options.width.unwrap_or(800.0),
-            options.height.unwrap_or(600.0),
-        )
-        .resizable(options.resizable.unwrap_or(true))
-        .visible(visible)
         .initialization_script(PEEK_API_SCRIPT);
 
-    // Apply optional settings
-    if let (Some(x), Some(y)) = (options.x, options.y) {
-        builder = builder.position(x, y);
+    // Desktop-only window options
+    #[cfg(desktop)]
+    {
+        builder = builder
+            .inner_size(
+                options.width.unwrap_or(800.0),
+                options.height.unwrap_or(600.0),
+            )
+            .title(options.title.as_deref().unwrap_or("Peek"))
+            .resizable(options.resizable.unwrap_or(true))
+            .visible(visible);
     }
 
-    // Handle decorations - frame:false in Electron means no decorations
-    let has_decorations = match (options.decorations, options.frame) {
-        (Some(d), _) => d,           // Explicit decorations takes precedence
-        (None, Some(f)) => f,        // frame:false means decorations:false
-        (None, None) => true,        // Default to having decorations
-    };
-    builder = builder.decorations(has_decorations);
+    // Desktop-only positioning and window chrome options
+    #[cfg(desktop)]
+    {
+        if let (Some(x), Some(y)) = (options.x, options.y) {
+            builder = builder.position(x, y);
+        }
 
-    // Note: transparent windows require macos-private-api feature on macOS
-    // Skipping for now as it prevents App Store submission
+        // Handle decorations - frame:false in Electron means no decorations
+        let has_decorations = match (options.decorations, options.frame) {
+            (Some(d), _) => d,           // Explicit decorations takes precedence
+            (None, Some(f)) => f,        // frame:false means decorations:false
+            (None, None) => true,        // Default to having decorations
+        };
+        builder = builder.decorations(has_decorations);
 
-    if options.always_on_top.unwrap_or(false) {
-        builder = builder.always_on_top(true);
-    }
+        // Note: transparent windows require macos-private-api feature on macOS
+        // Skipping for now as it prevents App Store submission
 
-    if options.center.unwrap_or(false) {
-        builder = builder.center();
+        if options.always_on_top.unwrap_or(false) {
+            builder = builder.always_on_top(true);
+        }
+
+        if options.center.unwrap_or(false) {
+            builder = builder.center();
+        }
     }
 
     // Build the window
@@ -149,8 +162,9 @@ pub async fn window_open(
 
     println!("[tauri:window] Window created: label={}", label);
 
-    // In headless mode, explicitly hide the window after creation
+    // In headless mode, explicitly hide the window after creation (desktop only)
     // (belt and suspenders - visible(false) should work but being extra safe)
+    #[cfg(desktop)]
     if state.headless {
         let _ = window.hide();
         println!("[tauri:window] Explicitly hiding window in headless mode");
@@ -176,7 +190,8 @@ pub async fn window_open(
     Ok(CommandResponse::success(WindowOpenResult { id: label }))
 }
 
-/// Close a window
+/// Close a window (desktop only - mobile has single-window model)
+#[cfg(desktop)]
 #[tauri::command]
 pub async fn window_close(
     app: tauri::AppHandle,
@@ -197,7 +212,20 @@ pub async fn window_close(
     }
 }
 
-/// Hide a window
+/// Close a window - mobile stub
+#[cfg(mobile)]
+#[tauri::command]
+pub async fn window_close(
+    _app: tauri::AppHandle,
+    _state: tauri::State<'_, Arc<AppState>>,
+    _id: Option<String>,
+) -> Result<CommandResponse<bool>, String> {
+    // Mobile has single-window model, close not supported
+    Ok(CommandResponse::success(true))
+}
+
+/// Hide a window (desktop only)
+#[cfg(desktop)]
 #[tauri::command]
 pub async fn window_hide(
     app: tauri::AppHandle,
@@ -218,7 +246,19 @@ pub async fn window_hide(
     }
 }
 
-/// Show a window
+/// Hide a window - mobile stub
+#[cfg(mobile)]
+#[tauri::command]
+pub async fn window_hide(
+    _app: tauri::AppHandle,
+    _id: Option<String>,
+) -> Result<CommandResponse<bool>, String> {
+    // Mobile doesn't support hiding windows
+    Ok(CommandResponse::success(true))
+}
+
+/// Show a window (desktop only)
+#[cfg(desktop)]
 #[tauri::command]
 pub async fn window_show(
     app: tauri::AppHandle,
@@ -245,7 +285,20 @@ pub async fn window_show(
     }
 }
 
-/// Focus a window
+/// Show a window - mobile stub
+#[cfg(mobile)]
+#[tauri::command]
+pub async fn window_show(
+    _app: tauri::AppHandle,
+    _state: tauri::State<'_, Arc<AppState>>,
+    _id: Option<String>,
+) -> Result<CommandResponse<bool>, String> {
+    // Mobile windows are always visible
+    Ok(CommandResponse::success(true))
+}
+
+/// Focus a window (desktop only)
+#[cfg(desktop)]
 #[tauri::command]
 pub async fn window_focus(
     app: tauri::AppHandle,
@@ -273,7 +326,20 @@ pub async fn window_focus(
     }
 }
 
-/// List all windows
+/// Focus a window - mobile stub
+#[cfg(mobile)]
+#[tauri::command]
+pub async fn window_focus(
+    _app: tauri::AppHandle,
+    _state: tauri::State<'_, Arc<AppState>>,
+    _id: Option<String>,
+) -> Result<CommandResponse<bool>, String> {
+    // Mobile has single-window always focused
+    Ok(CommandResponse::success(true))
+}
+
+/// List all windows (desktop only - has detailed visibility/focus info)
+#[cfg(desktop)]
 #[tauri::command]
 pub async fn window_list(
     app: tauri::AppHandle,
@@ -292,6 +358,30 @@ pub async fn window_list(
                 visible: win.is_visible().unwrap_or(false),
                 focused: win.is_focused().unwrap_or(false),
             })
+        })
+        .collect();
+
+    Ok(CommandResponse::success(windows))
+}
+
+/// List all windows - mobile stub
+#[cfg(mobile)]
+#[tauri::command]
+pub async fn window_list(
+    _app: tauri::AppHandle,
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<CommandResponse<Vec<WindowListItem>>, String> {
+    let registered = state.list_windows();
+
+    let windows: Vec<WindowListItem> = registered
+        .into_iter()
+        .map(|info| WindowListItem {
+            id: info.label.clone(),
+            label: info.label,
+            url: info.url,
+            source: info.source,
+            visible: true,  // Mobile windows are always visible
+            focused: true,  // Mobile has single focused window
         })
         .collect();
 

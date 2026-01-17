@@ -79,6 +79,32 @@ export interface AddressTag {
   createdAt: number;
 }
 
+// ==================== Item Types (for mobile-style lightweight content) ====================
+
+export type ItemType = 'note' | 'tagset' | 'image';
+
+export interface Item {
+  id: string;
+  type: ItemType;
+  content: string | null;
+  mimeType: string;
+  metadata: string;
+  syncId: string;
+  syncSource: string;
+  createdAt: number;
+  updatedAt: number;
+  deletedAt: number;
+  starred: number;
+  archived: number;
+}
+
+export interface ItemTag {
+  id: string;
+  itemId: string;
+  tagId: string;
+  createdAt: number;
+}
+
 export interface Extension {
   id: string;
   name: string;
@@ -186,6 +212,25 @@ export interface ContentOptions {
   archived?: number;
 }
 
+export interface ItemOptions {
+  content?: string;
+  mimeType?: string;
+  metadata?: string;
+  syncId?: string;
+  syncSource?: string;
+  starred?: number;
+  archived?: number;
+}
+
+export interface ItemFilter {
+  type?: ItemType;
+  starred?: number;
+  archived?: number;
+  includeDeleted?: boolean;
+  limit?: number;
+  sortBy?: 'created' | 'updated';
+}
+
 // ==================== Table Names ====================
 
 export type TableName =
@@ -199,7 +244,9 @@ export type TableName =
   | 'feeds'
   | 'extensions'
   | 'extension_settings'
-  | 'migrations';
+  | 'migrations'
+  | 'items'
+  | 'item_tags';
 
 export const tableNames: TableName[] = [
   'addresses',
@@ -212,5 +259,7 @@ export const tableNames: TableName[] = [
   'feeds',
   'extensions',
   'extension_settings',
-  'migrations'
+  'migrations',
+  'items',
+  'item_tags'
 ];

@@ -12,7 +12,9 @@ mod theme;
 
 use state::AppState;
 use std::sync::Arc;
-use tauri::{ActivationPolicy, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+#[cfg(target_os = "macos")]
+use tauri::ActivationPolicy;
 
 // Note: Tauri doesn't have backgroundColor support like Electron.
 // The white flash prevention is handled through CSS in the frontend.
@@ -24,6 +26,7 @@ use tauri::{ActivationPolicy, Emitter, Manager, WebviewUrl, WebviewWindowBuilder
 pub const PEEK_API_SCRIPT: &str = include_str!("../../preload.js");
 
 /// Initialize and run the Tauri application
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -157,14 +160,20 @@ pub fn run() {
             );
 
             let mut main_builder = WebviewWindowBuilder::new(app, "main", main_url)
-                .title("Peek (Tauri)")
-                .inner_size(800.0, 600.0)
-                .visible(false)
                 .initialization_script(PEEK_API_SCRIPT);
 
-            // In headless mode, prevent windows from being focusable
-            if headless {
-                main_builder = main_builder.focused(false);
+            // Desktop-only window options
+            #[cfg(desktop)]
+            {
+                main_builder = main_builder
+                    .inner_size(800.0, 600.0)
+                    .title("Peek (Tauri)")
+                    .visible(false);
+
+                // In headless mode, prevent windows from being focusable
+                if headless {
+                    main_builder = main_builder.focused(false);
+                }
             }
 
             let main_window = main_builder
@@ -263,14 +272,20 @@ pub fn run() {
 
                 let label = format!("ext_{}", ext.id);
                 let mut ext_builder = WebviewWindowBuilder::new(app, &label, ext_url_parsed)
-                    .title(&format!("Extension: {}", ext.manifest.name.as_deref().unwrap_or(&ext.id)))
-                    .inner_size(800.0, 600.0)
-                    .visible(false)
                     .initialization_script(PEEK_API_SCRIPT);
 
-                // In headless mode, prevent windows from being focusable
-                if headless {
-                    ext_builder = ext_builder.focused(false);
+                // Desktop-only window options
+                #[cfg(desktop)]
+                {
+                    ext_builder = ext_builder
+                        .inner_size(800.0, 600.0)
+                        .title(&format!("Extension: {}", ext.manifest.name.as_deref().unwrap_or(&ext.id)))
+                        .visible(false);
+
+                    // In headless mode, prevent windows from being focusable
+                    if headless {
+                        ext_builder = ext_builder.focused(false);
+                    }
                 }
 
                 let window_result = ext_builder.build();
@@ -387,6 +402,17 @@ pub fn run() {
             commands::datastore::datastore_get_row,
             commands::datastore::datastore_set_row,
             commands::datastore::datastore_get_stats,
+            // Item commands (mobile-style lightweight content)
+            commands::datastore::datastore_add_item,
+            commands::datastore::datastore_get_item,
+            commands::datastore::datastore_update_item,
+            commands::datastore::datastore_delete_item,
+            commands::datastore::datastore_hard_delete_item,
+            commands::datastore::datastore_query_items,
+            commands::datastore::datastore_tag_item,
+            commands::datastore::datastore_untag_item,
+            commands::datastore::datastore_get_item_tags,
+            commands::datastore::datastore_get_items_by_tag,
             // Utility commands
             commands::log_message,
             // Command palette

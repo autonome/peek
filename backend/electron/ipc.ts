@@ -32,6 +32,17 @@ import {
   getStats,
   isValidTable,
   getDb,
+  // Item operations
+  addItem,
+  getItem,
+  updateItem,
+  deleteItem,
+  hardDeleteItem,
+  queryItems,
+  tagItem,
+  untagItem,
+  getItemTags,
+  getItemsByTag,
 } from './datastore.js';
 
 import {
@@ -366,6 +377,107 @@ export function registerDatastoreHandlers(): void {
   ipcMain.handle('datastore-get-untagged-addresses', async (ev, data) => {
     try {
       const result = getUntaggedAddresses();
+      return { success: true, data: result };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // Item operations (mobile-style lightweight content)
+  ipcMain.handle('datastore-add-item', async (ev, data) => {
+    try {
+      const result = addItem(data.type, data.options);
+      return { success: true, data: result };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  ipcMain.handle('datastore-get-item', async (ev, data) => {
+    try {
+      const result = getItem(data.id);
+      return { success: true, data: result };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  ipcMain.handle('datastore-update-item', async (ev, data) => {
+    try {
+      const result = updateItem(data.id, data.options);
+      return { success: true, data: result };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  ipcMain.handle('datastore-delete-item', async (ev, data) => {
+    try {
+      const result = deleteItem(data.id);
+      return { success: true, data: result };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  ipcMain.handle('datastore-hard-delete-item', async (ev, data) => {
+    try {
+      const result = hardDeleteItem(data.id);
+      return { success: true, data: result };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  ipcMain.handle('datastore-query-items', async (ev, data = {}) => {
+    try {
+      const result = queryItems(data.filter);
+      return { success: true, data: result };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  ipcMain.handle('datastore-tag-item', async (ev, data) => {
+    try {
+      const result = tagItem(data.itemId, data.tagId);
+      return { success: true, data: result };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  ipcMain.handle('datastore-untag-item', async (ev, data) => {
+    try {
+      const result = untagItem(data.itemId, data.tagId);
+      return { success: true, data: result };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  ipcMain.handle('datastore-get-item-tags', async (ev, data) => {
+    try {
+      const result = getItemTags(data.itemId);
+      return { success: true, data: result };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  ipcMain.handle('datastore-get-items-by-tag', async (ev, data) => {
+    try {
+      const result = getItemsByTag(data.tagId);
       return { success: true, data: result };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

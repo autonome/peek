@@ -1,7 +1,7 @@
 //! Extension management commands
 
 use super::CommandResponse;
-use crate::extensions::{discover_extensions, ExtensionManifest};
+use crate::extensions::ExtensionManifest;
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -38,13 +38,12 @@ pub struct ExtensionData {
     pub last_error_at: Option<i64>,
 }
 
-/// Pick a folder using native dialog
+/// Pick a folder using native dialog (desktop only)
+#[cfg(desktop)]
 #[tauri::command]
 pub async fn extension_pick_folder(
     app: tauri::AppHandle,
 ) -> Result<CommandResponse<PickFolderResult>, String> {
-    use tauri_plugin_dialog::FileDialogBuilder;
-
     let (tx, rx) = std::sync::mpsc::channel();
 
     app.dialog()
@@ -64,6 +63,15 @@ pub async fn extension_pick_folder(
         }),
         Err(_) => Ok(CommandResponse::error("Dialog error")),
     }
+}
+
+/// Pick a folder - mobile stub (not supported on mobile)
+#[cfg(mobile)]
+#[tauri::command]
+pub async fn extension_pick_folder(
+    _app: tauri::AppHandle,
+) -> Result<CommandResponse<PickFolderResult>, String> {
+    Ok(CommandResponse::error("Folder picker not available on mobile"))
 }
 
 /// Validate an extension folder - matches Electron behavior
@@ -479,11 +487,17 @@ pub async fn extension_load(
     );
 
     let label = format!("ext_{}", id);
-    let ext_builder = WebviewWindowBuilder::new(&app, &label, ext_url_parsed)
-        .title(&format!("Extension: {}", manifest.name.as_deref().unwrap_or(&id)))
-        .inner_size(800.0, 600.0)
-        .visible(false)
+    let mut ext_builder = WebviewWindowBuilder::new(&app, &label, ext_url_parsed)
         .initialization_script(PEEK_API_SCRIPT);
+
+    // Desktop-only window options
+    #[cfg(desktop)]
+    {
+        ext_builder = ext_builder
+            .title(&format!("Extension: {}", manifest.name.as_deref().unwrap_or(&id)))
+            .inner_size(800.0, 600.0)
+            .visible(false);
+    }
 
     match ext_builder.build() {
         Ok(_) => {
@@ -512,7 +526,8 @@ pub async fn extension_unload(
 
     let label = format!("ext_{}", id);
 
-    // Close the window if it exists
+    // Close the window if it exists (desktop only - mobile doesn't support close)
+    #[cfg(desktop)]
     if let Some(window) = app.get_webview_window(&label) {
         let _ = window.close();
     }

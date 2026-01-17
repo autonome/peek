@@ -20,6 +20,11 @@ import type {
   AddressOptions,
   VisitOptions,
   ContentOptions,
+  Item,
+  ItemTag,
+  ItemType,
+  ItemOptions,
+  ItemFilter,
 } from '../types/index.js';
 import { tableNames } from '../types/index.js';
 import { DEBUG } from './config.js';
@@ -235,6 +240,36 @@ const createTableStatements = `
   );
   CREATE INDEX IF NOT EXISTS idx_themes_enabled ON themes(enabled);
   CREATE INDEX IF NOT EXISTS idx_themes_builtin ON themes(builtin);
+
+  CREATE TABLE IF NOT EXISTS items (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL CHECK(type IN ('note', 'tagset', 'image')),
+    content TEXT,
+    mimeType TEXT DEFAULT '',
+    metadata TEXT DEFAULT '{}',
+    syncId TEXT DEFAULT '',
+    syncSource TEXT DEFAULT '',
+    createdAt INTEGER NOT NULL,
+    updatedAt INTEGER NOT NULL,
+    deletedAt INTEGER DEFAULT 0,
+    starred INTEGER DEFAULT 0,
+    archived INTEGER DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
+  CREATE INDEX IF NOT EXISTS idx_items_syncId ON items(syncId);
+  CREATE INDEX IF NOT EXISTS idx_items_deletedAt ON items(deletedAt);
+  CREATE INDEX IF NOT EXISTS idx_items_createdAt ON items(createdAt DESC);
+  CREATE INDEX IF NOT EXISTS idx_items_starred ON items(starred);
+
+  CREATE TABLE IF NOT EXISTS item_tags (
+    id TEXT PRIMARY KEY,
+    itemId TEXT NOT NULL,
+    tagId TEXT NOT NULL,
+    createdAt INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_item_tags_itemId ON item_tags(itemId);
+  CREATE INDEX IF NOT EXISTS idx_item_tags_tagId ON item_tags(tagId);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_item_tags_unique ON item_tags(itemId, tagId);
 `;
 
 // Module state
@@ -250,6 +285,7 @@ export function initDatabase(dbPath: string): Database.Database {
   db.exec(createTableStatements);
 
   migrateTinyBaseData();
+  migrateSyncColumns();
 
   DEBUG && console.log('main', 'database initialized successfully');
   return db;
@@ -413,6 +449,32 @@ function migrateTinyBaseData(): void {
     DEBUG && console.log('main', 'TinyBase migration complete, removed tinybase table');
   } catch (error) {
     console.error('main', 'TinyBase migration failed:', (error as Error).message);
+  }
+}
+
+/**
+ * Add sync columns to existing tables for cross-device sync support
+ */
+function migrateSyncColumns(): void {
+  if (!db) return;
+
+  const tablesToMigrate = ['addresses', 'content', 'tags'];
+
+  for (const table of tablesToMigrate) {
+    // Check if syncId column already exists
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    const hasSyncId = columns.some(col => col.name === 'syncId');
+
+    if (!hasSyncId) {
+      DEBUG && console.log('main', `Adding sync columns to ${table}`);
+      try {
+        db.exec(`ALTER TABLE ${table} ADD COLUMN syncId TEXT DEFAULT ''`);
+        db.exec(`ALTER TABLE ${table} ADD COLUMN syncSource TEXT DEFAULT ''`);
+      } catch (error) {
+        // Column might already exist in some edge cases
+        DEBUG && console.log('main', `Sync columns migration for ${table}:`, (error as Error).message);
+      }
+    }
   }
 }
 
@@ -770,4 +832,212 @@ export function getStats(): DatastoreStats {
     totalContent: (d.prepare('SELECT COUNT(*) as count FROM content').get() as { count: number }).count,
     syncedContent: (d.prepare('SELECT COUNT(*) as count FROM content WHERE synced = 1').get() as { count: number }).count
   };
+}
+
+// ==================== Item Operations (mobile-style lightweight content) ====================
+
+/**
+ * Add a new item (note, tagset, or image)
+ */
+export function addItem(type: ItemType, options: ItemOptions = {}): { id: string } {
+  const itemId = generateId('item');
+  const timestamp = now();
+
+  getDb().prepare(`
+    INSERT INTO items (id, type, content, mimeType, metadata, syncId, syncSource, createdAt, updatedAt, deletedAt, starred, archived)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+  `).run(
+    itemId,
+    type,
+    options.content ?? null,
+    options.mimeType || '',
+    options.metadata || '{}',
+    options.syncId || '',
+    options.syncSource || '',
+    timestamp,
+    timestamp,
+    options.starred || 0,
+    options.archived || 0
+  );
+
+  return { id: itemId };
+}
+
+/**
+ * Get an item by ID
+ */
+export function getItem(itemId: string): Item | null {
+  const result = getDb().prepare('SELECT * FROM items WHERE id = ? AND deletedAt = 0').get(itemId);
+  return (result as Item) || null;
+}
+
+/**
+ * Update an existing item
+ */
+export function updateItem(itemId: string, options: ItemOptions): boolean {
+  const timestamp = now();
+  const updates: string[] = [];
+  const values: unknown[] = [];
+
+  if (options.content !== undefined) {
+    updates.push('content = ?');
+    values.push(options.content);
+  }
+  if (options.mimeType !== undefined) {
+    updates.push('mimeType = ?');
+    values.push(options.mimeType);
+  }
+  if (options.metadata !== undefined) {
+    updates.push('metadata = ?');
+    values.push(options.metadata);
+  }
+  if (options.syncId !== undefined) {
+    updates.push('syncId = ?');
+    values.push(options.syncId);
+  }
+  if (options.syncSource !== undefined) {
+    updates.push('syncSource = ?');
+    values.push(options.syncSource);
+  }
+  if (options.starred !== undefined) {
+    updates.push('starred = ?');
+    values.push(options.starred);
+  }
+  if (options.archived !== undefined) {
+    updates.push('archived = ?');
+    values.push(options.archived);
+  }
+
+  if (updates.length === 0) return false;
+
+  updates.push('updatedAt = ?');
+  values.push(timestamp);
+  values.push(itemId);
+
+  const result = getDb().prepare(
+    `UPDATE items SET ${updates.join(', ')} WHERE id = ? AND deletedAt = 0`
+  ).run(...values);
+
+  return result.changes > 0;
+}
+
+/**
+ * Soft delete an item (sets deletedAt timestamp)
+ */
+export function deleteItem(itemId: string): boolean {
+  const timestamp = now();
+  const result = getDb().prepare(
+    'UPDATE items SET deletedAt = ?, updatedAt = ? WHERE id = ? AND deletedAt = 0'
+  ).run(timestamp, timestamp, itemId);
+  return result.changes > 0;
+}
+
+/**
+ * Permanently delete an item and its tags
+ */
+export function hardDeleteItem(itemId: string): boolean {
+  getDb().prepare('DELETE FROM item_tags WHERE itemId = ?').run(itemId);
+  const result = getDb().prepare('DELETE FROM items WHERE id = ?').run(itemId);
+  return result.changes > 0;
+}
+
+/**
+ * Query items with optional filters
+ */
+export function queryItems(filter: ItemFilter = {}): Item[] {
+  const conditions: string[] = [];
+  const values: unknown[] = [];
+
+  // By default, exclude soft-deleted items
+  if (!filter.includeDeleted) {
+    conditions.push('deletedAt = 0');
+  }
+
+  if (filter.type) {
+    conditions.push('type = ?');
+    values.push(filter.type);
+  }
+  if (filter.starred !== undefined) {
+    conditions.push('starred = ?');
+    values.push(filter.starred);
+  }
+  if (filter.archived !== undefined) {
+    conditions.push('archived = ?');
+    values.push(filter.archived);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const orderBy = filter.sortBy === 'updated' ? 'updatedAt DESC' : 'createdAt DESC';
+  const limit = filter.limit ? `LIMIT ${filter.limit}` : '';
+
+  return getDb().prepare(
+    `SELECT * FROM items ${whereClause} ORDER BY ${orderBy} ${limit}`
+  ).all(...values) as Item[];
+}
+
+// ==================== Item-Tag Operations ====================
+
+/**
+ * Tag an item
+ */
+export function tagItem(itemId: string, tagId: string): { link: ItemTag; alreadyExists: boolean } {
+  const timestamp = now();
+
+  const existingLink = getDb().prepare(
+    'SELECT * FROM item_tags WHERE itemId = ? AND tagId = ?'
+  ).get(itemId, tagId) as ItemTag | undefined;
+
+  if (existingLink) {
+    return { link: existingLink, alreadyExists: true };
+  }
+
+  const linkId = generateId('item_tag');
+  getDb().prepare(
+    'INSERT INTO item_tags (id, itemId, tagId, createdAt) VALUES (?, ?, ?, ?)'
+  ).run(linkId, itemId, tagId, timestamp);
+
+  // Update tag frequency and frecency
+  const tag = getDb().prepare('SELECT * FROM tags WHERE id = ?').get(tagId) as Tag | undefined;
+  if (tag) {
+    const newFrequency = (tag.frequency || 0) + 1;
+    const frecencyScore = calculateFrecency(newFrequency, timestamp);
+    getDb().prepare(
+      'UPDATE tags SET frequency = ?, lastUsedAt = ?, frecencyScore = ?, updatedAt = ? WHERE id = ?'
+    ).run(newFrequency, timestamp, frecencyScore, timestamp, tagId);
+  }
+
+  const newLink = getDb().prepare('SELECT * FROM item_tags WHERE id = ?').get(linkId) as ItemTag;
+  return { link: newLink, alreadyExists: false };
+}
+
+/**
+ * Remove a tag from an item
+ */
+export function untagItem(itemId: string, tagId: string): boolean {
+  const result = getDb().prepare(
+    'DELETE FROM item_tags WHERE itemId = ? AND tagId = ?'
+  ).run(itemId, tagId);
+  return result.changes > 0;
+}
+
+/**
+ * Get all tags for an item
+ */
+export function getItemTags(itemId: string): Tag[] {
+  return getDb().prepare(`
+    SELECT t.* FROM tags t
+    JOIN item_tags it ON t.id = it.tagId
+    WHERE it.itemId = ?
+  `).all(itemId) as Tag[];
+}
+
+/**
+ * Get all items with a specific tag
+ */
+export function getItemsByTag(tagId: string): Item[] {
+  return getDb().prepare(`
+    SELECT i.* FROM items i
+    JOIN item_tags it ON i.id = it.itemId
+    WHERE it.tagId = ? AND i.deletedAt = 0
+  `).all(tagId) as Item[];
 }

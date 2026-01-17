@@ -1,0 +1,104 @@
+import UIKit
+import Social
+import UniformTypeIdentifiers
+
+class ShareViewController: UIViewController {
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+
+        // Set background color so it's not blank
+        view.backgroundColor = .systemBackground
+
+        // Add a simple activity indicator
+        let activityIndicator = UIActivityIndicatorView(style: .large)
+        activityIndicator.center = view.center
+        activityIndicator.startAnimating()
+        view.addSubview(activityIndicator)
+
+        // Handle the shared content
+        handleSharedContent()
+    }
+
+    private func handleSharedContent() {
+        guard let extensionItem = extensionContext?.inputItems.first as? NSExtensionItem,
+              let itemProviders = extensionItem.attachments else {
+            closeExtension()
+            return
+        }
+
+        // Look for URLs
+        for provider in itemProviders {
+            if provider.canLoadObject(ofClass: URL.self) {
+                provider.loadObject(ofClass: URL.self) { [weak self] (url, error) in
+                    if let error = error {
+                        print("Error loading URL: \(error)")
+                        DispatchQueue.main.async {
+                            self?.closeExtension()
+                        }
+                        return
+                    }
+
+                    if let url = url {
+                        print("Successfully loaded URL: \(url.absoluteString)")
+                        self?.sendURLToMainApp(url: url.absoluteString)
+
+                        // Show success message briefly before closing
+                        DispatchQueue.main.async {
+                            self?.showSuccessAndClose(url: url.absoluteString)
+                        }
+                    } else {
+                        print("URL was nil after loading")
+                        DispatchQueue.main.async {
+                            self?.closeExtension()
+                        }
+                    }
+                }
+                return
+            }
+        }
+
+        closeExtension()
+    }
+
+    private func showSuccessAndClose(url: String) {
+        // Remove all subviews
+        view.subviews.forEach { $0.removeFromSuperview() }
+
+        // Show success message
+        let label = UILabel()
+        label.text = "Saved to Peek!"
+        label.font = UIFont.systemFont(ofSize: 20, weight: .medium)
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(label)
+
+        NSLayoutConstraint.activate([
+            label.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: view.centerYAnchor)
+        ])
+
+        // Close after a short delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.closeExtension()
+        }
+    }
+
+    private func sendURLToMainApp(url: String) {
+        print("Sharing URL to main app: \(url)")
+
+        // Use App Groups to share data
+        if let sharedDefaults = UserDefaults(suiteName: "group.com.dietrich.peek") {
+            sharedDefaults.set(url, forKey: "shared_url")
+            sharedDefaults.set(Date().timeIntervalSince1970, forKey: "shared_url_timestamp")
+            sharedDefaults.synchronize()
+            print("URL saved to App Groups: \(url)")
+        } else {
+            print("Failed to access App Groups - make sure group.com.dietrich.peek is configured")
+        }
+    }
+
+    private func closeExtension() {
+        extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
+    }
+}

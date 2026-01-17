@@ -363,7 +363,36 @@ main {
   color: #999;
 }
 
-/* Small inline buttons (Edit, Delete on items) */
+/* Item action icons (Edit, Delete on cards) */
+.item-actions {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.icon-btn {
+  padding: 0.4rem;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #888;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-btn:hover {
+  background: #f0f0f0;
+  color: #555;
+}
+
+.icon-btn.delete:hover {
+  background: #fee;
+  color: #c00;
+}
+
+/* Small inline buttons (Edit, Delete on items) - legacy */
 .edit-btn,
 .delete-btn.small {
   padding: 0.25rem 0.75rem;
@@ -517,6 +546,12 @@ main {
   color: white;
 }
 
+.tag-chip.selected {
+  background: #007aff;
+  border-color: #007aff;
+  color: white;
+}
+
 .edit-buttons {
   display: flex;
   gap: 0.5rem;
@@ -626,6 +661,20 @@ body.dark .saved-url-tag {
   color: #f6f6f6;
 }
 
+body.dark .icon-btn {
+  color: #777;
+}
+
+body.dark .icon-btn:hover {
+  background: #3a3a3c;
+  color: #ccc;
+}
+
+body.dark .icon-btn.delete:hover {
+  background: #4a2a2a;
+  color: #f66;
+}
+
 body.dark .edit-btn,
 body.dark .delete-btn.small {
   background: #3a3a3c;
@@ -677,6 +726,12 @@ body.dark .tag-chip:hover {
 }
 
 body.dark .tag-chip:active {
+  background: #0a84ff;
+  border-color: #0a84ff;
+  color: white;
+}
+
+body.dark .tag-chip.selected {
   background: #0a84ff;
   border-color: #0a84ff;
   color: white;
@@ -1668,4 +1723,13 @@ body.dark .image-dimensions {
 body.dark .saved-image-tag {
   background: #3a3a3c;
   color: #f6f6f6;
+}
+
+/* Image editing state */
+.saved-image-item.editing {
+  border: 2px solid #007aff;
+}
+
+body.dark .saved-image-item.editing {
+  border-color: #0a84ff;
 }

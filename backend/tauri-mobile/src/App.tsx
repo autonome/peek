@@ -195,6 +195,22 @@ function App() {
     };
   }, []);
 
+  // Reset empty expanded input when app returns to foreground
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        // If input is expanded but empty, collapse it
+        if (addInputExpanded && !addInputText.trim() && addInputTags.size === 0) {
+          setAddInputExpanded(false);
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [addInputExpanded, addInputText, addInputTags]);
+
   const loadWebhookUrl = async () => {
     try {
       const url = await invoke<string | null>("get_webhook_url");

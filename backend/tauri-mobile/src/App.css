@@ -363,12 +363,15 @@ main {
   color: #999;
 }
 
-.edit-btn {
+/* Small inline buttons (Edit, Delete on items) */
+.edit-btn,
+.delete-btn.small {
   padding: 0.25rem 0.75rem;
   background: #e0e0e0;
   border: none;
   border-radius: 6px;
   font-size: 0.85rem;
+  font-weight: 500;
   color: #333;
   cursor: pointer;
   flex-shrink: 0;
@@ -472,10 +475,11 @@ main {
 
 .new-tag-input button {
   padding: 0.5rem 1rem;
-  background: #34c759;
+  background: #007aff;
   color: white;
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
+  font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
 }
@@ -492,9 +496,9 @@ main {
 }
 
 .tag-chip {
-  padding: 0.4rem 0.7rem;
-  background: transparent;
-  border: 1px solid #ccc;
+  padding: 0.35rem 0.7rem;
+  background: #f5f5f5;
+  border: 1px solid #ddd;
   border-radius: 6px;
   font-size: 0.85rem;
   color: #555;
@@ -503,11 +507,11 @@ main {
 }
 
 .tag-chip:hover {
-  border-color: #007aff;
-  color: #007aff;
+  background: #e8e8e8;
+  border-color: #ccc;
 }
 
-.tag-chip.selected {
+.tag-chip:active {
   background: #007aff;
   border-color: #007aff;
   color: white;
@@ -515,7 +519,7 @@ main {
 
 .edit-buttons {
   display: flex;
-  gap: 0.75rem;
+  gap: 0.5rem;
   margin-top: 1rem;
   padding-top: 0.75rem;
   border-top: 1px solid #e0e0e0;
@@ -523,17 +527,17 @@ main {
 
 .edit-buttons button {
   flex: 1;
-  padding: 0.75rem;
+  padding: 0.6rem 0.75rem;
   border: none;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 600;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 500;
   cursor: pointer;
 }
 
 .delete-btn {
-  background: #ff3b30;
-  color: white;
+  background: #e0e0e0;
+  color: #333;
 }
 
 .cancel-btn {
@@ -622,7 +626,8 @@ body.dark .saved-url-tag {
   color: #f6f6f6;
 }
 
-body.dark .edit-btn {
+body.dark .edit-btn,
+body.dark .delete-btn.small {
   background: #3a3a3c;
   color: #f6f6f6;
 }
@@ -653,7 +658,7 @@ body.dark .new-tag-input input {
 }
 
 body.dark .new-tag-input button {
-  background: #30d158;
+  background: #0a84ff;
 }
 
 body.dark .new-tag-input button:disabled {
@@ -661,17 +666,17 @@ body.dark .new-tag-input button:disabled {
 }
 
 body.dark .tag-chip {
-  background: transparent;
+  background: #3a3a3c;
   border-color: #555;
-  color: #999;
+  color: #ccc;
 }
 
 body.dark .tag-chip:hover {
-  border-color: #0a84ff;
-  color: #0a84ff;
+  background: #4a4a4c;
+  border-color: #666;
 }
 
-body.dark .tag-chip.selected {
+body.dark .tag-chip:active {
   background: #0a84ff;
   border-color: #0a84ff;
   color: white;
@@ -682,7 +687,8 @@ body.dark .edit-buttons {
 }
 
 body.dark .delete-btn {
-  background: #ff453a;
+  background: #3a3a3c;
+  color: #f6f6f6;
 }
 
 body.dark .cancel-btn {
@@ -1012,47 +1018,46 @@ body.dark .filter-btn:not(.active):hover {
 /* Unified Add Input */
 .unified-add-input {
   margin-bottom: 1rem;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .add-input-collapsed {
   width: 100%;
   padding: 0.75rem 1rem;
-  border: 1px solid #ddd;
+  border: none;
   border-radius: 12px;
   font-size: 16px;
   font-family: inherit;
-  background: white;
+  background: transparent;
   box-sizing: border-box;
-  transition: all 0.15s;
 }
 
 .add-input-collapsed:focus {
   outline: none;
-  border-color: #007aff;
 }
 
 .unified-add-input.expanded {
-  background: white;
-  border-radius: 12px;
-  padding: 1rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  padding: 0 1rem 1rem 1rem;
 }
 
 .add-input-expanded {
   width: 100%;
-  padding: 0.75rem;
-  border: 1px solid #ddd;
-  border-radius: 8px;
+  padding: 0.75rem 0;
+  border: none;
+  border-bottom: 1px solid #e0e0e0;
+  border-radius: 0;
   font-size: 16px;
   font-family: inherit;
   resize: none;
-  min-height: 80px;
+  min-height: 60px;
   box-sizing: border-box;
+  background: transparent;
 }
 
 .add-input-expanded:focus {
   outline: none;
-  border-color: #007aff;
 }
 
 .add-input-selected-tags {
@@ -1107,25 +1112,25 @@ body.dark .filter-btn:not(.active):hover {
 
 .add-input-cancel {
   flex: 1;
-  padding: 0.75rem;
+  padding: 0.6rem 0.75rem;
   background: #e0e0e0;
   color: #333;
   border: none;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 600;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 500;
   cursor: pointer;
 }
 
 .add-input-save {
   flex: 2;
-  padding: 0.75rem;
+  padding: 0.6rem 0.75rem;
   background: #007aff;
   color: white;
   border: none;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 600;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 500;
   cursor: pointer;
 }
 
@@ -1135,28 +1140,17 @@ body.dark .filter-btn:not(.active):hover {
 }
 
 /* Dark mode for unified add input */
+body.dark .unified-add-input {
+  background: #2c2c2e;
+}
+
 body.dark .add-input-collapsed {
-  background: #2c2c2e;
-  border-color: #444;
   color: #f6f6f6;
-}
-
-body.dark .add-input-collapsed:focus {
-  border-color: #0a84ff;
-}
-
-body.dark .unified-add-input.expanded {
-  background: #2c2c2e;
 }
 
 body.dark .add-input-expanded {
-  background: #1c1c1e;
-  border-color: #444;
+  border-bottom-color: #444;
   color: #f6f6f6;
-}
-
-body.dark .add-input-expanded:focus {
-  border-color: #0a84ff;
 }
 
 body.dark .add-input-tag {
@@ -1591,6 +1585,13 @@ body.dark .empty-state {
   gap: 0.25rem;
 }
 
+.image-title {
+  font-weight: 500;
+  color: var(--text-color, #333);
+  font-size: 0.95rem;
+  line-height: 1.3;
+}
+
 .image-source {
   color: #007aff;
   text-decoration: none;
@@ -1603,17 +1604,17 @@ body.dark .empty-state {
   -webkit-box-orient: vertical;
 }
 
+.image-source.with-title {
+  font-size: 0.8rem;
+  color: #666;
+  -webkit-line-clamp: 1;
+}
+
 .image-dimensions {
   font-size: 0.8rem;
   color: #999;
 }
 
-.delete-btn.small {
-  padding: 0.25rem 0.75rem;
-  font-size: 0.85rem;
-  flex-shrink: 0;
-  align-self: flex-start;
-}
 
 .saved-image-tags {
   display: flex;
@@ -1648,8 +1649,16 @@ body.dark .image-placeholder {
   color: #666;
 }
 
+body.dark .image-title {
+  color: #f6f6f6;
+}
+
 body.dark .image-source {
   color: #0a84ff;
+}
+
+body.dark .image-source.with-title {
+  color: #999;
 }
 
 body.dark .image-dimensions {

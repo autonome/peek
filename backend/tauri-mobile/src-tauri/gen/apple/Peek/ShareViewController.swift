@@ -346,7 +346,7 @@ class DatabaseManager {
         saveItem(itemType: .text, url: nil, content: content, tags: tags, metadata: metadata, existingId: existingId, existingSavedAt: existingSavedAt, completion: completion)
     }
 
-    func saveImage(imageData: Data, mimeType: String, width: Int?, height: Int?, thumbnail: Data?, sourceUrl: String?, tags: [String], metadata: [String: Any]?, completion: @escaping () -> Void) {
+    func saveImage(imageData: Data, mimeType: String, width: Int?, height: Int?, thumbnail: Data?, sourceUrl: String?, tags: [String], metadata: [String: Any]?, completion: @escaping (_ imageId: String?) -> Void) {
         let now = ISO8601DateFormatter.shared.string(from: Date())
         var savedItemId: String?
 
@@ -415,7 +415,7 @@ class DatabaseManager {
                     } else {
                         // Create new tag
                         let frecency = calculateFrecency(frequency: 1, lastUsed: now)
-                        var newTag = TagRecord(id: nil, name: tagName, frequency: 1, last_used: now, frecency_score: frecency, created_at: now, updated_at: now)
+                        let newTag = TagRecord(id: nil, name: tagName, frequency: 1, last_used: now, frecency_score: frecency, created_at: now, updated_at: now)
                         try newTag.insert(db)
                         tagId = db.lastInsertedRowID
                     }
@@ -431,12 +431,77 @@ class DatabaseManager {
 
             // Push to webhook OUTSIDE of the database write block
             if let itemId = savedItemId {
-                pushImageToWebhook(imageId: itemId, sourceUrl: sourceUrl, tags: tags, metadata: combinedMetadata, savedAt: now, completion: completion)
+                pushImageToWebhook(imageId: itemId, sourceUrl: sourceUrl, tags: tags, metadata: combinedMetadata, savedAt: now) {
+                    completion(itemId)
+                }
             } else {
-                completion()
+                completion(nil)
             }
         } catch {
             print("[DB] Failed to save image: \(error)")
+            completion(nil)
+        }
+    }
+
+    /// Update tags for an existing image
+    func updateImageTags(imageId: String, tags: [String], completion: @escaping () -> Void) {
+        let now = ISO8601DateFormatter.shared.string(from: Date())
+
+        do {
+            try dbQueue?.write { db in
+                // Get existing tags for this item before removing associations
+                let existingTags = try String.fetchAll(db, sql: """
+                    SELECT t.name FROM tags t
+                    JOIN item_tags it ON t.id = it.tag_id
+                    WHERE it.item_id = ?
+                """, arguments: [imageId])
+                let existingTagNames = Set(existingTags)
+
+                // Remove old tag associations
+                try db.execute(sql: "DELETE FROM item_tags WHERE item_id = ?", arguments: [imageId])
+
+                // Update item's updated_at timestamp
+                try db.execute(sql: "UPDATE items SET updated_at = ? WHERE id = ?", arguments: [now, imageId])
+
+                // Add tags
+                for tagName in tags {
+                    var tagId: Int64
+                    let isNewToItem = !existingTagNames.contains(tagName)
+
+                    if let existingTag = try TagRecord.filter(Column("name") == tagName).fetchOne(db) {
+                        tagId = existingTag.id!
+
+                        if isNewToItem {
+                            let newFrequency = existingTag.frequency + 1
+                            let frecency = calculateFrecency(frequency: newFrequency, lastUsed: now)
+
+                            try db.execute(sql: """
+                                UPDATE tags SET frequency = ?, last_used = ?, frecency_score = ?, updated_at = ?
+                                WHERE id = ?
+                            """, arguments: [newFrequency, now, frecency, now, existingTag.id!])
+                        } else {
+                            let frecency = calculateFrecency(frequency: existingTag.frequency, lastUsed: now)
+                            try db.execute(sql: """
+                                UPDATE tags SET last_used = ?, frecency_score = ?, updated_at = ?
+                                WHERE id = ?
+                            """, arguments: [now, frecency, now, existingTag.id!])
+                        }
+                    } else {
+                        let frecency = calculateFrecency(frequency: 1, lastUsed: now)
+                        let newTag = TagRecord(id: nil, name: tagName, frequency: 1, last_used: now, frecency_score: frecency, created_at: now, updated_at: now)
+                        try newTag.insert(db)
+                        tagId = db.lastInsertedRowID
+                    }
+
+                    let itemTag = ItemTagRecord(item_id: imageId, tag_id: tagId, created_at: now)
+                    try itemTag.insert(db, onConflict: .ignore)
+                }
+
+                print("[DB] Updated image tags for \(imageId)")
+            }
+            completion()
+        } catch {
+            print("[DB] Failed to update image tags: \(error)")
             completion()
         }
     }
@@ -463,7 +528,7 @@ class DatabaseManager {
     private func saveItem(itemType: ItemType, url: String?, content: String?, tags: [String], metadata: [String: Any]?, existingId: String?, existingSavedAt: String?, completion: @escaping () -> Void) {
         let now = ISO8601DateFormatter.shared.string(from: Date())
         var savedItemId: String?
-        var savedMetadata = metadata
+        let savedMetadata = metadata
 
         // Serialize metadata to JSON string
         var metadataJson: String? = nil
@@ -547,7 +612,7 @@ class DatabaseManager {
                     } else {
                         // Create new tag
                         let frecency = calculateFrecency(frequency: 1, lastUsed: now)
-                        var newTag = TagRecord(id: nil, name: tagName, frequency: 1, last_used: now, frecency_score: frecency, created_at: now, updated_at: now)
+                        let newTag = TagRecord(id: nil, name: tagName, frequency: 1, last_used: now, frecency_score: frecency, created_at: now, updated_at: now)
                         try newTag.insert(db)
                         tagId = db.lastInsertedRowID
                     }
@@ -807,10 +872,13 @@ class ShareViewController: UIViewController {
     var selectedTags: Set<String> = []
     var availableTags: [TagStats] = []
     var existingSavedItem: SavedItem?
+    var savedImageId: String?  // Track saved image ID to prevent duplicates
+    var pendingImageUrl: String?  // Store image URL when seen, for use by image handler
 
     let scrollView = UIScrollView()
     let contentStackView = UIStackView()
     let contentLabel = UILabel()  // Shows URL or text content
+    let imagePreviewView = UIImageView()  // Shows image preview
 
     // Selected tags at top - self-sizing
     let selectedTagsCollectionView: SelfSizingCollectionView = {
@@ -952,7 +1020,16 @@ class ShareViewController: UIViewController {
         contentStackView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.addSubview(contentStackView)
 
-        // URL Label
+        // Image preview (hidden by default)
+        imagePreviewView.contentMode = .scaleAspectFit
+        imagePreviewView.layer.cornerRadius = 8
+        imagePreviewView.layer.masksToBounds = true
+        imagePreviewView.backgroundColor = .secondarySystemBackground
+        imagePreviewView.isHidden = true
+        imagePreviewView.translatesAutoresizingMaskIntoConstraints = false
+        contentStackView.addArrangedSubview(imagePreviewView)
+
+        // URL/Text Label
         contentLabel.font = .systemFont(ofSize: 16, weight: .regular)
         contentLabel.numberOfLines = 2
         contentLabel.textColor = .secondaryLabel
@@ -1058,6 +1135,9 @@ class ShareViewController: UIViewController {
             // Minimum heights for collection views
             selectedTagsCollectionView.heightAnchor.constraint(greaterThanOrEqualToConstant: 36),
             unusedTagsCollectionView.heightAnchor.constraint(greaterThanOrEqualToConstant: 36),
+
+            // Image preview size
+            imagePreviewView.heightAnchor.constraint(lessThanOrEqualToConstant: 200),
         ])
     }
 
@@ -1108,7 +1188,7 @@ class ShareViewController: UIViewController {
             // Try loading as URL object first
             if provider.canLoadObject(ofClass: URL.self) {
                 os_log("Provider can load URL object, attempting...", log: shareLog, type: .info)
-                provider.loadObject(ofClass: URL.self) { [weak self] (url, error) in
+                _ = provider.loadObject(ofClass: URL.self) { [weak self] (url, error) in
                     if let error = error {
                         os_log("Error loading URL object: %{public}@", log: shareLog, type: .error, error.localizedDescription)
                     }
@@ -1116,8 +1196,19 @@ class ShareViewController: UIViewController {
                         os_log("Loaded URL object: %{public}@", log: shareLog, type: .info, url.absoluteString)
                         // Only accept http/https URLs, not file:// URLs
                         if url.scheme == "http" || url.scheme == "https" {
-                            DispatchQueue.main.async {
-                                self?.setSharedURL(url.absoluteString)
+                            // Check if this looks like an image URL
+                            let imageExtensions = ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp", "tiff", "svg"]
+                            let ext = url.pathExtension.lowercased()
+                            if imageExtensions.contains(ext) {
+                                // Store for use by image handler instead of treating as page
+                                print("[ShareExt] URL looks like image, storing pendingImageUrl: \(url.absoluteString)")
+                                DispatchQueue.main.async {
+                                    self?.pendingImageUrl = url.absoluteString
+                                }
+                            } else {
+                                DispatchQueue.main.async {
+                                    self?.setSharedURL(url.absoluteString)
+                                }
                             }
                         } else {
                             os_log("Ignoring non-http URL: %{public}@", log: shareLog, type: .info, url.scheme ?? "nil")
@@ -1151,8 +1242,19 @@ class ShareViewController: UIViewController {
                     // Only accept http/https URLs
                     if let urlString = urlString,
                        (urlString.hasPrefix("http://") || urlString.hasPrefix("https://")) {
-                        DispatchQueue.main.async {
-                            self?.setSharedURL(urlString)
+                        // Check if this looks like an image URL
+                        let imageExtensions = ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp", "tiff", "svg"]
+                        let ext = URL(string: urlString)?.pathExtension.lowercased() ?? ""
+                        if imageExtensions.contains(ext) {
+                            // Store for use by image handler instead of treating as page
+                            os_log("URL looks like image, storing for image handler: %{public}@", log: shareLog, type: .info, urlString)
+                            DispatchQueue.main.async {
+                                self?.pendingImageUrl = urlString
+                            }
+                        } else {
+                            DispatchQueue.main.async {
+                                self?.setSharedURL(urlString)
+                            }
                         }
                     } else if let urlString = urlString {
                         os_log("Ignoring non-http URL string: %{public}@", log: shareLog, type: .info, urlString)
@@ -1184,7 +1286,8 @@ class ShareViewController: UIViewController {
             // Handle image sharing
             if provider.hasItemConformingToTypeIdentifier("public.image") {
                 os_log("Provider has public.image", log: shareLog, type: .info)
-                if let suggestedName = provider.suggestedName {
+                let suggestedName = provider.suggestedName
+                if let suggestedName = suggestedName {
                     os_log("Image suggested name: %{public}@", log: shareLog, type: .info, suggestedName)
                 }
 
@@ -1197,6 +1300,7 @@ class ShareViewController: UIViewController {
                     var imageData: Data?
                     var mimeType = "image/jpeg"
                     var sourceUrl: String?
+                    var filename: String? = suggestedName
 
                     // Handle different item types
                     if let url = item as? URL {
@@ -1204,6 +1308,10 @@ class ShareViewController: UIViewController {
                         os_log("Image URL: %{public}@", log: shareLog, type: .info, url.absoluteString)
                         if url.scheme == "file" {
                             imageData = try? Data(contentsOf: url)
+                            // Get filename from path if not already set
+                            if filename == nil || filename?.isEmpty == true {
+                                filename = url.lastPathComponent
+                            }
                             // Determine MIME type from extension
                             let ext = url.pathExtension.lowercased()
                             switch ext {
@@ -1221,6 +1329,10 @@ class ShareViewController: UIViewController {
                         } else if url.scheme == "http" || url.scheme == "https" {
                             // Web image - store the source URL
                             sourceUrl = url.absoluteString
+                            // Get filename from URL path if not already set
+                            if filename == nil || filename?.isEmpty == true {
+                                filename = url.lastPathComponent
+                            }
                         }
                     } else if let image = item as? UIImage {
                         // UIImage directly
@@ -1231,7 +1343,7 @@ class ShareViewController: UIViewController {
                     }
 
                     // If we got a web URL but no data, try to fetch it
-                    if imageData == nil, let sourceUrl = sourceUrl, let url = URL(string: sourceUrl) {
+                    if imageData == nil, let sourceUrl = sourceUrl, let _ = URL(string: sourceUrl) {
                         os_log("Fetching image from URL: %{public}@", log: shareLog, type: .info, sourceUrl)
                         // Note: In a real implementation, you might want to fetch asynchronously
                         // For now, we'll just store the URL as metadata
@@ -1242,8 +1354,28 @@ class ShareViewController: UIViewController {
                         return
                     }
 
-                    DispatchQueue.main.async {
-                        self?.setSharedImage(data, mimeType: mimeType, sourceUrl: sourceUrl)
+                    // Small delay to allow URL handlers to set pendingImageUrl first
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        // Use pendingImageUrl if we don't have sourceUrl or filename
+                        var finalSourceUrl = sourceUrl
+                        var finalFilename = filename
+
+                        print("[ShareExt] Image handler - initial sourceUrl: \(sourceUrl ?? "nil"), filename: \(filename ?? "nil")")
+                        print("[ShareExt] Image handler - pendingImageUrl: \(self?.pendingImageUrl ?? "nil")")
+
+                        if let pendingUrl = self?.pendingImageUrl {
+                            if finalSourceUrl == nil {
+                                finalSourceUrl = pendingUrl
+                                print("[ShareExt] Using pendingImageUrl for sourceUrl")
+                            }
+                            if finalFilename == nil || finalFilename?.isEmpty == true {
+                                finalFilename = URL(string: pendingUrl)?.lastPathComponent
+                                print("[ShareExt] Extracted filename from pendingImageUrl: \(finalFilename ?? "nil")")
+                            }
+                        }
+
+                        print("[ShareExt] Calling setSharedImage with sourceUrl: \(finalSourceUrl ?? "nil"), filename: \(finalFilename ?? "nil")")
+                        self?.setSharedImage(data, mimeType: mimeType, sourceUrl: finalSourceUrl, filename: finalFilename)
                     }
                 }
             }
@@ -1313,33 +1445,71 @@ class ShareViewController: UIViewController {
         showStatus("Saved!", color: .systemGreen)
     }
 
-    private func setSharedImage(_ imageData: Data, mimeType: String, sourceUrl: String?) {
+    private func setSharedImage(_ imageData: Data, mimeType: String, sourceUrl: String?, filename: String?) {
         guard sharedURL == nil && sharedText == nil && sharedImageData == nil else {
-            os_log("Content already set, ignoring image", log: shareLog, type: .info)
+            print("[ShareExt] Content already set, ignoring image")
             return
         }
-        os_log("Setting shared image: %d bytes, type: %{public}@", log: shareLog, type: .info, imageData.count, mimeType)
+        print("[ShareExt] Setting shared image: \(imageData.count) bytes, type: \(mimeType)")
+        print("[ShareExt] Image filename: \(filename ?? "nil"), sourceUrl: \(sourceUrl ?? "nil")")
 
         sharedImageData = imageData
         sharedImageMimeType = mimeType
         sharedImageSourceUrl = sourceUrl
         sharedItemType = .image
 
-        // Get image dimensions
+        // Get image dimensions and show preview
         if let image = UIImage(data: imageData) {
             sharedMetadata["width"] = Int(image.size.width)
             sharedMetadata["height"] = Int(image.size.height)
+
+            // Show image preview
+            imagePreviewView.image = image
+            imagePreviewView.isHidden = false
         }
 
-        // Store source URL in metadata if present
-        if let sourceUrl = sourceUrl {
-            sharedMetadata["sourceUrl"] = sourceUrl
-            contentLabel.text = "Image from: \(sourceUrl)"
+        // Generate title from filename, or try to extract from selectedText
+        var effectiveFilename = filename
+        if effectiveFilename == nil || effectiveFilename?.isEmpty == true {
+            // Try to extract filename from selectedText (Safari puts filename there)
+            if let selectedText = sharedMetadata["selectedText"] as? String {
+                // Look for a filename pattern (word ending in image extension)
+                let imageExtensions = ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp", "tiff", "svg"]
+                let words = selectedText.components(separatedBy: .whitespaces)
+                for word in words {
+                    let ext = (word as NSString).pathExtension.lowercased()
+                    if imageExtensions.contains(ext) {
+                        effectiveFilename = word
+                        break
+                    }
+                }
+            }
+        }
+
+        let title = titleFromFilename(effectiveFilename)
+        print("[ShareExt] Generated title: \(title ?? "nil") from filename: \(effectiveFilename ?? "nil")")
+        if let title = title {
+            sharedMetadata["title"] = title
+            contentLabel.text = title
+            print("[ShareExt] Set title in metadata and label: \(title)")
+        } else if let sourceUrl = sourceUrl {
+            // Fallback: try to get title from source URL
+            if let urlTitle = titleFromFilename(URL(string: sourceUrl)?.lastPathComponent) {
+                sharedMetadata["title"] = urlTitle
+                contentLabel.text = urlTitle
+            } else {
+                contentLabel.text = "Image from: \(sourceUrl)"
+            }
         } else {
             let sizeKB = imageData.count / 1024
             contentLabel.text = "Image (\(sizeKB) KB)"
         }
         contentLabel.numberOfLines = 2
+
+        // Store source URL in metadata if present
+        if let sourceUrl = sourceUrl {
+            sharedMetadata["sourceUrl"] = sourceUrl
+        }
 
         // Load tags
         loadTags()
@@ -1349,6 +1519,50 @@ class ShareViewController: UIViewController {
 
         // Show status
         showStatus("Saved!", color: .systemGreen)
+    }
+
+    /// Convert a filename to a readable title
+    private func titleFromFilename(_ filename: String?) -> String? {
+        guard let filename = filename, !filename.isEmpty else { return nil }
+
+        // Remove file extension
+        var name = (filename as NSString).deletingPathExtension
+
+        // Skip if it looks like a UUID or random string (all hex chars and dashes, or very long without spaces)
+        let hexPattern = "^[0-9a-fA-F-]+$"
+        if let regex = try? NSRegularExpression(pattern: hexPattern),
+           regex.firstMatch(in: name, range: NSRange(name.startIndex..., in: name)) != nil,
+           name.count > 20 {
+            return nil
+        }
+
+        // Skip if it's just numbers (like timestamps)
+        if name.allSatisfy({ $0.isNumber || $0 == "-" || $0 == "_" }) && name.count > 8 {
+            return nil
+        }
+
+        // Replace common separators with spaces
+        name = name.replacingOccurrences(of: "_", with: " ")
+        name = name.replacingOccurrences(of: "-", with: " ")
+        name = name.replacingOccurrences(of: ".", with: " ")
+
+        // Collapse multiple spaces
+        while name.contains("  ") {
+            name = name.replacingOccurrences(of: "  ", with: " ")
+        }
+
+        // Trim whitespace
+        name = name.trimmingCharacters(in: .whitespaces)
+
+        // Skip if too short or empty
+        if name.count < 2 {
+            return nil
+        }
+
+        // Capitalize first letter of each word
+        name = name.capitalized
+
+        return name
     }
 
     /// Parse hashtags from text content
@@ -1483,6 +1697,7 @@ class ShareViewController: UIViewController {
     func saveCurrentState() {
         let finalTags = Array(selectedTags).sorted()
         let metadata = sharedMetadata.isEmpty ? nil : sharedMetadata
+        print("[ShareExt] saveCurrentState - sharedMetadata: \(sharedMetadata)")
 
         switch sharedItemType {
         case .page:
@@ -1525,6 +1740,15 @@ class ShareViewController: UIViewController {
         case .image:
             guard let imageData = sharedImageData, let mimeType = sharedImageMimeType else { return }
 
+            // If image already saved, just update tags
+            if let existingImageId = savedImageId {
+                DatabaseManager.shared.updateImageTags(
+                    imageId: existingImageId,
+                    tags: finalTags
+                ) { }
+                return
+            }
+
             // Get image dimensions
             var width: Int?
             var height: Int?
@@ -1545,8 +1769,11 @@ class ShareViewController: UIViewController {
                 sourceUrl: sharedImageSourceUrl,
                 tags: finalTags,
                 metadata: metadata
-            ) { [weak self] in
-                _ = self  // Silence warning
+            ) { [weak self] imageId in
+                // Track the saved image ID to prevent duplicates
+                DispatchQueue.main.async {
+                    self?.savedImageId = imageId
+                }
             }
         }
     }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
 
@@ -74,8 +74,8 @@ interface UnifiedItem {
 }
 
 function App() {
-  // Filter state (which types to show)
-  const [activeFilters, setActiveFilters] = useState<Set<ItemType>>(new Set(["page", "text", "tagset", "image"]));
+  // Filter state: "all" shows everything, or a single type
+  const [activeFilter, setActiveFilter] = useState<ItemType | "all">("all");
 
   // Data state
   const [savedUrls, setSavedUrls] = useState<SavedUrl[]>([]);
@@ -104,6 +104,9 @@ function App() {
   const [addInputText, setAddInputText] = useState("");
   const [addInputTags, setAddInputTags] = useState<Set<string>>(new Set());
   const [addInputExpanded, setAddInputExpanded] = useState(false);
+
+  // Scroll ref for scroll-to-top
+  const mainRef = useRef<HTMLElement>(null);
 
   // UI state
   const [isDark, setIsDark] = useState(false);
@@ -624,25 +627,33 @@ function App() {
     return matches ? matches.map((m) => m.slice(1).toLowerCase()) : [];
   };
 
-  // Toggle a filter type
-  const toggleFilter = (type: ItemType) => {
-    const newFilters = new Set(activeFilters);
-    if (newFilters.has(type)) {
-      // Don't allow deselecting all filters
-      if (newFilters.size > 1) {
-        newFilters.delete(type);
-      }
+  // Set filter to show only a specific type
+  const selectFilter = (type: ItemType) => {
+    // If already showing this type, go back to all
+    if (activeFilter === type) {
+      setActiveFilter("all");
     } else {
-      newFilters.add(type);
+      setActiveFilter(type);
     }
-    setActiveFilters(newFilters);
+  };
+
+  // Scroll to top of the list
+  const scrollToTop = () => {
+    mainRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // Reset to show all types (home view) and scroll to top
+  const showAll = () => {
+    setActiveFilter("all");
+    scrollToTop();
   };
 
   // Create unified sorted list
   const getUnifiedItems = (): UnifiedItem[] => {
     const items: UnifiedItem[] = [];
+    const showType = (type: ItemType) => activeFilter === "all" || activeFilter === type;
 
-    if (activeFilters.has("page")) {
+    if (showType("page")) {
       savedUrls.forEach((url) => {
         items.push({
           id: url.id,
@@ -655,7 +666,7 @@ function App() {
       });
     }
 
-    if (activeFilters.has("text")) {
+    if (showType("text")) {
       savedTexts.forEach((text) => {
         items.push({
           id: text.id,
@@ -668,7 +679,7 @@ function App() {
       });
     }
 
-    if (activeFilters.has("tagset")) {
+    if (showType("tagset")) {
       savedTagsets.forEach((tagset) => {
         items.push({
           id: tagset.id,
@@ -680,7 +691,7 @@ function App() {
       });
     }
 
-    if (activeFilters.has("image")) {
+    if (showType("image")) {
       savedImages.forEach((image) => {
         items.push({
           id: image.id,
@@ -1044,7 +1055,9 @@ function App() {
   };
 
   const renderImageItem = (item: SavedImage) => {
-    const sourceUrl = (item.metadata as Record<string, unknown>)?.sourceUrl as string | undefined;
+    const metadata = item.metadata as Record<string, unknown> | undefined;
+    const title = metadata?.title as string | undefined;
+    const sourceUrl = metadata?.sourceUrl as string | undefined;
     const dimensions = item.width && item.height ? `${item.width}×${item.height}` : null;
 
     return (
@@ -1062,7 +1075,7 @@ function App() {
             {item.thumbnail ? (
               <img
                 src={`data:image/jpeg;base64,${item.thumbnail}`}
-                alt="Preview"
+                alt={title || "Preview"}
                 className="image-thumbnail"
               />
             ) : (
@@ -1076,8 +1089,9 @@ function App() {
             )}
           </div>
           <div className="image-info">
+            {title && <div className="image-title">{title}</div>}
             {sourceUrl && (
-              <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="image-source">
+              <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className={`image-source ${title ? "with-title" : ""}`}>
                 {sourceUrl}
               </a>
             )}
@@ -1206,11 +1220,13 @@ function App() {
   return (
     <div className="app">
       <header>
-        <h1>Peek</h1>
+        <h1 onClick={activeFilter !== "all" ? showAll : scrollToTop} style={{ cursor: "pointer" }}>
+          Peek
+        </h1>
         <div className="filter-icons">
           <button
-            className={`filter-btn ${activeFilters.has("page") ? "active" : ""}`}
-            onClick={() => toggleFilter("page")}
+            className={`filter-btn ${activeFilter === "page" ? "active" : ""}`}
+            onClick={() => selectFilter("page")}
             title="Pages"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1221,8 +1237,8 @@ function App() {
             <span className="filter-count">{savedUrls.length}</span>
           </button>
           <button
-            className={`filter-btn ${activeFilters.has("text") ? "active" : ""}`}
-            onClick={() => toggleFilter("text")}
+            className={`filter-btn ${activeFilter === "text" ? "active" : ""}`}
+            onClick={() => selectFilter("text")}
             title="Notes"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1234,8 +1250,8 @@ function App() {
             <span className="filter-count">{savedTexts.length}</span>
           </button>
           <button
-            className={`filter-btn ${activeFilters.has("tagset") ? "active" : ""}`}
-            onClick={() => toggleFilter("tagset")}
+            className={`filter-btn ${activeFilter === "tagset" ? "active" : ""}`}
+            onClick={() => selectFilter("tagset")}
             title="Tag Sets"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1245,8 +1261,8 @@ function App() {
             <span className="filter-count">{savedTagsets.length}</span>
           </button>
           <button
-            className={`filter-btn ${activeFilters.has("image") ? "active" : ""}`}
-            onClick={() => toggleFilter("image")}
+            className={`filter-btn ${activeFilter === "image" ? "active" : ""}`}
+            onClick={() => selectFilter("image")}
             title="Images"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1265,7 +1281,7 @@ function App() {
         </button>
       </header>
 
-      <main className="saved-view">
+      <main className="saved-view" ref={mainRef}>
         {/* Unified add input */}
         <div className={`unified-add-input ${addInputExpanded ? "expanded" : ""}`}>
           {!addInputExpanded ? (
@@ -1338,8 +1354,8 @@ function App() {
             </div>
           ) : unifiedItems.length === 0 ? (
             <div className="empty-state">
-              <p>No items match your filters.</p>
-              <p>Click the icons above to show different types.</p>
+              <p>No {activeFilter === "page" ? "pages" : activeFilter === "text" ? "notes" : activeFilter === "tagset" ? "tag sets" : "images"} saved yet.</p>
+              <p>Tap Peek to see all items.</p>
             </div>
           ) : (
             unifiedItems.map((item) => renderUnifiedItem(item))

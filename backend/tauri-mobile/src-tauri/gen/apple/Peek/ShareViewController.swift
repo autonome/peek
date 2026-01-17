@@ -11,6 +11,7 @@ enum ItemType: String {
     case page = "page"
     case text = "text"
     case tagset = "tagset"
+    case image = "image"
 }
 
 // MARK: - Database Records
@@ -44,6 +45,20 @@ struct ItemTagRecord: Codable, FetchableRecord, PersistableRecord {
 
     var item_id: String
     var tag_id: Int64
+    var created_at: String
+}
+
+struct BlobRecord: Codable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "blobs"
+
+    var id: String
+    var item_id: String
+    var data: Data
+    var mime_type: String
+    var size_bytes: Int64
+    var width: Int?
+    var height: Int?
+    var thumbnail: Data?
     var created_at: String
 }
 
@@ -214,11 +229,25 @@ class DatabaseManager {
                     value TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS blobs (
+                    id TEXT PRIMARY KEY,
+                    item_id TEXT NOT NULL,
+                    data BLOB NOT NULL,
+                    mime_type TEXT NOT NULL,
+                    size_bytes INTEGER NOT NULL,
+                    width INTEGER,
+                    height INTEGER,
+                    thumbnail BLOB,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
                 CREATE INDEX IF NOT EXISTS idx_items_url ON items(url);
                 CREATE INDEX IF NOT EXISTS idx_items_deleted ON items(deleted_at);
                 CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
                 CREATE INDEX IF NOT EXISTS idx_tags_frecency ON tags(frecency_score DESC);
+                CREATE INDEX IF NOT EXISTS idx_blobs_item_id ON blobs(item_id);
             """)
         }
     }
@@ -315,6 +344,120 @@ class DatabaseManager {
 
     func saveText(content: String, tags: [String], metadata: [String: Any]?, existingId: String?, existingSavedAt: String?, completion: @escaping () -> Void) {
         saveItem(itemType: .text, url: nil, content: content, tags: tags, metadata: metadata, existingId: existingId, existingSavedAt: existingSavedAt, completion: completion)
+    }
+
+    func saveImage(imageData: Data, mimeType: String, width: Int?, height: Int?, thumbnail: Data?, sourceUrl: String?, tags: [String], metadata: [String: Any]?, completion: @escaping () -> Void) {
+        let now = ISO8601DateFormatter.shared.string(from: Date())
+        var savedItemId: String?
+
+        // Merge source URL into metadata
+        var combinedMetadata = metadata ?? [:]
+        if let sourceUrl = sourceUrl {
+            combinedMetadata["sourceUrl"] = sourceUrl
+        }
+        if let width = width {
+            combinedMetadata["width"] = width
+        }
+        if let height = height {
+            combinedMetadata["height"] = height
+        }
+        combinedMetadata["mimeType"] = mimeType
+
+        // Serialize metadata to JSON string
+        var metadataJson: String? = nil
+        if !combinedMetadata.isEmpty {
+            if let jsonData = try? JSONSerialization.data(withJSONObject: combinedMetadata),
+               let jsonString = String(data: jsonData, encoding: .utf8) {
+                metadataJson = jsonString
+            }
+        }
+
+        do {
+            try dbQueue?.write { db in
+                // Insert new item
+                let itemId = UUID().uuidString
+                let record = ItemRecord(id: itemId, type: ItemType.image.rawValue, url: sourceUrl, content: nil, metadata: metadataJson, created_at: now, updated_at: now, deleted_at: nil)
+                try record.insert(db)
+                print("[DB] Inserted new image item: \(itemId)")
+
+                // Insert blob data
+                let blobId = UUID().uuidString
+                let blobRecord = BlobRecord(
+                    id: blobId,
+                    item_id: itemId,
+                    data: imageData,
+                    mime_type: mimeType,
+                    size_bytes: Int64(imageData.count),
+                    width: width,
+                    height: height,
+                    thumbnail: thumbnail,
+                    created_at: now
+                )
+                try blobRecord.insert(db)
+                print("[DB] Inserted blob: \(blobId), size: \(imageData.count) bytes")
+
+                // Add tags
+                for tagName in tags {
+                    // Get or create tag
+                    var tagId: Int64
+
+                    if let existingTag = try TagRecord.filter(Column("name") == tagName).fetchOne(db) {
+                        tagId = existingTag.id!
+
+                        // Update frequency for this tag
+                        let newFrequency = existingTag.frequency + 1
+                        let frecency = calculateFrecency(frequency: newFrequency, lastUsed: now)
+
+                        try db.execute(sql: """
+                            UPDATE tags SET frequency = ?, last_used = ?, frecency_score = ?, updated_at = ?
+                            WHERE id = ?
+                        """, arguments: [newFrequency, now, frecency, now, existingTag.id!])
+                    } else {
+                        // Create new tag
+                        let frecency = calculateFrecency(frequency: 1, lastUsed: now)
+                        var newTag = TagRecord(id: nil, name: tagName, frequency: 1, last_used: now, frecency_score: frecency, created_at: now, updated_at: now)
+                        try newTag.insert(db)
+                        tagId = db.lastInsertedRowID
+                    }
+
+                    // Create item-tag association
+                    let itemTag = ItemTagRecord(item_id: itemId, tag_id: tagId, created_at: now)
+                    try itemTag.insert(db, onConflict: .ignore)
+                }
+
+                print("[DB] Saved image with \(tags.count) tags")
+                savedItemId = itemId
+            }
+
+            // Push to webhook OUTSIDE of the database write block
+            if let itemId = savedItemId {
+                pushImageToWebhook(imageId: itemId, sourceUrl: sourceUrl, tags: tags, metadata: combinedMetadata, savedAt: now, completion: completion)
+            } else {
+                completion()
+            }
+        } catch {
+            print("[DB] Failed to save image: \(error)")
+            completion()
+        }
+    }
+
+    /// Generate a thumbnail from image data
+    func generateThumbnail(from imageData: Data, maxSize: CGFloat = 200) -> Data? {
+        guard let image = UIImage(data: imageData) else { return nil }
+
+        let scale = min(maxSize / image.size.width, maxSize / image.size.height)
+        if scale >= 1 {
+            // Image is already small enough
+            return image.jpegData(compressionQuality: 0.7)
+        }
+
+        let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0)
+        image.draw(in: CGRect(origin: .zero, size: newSize))
+        let thumbnail = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+
+        return thumbnail?.jpegData(compressionQuality: 0.7)
     }
 
     private func saveItem(itemType: ItemType, url: String?, content: String?, tags: [String], metadata: [String: Any]?, existingId: String?, existingSavedAt: String?, completion: @escaping () -> Void) {
@@ -541,6 +684,53 @@ class DatabaseManager {
         sendWebhookRequest(to: webhookUrl, payload: payload, completion: completion)
     }
 
+    private func pushImageToWebhook(imageId: String, sourceUrl: String?, tags: [String], metadata: [String: Any]?, savedAt: String, completion: @escaping () -> Void) {
+        guard isConnected else {
+            print("[Webhook] Offline - skipping webhook push")
+            completion()
+            return
+        }
+
+        guard let webhookUrlString = getWebhookUrl()?.trimmingCharacters(in: .whitespaces), !webhookUrlString.isEmpty else {
+            print("[Webhook] No webhook URL configured")
+            completion()
+            return
+        }
+
+        guard let webhookUrl = URL(string: webhookUrlString) else {
+            print("[Webhook] Invalid webhook URL: \(webhookUrlString)")
+            completion()
+            return
+        }
+
+        print("[Webhook] Pushing image to: \(webhookUrlString)")
+
+        var imageItem: [String: Any] = [
+            "id": imageId,
+            "tags": tags,
+            "saved_at": savedAt
+        ]
+
+        // Include source URL if present
+        if let sourceUrl = sourceUrl {
+            imageItem["source_url"] = sourceUrl
+        }
+
+        // Include metadata if present
+        if let metadata = metadata, !metadata.isEmpty {
+            imageItem["metadata"] = metadata
+        }
+
+        let payload: [String: Any] = [
+            "urls": [],
+            "texts": [],
+            "tagsets": [],
+            "images": [imageItem]
+        ]
+
+        sendWebhookRequest(to: webhookUrl, payload: payload, completion: completion)
+    }
+
     private func sendWebhookRequest(to webhookUrl: URL, payload: [String: Any], completion: @escaping () -> Void) {
         guard let jsonData = try? JSONSerialization.data(withJSONObject: payload) else {
             print("[Webhook] Failed to serialize payload")
@@ -609,6 +799,9 @@ extension String {
 class ShareViewController: UIViewController {
     var sharedURL: String?
     var sharedText: String?
+    var sharedImageData: Data?
+    var sharedImageMimeType: String?
+    var sharedImageSourceUrl: String?
     var sharedItemType: ItemType = .page
     var sharedMetadata: [String: Any] = [:]  // Captured metadata from share extension
     var selectedTags: Set<String> = []
@@ -988,11 +1181,70 @@ class ShareViewController: UIViewController {
                 }
             }
 
-            // For images, try to get the source URL via suggested name which sometimes contains the URL
+            // Handle image sharing
             if provider.hasItemConformingToTypeIdentifier("public.image") {
                 os_log("Provider has public.image", log: shareLog, type: .info)
                 if let suggestedName = provider.suggestedName {
                     os_log("Image suggested name: %{public}@", log: shareLog, type: .info, suggestedName)
+                }
+
+                provider.loadItem(forTypeIdentifier: "public.image", options: nil) { [weak self] (item, error) in
+                    if let error = error {
+                        os_log("Error loading image: %{public}@", log: shareLog, type: .error, error.localizedDescription)
+                        return
+                    }
+
+                    var imageData: Data?
+                    var mimeType = "image/jpeg"
+                    var sourceUrl: String?
+
+                    // Handle different item types
+                    if let url = item as? URL {
+                        // Image from file URL
+                        os_log("Image URL: %{public}@", log: shareLog, type: .info, url.absoluteString)
+                        if url.scheme == "file" {
+                            imageData = try? Data(contentsOf: url)
+                            // Determine MIME type from extension
+                            let ext = url.pathExtension.lowercased()
+                            switch ext {
+                            case "png":
+                                mimeType = "image/png"
+                            case "gif":
+                                mimeType = "image/gif"
+                            case "webp":
+                                mimeType = "image/webp"
+                            case "heic", "heif":
+                                mimeType = "image/heic"
+                            default:
+                                mimeType = "image/jpeg"
+                            }
+                        } else if url.scheme == "http" || url.scheme == "https" {
+                            // Web image - store the source URL
+                            sourceUrl = url.absoluteString
+                        }
+                    } else if let image = item as? UIImage {
+                        // UIImage directly
+                        imageData = image.jpegData(compressionQuality: 0.9)
+                    } else if let data = item as? Data {
+                        // Raw data
+                        imageData = data
+                    }
+
+                    // If we got a web URL but no data, try to fetch it
+                    if imageData == nil, let sourceUrl = sourceUrl, let url = URL(string: sourceUrl) {
+                        os_log("Fetching image from URL: %{public}@", log: shareLog, type: .info, sourceUrl)
+                        // Note: In a real implementation, you might want to fetch asynchronously
+                        // For now, we'll just store the URL as metadata
+                    }
+
+                    guard let data = imageData else {
+                        os_log("Could not extract image data", log: shareLog, type: .error)
+                        return
+                    }
+
+                    DispatchQueue.main.async {
+                        self?.setSharedImage(data, mimeType: mimeType, sourceUrl: sourceUrl)
+                    }
                 }
             }
         }
@@ -1022,7 +1274,7 @@ class ShareViewController: UIViewController {
     }
 
     private func setSharedURL(_ urlString: String) {
-        guard sharedURL == nil && sharedText == nil else {
+        guard sharedURL == nil && sharedText == nil && sharedImageData == nil else {
             os_log("Content already set, ignoring URL: %{public}@", log: shareLog, type: .info, urlString)
             return
         }
@@ -1035,7 +1287,7 @@ class ShareViewController: UIViewController {
     }
 
     private func setSharedText(_ text: String) {
-        guard sharedURL == nil && sharedText == nil else {
+        guard sharedURL == nil && sharedText == nil && sharedImageData == nil else {
             os_log("Content already set, ignoring text", log: shareLog, type: .info)
             return
         }
@@ -1050,6 +1302,44 @@ class ShareViewController: UIViewController {
         for tag in hashtags {
             selectedTags.insert(tag)
         }
+
+        // Load tags
+        loadTags()
+
+        // Auto-save
+        saveCurrentState()
+
+        // Show status
+        showStatus("Saved!", color: .systemGreen)
+    }
+
+    private func setSharedImage(_ imageData: Data, mimeType: String, sourceUrl: String?) {
+        guard sharedURL == nil && sharedText == nil && sharedImageData == nil else {
+            os_log("Content already set, ignoring image", log: shareLog, type: .info)
+            return
+        }
+        os_log("Setting shared image: %d bytes, type: %{public}@", log: shareLog, type: .info, imageData.count, mimeType)
+
+        sharedImageData = imageData
+        sharedImageMimeType = mimeType
+        sharedImageSourceUrl = sourceUrl
+        sharedItemType = .image
+
+        // Get image dimensions
+        if let image = UIImage(data: imageData) {
+            sharedMetadata["width"] = Int(image.size.width)
+            sharedMetadata["height"] = Int(image.size.height)
+        }
+
+        // Store source URL in metadata if present
+        if let sourceUrl = sourceUrl {
+            sharedMetadata["sourceUrl"] = sourceUrl
+            contentLabel.text = "Image from: \(sourceUrl)"
+        } else {
+            let sizeKB = imageData.count / 1024
+            contentLabel.text = "Image (\(sizeKB) KB)"
+        }
+        contentLabel.numberOfLines = 2
 
         // Load tags
         loadTags()
@@ -1231,6 +1521,33 @@ class ShareViewController: UIViewController {
         case .tagset:
             // Tagsets are not supported in Share Extension
             break
+
+        case .image:
+            guard let imageData = sharedImageData, let mimeType = sharedImageMimeType else { return }
+
+            // Get image dimensions
+            var width: Int?
+            var height: Int?
+            if let image = UIImage(data: imageData) {
+                width = Int(image.size.width)
+                height = Int(image.size.height)
+            }
+
+            // Generate thumbnail
+            let thumbnail = DatabaseManager.shared.generateThumbnail(from: imageData)
+
+            DatabaseManager.shared.saveImage(
+                imageData: imageData,
+                mimeType: mimeType,
+                width: width,
+                height: height,
+                thumbnail: thumbnail,
+                sourceUrl: sharedImageSourceUrl,
+                tags: finalTags,
+                metadata: metadata
+            ) { [weak self] in
+                _ = self  // Silence warning
+            }
         }
     }
 

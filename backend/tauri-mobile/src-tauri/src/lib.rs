@@ -14,6 +14,7 @@ enum ItemType {
     Page,
     Text,
     Tagset,
+    Image,
 }
 
 impl ItemType {
@@ -22,6 +23,7 @@ impl ItemType {
             ItemType::Page => "page",
             ItemType::Text => "text",
             ItemType::Tagset => "tagset",
+            ItemType::Image => "image",
         }
     }
 
@@ -30,6 +32,7 @@ impl ItemType {
             "page" => Some(ItemType::Page),
             "text" => Some(ItemType::Text),
             "tagset" => Some(ItemType::Tagset),
+            "image" => Some(ItemType::Image),
             _ => None,
         }
     }
@@ -77,6 +80,22 @@ struct SavedTagset {
     saved_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     metadata: Option<serde_json::Value>,
+}
+
+// Image item
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SavedImage {
+    id: String,
+    tags: Vec<String>,
+    saved_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    metadata: Option<serde_json::Value>,
+    // Base64-encoded thumbnail for display (smaller version)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thumbnail: Option<String>,
+    mime_type: String,
+    width: Option<u32>,
+    height: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -256,11 +275,25 @@ fn ensure_database_initialized() -> Result<(), String> {
                     FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
                 );
 
+                CREATE TABLE IF NOT EXISTS blobs (
+                    id TEXT PRIMARY KEY,
+                    item_id TEXT NOT NULL,
+                    data BLOB NOT NULL,
+                    mime_type TEXT NOT NULL,
+                    size_bytes INTEGER NOT NULL,
+                    width INTEGER,
+                    height INTEGER,
+                    thumbnail BLOB,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
                 CREATE INDEX IF NOT EXISTS idx_items_url ON items(url);
                 CREATE INDEX IF NOT EXISTS idx_items_deleted ON items(deleted_at);
                 CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
                 CREATE INDEX IF NOT EXISTS idx_tags_frecency ON tags(frecency_score DESC);
+                CREATE INDEX IF NOT EXISTS idx_blobs_item ON blobs(item_id);
 
                 CREATE TABLE IF NOT EXISTS settings (
                     key TEXT PRIMARY KEY,
@@ -287,6 +320,38 @@ fn ensure_database_initialized() -> Result<(), String> {
             if let Err(e) = conn.execute("ALTER TABLE items ADD COLUMN metadata TEXT", []) {
                 println!("[Rust] Warning: Failed to add metadata column: {}", e);
                 // Not fatal - column may already exist
+            }
+        }
+
+        // Ensure blobs table exists (for existing installs)
+        let has_blobs_table: bool = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='blobs'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap_or(0) > 0;
+
+        if !has_blobs_table {
+            println!("[Rust] Creating blobs table for image support...");
+            if let Err(e) = conn.execute_batch(
+                "
+                CREATE TABLE IF NOT EXISTS blobs (
+                    id TEXT PRIMARY KEY,
+                    item_id TEXT NOT NULL,
+                    data BLOB NOT NULL,
+                    mime_type TEXT NOT NULL,
+                    size_bytes INTEGER NOT NULL,
+                    width INTEGER,
+                    height INTEGER,
+                    thumbnail BLOB,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_blobs_item ON blobs(item_id);
+                ",
+            ) {
+                println!("[Rust] Warning: Failed to create blobs table: {}", e);
             }
         }
 
@@ -1568,6 +1633,291 @@ async fn update_tagset(id: String, tags: Vec<String>) -> Result<(), String> {
     Ok(())
 }
 
+/// Save an image with optional tags and metadata
+/// image_data is base64-encoded image bytes
+/// thumbnail_data is optional base64-encoded thumbnail
+#[tauri::command]
+async fn save_image(
+    image_data: String,
+    mime_type: String,
+    tags: Vec<String>,
+    metadata: Option<serde_json::Value>,
+    thumbnail_data: Option<String>,
+    width: Option<u32>,
+    height: Option<u32>,
+) -> Result<String, String> {
+    println!("[Rust] save_image called, mime_type: {}, tags: {:?}", mime_type, tags);
+
+    let conn = get_connection()?;
+    let now = Utc::now().to_rfc3339();
+    let item_id = uuid::Uuid::new_v4().to_string();
+    let blob_id = uuid::Uuid::new_v4().to_string();
+    let metadata_json = metadata.as_ref().map(|m| serde_json::to_string(m).unwrap_or_default());
+
+    // Decode base64 image data
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    let image_bytes = STANDARD.decode(&image_data)
+        .map_err(|e| format!("Failed to decode image data: {}", e))?;
+    let size_bytes = image_bytes.len() as i64;
+
+    let thumbnail_bytes: Option<Vec<u8>> = thumbnail_data
+        .map(|t| STANDARD.decode(&t))
+        .transpose()
+        .map_err(|e| format!("Failed to decode thumbnail: {}", e))?;
+
+    // Insert image item
+    conn.execute(
+        "INSERT INTO items (id, type, metadata, created_at, updated_at) VALUES (?, 'image', ?, ?, ?)",
+        params![&item_id, &metadata_json, &now, &now],
+    )
+    .map_err(|e| format!("Failed to insert image item: {}", e))?;
+
+    // Insert blob data
+    conn.execute(
+        "INSERT INTO blobs (id, item_id, data, mime_type, size_bytes, width, height, thumbnail, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        params![&blob_id, &item_id, &image_bytes, &mime_type, size_bytes, width, height, &thumbnail_bytes, &now],
+    )
+    .map_err(|e| format!("Failed to insert blob: {}", e))?;
+
+    // Add tags
+    for tag_name in &tags {
+        let tag_id: i64 = match conn.query_row(
+            "SELECT id FROM tags WHERE name = ?",
+            params![tag_name],
+            |row| row.get(0),
+        ) {
+            Ok(existing_id) => {
+                let frequency: u32 = conn
+                    .query_row(
+                        "SELECT frequency FROM tags WHERE id = ?",
+                        params![existing_id],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(0);
+
+                let new_frequency = frequency + 1;
+                let frecency = calculate_frecency(new_frequency, &now);
+
+                conn.execute(
+                    "UPDATE tags SET frequency = ?, last_used = ?, frecency_score = ?, updated_at = ? WHERE id = ?",
+                    params![new_frequency, &now, frecency, &now, existing_id],
+                )
+                .map_err(|e| format!("Failed to update tag: {}", e))?;
+
+                existing_id
+            }
+            Err(_) => {
+                let frecency = calculate_frecency(1, &now);
+                conn.execute(
+                    "INSERT INTO tags (name, frequency, last_used, frecency_score, created_at, updated_at) VALUES (?, 1, ?, ?, ?, ?)",
+                    params![tag_name, &now, frecency, &now, &now],
+                )
+                .map_err(|e| format!("Failed to insert tag: {}", e))?;
+
+                conn.last_insert_rowid()
+            }
+        };
+
+        conn.execute(
+            "INSERT OR IGNORE INTO item_tags (item_id, tag_id, created_at) VALUES (?, ?, ?)",
+            params![&item_id, tag_id, &now],
+        )
+        .map_err(|e| format!("Failed to link tag: {}", e))?;
+    }
+
+    println!("[Rust] Image saved successfully with id: {}", item_id);
+    Ok(item_id)
+}
+
+/// Get all saved images (returns metadata and thumbnails, not full image data)
+#[tauri::command]
+async fn get_saved_images() -> Result<Vec<SavedImage>, String> {
+    let conn = get_connection()?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT i.id, i.created_at, i.metadata, b.mime_type, b.width, b.height, b.thumbnail
+             FROM items i
+             LEFT JOIN blobs b ON b.item_id = i.id
+             WHERE i.type = 'image' AND i.deleted_at IS NULL
+             ORDER BY COALESCE(i.updated_at, i.created_at) DESC",
+        )
+        .map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+
+    let rows: Vec<(String, String, Option<String>, Option<String>, Option<u32>, Option<u32>, Option<Vec<u8>>)> = stmt
+        .query_map([], |row| Ok((
+            row.get(0)?,
+            row.get(1)?,
+            row.get(2)?,
+            row.get(3)?,
+            row.get(4)?,
+            row.get(5)?,
+            row.get(6)?,
+        )))
+        .map_err(|e| format!("Failed to query images: {}", e))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let mut images: Vec<SavedImage> = Vec::new();
+    for (id, created_at, metadata_json, mime_type, width, height, thumbnail_bytes) in rows {
+        let mut tag_stmt = conn
+            .prepare(
+                "SELECT t.name FROM tags t
+                 JOIN item_tags it ON t.id = it.tag_id
+                 WHERE it.item_id = ?
+                 ORDER BY t.name",
+            )
+            .map_err(|e| format!("Failed to prepare tag query: {}", e))?;
+
+        let tags: Vec<String> = tag_stmt
+            .query_map(params![&id], |row| row.get(0))
+            .map_err(|e| format!("Failed to query tags: {}", e))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        let metadata = metadata_json.and_then(|s| serde_json::from_str(&s).ok());
+        let thumbnail = thumbnail_bytes.map(|b| STANDARD.encode(&b));
+
+        images.push(SavedImage {
+            id,
+            tags,
+            saved_at: created_at,
+            metadata,
+            thumbnail,
+            mime_type: mime_type.unwrap_or_else(|| "image/jpeg".to_string()),
+            width,
+            height,
+        });
+    }
+
+    Ok(images)
+}
+
+/// Get full image data by item ID (returns base64-encoded image)
+#[tauri::command]
+async fn get_image_data(id: String) -> Result<Option<String>, String> {
+    let conn = get_connection()?;
+
+    let result: Option<Vec<u8>> = conn
+        .query_row(
+            "SELECT data FROM blobs WHERE item_id = ?",
+            params![&id],
+            |row| row.get(0),
+        )
+        .ok();
+
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    Ok(result.map(|bytes| STANDARD.encode(&bytes)))
+}
+
+/// Update image tags
+#[tauri::command]
+async fn update_image_tags(id: String, tags: Vec<String>) -> Result<(), String> {
+    println!("[Rust] update_image_tags called for id: {}, tags: {:?}", id, tags);
+
+    let conn = get_connection()?;
+    let now = Utc::now().to_rfc3339();
+
+    // Verify item exists and is an image type
+    let exists: bool = conn
+        .query_row(
+            "SELECT 1 FROM items WHERE id = ? AND type = 'image' AND deleted_at IS NULL",
+            params![&id],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+
+    if !exists {
+        return Err("Image not found".to_string());
+    }
+
+    // Update timestamp
+    conn.execute(
+        "UPDATE items SET updated_at = ? WHERE id = ?",
+        params![&now, &id],
+    )
+    .map_err(|e| format!("Failed to update image: {}", e))?;
+
+    // Get existing tags
+    let mut existing_tag_stmt = conn
+        .prepare(
+            "SELECT t.name FROM tags t
+             JOIN item_tags it ON t.id = it.tag_id
+             WHERE it.item_id = ?",
+        )
+        .map_err(|e| format!("Failed to prepare existing tags query: {}", e))?;
+
+    let existing_tags: std::collections::HashSet<String> = existing_tag_stmt
+        .query_map(params![&id], |row| row.get(0))
+        .map_err(|e| format!("Failed to query existing tags: {}", e))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let new_tags_set: std::collections::HashSet<String> = tags.iter().cloned().collect();
+    let tags_to_add: Vec<&String> = new_tags_set.difference(&existing_tags).collect();
+    let tags_to_remove: Vec<&String> = existing_tags.difference(&new_tags_set).collect();
+
+    // Remove old tags
+    for tag_name in &tags_to_remove {
+        conn.execute(
+            "DELETE FROM item_tags WHERE item_id = ? AND tag_id = (SELECT id FROM tags WHERE name = ?)",
+            params![&id, tag_name],
+        )
+        .map_err(|e| format!("Failed to remove tag: {}", e))?;
+    }
+
+    // Add new tags
+    for tag_name in &tags_to_add {
+        let tag_id: i64 = match conn.query_row(
+            "SELECT id FROM tags WHERE name = ?",
+            params![tag_name],
+            |row| row.get(0),
+        ) {
+            Ok(existing_id) => {
+                let frequency: u32 = conn
+                    .query_row(
+                        "SELECT frequency FROM tags WHERE id = ?",
+                        params![existing_id],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(0);
+
+                let new_frequency = frequency + 1;
+                let frecency = calculate_frecency(new_frequency, &now);
+
+                conn.execute(
+                    "UPDATE tags SET frequency = ?, last_used = ?, frecency_score = ?, updated_at = ? WHERE id = ?",
+                    params![new_frequency, &now, frecency, &now, existing_id],
+                )
+                .map_err(|e| format!("Failed to update tag: {}", e))?;
+
+                existing_id
+            }
+            Err(_) => {
+                let frecency = calculate_frecency(1, &now);
+                conn.execute(
+                    "INSERT INTO tags (name, frequency, last_used, frecency_score, created_at, updated_at) VALUES (?, 1, ?, ?, ?, ?)",
+                    params![tag_name, &now, frecency, &now, &now],
+                )
+                .map_err(|e| format!("Failed to insert tag: {}", e))?;
+
+                conn.last_insert_rowid()
+            }
+        };
+
+        conn.execute(
+            "INSERT INTO item_tags (item_id, tag_id, created_at) VALUES (?, ?, ?)",
+            params![&id, tag_id, &now],
+        )
+        .map_err(|e| format!("Failed to link tag: {}", e))?;
+    }
+
+    println!("[Rust] Image tags updated successfully");
+    Ok(())
+}
+
 #[tauri::command]
 fn is_dark_mode() -> bool {
     unsafe { get_system_is_dark_mode() != 0 }
@@ -1814,6 +2164,11 @@ pub fn run() {
             save_tagset,
             get_saved_tagsets,
             update_tagset,
+            // Image commands
+            save_image,
+            get_saved_images,
+            get_image_data,
+            update_image_tags,
             // Tag commands
             get_tags_by_frecency,
             get_tags_by_frecency_for_url,

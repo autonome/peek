@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
 
-type TabType = "page" | "text" | "tagset";
+type ItemType = "page" | "text" | "tagset" | "image";
 
 interface ItemMetadata {
   title?: string;
@@ -34,6 +34,17 @@ interface SavedTagset {
   metadata?: ItemMetadata;
 }
 
+interface SavedImage {
+  id: string;
+  tags: string[];
+  saved_at: string;
+  metadata?: ItemMetadata;
+  thumbnail?: string; // Base64-encoded thumbnail
+  mime_type: string;
+  width?: number;
+  height?: number;
+}
+
 interface TagStats {
   name: string;
   frequency: number;
@@ -47,14 +58,30 @@ interface SyncResult {
   message: string;
 }
 
+// Unified item for combined list
+interface UnifiedItem {
+  id: string;
+  type: ItemType;
+  url?: string;
+  content?: string;
+  tags: string[];
+  saved_at: string;
+  metadata?: ItemMetadata;
+  thumbnail?: string;
+  mime_type?: string;
+  width?: number;
+  height?: number;
+}
+
 function App() {
-  // Tab state
-  const [activeTab, setActiveTab] = useState<TabType>("page");
+  // Filter state (which types to show)
+  const [activeFilters, setActiveFilters] = useState<Set<ItemType>>(new Set(["page", "text", "tagset", "image"]));
 
   // Data state
   const [savedUrls, setSavedUrls] = useState<SavedUrl[]>([]);
   const [savedTexts, setSavedTexts] = useState<SavedText[]>([]);
   const [savedTagsets, setSavedTagsets] = useState<SavedTagset[]>([]);
+  const [savedImages, setSavedImages] = useState<SavedImage[]>([]);
   const [allTags, setAllTags] = useState<TagStats[]>([]);
 
   // Page editing state
@@ -80,6 +107,7 @@ function App() {
   // UI state
   const [isDark, setIsDark] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showAddForm, setShowAddForm] = useState<"note" | "tagset" | null>(null);
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookUrlInput, setWebhookUrlInput] = useState("");
   const [webhookApiKey, setWebhookApiKey] = useState("");
@@ -134,6 +162,7 @@ function App() {
       loadSavedUrls();
       loadSavedTexts();
       loadSavedTagsets();
+      loadSavedImages();
       loadAllTags();
     };
 
@@ -262,6 +291,15 @@ function App() {
       setSavedTagsets(tagsets);
     } catch (error) {
       console.error("Failed to load saved tagsets:", error);
+    }
+  };
+
+  const loadSavedImages = async () => {
+    try {
+      const images = await invoke<SavedImage[]>("get_saved_images");
+      setSavedImages(images);
+    } catch (error) {
+      console.error("Failed to load saved images:", error);
     }
   };
 
@@ -580,6 +618,124 @@ function App() {
     return matches ? matches.map((m) => m.slice(1).toLowerCase()) : [];
   };
 
+  // Toggle a filter type
+  const toggleFilter = (type: ItemType) => {
+    const newFilters = new Set(activeFilters);
+    if (newFilters.has(type)) {
+      // Don't allow deselecting all filters
+      if (newFilters.size > 1) {
+        newFilters.delete(type);
+      }
+    } else {
+      newFilters.add(type);
+    }
+    setActiveFilters(newFilters);
+  };
+
+  // Create unified sorted list
+  const getUnifiedItems = (): UnifiedItem[] => {
+    const items: UnifiedItem[] = [];
+
+    if (activeFilters.has("page")) {
+      savedUrls.forEach((url) => {
+        items.push({
+          id: url.id,
+          type: "page",
+          url: url.url,
+          tags: url.tags,
+          saved_at: url.saved_at,
+          metadata: url.metadata,
+        });
+      });
+    }
+
+    if (activeFilters.has("text")) {
+      savedTexts.forEach((text) => {
+        items.push({
+          id: text.id,
+          type: "text",
+          content: text.content,
+          tags: text.tags,
+          saved_at: text.saved_at,
+          metadata: text.metadata,
+        });
+      });
+    }
+
+    if (activeFilters.has("tagset")) {
+      savedTagsets.forEach((tagset) => {
+        items.push({
+          id: tagset.id,
+          type: "tagset",
+          tags: tagset.tags,
+          saved_at: tagset.saved_at,
+          metadata: tagset.metadata,
+        });
+      });
+    }
+
+    if (activeFilters.has("image")) {
+      savedImages.forEach((image) => {
+        items.push({
+          id: image.id,
+          type: "image",
+          tags: image.tags,
+          saved_at: image.saved_at,
+          metadata: image.metadata,
+          thumbnail: image.thumbnail,
+          mime_type: image.mime_type,
+          width: image.width,
+          height: image.height,
+        });
+      });
+    }
+
+    // Sort by date, newest first
+    return items.sort((a, b) => new Date(b.saved_at).getTime() - new Date(a.saved_at).getTime());
+  };
+
+  // Render unified item based on type
+  const renderUnifiedItem = (item: UnifiedItem) => {
+    switch (item.type) {
+      case "page":
+        return renderUrlItem({
+          id: item.id,
+          url: item.url!,
+          tags: item.tags,
+          saved_at: item.saved_at,
+          metadata: item.metadata,
+        });
+      case "text":
+        return renderTextItem({
+          id: item.id,
+          content: item.content!,
+          tags: item.tags,
+          saved_at: item.saved_at,
+          metadata: item.metadata,
+        });
+      case "tagset":
+        return renderTagsetItem({
+          id: item.id,
+          tags: item.tags,
+          saved_at: item.saved_at,
+          metadata: item.metadata,
+        });
+      case "image":
+        return renderImageItem({
+          id: item.id,
+          tags: item.tags,
+          saved_at: item.saved_at,
+          metadata: item.metadata,
+          thumbnail: item.thumbnail,
+          mime_type: item.mime_type || "image/jpeg",
+          width: item.width,
+          height: item.height,
+        });
+      default:
+        return null;
+    }
+  };
+
   const renderUrlItem = (item: SavedUrl) => {
     const isEditing = editingUrlId === item.id;
 
@@ -668,6 +824,14 @@ function App() {
 
     return (
       <div key={item.id} className="saved-url-item">
+        <div className="item-type-indicator">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+          </svg>
+          Page
+        </div>
         <div className="url-row">
           <div className="url-info">
             {title && <div className="url-title">{title}</div>}
@@ -729,6 +893,15 @@ function App() {
 
     return (
       <div key={item.id} className="saved-text-item">
+        <div className="item-type-indicator">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+          </svg>
+          Note
+        </div>
         <div className="text-row">
           <div className="text-content">{item.content}</div>
           <button className="edit-btn" onClick={() => startEditingText(item)}>
@@ -829,6 +1002,13 @@ function App() {
 
     return (
       <div key={item.id} className="saved-tagset-item">
+        <div className="item-type-indicator">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+            <line x1="7" y1="7" x2="7.01" y2="7"></line>
+          </svg>
+          Tag Set
+        </div>
         <div className="tagset-row">
           <div className="tagset-tags">
             {item.tags.map((tag) => (
@@ -842,6 +1022,75 @@ function App() {
           </button>
         </div>
         <div className="saved-tagset-date">
+          {new Date(item.saved_at).toLocaleDateString()}
+        </div>
+      </div>
+    );
+  };
+
+  const deleteImage = async (id: string) => {
+    try {
+      await invoke("delete_url", { id }); // delete_url works for all item types
+      await loadSavedImages();
+    } catch (error) {
+      console.error("Failed to delete image:", error);
+    }
+  };
+
+  const renderImageItem = (item: SavedImage) => {
+    const sourceUrl = (item.metadata as Record<string, unknown>)?.sourceUrl as string | undefined;
+    const dimensions = item.width && item.height ? `${item.width}×${item.height}` : null;
+
+    return (
+      <div key={item.id} className="saved-image-item">
+        <div className="item-type-indicator">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <circle cx="8.5" cy="8.5" r="1.5"></circle>
+            <polyline points="21 15 16 10 5 21"></polyline>
+          </svg>
+          Image
+        </div>
+        <div className="image-row">
+          <div className="image-preview">
+            {item.thumbnail ? (
+              <img
+                src={`data:image/jpeg;base64,${item.thumbnail}`}
+                alt="Preview"
+                className="image-thumbnail"
+              />
+            ) : (
+              <div className="image-placeholder">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                  <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                  <polyline points="21 15 16 10 5 21"></polyline>
+                </svg>
+              </div>
+            )}
+          </div>
+          <div className="image-info">
+            {sourceUrl && (
+              <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="image-source">
+                {sourceUrl}
+              </a>
+            )}
+            {dimensions && <div className="image-dimensions">{dimensions}</div>}
+          </div>
+          <button className="delete-btn small" onClick={() => deleteImage(item.id)}>
+            Delete
+          </button>
+        </div>
+        {item.tags.length > 0 && (
+          <div className="saved-image-tags">
+            {item.tags.map((tag) => (
+              <span key={tag} className="saved-image-tag">
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="saved-image-date">
           {new Date(item.saved_at).toLocaleDateString()}
         </div>
       </div>
@@ -931,7 +1180,7 @@ function App() {
               onClick={syncToWebhook}
               disabled={!webhookUrl || isSyncing}
             >
-              {isSyncing ? "Syncing..." : lastSync ? "Sync Now" : `Sync All Items (${savedUrls.length + savedTexts.length + savedTagsets.length})`}
+              {isSyncing ? "Syncing..." : lastSync ? "Sync Now" : `Sync All Items (${savedUrls.length + savedTexts.length + savedTagsets.length + savedImages.length})`}
             </button>
 
             {syncMessage && (
@@ -945,10 +1194,63 @@ function App() {
     );
   }
 
+  const unifiedItems = getUnifiedItems();
+  const totalCount = savedUrls.length + savedTexts.length + savedTagsets.length + savedImages.length;
+
   return (
     <div className="app">
       <header>
         <h1>Peek</h1>
+        <div className="filter-icons">
+          <button
+            className={`filter-btn ${activeFilters.has("page") ? "active" : ""}`}
+            onClick={() => toggleFilter("page")}
+            title="Pages"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+            </svg>
+            <span className="filter-count">{savedUrls.length}</span>
+          </button>
+          <button
+            className={`filter-btn ${activeFilters.has("text") ? "active" : ""}`}
+            onClick={() => toggleFilter("text")}
+            title="Notes"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+            </svg>
+            <span className="filter-count">{savedTexts.length}</span>
+          </button>
+          <button
+            className={`filter-btn ${activeFilters.has("tagset") ? "active" : ""}`}
+            onClick={() => toggleFilter("tagset")}
+            title="Tag Sets"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+              <line x1="7" y1="7" x2="7.01" y2="7"></line>
+            </svg>
+            <span className="filter-count">{savedTagsets.length}</span>
+          </button>
+          <button
+            className={`filter-btn ${activeFilters.has("image") ? "active" : ""}`}
+            onClick={() => toggleFilter("image")}
+            title="Images"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <circle cx="8.5" cy="8.5" r="1.5"></circle>
+              <polyline points="21 15 16 10 5 21"></polyline>
+            </svg>
+            <span className="filter-count">{savedImages.length}</span>
+          </button>
+        </div>
         <button className="header-btn settings-btn" onClick={() => setShowSettings(true)}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="3"></circle>
@@ -957,144 +1259,114 @@ function App() {
         </button>
       </header>
 
-      <nav className="tab-nav">
-        <button
-          className={`tab-btn ${activeTab === "page" ? "active" : ""}`}
-          onClick={() => setActiveTab("page")}
-        >
-          Pages <span className="tab-count">({savedUrls.length})</span>
-        </button>
-        <button
-          className={`tab-btn ${activeTab === "text" ? "active" : ""}`}
-          onClick={() => setActiveTab("text")}
-        >
-          Notes <span className="tab-count">({savedTexts.length})</span>
-        </button>
-        <button
-          className={`tab-btn ${activeTab === "tagset" ? "active" : ""}`}
-          onClick={() => setActiveTab("tagset")}
-        >
-          Tags <span className="tab-count">({savedTagsets.length})</span>
-        </button>
-      </nav>
-
       <main className="saved-view">
-        {/* Pages Tab */}
-        {activeTab === "page" && (
-          <div className="saved-urls-list">
-            {savedUrls.length === 0 ? (
-              <div className="empty-state">
-                <p>No saved pages yet.</p>
-                <p>Share a URL from any app to get started!</p>
+        {/* Quick add buttons */}
+        <div className="quick-add-bar">
+          <button
+            className={`quick-add-btn ${showAddForm === "note" ? "active" : ""}`}
+            onClick={() => setShowAddForm(showAddForm === "note" ? null : "note")}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            Note
+          </button>
+          <button
+            className={`quick-add-btn ${showAddForm === "tagset" ? "active" : ""}`}
+            onClick={() => setShowAddForm(showAddForm === "tagset" ? null : "tagset")}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            Tag Set
+          </button>
+        </div>
+
+        {/* Note form */}
+        {showAddForm === "note" && (
+          <div className="quick-add-form">
+            <textarea
+              className="new-text-input"
+              value={newTextContent}
+              onChange={(e) => setNewTextContent(e.target.value)}
+              placeholder="Add text with #hashtags..."
+              rows={3}
+            />
+            {newTextTags.size > 0 && (
+              <div className="selected-new-tags" style={{ marginTop: '0.5rem' }}>
+                {Array.from(newTextTags).sort().map((tag) => (
+                  <span key={tag} className="new-tagset-tag">
+                    {tag}
+                    <button onClick={() => toggleNewTextTag(tag)}>&times;</button>
+                  </span>
+                ))}
               </div>
-            ) : (
-              savedUrls.map((item) => renderUrlItem(item))
             )}
+            {allTags.length > 0 && (
+              <div className="all-tags-list" style={{ marginTop: '0.75rem' }}>
+                {allTags.filter((t) => !newTextTags.has(t.name)).slice(0, 10).map((tag) => (
+                  <span
+                    key={tag.name}
+                    className="tag-chip"
+                    onClick={() => toggleNewTextTag(tag.name)}
+                  >
+                    {tag.name}
+                  </span>
+                ))}
+              </div>
+            )}
+            <button
+              className="save-text-btn"
+              onClick={() => {
+                saveNewText();
+                setShowAddForm(null);
+              }}
+              disabled={!newTextContent.trim()}
+            >
+              Save Note
+            </button>
           </div>
         )}
 
-        {/* Notes Tab */}
-        {activeTab === "text" && (
-          <div className="saved-texts-list">
-            {/* New text form */}
-            <div className="new-text-form">
-              <textarea
-                className="new-text-input"
-                value={newTextContent}
-                onChange={(e) => setNewTextContent(e.target.value)}
-                placeholder="Add text with #hashtags..."
-                rows={3}
-              />
-              {newTextTags.size > 0 && (
-                <div className="selected-new-tags" style={{ marginTop: '0.5rem' }}>
-                  {Array.from(newTextTags).sort().map((tag) => (
-                    <span key={tag} className="new-tagset-tag">
-                      {tag}
-                      <button onClick={() => toggleNewTextTag(tag)}>&times;</button>
-                    </span>
-                  ))}
-                </div>
+        {/* Tagset form */}
+        {showAddForm === "tagset" && (
+          <div className="quick-add-form">
+            <div className="selected-new-tags">
+              {newTagsetTags.size === 0 ? (
+                <span className="no-tags-hint">Select or add tags below</span>
+              ) : (
+                Array.from(newTagsetTags).sort().map((tag) => (
+                  <span key={tag} className="new-tagset-tag">
+                    {tag}
+                    <button onClick={() => toggleNewTagsetTag(tag)}>&times;</button>
+                  </span>
+                ))
               )}
-              {allTags.length > 0 && (
-                <div className="all-tags-list" style={{ marginTop: '0.75rem' }}>
-                  {allTags.filter((t) => !newTextTags.has(t.name)).map((tag) => (
-                    <span
-                      key={tag.name}
-                      className="tag-chip"
-                      onClick={() => toggleNewTextTag(tag.name)}
-                    >
-                      {tag.name}
-                    </span>
-                  ))}
-                </div>
-              )}
-              <button
-                className="save-text-btn"
-                onClick={saveNewText}
-                disabled={!newTextContent.trim()}
-              >
-                Save
-              </button>
             </div>
-
-            {savedTexts.length === 0 ? (
-              <div className="empty-state">
-                <p>No saved text yet.</p>
-                <p>Add text with #hashtags above!</p>
-              </div>
-            ) : (
-              savedTexts.map((item) => renderTextItem(item))
-            )}
-          </div>
-        )}
-
-        {/* Tags Tab */}
-        {activeTab === "tagset" && (
-          <div className="saved-tagsets-list">
-            {/* New tagset form */}
-            <div className="new-tagset-form">
-              <div className="selected-new-tags">
-                {newTagsetTags.size === 0 ? (
-                  <span className="no-tags-hint">Select or add tags below</span>
-                ) : (
-                  Array.from(newTagsetTags).sort().map((tag) => (
-                    <span key={tag} className="new-tagset-tag">
-                      {tag}
-                      <button onClick={() => toggleNewTagsetTag(tag)}>&times;</button>
-                    </span>
-                  ))
-                )}
-              </div>
-              <div className="new-tag-input">
-                <input
-                  type="text"
-                  value={newTagsetInput}
-                  onChange={(e) => setNewTagsetInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      addNewTagsetTag();
-                    }
-                  }}
-                  placeholder="New tag..."
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                />
-                <button onClick={addNewTagsetTag} disabled={!newTagsetInput.trim()}>
-                  Add
-                </button>
-              </div>
-              <button
-                className="save-tagset-btn"
-                onClick={saveNewTagset}
-                disabled={newTagsetTags.size === 0 && !newTagsetInput.trim()}
-              >
-                Save Tag Set
+            <div className="new-tag-input">
+              <input
+                type="text"
+                value={newTagsetInput}
+                onChange={(e) => setNewTagsetInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addNewTagsetTag();
+                  }
+                }}
+                placeholder="New tag..."
+                autoCapitalize="none"
+                autoCorrect="off"
+              />
+              <button onClick={addNewTagsetTag} disabled={!newTagsetInput.trim()}>
+                Add
               </button>
             </div>
             {allTags.length > 0 && (
-              <div className="tagset-tag-cloud">
-                {allTags.filter((t) => !newTagsetTags.has(t.name)).map((tag) => (
+              <div className="all-tags-list" style={{ marginTop: '0.75rem' }}>
+                {allTags.filter((t) => !newTagsetTags.has(t.name)).slice(0, 10).map((tag) => (
                   <span
                     key={tag.name}
                     className="tag-chip"
@@ -1105,17 +1377,34 @@ function App() {
                 ))}
               </div>
             )}
-
-            {savedTagsets.length === 0 ? (
-              <div className="empty-state">
-                <p>No saved tag sets yet.</p>
-                <p>Create a tag set above!</p>
-              </div>
-            ) : (
-              savedTagsets.map((item) => renderTagsetItem(item))
-            )}
+            <button
+              className="save-tagset-btn"
+              onClick={() => {
+                saveNewTagset();
+                setShowAddForm(null);
+              }}
+              disabled={newTagsetTags.size === 0 && !newTagsetInput.trim()}
+            >
+              Save Tag Set
+            </button>
           </div>
         )}
+
+        <div className="unified-list">
+          {totalCount === 0 ? (
+            <div className="empty-state">
+              <p>No saved items yet.</p>
+              <p>Share a URL from any app to get started!</p>
+            </div>
+          ) : unifiedItems.length === 0 ? (
+            <div className="empty-state">
+              <p>No items match your filters.</p>
+              <p>Click the icons above to show different types.</p>
+            </div>
+          ) : (
+            unifiedItems.map((item) => renderUnifiedItem(item))
+          )}
+        </div>
       </main>
     </div>
   );

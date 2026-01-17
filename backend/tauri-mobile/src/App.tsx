@@ -92,22 +92,22 @@ function App() {
   const [newTagInput, setNewTagInput] = useState("");
 
   // Text creation/editing state
-  const [newTextContent, setNewTextContent] = useState("");
-  const [newTextTags, setNewTextTags] = useState<Set<string>>(new Set());
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [editingTextContent, setEditingTextContent] = useState("");
 
-  // Tagset creation/editing state
-  const [newTagsetTags, setNewTagsetTags] = useState<Set<string>>(new Set());
-  const [newTagsetInput, setNewTagsetInput] = useState("");
+  // Tagset editing state
   const [editingTagsetId, setEditingTagsetId] = useState<string | null>(null);
   const [editingTagsetTags, setEditingTagsetTags] = useState<Set<string>>(new Set());
   const [editingTagsetInput, setEditingTagsetInput] = useState("");
 
+  // Unified add input state
+  const [addInputText, setAddInputText] = useState("");
+  const [addInputTags, setAddInputTags] = useState<Set<string>>(new Set());
+  const [addInputExpanded, setAddInputExpanded] = useState(false);
+
   // UI state
   const [isDark, setIsDark] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [showAddForm, setShowAddForm] = useState<"note" | "tagset" | null>(null);
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookUrlInput, setWebhookUrlInput] = useState("");
   const [webhookApiKey, setWebhookApiKey] = useState("");
@@ -421,31 +421,70 @@ function App() {
     }
   };
 
-  // Text functions
-  const toggleNewTextTag = (tagName: string) => {
-    const newTags = new Set(newTextTags);
+  // Unified add input functions
+  const toggleAddInputTag = (tagName: string) => {
+    const newTags = new Set(addInputTags);
     if (newTags.has(tagName)) {
       newTags.delete(tagName);
     } else {
       newTags.add(tagName);
     }
-    setNewTextTags(newTags);
+    setAddInputTags(newTags);
   };
 
-  const saveNewText = async () => {
-    if (!newTextContent.trim()) return;
+  const resetAddInput = () => {
+    setAddInputText("");
+    setAddInputTags(new Set());
+    setAddInputExpanded(false);
+  };
 
-    try {
-      // Pass extra tags that aren't in the text content
-      const extraTags = Array.from(newTextTags);
-      await invoke("save_text", { content: newTextContent, extra_tags: extraTags });
-      setNewTextContent("");
-      setNewTextTags(new Set());
-      await loadSavedTexts();
-      await loadAllTags();
-    } catch (error) {
-      console.error("Failed to save text:", error);
+  const saveAddInput = async () => {
+    const text = addInputText.trim();
+    const tags = Array.from(addInputTags);
+
+    // Detect type based on content
+    const isUrl = text.startsWith("http://") || text.startsWith("https://");
+
+    if (isUrl) {
+      // Save as URL
+      try {
+        await invoke("save_url", { url: text, tags });
+        resetAddInput();
+        await loadSavedUrls();
+        await loadAllTags();
+      } catch (error) {
+        console.error("Failed to save URL:", error);
+      }
+    } else if (text) {
+      // Save as text (note)
+      try {
+        await invoke("save_text", { content: text, extra_tags: tags });
+        resetAddInput();
+        await loadSavedTexts();
+        await loadAllTags();
+      } catch (error) {
+        console.error("Failed to save text:", error);
+      }
+    } else if (tags.length > 0) {
+      // Save as tagset (tags only, no text)
+      try {
+        await invoke("save_tagset", { tags });
+        resetAddInput();
+        await loadSavedTagsets();
+        await loadAllTags();
+      } catch (error) {
+        console.error("Failed to save tagset:", error);
+      }
     }
+  };
+
+  // Detect what type the input would create
+  const getAddInputType = (): "url" | "text" | "tagset" | null => {
+    const text = addInputText.trim();
+    if (text.startsWith("http://") || text.startsWith("https://")) return "url";
+    if (text) return "text";
+    if (addInputTags.size > 0) return "tagset";
+    return null;
   };
 
   const startEditingText = (item: SavedText) => {
@@ -484,56 +523,7 @@ function App() {
     }
   };
 
-  // Tagset functions
-  const toggleNewTagsetTag = (tagName: string) => {
-    const newTags = new Set(newTagsetTags);
-    if (newTags.has(tagName)) {
-      newTags.delete(tagName);
-    } else {
-      newTags.add(tagName);
-    }
-    setNewTagsetTags(newTags);
-  };
-
-  const addNewTagsetTag = () => {
-    const newTags = new Set(newTagsetTags);
-    const parts = newTagsetInput.split(",");
-    for (const part of parts) {
-      const trimmed = part.trim().toLowerCase();
-      if (trimmed) {
-        newTags.add(trimmed);
-      }
-    }
-    setNewTagsetTags(newTags);
-    setNewTagsetInput("");
-  };
-
-  const saveNewTagset = async () => {
-    // Include any text in the input field
-    const finalTags = new Set(newTagsetTags);
-    if (newTagsetInput.trim()) {
-      const parts = newTagsetInput.split(",");
-      for (const part of parts) {
-        const trimmed = part.trim().toLowerCase();
-        if (trimmed) {
-          finalTags.add(trimmed);
-        }
-      }
-    }
-
-    if (finalTags.size === 0) return;
-
-    try {
-      await invoke("save_tagset", { tags: Array.from(finalTags) });
-      setNewTagsetTags(new Set());
-      setNewTagsetInput("");
-      await loadSavedTagsets();
-      await loadAllTags();
-    } catch (error) {
-      console.error("Failed to save tagset:", error);
-    }
-  };
-
+  // Tagset editing functions
   const startEditingTagset = (item: SavedTagset) => {
     setEditingTagsetId(item.id);
     setEditingTagsetTags(new Set(item.tags));
@@ -1260,135 +1250,69 @@ function App() {
       </header>
 
       <main className="saved-view">
-        {/* Quick add buttons */}
-        <div className="quick-add-bar">
-          <button
-            className={`quick-add-btn ${showAddForm === "note" ? "active" : ""}`}
-            onClick={() => setShowAddForm(showAddForm === "note" ? null : "note")}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-            Note
-          </button>
-          <button
-            className={`quick-add-btn ${showAddForm === "tagset" ? "active" : ""}`}
-            onClick={() => setShowAddForm(showAddForm === "tagset" ? null : "tagset")}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-            Tag Set
-          </button>
-        </div>
-
-        {/* Note form */}
-        {showAddForm === "note" && (
-          <div className="quick-add-form">
-            <textarea
-              className="new-text-input"
-              value={newTextContent}
-              onChange={(e) => setNewTextContent(e.target.value)}
-              placeholder="Add text with #hashtags..."
-              rows={3}
+        {/* Unified add input */}
+        <div className={`unified-add-input ${addInputExpanded ? "expanded" : ""}`}>
+          {!addInputExpanded ? (
+            <input
+              type="text"
+              className="add-input-collapsed"
+              placeholder="Add note, URL, or tags..."
+              value={addInputText}
+              onChange={(e) => setAddInputText(e.target.value)}
+              onFocus={() => setAddInputExpanded(true)}
+              autoCapitalize="none"
+              autoCorrect="off"
             />
-            {newTextTags.size > 0 && (
-              <div className="selected-new-tags" style={{ marginTop: '0.5rem' }}>
-                {Array.from(newTextTags).sort().map((tag) => (
-                  <span key={tag} className="new-tagset-tag">
-                    {tag}
-                    <button onClick={() => toggleNewTextTag(tag)}>&times;</button>
-                  </span>
-                ))}
-              </div>
-            )}
-            {allTags.length > 0 && (
-              <div className="all-tags-list" style={{ marginTop: '0.75rem' }}>
-                {allTags.filter((t) => !newTextTags.has(t.name)).slice(0, 10).map((tag) => (
-                  <span
-                    key={tag.name}
-                    className="tag-chip"
-                    onClick={() => toggleNewTextTag(tag.name)}
-                  >
-                    {tag.name}
-                  </span>
-                ))}
-              </div>
-            )}
-            <button
-              className="save-text-btn"
-              onClick={() => {
-                saveNewText();
-                setShowAddForm(null);
-              }}
-              disabled={!newTextContent.trim()}
-            >
-              Save Note
-            </button>
-          </div>
-        )}
-
-        {/* Tagset form */}
-        {showAddForm === "tagset" && (
-          <div className="quick-add-form">
-            <div className="selected-new-tags">
-              {newTagsetTags.size === 0 ? (
-                <span className="no-tags-hint">Select or add tags below</span>
-              ) : (
-                Array.from(newTagsetTags).sort().map((tag) => (
-                  <span key={tag} className="new-tagset-tag">
-                    {tag}
-                    <button onClick={() => toggleNewTagsetTag(tag)}>&times;</button>
-                  </span>
-                ))
-              )}
-            </div>
-            <div className="new-tag-input">
-              <input
-                type="text"
-                value={newTagsetInput}
-                onChange={(e) => setNewTagsetInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    addNewTagsetTag();
-                  }
-                }}
-                placeholder="New tag..."
-                autoCapitalize="none"
-                autoCorrect="off"
+          ) : (
+            <>
+              <textarea
+                className="add-input-expanded"
+                placeholder="Enter text, URL, or just select tags..."
+                value={addInputText}
+                onChange={(e) => setAddInputText(e.target.value)}
+                rows={3}
+                autoFocus
               />
-              <button onClick={addNewTagsetTag} disabled={!newTagsetInput.trim()}>
-                Add
-              </button>
-            </div>
-            {allTags.length > 0 && (
-              <div className="all-tags-list" style={{ marginTop: '0.75rem' }}>
-                {allTags.filter((t) => !newTagsetTags.has(t.name)).slice(0, 10).map((tag) => (
-                  <span
-                    key={tag.name}
-                    className="tag-chip"
-                    onClick={() => toggleNewTagsetTag(tag.name)}
-                  >
-                    {tag.name}
-                  </span>
-                ))}
+              {addInputTags.size > 0 && (
+                <div className="add-input-selected-tags">
+                  {Array.from(addInputTags).sort().map((tag) => (
+                    <span key={tag} className="add-input-tag">
+                      {tag}
+                      <button onClick={() => toggleAddInputTag(tag)}>&times;</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              {allTags.length > 0 && (
+                <div className="add-input-available-tags">
+                  {allTags.filter((t) => !addInputTags.has(t.name)).slice(0, 12).map((tag) => (
+                    <span
+                      key={tag.name}
+                      className="tag-chip"
+                      onClick={() => toggleAddInputTag(tag.name)}
+                    >
+                      {tag.name}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="add-input-actions">
+                <button className="add-input-cancel" onClick={resetAddInput}>
+                  Cancel
+                </button>
+                <button
+                  className="add-input-save"
+                  onClick={saveAddInput}
+                  disabled={!getAddInputType()}
+                >
+                  {getAddInputType() === "url" ? "Save URL" :
+                   getAddInputType() === "text" ? "Save Note" :
+                   getAddInputType() === "tagset" ? "Save Tags" : "Save"}
+                </button>
               </div>
-            )}
-            <button
-              className="save-tagset-btn"
-              onClick={() => {
-                saveNewTagset();
-                setShowAddForm(null);
-              }}
-              disabled={newTagsetTags.size === 0 && !newTagsetInput.trim()}
-            >
-              Save Tag Set
-            </button>
-          </div>
-        )}
+            </>
+          )}
+        </div>
 
         <div className="unified-list">
           {totalCount === 0 ? (

@@ -1009,68 +1009,171 @@ body.dark .filter-btn:not(.active):hover {
   color: #888;
 }
 
-/* Quick Add Bar */
-.quick-add-bar {
-  display: flex;
-  gap: 0.5rem;
+/* Unified Add Input */
+.unified-add-input {
   margin-bottom: 1rem;
 }
 
-.quick-add-btn {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.4rem 0.7rem;
-  background: transparent;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  cursor: pointer;
+.add-input-collapsed {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  font-size: 16px;
   font-family: inherit;
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: #555;
+  background: white;
+  box-sizing: border-box;
   transition: all 0.15s;
 }
 
-.quick-add-btn.active {
-  background: #007aff;
-  color: white;
+.add-input-collapsed:focus {
+  outline: none;
   border-color: #007aff;
 }
 
-.quick-add-btn:not(.active):hover {
-  border-color: #007aff;
-  color: #007aff;
-}
-
-body.dark .quick-add-btn {
-  background: transparent;
-  border-color: #555;
-  color: #999;
-}
-
-body.dark .quick-add-btn.active {
-  background: #0a84ff;
-  color: white;
-  border-color: #0a84ff;
-}
-
-body.dark .quick-add-btn:not(.active):hover {
-  border-color: #0a84ff;
-  color: #0a84ff;
-}
-
-/* Quick Add Form */
-.quick-add-form {
+.unified-add-input.expanded {
   background: white;
   border-radius: 12px;
   padding: 1rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  margin-bottom: 1rem;
 }
 
-body.dark .quick-add-form {
+.add-input-expanded {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 16px;
+  font-family: inherit;
+  resize: none;
+  min-height: 80px;
+  box-sizing: border-box;
+}
+
+.add-input-expanded:focus {
+  outline: none;
+  border-color: #007aff;
+}
+
+.add-input-selected-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.add-input-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.35rem 0.5rem 0.35rem 0.75rem;
+  background: #007aff;
+  color: white;
+  border-radius: 16px;
+  font-size: 0.85rem;
+}
+
+.add-input-tag button {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.8;
+}
+
+.add-input-tag button:hover {
+  opacity: 1;
+}
+
+.add-input-available-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.add-input-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.add-input-cancel {
+  flex: 1;
+  padding: 0.75rem;
+  background: #e0e0e0;
+  color: #333;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.add-input-save {
+  flex: 2;
+  padding: 0.75rem;
+  background: #007aff;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.add-input-save:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+/* Dark mode for unified add input */
+body.dark .add-input-collapsed {
   background: #2c2c2e;
+  border-color: #444;
+  color: #f6f6f6;
+}
+
+body.dark .add-input-collapsed:focus {
+  border-color: #0a84ff;
+}
+
+body.dark .unified-add-input.expanded {
+  background: #2c2c2e;
+}
+
+body.dark .add-input-expanded {
+  background: #1c1c1e;
+  border-color: #444;
+  color: #f6f6f6;
+}
+
+body.dark .add-input-expanded:focus {
+  border-color: #0a84ff;
+}
+
+body.dark .add-input-tag {
+  background: #0a84ff;
+}
+
+body.dark .add-input-cancel {
+  background: #3a3a3c;
+  color: #f6f6f6;
+}
+
+body.dark .add-input-save {
+  background: #0a84ff;
+}
+
+body.dark .add-input-save:disabled {
+  background: #555;
 }
 
 /* Unified List */

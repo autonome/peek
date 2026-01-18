@@ -122,6 +122,19 @@ function App() {
   // Scroll ref for scroll-to-top
   const mainRef = useRef<HTMLElement>(null);
 
+  // Ref for textarea to focus without scroll
+  const addTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Focus textarea when expanded, but prevent iOS scroll
+  useEffect(() => {
+    if (addInputExpanded && addTextareaRef.current) {
+      // Small delay to let React render the textarea first
+      setTimeout(() => {
+        addTextareaRef.current?.focus({ preventScroll: true });
+      }, 10);
+    }
+  }, [addInputExpanded]);
+
   // Delete confirmation state
   const [pendingDelete, setPendingDelete] = useState<{ id: string; type: ItemType } | null>(null);
 
@@ -1891,12 +1904,12 @@ function App() {
             <>
               <div className="expandable-card-input-row">
                 <textarea
+                  ref={addTextareaRef}
                   className="expandable-card-input expanded-input"
                   placeholder="Enter text, URL, or just select tags..."
                   value={addInputText}
                   onChange={(e) => setAddInputText(e.target.value)}
                   rows={3}
-                  autoFocus
                 />
               </div>
 

@@ -122,6 +122,9 @@ function App() {
   // Scroll ref for scroll-to-top
   const mainRef = useRef<HTMLElement>(null);
 
+  // Delete confirmation state
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; type: ItemType } | null>(null);
+
   // UI state
   const [isDark, setIsDark] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -370,7 +373,6 @@ function App() {
   };
 
   const deleteUrl = async (id: string) => {
-    if (!confirm("Delete this page?")) return;
     console.log("[Frontend] deleteUrl called for id:", id);
     try {
       await invoke("delete_url", { id });
@@ -457,12 +459,14 @@ function App() {
 
   // Unified add input functions
   const toggleAddInputTag = (tagName: string) => {
+    console.log("[toggleAddInputTag] toggling tag:", tagName);
     const newTags = new Set(addInputTags);
     if (newTags.has(tagName)) {
       newTags.delete(tagName);
     } else {
       newTags.add(tagName);
     }
+    console.log("[toggleAddInputTag] new tags:", Array.from(newTags));
     setAddInputTags(newTags);
   };
 
@@ -576,6 +580,7 @@ function App() {
 
     // Include any text in the new tag field
     const finalTags = new Set(addInputTags);
+    console.log("[saveAddInput] addInputTags:", Array.from(addInputTags));
     if (addInputNewTag.trim()) {
       const parts = addInputNewTag.split(",");
       for (const part of parts) {
@@ -586,6 +591,7 @@ function App() {
       }
     }
     const tags = Array.from(finalTags);
+    console.log("[saveAddInput] final tags to save:", tags);
 
     // Detect type based on content
     const isUrl = text.startsWith("http://") || text.startsWith("https://");
@@ -698,7 +704,6 @@ function App() {
   };
 
   const deleteText = async (id: string) => {
-    if (!confirm("Delete this note?")) return;
     try {
       await invoke("delete_url", { id }); // delete_url works for all item types
       await loadSavedTexts();
@@ -778,7 +783,6 @@ function App() {
   };
 
   const deleteTagset = async (id: string) => {
-    if (!confirm("Delete this tag set?")) return;
     try {
       await invoke("delete_url", { id }); // delete_url works for all item types
       await loadSavedTagsets();
@@ -956,25 +960,22 @@ function App() {
       const unusedTags = editingUrlTags.filter((tag) => !editingTags.has(tag.name));
 
       return (
-        <div className="edit-modal-overlay" onClick={(e) => e.target === e.currentTarget && cancelEditing()}>
-          <div className="edit-modal">
-            <div className="edit-modal-header">
-              <h2>Edit Page</h2>
+        <div className="edit-overlay" onClick={(e) => e.target === e.currentTarget && cancelEditing()}>
+          <div className="expandable-card expanded">
+            <div className="expandable-card-input-row">
+              <input
+                type="url"
+                className="expandable-card-input"
+                value={editingUrlValue}
+                onChange={(e) => setEditingUrlValue(e.target.value)}
+                placeholder="URL"
+                autoCapitalize="none"
+                autoCorrect="off"
+              />
             </div>
-            <div className="edit-modal-content">
-              <div className="edit-section">
-                <input
-                  type="url"
-                  className="edit-url-input"
-                  value={editingUrlValue}
-                  onChange={(e) => setEditingUrlValue(e.target.value)}
-                  placeholder="URL"
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                />
-              </div>
 
-              <div className="edit-section">
+            <div className="expandable-card-scroll">
+              <div className="expandable-card-section">
                 <label className="edit-label">Selected Tags</label>
                 <div className="editing-tags">
                   {editingTags.size === 0 ? (
@@ -990,7 +991,7 @@ function App() {
                 </div>
               </div>
 
-              <div className="edit-section">
+              <div className="expandable-card-section">
                 <div className="new-tag-input">
                   <input
                     type="text"
@@ -1008,7 +1009,7 @@ function App() {
               </div>
 
               {unusedTags.length > 0 && (
-                <div className="edit-section">
+                <div className="expandable-card-section">
                   <label className="edit-label">Available Tags</label>
                   <div className="all-tags-list">
                     {unusedTags.map((tag) => (
@@ -1024,8 +1025,9 @@ function App() {
                 </div>
               )}
             </div>
-            <div className="edit-modal-buttons">
-              <button className="delete-btn" onClick={() => deleteUrl(editingUrlId)}>
+
+            <div className="expandable-card-buttons">
+              <button className="delete-btn" onClick={() => requestDelete(editingUrlId, "page")}>
                 Delete
               </button>
               <button className="cancel-btn" onClick={cancelEditing}>
@@ -1045,23 +1047,22 @@ function App() {
       const unusedTags = allTags.filter((tag) => !editingTextTags.has(tag.name));
 
       return (
-        <div className="edit-modal-overlay" onClick={(e) => e.target === e.currentTarget && cancelEditingText()}>
-          <div className="edit-modal">
-            <div className="edit-modal-header">
-              <h2>Edit Note</h2>
+        <div className="edit-overlay" onClick={(e) => e.target === e.currentTarget && cancelEditingText()}>
+          <div className="expandable-card expanded">
+            <div className="expandable-card-input-row">
+              <textarea
+                className="expandable-card-input expanded-input"
+                value={editingTextContent}
+                onChange={(e) => setEditingTextContent(e.target.value)}
+                placeholder="Note text..."
+                rows={3}
+                autoCapitalize="none"
+                autoCorrect="off"
+              />
             </div>
-            <div className="edit-modal-content">
-              <div className="edit-section">
-                <textarea
-                  className="edit-text-input"
-                  value={editingTextContent}
-                  onChange={(e) => setEditingTextContent(e.target.value)}
-                  placeholder="Note text..."
-                  rows={4}
-                />
-              </div>
 
-              <div className="edit-section">
+            <div className="expandable-card-scroll">
+              <div className="expandable-card-section">
                 <label className="edit-label">Selected Tags</label>
                 <div className="editing-tags">
                   {editingTextTags.size === 0 ? (
@@ -1077,7 +1078,7 @@ function App() {
                 </div>
               </div>
 
-              <div className="edit-section">
+              <div className="expandable-card-section">
                 <div className="new-tag-input">
                   <input
                     type="text"
@@ -1100,7 +1101,7 @@ function App() {
               </div>
 
               {unusedTags.length > 0 && (
-                <div className="edit-section">
+                <div className="expandable-card-section">
                   <label className="edit-label">Available Tags</label>
                   <div className="all-tags-list">
                     {unusedTags.map((tag) => (
@@ -1116,8 +1117,9 @@ function App() {
                 </div>
               )}
             </div>
-            <div className="edit-modal-buttons">
-              <button className="delete-btn" onClick={() => deleteText(editingTextId)}>
+
+            <div className="expandable-card-buttons">
+              <button className="delete-btn" onClick={() => requestDelete(editingTextId, "text")}>
                 Delete
               </button>
               <button className="cancel-btn" onClick={cancelEditingText}>
@@ -1137,13 +1139,10 @@ function App() {
       const unusedTags = allTags.filter((tag) => !editingTagsetTags.has(tag.name));
 
       return (
-        <div className="edit-modal-overlay" onClick={(e) => e.target === e.currentTarget && cancelEditingTagset()}>
-          <div className="edit-modal">
-            <div className="edit-modal-header">
-              <h2>Edit Tag Set</h2>
-            </div>
-            <div className="edit-modal-content">
-              <div className="edit-section">
+        <div className="edit-overlay" onClick={(e) => e.target === e.currentTarget && cancelEditingTagset()}>
+          <div className="expandable-card expanded">
+            <div className="expandable-card-scroll" style={{ paddingTop: '0.75rem' }}>
+              <div className="expandable-card-section">
                 <label className="edit-label">Selected Tags</label>
                 <div className="editing-tags">
                   {editingTagsetTags.size === 0 ? (
@@ -1159,7 +1158,7 @@ function App() {
                 </div>
               </div>
 
-              <div className="edit-section">
+              <div className="expandable-card-section">
                 <div className="new-tag-input">
                   <input
                     type="text"
@@ -1182,7 +1181,7 @@ function App() {
               </div>
 
               {unusedTags.length > 0 && (
-                <div className="edit-section">
+                <div className="expandable-card-section">
                   <label className="edit-label">Available Tags</label>
                   <div className="all-tags-list">
                     {unusedTags.map((tag) => (
@@ -1198,8 +1197,9 @@ function App() {
                 </div>
               )}
             </div>
-            <div className="edit-modal-buttons">
-              <button className="delete-btn" onClick={() => deleteTagset(editingTagsetId)}>
+
+            <div className="expandable-card-buttons">
+              <button className="delete-btn" onClick={() => requestDelete(editingTagsetId, "tagset")}>
                 Delete
               </button>
               <button className="cancel-btn" onClick={cancelEditingTagset}>
@@ -1223,13 +1223,10 @@ function App() {
       const title = metadata?.title as string | undefined;
 
       return (
-        <div className="edit-modal-overlay" onClick={(e) => e.target === e.currentTarget && cancelEditingImage()}>
-          <div className="edit-modal">
-            <div className="edit-modal-header">
-              <h2>Edit Image</h2>
-            </div>
-            <div className="edit-modal-content">
-              <div className="edit-section image-preview-section">
+        <div className="edit-overlay" onClick={(e) => e.target === e.currentTarget && cancelEditingImage()}>
+          <div className="expandable-card expanded">
+            <div className="expandable-card-scroll" style={{ paddingTop: '0.75rem' }}>
+              <div className="expandable-card-section image-preview-section">
                 {item.thumbnail ? (
                   <img
                     src={`data:image/jpeg;base64,${item.thumbnail}`}
@@ -1248,7 +1245,7 @@ function App() {
                 {title && <div className="edit-image-title">{title}</div>}
               </div>
 
-              <div className="edit-section">
+              <div className="expandable-card-section">
                 <label className="edit-label">Selected Tags</label>
                 <div className="editing-tags">
                   {editingImageTags.size === 0 ? (
@@ -1264,7 +1261,7 @@ function App() {
                 </div>
               </div>
 
-              <div className="edit-section">
+              <div className="expandable-card-section">
                 <div className="new-tag-input">
                   <input
                     type="text"
@@ -1287,7 +1284,7 @@ function App() {
               </div>
 
               {unusedTags.length > 0 && (
-                <div className="edit-section">
+                <div className="expandable-card-section">
                   <label className="edit-label">Available Tags</label>
                   <div className="all-tags-list">
                     {unusedTags.map((tag) => (
@@ -1303,8 +1300,9 @@ function App() {
                 </div>
               )}
             </div>
-            <div className="edit-modal-buttons">
-              <button className="delete-btn" onClick={() => deleteImage(editingImageId)}>
+
+            <div className="expandable-card-buttons">
+              <button className="delete-btn" onClick={() => requestDelete(editingImageId, "image")}>
                 Delete
               </button>
               <button className="cancel-btn" onClick={cancelEditingImage}>
@@ -1368,7 +1366,7 @@ function App() {
     const title = item.metadata?.title as string | undefined;
 
     return (
-      <div key={item.id} className="saved-item-card">
+      <div key={item.id} className="saved-item-card" onClick={() => startEditing(item)}>
         <div className="card-header">
           <div className="card-type-icon">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1377,23 +1375,19 @@ function App() {
               <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
             </svg>
           </div>
-          <a href={item.url} target="_blank" rel="noopener noreferrer" className="card-title">
-            {title || item.url}
-          </a>
-          <div className="card-actions">
-            <button className="icon-btn" onClick={() => startEditing(item)} title="Edit">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-              </svg>
-            </button>
-            <button className="icon-btn delete" onClick={() => deleteUrl(item.id)} title="Delete">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="3 6 5 6 21 6"></polyline>
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-              </svg>
-            </button>
-          </div>
+          <span className="card-title">{title || item.url}</span>
+          <button
+            className="card-delete-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              requestDelete(item.id, "page");
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+          </button>
         </div>
         <div className="card-footer">
           <div className="card-tags">
@@ -1416,7 +1410,7 @@ function App() {
     const summary = contentWithoutTags.split('\n')[0].slice(0, 100) || item.content.slice(0, 100);
 
     return (
-      <div key={item.id} className="saved-item-card">
+      <div key={item.id} className="saved-item-card" onClick={() => startEditingText(item)}>
         <div className="card-header">
           <div className="card-type-icon">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1427,20 +1421,18 @@ function App() {
             </svg>
           </div>
           <div className="card-title">{summary}</div>
-          <div className="card-actions">
-            <button className="icon-btn" onClick={() => startEditingText(item)} title="Edit">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-              </svg>
-            </button>
-            <button className="icon-btn delete" onClick={() => deleteText(item.id)} title="Delete">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="3 6 5 6 21 6"></polyline>
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-              </svg>
-            </button>
-          </div>
+          <button
+            className="card-delete-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              requestDelete(item.id, "text");
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+          </button>
         </div>
         <div className="card-footer">
           <div className="card-tags">
@@ -1458,7 +1450,7 @@ function App() {
 
   const renderTagsetItem = (item: SavedTagset) => {
     return (
-      <div key={item.id} className="saved-item-card">
+      <div key={item.id} className="saved-item-card" onClick={() => startEditingTagset(item)}>
         <div className="card-header">
           <div className="card-type-icon">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1467,20 +1459,18 @@ function App() {
             </svg>
           </div>
           <div className="card-title">{item.tags.join(', ')}</div>
-          <div className="card-actions">
-            <button className="icon-btn" onClick={() => startEditingTagset(item)} title="Edit">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-              </svg>
-            </button>
-            <button className="icon-btn delete" onClick={() => deleteTagset(item.id)} title="Delete">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="3 6 5 6 21 6"></polyline>
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-              </svg>
-            </button>
-          </div>
+          <button
+            className="card-delete-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              requestDelete(item.id, "tagset");
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+          </button>
         </div>
         <div className="card-footer">
           <div className="card-tags"></div>
@@ -1493,7 +1483,6 @@ function App() {
   };
 
   const deleteImage = async (id: string) => {
-    if (!confirm("Delete this image?")) return;
     try {
       await invoke("delete_url", { id }); // delete_url works for all item types
       await loadSavedImages();
@@ -1503,13 +1492,71 @@ function App() {
     }
   };
 
+  // Delete confirmation functions
+  const requestDelete = (id: string, type: ItemType) => {
+    setPendingDelete({ id, type });
+  };
+
+  const cancelDelete = () => {
+    setPendingDelete(null);
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+
+    const { id, type } = pendingDelete;
+    setPendingDelete(null);
+
+    switch (type) {
+      case "page":
+        await deleteUrl(id);
+        break;
+      case "text":
+        await deleteText(id);
+        break;
+      case "tagset":
+        await deleteTagset(id);
+        break;
+      case "image":
+        await deleteImage(id);
+        break;
+    }
+  };
+
+  const renderDeleteConfirmModal = () => {
+    if (!pendingDelete) return null;
+
+    const typeLabels: Record<ItemType, string> = {
+      page: "page",
+      text: "note",
+      tagset: "tag set",
+      image: "image",
+    };
+
+    return (
+      <div className="confirm-modal-overlay" onClick={cancelDelete}>
+        <div className="confirm-modal" onClick={(e) => e.stopPropagation()}>
+          <p>Delete this {typeLabels[pendingDelete.type]}?</p>
+          <div className="confirm-modal-buttons">
+            <button className="cancel-btn" onClick={cancelDelete}>
+              Cancel
+            </button>
+            <button className="delete-btn" onClick={confirmDelete}>
+              Delete
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderImageItem = (item: SavedImage) => {
     const metadata = item.metadata as Record<string, unknown> | undefined;
     const title = metadata?.title as string | undefined;
     const sourceUrl = metadata?.sourceUrl as string | undefined;
 
     return (
-      <div key={item.id} className="saved-item-card image-card">
+      <div key={item.id} className="saved-item-card image-card" onClick={() => startEditingImage(item)}>
         <div className="card-header">
           <div className="card-thumbnail">
             {item.thumbnail ? (
@@ -1526,20 +1573,18 @@ function App() {
             )}
           </div>
           <div className="card-title">{title || sourceUrl || "Image"}</div>
-          <div className="card-actions">
-            <button className="icon-btn" onClick={() => startEditingImage(item)} title="Edit">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-              </svg>
-            </button>
-            <button className="icon-btn delete" onClick={() => deleteImage(item.id)} title="Delete">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="3 6 5 6 21 6"></polyline>
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-              </svg>
-            </button>
-          </div>
+          <button
+            className="card-delete-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              requestDelete(item.id, "image");
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+          </button>
         </div>
         <div className="card-footer">
           <div className="card-tags">
@@ -1819,13 +1864,14 @@ function App() {
       </header>
 
       <main className="saved-view" ref={mainRef}>
-        {/* Unified add input */}
-        <div className={`unified-add-input ${addInputExpanded ? "expanded" : ""}`}>
+        {/* Quick add - expandable in place */}
+        <div className={`expandable-card ${addInputExpanded ? 'expanded' : ''}`}>
           {!addInputExpanded ? (
-            <div className="add-input-collapsed-row">
+            /* Collapsed: use input (not textarea) to avoid iOS cursor bug */
+            <div className="expandable-card-input-row">
               <input
                 type="text"
-                className="add-input-collapsed"
+                className="expandable-card-input"
                 placeholder="Add note, URL, or tags..."
                 value={addInputText}
                 onChange={(e) => setAddInputText(e.target.value)}
@@ -1841,54 +1887,83 @@ function App() {
               </button>
             </div>
           ) : (
+            /* Expanded: use textarea for multi-line */
             <>
-              <textarea
-                className="add-input-expanded"
-                placeholder="Enter text, URL, or just select tags..."
-                value={addInputText}
-                onChange={(e) => setAddInputText(e.target.value)}
-                rows={3}
-                autoFocus
-              />
-              <div className="new-tag-input">
-                <input
-                  type="text"
-                  value={addInputNewTag}
-                  onChange={(e) => setAddInputNewTag(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      addInputAddNewTag();
-                    }
-                  }}
-                  placeholder="Add new tag..."
-                  autoCapitalize="none"
-                  autoCorrect="off"
+              <div className="expandable-card-input-row">
+                <textarea
+                  className="expandable-card-input expanded-input"
+                  placeholder="Enter text, URL, or just select tags..."
+                  value={addInputText}
+                  onChange={(e) => setAddInputText(e.target.value)}
+                  rows={3}
+                  autoFocus
                 />
-                <button onClick={addInputAddNewTag} disabled={!addInputNewTag.trim()}>
-                  Add
-                </button>
               </div>
 
-              {allTags.length > 0 && (
-                <div className="add-input-available-tags">
-                  {allTags.map((tag) => (
-                    <span
-                      key={tag.name}
-                      className={`tag-chip ${addInputTags.has(tag.name) ? "selected" : ""}`}
-                      onClick={() => toggleAddInputTag(tag.name)}
-                    >
-                      {tag.name}
-                    </span>
-                  ))}
+              <div className="expandable-card-scroll">
+                <div className="expandable-card-section">
+                  <label className="edit-label">Selected Tags</label>
+                  <div className="editing-tags">
+                    {addInputTags.size === 0 ? (
+                      <span className="no-tags">No tags selected</span>
+                    ) : (
+                      Array.from(addInputTags).sort().map((tag) => (
+                        <span key={tag} className="editing-tag">
+                          {tag}
+                          <button onClick={() => toggleAddInputTag(tag)}>&times;</button>
+                        </span>
+                      ))
+                    )}
+                  </div>
                 </div>
-              )}
-              <div className="add-input-actions">
-                <button className="add-input-cancel" onClick={resetAddInput}>
+
+                <div className="expandable-card-section">
+                  <div className="new-tag-input">
+                    <input
+                      type="text"
+                      value={addInputNewTag}
+                      onChange={(e) => setAddInputNewTag(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          addInputAddNewTag();
+                        }
+                      }}
+                      placeholder="Add new tag..."
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                    />
+                    <button onClick={addInputAddNewTag} disabled={!addInputNewTag.trim()}>
+                      Add
+                    </button>
+                  </div>
+                </div>
+
+                {allTags.filter((tag) => !addInputTags.has(tag.name)).length > 0 && (
+                  <div className="expandable-card-section">
+                    <label className="edit-label">Available Tags</label>
+                    <div className="all-tags-list">
+                      {allTags.filter((tag) => !addInputTags.has(tag.name)).map((tag) => (
+                        <span
+                          key={tag.name}
+                          className="tag-chip"
+                          onClick={() => toggleAddInputTag(tag.name)}
+                        >
+                          {tag.name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Action buttons - always visible at bottom */}
+              <div className="expandable-card-buttons">
+                <button className="cancel-btn" onClick={resetAddInput}>
                   Cancel
                 </button>
                 <button
-                  className="add-input-save"
+                  className="save-btn"
                   onClick={saveAddInput}
                   disabled={!getAddInputType()}
                 >
@@ -1918,6 +1993,9 @@ function App() {
 
       {/* Edit modal overlay */}
       {renderEditModal()}
+
+      {/* Delete confirmation modal */}
+      {renderDeleteConfirmModal()}
     </div>
   );
 }

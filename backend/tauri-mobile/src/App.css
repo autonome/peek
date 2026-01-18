@@ -63,6 +63,7 @@ main.saved-view {
 header {
   background: #ffffff;
   padding: 0.75rem 1rem;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   position: sticky;
   top: 0;
@@ -290,6 +291,11 @@ main {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
   width: 100%;
   box-sizing: border-box;
+  cursor: pointer;
+}
+
+.saved-item-card:active {
+  background: #f5f5f5;
 }
 
 .card-header {
@@ -337,6 +343,25 @@ main {
 
 a.card-title {
   color: #007aff;
+}
+
+.card-delete-btn {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  padding: 0.25rem;
+  color: #999;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  margin-left: auto;
+}
+
+.card-delete-btn:active {
+  background: rgba(255, 59, 48, 0.1);
+  color: #ff3b30;
 }
 
 .card-actions {
@@ -790,6 +815,15 @@ body.dark .card-tag {
 
 body.dark .card-date {
   color: #666;
+}
+
+body.dark .card-delete-btn {
+  color: #666;
+}
+
+body.dark .card-delete-btn:active {
+  background: rgba(255, 69, 58, 0.2);
+  color: #ff453a;
 }
 
 body.dark .saved-url-tag {
@@ -1903,6 +1937,162 @@ body.dark .captured-image-preview {
   background: #2c2c2e;
 }
 
+/* Edit Overlay - for editing existing items */
+.edit-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 0.5rem;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 3.5rem);
+}
+
+.edit-overlay .expandable-card {
+  width: 100%;
+  max-width: 600px;
+  margin: 0;
+}
+
+body.dark .edit-overlay {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+/* Expandable Card - in-place expansion for quick-add and edit */
+.expandable-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Input row - stays in place */
+.expandable-card-input-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.25rem;
+  padding-right: 0.5rem;
+}
+
+/* Collapsed state: input element */
+.expandable-card-input {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-family: inherit;
+  background: transparent;
+  box-sizing: border-box;
+}
+
+.expandable-card-input:focus {
+  outline: none;
+}
+
+/* Expanded state: textarea element */
+textarea.expandable-card-input.expanded-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: none;
+  border-bottom: 1px solid #e0e0e0;
+  border-radius: 12px 12px 0 0;
+  font-size: 16px;
+  font-family: inherit;
+  resize: none;
+  min-height: 60px;
+  box-sizing: border-box;
+  background: transparent;
+}
+
+/* Scrollable content area */
+.expandable-card-scroll {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.5rem 1rem;
+  max-height: 40vh;
+  min-height: 0;
+}
+
+.expandable-card-section {
+  margin-bottom: 0.75rem;
+}
+
+.expandable-card-section:last-child {
+  margin-bottom: 0;
+}
+
+/* Action buttons - always visible at bottom */
+.expandable-card-buttons {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid #e8e8e8;
+  background: white;
+  flex-shrink: 0;
+}
+
+.expandable-card-buttons button {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+}
+
+.expandable-card-buttons .cancel-btn {
+  background: #e8e8e8;
+  color: #333;
+}
+
+.expandable-card-buttons .save-btn {
+  background: #007aff;
+  color: white;
+}
+
+.expandable-card-buttons .save-btn:disabled {
+  background: #ccc;
+  color: #888;
+}
+
+/* Dark mode */
+body.dark .expandable-card {
+  background: #2c2c2e;
+}
+
+body.dark .expandable-card-input {
+  color: #f6f6f6;
+}
+
+body.dark textarea.expandable-card-input.expanded-input {
+  border-bottom-color: #444;
+}
+
+body.dark .expandable-card-buttons {
+  background: #2c2c2e;
+  border-top-color: #444;
+}
+
+body.dark .expandable-card-buttons .cancel-btn {
+  background: #3a3a3c;
+  color: #f6f6f6;
+}
+
+body.dark .expandable-card-buttons .save-btn {
+  background: #0a84ff;
+}
+
 /* Edit Modal Overlay */
 .edit-modal-overlay {
   position: fixed;
@@ -2059,4 +2249,82 @@ body.dark .edit-modal-buttons .cancel-btn {
 
 body.dark .edit-modal-buttons .save-btn {
   background: #0a84ff;
+}
+
+/* Delete confirmation modal */
+.confirm-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 1rem;
+}
+
+.confirm-modal {
+  background: white;
+  border-radius: 16px;
+  padding: 1.5rem;
+  width: 100%;
+  max-width: 300px;
+  text-align: center;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.confirm-modal p {
+  font-size: 1rem;
+  margin-bottom: 1.25rem;
+  color: #333;
+}
+
+.confirm-modal-buttons {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.confirm-modal-buttons button {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+}
+
+.confirm-modal-buttons .cancel-btn {
+  background: #e8e8e8;
+  color: #333;
+}
+
+.confirm-modal-buttons .delete-btn {
+  background: #ff3b30;
+  color: white;
+}
+
+body.dark .confirm-modal-overlay {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+body.dark .confirm-modal {
+  background: #2c2c2e;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+body.dark .confirm-modal p {
+  color: #f6f6f6;
+}
+
+body.dark .confirm-modal-buttons .cancel-btn {
+  background: #3a3a3c;
+  color: #f6f6f6;
+}
+
+body.dark .confirm-modal-buttons .delete-btn {
+  background: #ff453a;
 }

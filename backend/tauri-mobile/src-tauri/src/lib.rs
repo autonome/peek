@@ -1121,25 +1121,26 @@ async fn update_url_tags(id: String, tags: Vec<String>) -> Result<(), String> {
 
 /// Save a text item with hashtags auto-parsed as tags
 #[tauri::command]
-async fn save_text(content: String, extra_tags: Option<Vec<String>>, metadata: Option<serde_json::Value>) -> Result<(), String> {
+async fn save_text(content: String, tags: Option<Vec<String>>, metadata: Option<serde_json::Value>) -> Result<(), String> {
     println!("[Rust] save_text called with content: {}", &content[..content.len().min(50)]);
+    println!("[Rust] save_text received tags: {:?}", tags);
 
     let conn = get_connection()?;
     let now = Utc::now().to_rfc3339();
     let id = uuid::Uuid::new_v4().to_string();
     let metadata_json = metadata.as_ref().map(|m| serde_json::to_string(m).unwrap_or_default());
 
-    // Parse hashtags from content and merge with extra tags
-    let mut tags = parse_hashtags(&content);
-    if let Some(extra) = extra_tags {
+    // Parse hashtags from content and merge with provided tags
+    let mut all_tags = parse_hashtags(&content);
+    if let Some(extra) = tags {
         for tag in extra {
             let normalized = tag.trim().to_lowercase();
-            if !normalized.is_empty() && !tags.contains(&normalized) {
-                tags.push(normalized);
+            if !normalized.is_empty() && !all_tags.contains(&normalized) {
+                all_tags.push(normalized);
             }
         }
     }
-    println!("[Rust] Final tags (parsed + extra): {:?}", tags);
+    println!("[Rust] Final tags (parsed + provided): {:?}", all_tags);
 
     // Insert text item
     conn.execute(
@@ -1149,7 +1150,7 @@ async fn save_text(content: String, extra_tags: Option<Vec<String>>, metadata: O
     .map_err(|e| format!("Failed to insert text item: {}", e))?;
 
     // Add tags
-    for tag_name in &tags {
+    for tag_name in &all_tags {
         let tag_id: i64 = match conn.query_row(
             "SELECT id FROM tags WHERE name = ?",
             params![tag_name],
@@ -1200,7 +1201,7 @@ async fn save_text(content: String, extra_tags: Option<Vec<String>>, metadata: O
     let saved_text = SavedText {
         id,
         content,
-        tags,
+        tags: all_tags,
         saved_at: now,
         metadata,
     };

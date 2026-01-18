@@ -1,5 +1,44 @@
 # Roadmap
 
+## Mobile (peek-mobile iOS) - Known Issues
+
+### UI Bounce on Quick-Add Expand/Collapse (Deferred)
+
+**Problem**: When the quick-add input expands or collapses, the header bar and entire UI jumps/bounces.
+
+**CSS Fixes Attempted** (none fully resolved the issue):
+- Changed header from `position: sticky` to `position: fixed`
+- Added safe-area-inset-top padding to header
+- Made html, body, #root, .app all `position: fixed` with `overflow: hidden`
+- Added `overscroll-behavior: none` to prevent iOS elastic scrolling
+- Removed `-webkit-overflow-scrolling: touch` from scrollable areas
+- Increased main content `padding-top` multiple times (3.5rem → 4rem → 4.5rem)
+- Made main.saved-view the only scrollable area
+
+**Native-Level Fix Idea**: The bounce may be caused by WKWebView's automatic keyboard/viewport adjustments. A native fix in Swift/Rust may be needed:
+- Set `scrollView.contentInsetAdjustmentBehavior = .never` on the WKWebView
+- Disable `automaticallyAdjustsScrollViewInsets` if available
+- Manually handle safe area insets rather than letting iOS auto-adjust
+- Consider using `inputAccessoryView` = nil to hide the iOS form accessory bar
+
+### Cursor Position Bug in Textarea (Active)
+
+**Problem**: In the quick-add textarea, the blinking cursor appears ~2 lines below where typed characters actually appear.
+
+**Fixes Attempted** (none resolved):
+- Removed min-height from textarea
+- Changed line-height to 1.5
+- Added vertical-align: top, display: block
+- Set explicit box-sizing: border-box
+
+**Potential Fixes to Try**:
+- Use a contenteditable div instead of textarea
+- Check for iOS-specific webkit rendering issues
+- Ensure no conflicting transforms or position offsets
+- Test with explicit height instead of rows attribute
+
+---
+
 ## Performance
 
 - [ ] Reduce startup time (currently ~550ms build)

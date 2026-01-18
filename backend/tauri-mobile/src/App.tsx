@@ -622,7 +622,8 @@ function App() {
     } else if (text) {
       // Save as text (note)
       try {
-        await invoke("save_text", { content: text, extra_tags: tags });
+        console.log("[saveAddInput] Saving text with tags:", { content: text, tags });
+        await invoke("save_text", { content: text, tags });
         resetAddInput();
         await loadSavedTexts();
         await loadAllTags();
@@ -654,8 +655,8 @@ function App() {
   const startEditingText = (item: SavedText) => {
     setEditingTextId(item.id);
     setEditingTextContent(item.content);
-    // Extract existing hashtags as tags
-    const existingTags = extractHashtags(item.content);
+    // Use actual tags from database, fallback to hashtags in content
+    const existingTags = item.tags.length > 0 ? item.tags : extractHashtags(item.content);
     setEditingTextTags(new Set(existingTags));
     setEditingTextTagInput("");
   };
@@ -1417,7 +1418,8 @@ function App() {
   };
 
   const renderTextItem = (item: SavedText) => {
-    const tags = extractHashtags(item.content);
+    // Use actual tags from database, not just hashtags in content
+    const tags = item.tags.length > 0 ? item.tags : extractHashtags(item.content);
     // Get summary: first line or truncated content (without hashtags for display)
     const contentWithoutTags = item.content.replace(/#\w+/g, '').trim();
     const summary = contentWithoutTags.split('\n')[0].slice(0, 100) || item.content.slice(0, 100);

@@ -2204,3 +2204,181 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[cfg(test)]
+mod tests {
+    use rusqlite::{params, Connection};
+    use chrono::Utc;
+
+    /// Create the database schema for testing
+    fn create_test_schema(conn: &Connection) {
+        conn.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS items (
+                id TEXT PRIMARY KEY,
+                type TEXT NOT NULL DEFAULT 'page',
+                url TEXT,
+                content TEXT,
+                metadata TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                deleted_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS tags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                frequency INTEGER NOT NULL DEFAULT 0,
+                last_used TEXT NOT NULL,
+                frecency_score REAL NOT NULL DEFAULT 0.0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS item_tags (
+                item_id TEXT NOT NULL,
+                tag_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (item_id, tag_id),
+                FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE,
+                FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+            );
+            ",
+        )
+        .expect("Failed to create test schema");
+    }
+
+    /// Save a text item with tags (core logic extracted for testing)
+    fn save_text_with_tags(conn: &Connection, content: &str, tags: &[String]) -> String {
+        let now = Utc::now().to_rfc3339();
+        let id = uuid::Uuid::new_v4().to_string();
+
+        // Insert text item
+        conn.execute(
+            "INSERT INTO items (id, type, content, created_at, updated_at) VALUES (?, 'text', ?, ?, ?)",
+            params![&id, content, &now, &now],
+        )
+        .expect("Failed to insert text item");
+
+        // Add tags
+        for tag_name in tags {
+            let normalized = tag_name.trim().to_lowercase();
+            if normalized.is_empty() {
+                continue;
+            }
+
+            let tag_id: i64 = match conn.query_row(
+                "SELECT id FROM tags WHERE name = ?",
+                params![&normalized],
+                |row| row.get(0),
+            ) {
+                Ok(existing_id) => existing_id,
+                Err(_) => {
+                    conn.execute(
+                        "INSERT INTO tags (name, frequency, last_used, frecency_score, created_at, updated_at) VALUES (?, 1, ?, 10.0, ?, ?)",
+                        params![&normalized, &now, &now, &now],
+                    )
+                    .expect("Failed to insert tag");
+                    conn.last_insert_rowid()
+                }
+            };
+
+            conn.execute(
+                "INSERT OR IGNORE INTO item_tags (item_id, tag_id, created_at) VALUES (?, ?, ?)",
+                params![&id, tag_id, &now],
+            )
+            .expect("Failed to link tag");
+        }
+
+        id
+    }
+
+    /// Get tags for an item from the database
+    fn get_item_tags(conn: &Connection, item_id: &str) -> Vec<String> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT t.name FROM tags t
+                 JOIN item_tags it ON t.id = it.tag_id
+                 WHERE it.item_id = ?
+                 ORDER BY t.name",
+            )
+            .expect("Failed to prepare query");
+
+        stmt.query_map(params![item_id], |row| row.get(0))
+            .expect("Failed to query tags")
+            .filter_map(|r| r.ok())
+            .collect()
+    }
+
+    #[test]
+    fn test_save_text_with_tags() {
+        let conn = Connection::open_in_memory().expect("Failed to create in-memory database");
+        create_test_schema(&conn);
+
+        // Save a text item with tags (simulates quick-add with tag buttons)
+        let tags = vec!["work".to_string(), "important".to_string()];
+        let item_id = save_text_with_tags(&conn, "This is a test note", &tags);
+
+        // Verify the item was saved
+        let content: String = conn
+            .query_row(
+                "SELECT content FROM items WHERE id = ?",
+                params![&item_id],
+                |row| row.get(0),
+            )
+            .expect("Failed to find saved item");
+        assert_eq!(content, "This is a test note");
+
+        // Verify tags were saved and linked
+        let saved_tags = get_item_tags(&conn, &item_id);
+        assert_eq!(saved_tags.len(), 2, "Expected 2 tags, got {:?}", saved_tags);
+        assert!(saved_tags.contains(&"work".to_string()), "Missing 'work' tag");
+        assert!(saved_tags.contains(&"important".to_string()), "Missing 'important' tag");
+    }
+
+    #[test]
+    fn test_save_text_with_hashtags_and_button_tags() {
+        let conn = Connection::open_in_memory().expect("Failed to create in-memory database");
+        create_test_schema(&conn);
+
+        // Simulate content with hashtags plus additional button-selected tags
+        // The real save_text parses hashtags and merges with provided tags
+        let content_hashtags = vec!["hashtag1".to_string()];
+        let button_tags = vec!["button-tag".to_string()];
+        let mut all_tags = content_hashtags;
+        all_tags.extend(button_tags);
+
+        let item_id = save_text_with_tags(&conn, "Note with #hashtag1", &all_tags);
+
+        let saved_tags = get_item_tags(&conn, &item_id);
+        assert_eq!(saved_tags.len(), 2, "Expected 2 tags (hashtag + button), got {:?}", saved_tags);
+        assert!(saved_tags.contains(&"hashtag1".to_string()), "Missing hashtag");
+        assert!(saved_tags.contains(&"button-tag".to_string()), "Missing button tag");
+    }
+
+    #[test]
+    fn test_save_text_empty_tags() {
+        let conn = Connection::open_in_memory().expect("Failed to create in-memory database");
+        create_test_schema(&conn);
+
+        // Save without any tags
+        let item_id = save_text_with_tags(&conn, "Note without tags", &[]);
+
+        let saved_tags = get_item_tags(&conn, &item_id);
+        assert!(saved_tags.is_empty(), "Expected no tags, got {:?}", saved_tags);
+    }
+
+    #[test]
+    fn test_tag_normalization() {
+        let conn = Connection::open_in_memory().expect("Failed to create in-memory database");
+        create_test_schema(&conn);
+
+        // Tags should be normalized (lowercase, trimmed)
+        let tags = vec!["  UPPERCASE  ".to_string(), "MixedCase".to_string()];
+        let item_id = save_text_with_tags(&conn, "Test normalization", &tags);
+
+        let saved_tags = get_item_tags(&conn, &item_id);
+        assert!(saved_tags.contains(&"uppercase".to_string()), "Tag should be lowercase");
+        assert!(saved_tags.contains(&"mixedcase".to_string()), "Tag should be lowercase");
+    }
+}

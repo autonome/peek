@@ -19,20 +19,27 @@ peek/
 │   ├── windows.js          # Window management
 │   └── ...
 ├── backend/
-│   ├── electron/           # Electron backend
+│   ├── electron/           # Electron desktop backend
 │   │   ├── index.js        # Main process
 │   │   ├── preload.js      # Peek API implementation (Electron)
 │   │   ├── protocol.ts     # peek:// handler
 │   │   └── datastore.ts    # SQLite operations
-│   └── tauri/              # Tauri backend
-│       ├── src-tauri/      # Rust backend
-│       │   ├── src/
-│       │   │   ├── lib.rs      # App setup
-│       │   │   ├── protocol.rs # peek:// handler
-│       │   │   ├── datastore.rs# SQLite operations
-│       │   │   └── commands/   # IPC handlers
-│       │   └── Cargo.toml
-│       └── preload.js      # Peek API implementation (Tauri)
+│   ├── tauri/              # Tauri desktop backend
+│   │   ├── src-tauri/      # Rust backend
+│   │   │   ├── src/
+│   │   │   │   ├── lib.rs      # App setup
+│   │   │   │   ├── protocol.rs # peek:// handler
+│   │   │   │   ├── datastore.rs# SQLite operations
+│   │   │   │   └── commands/   # IPC handlers
+│   │   │   └── Cargo.toml
+│   │   └── preload.js      # Peek API implementation (Tauri)
+│   ├── tauri-mobile/       # Tauri mobile app (iOS/Android)
+│   │   ├── src/            # React frontend
+│   │   └── src-tauri/      # Rust backend
+│   └── server/             # Webhook API server (Node.js/Hono)
+│       ├── index.js        # HTTP server
+│       ├── db.js           # SQLite operations
+│       └── users.js        # Multi-user auth
 └── extensions/             # Extension code (uses Peek API)
 ```
 
@@ -150,6 +157,27 @@ Or use the helper script:
 ./scripts/tauri-run.sh 10 --visible # Run with visible windows
 ./scripts/tauri-run.sh 0            # Run interactively
 ```
+
+### Server (Webhook API)
+
+The server backend is different from the desktop backends - it's a remote HTTP API for syncing data from the mobile app, not a local desktop application.
+
+```bash
+# From project root
+yarn server:install     # Install dependencies (first time)
+yarn server:start       # Run production server
+yarn server:dev         # Run with hot reload
+yarn server:test        # Run tests
+yarn server:healthcheck # Verify server starts
+
+# From backend/server/
+npm install
+npm start
+npm run dev
+npm test
+```
+
+See `backend/server/README.md` for full API documentation.
 
 ## Adding a New Backend
 

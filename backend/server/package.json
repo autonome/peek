@@ -1,0 +1,27 @@
+{
+  "name": "peek-server",
+  "version": "1.0.0",
+  "description": "Webhook server for the Peek iOS app",
+  "main": "index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "test": "node --test test.js",
+    "test:api": "node --test test-api.js",
+    "test:api:local": "API_KEY=$PEEK_LOCAL_KEY BASE_URL=http://localhost:3000 node --test test-api.js",
+    "test:api:prod": "API_KEY=$PEEK_PROD_KEY BASE_URL=$PEEK_PROD_URL node --test test-api.js",
+    "healthcheck": "node index.js & PID=$!; sleep 2; curl -sf http://localhost:3000/ && echo 'Server OK' || echo 'Server failed'; kill $PID 2>/dev/null"
+  },
+  "keywords": [],
+  "author": "Dietrich Ayala <me@burrito.space> (https://metafluff.com/)",
+  "license": "MIT",
+  "type": "commonjs",
+  "dependencies": {
+    "@hono/node-server": "^1.19.6",
+    "better-sqlite3": "^12.5.0",
+    "hono": "^4.10.7"
+  }
+}

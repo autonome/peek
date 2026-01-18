@@ -1,45 +1,170 @@
-# Roadmap
+# Peek TODO
 
-## Mobile (peek-mobile iOS) - Known Issues
+How we work:
+- We track actionable items in this file
+- This file is not for notes or description - link to documents in ./notes for that
+- We use the "- [ ]" syntax to denote actionable items and "- [x]" to mark as complete
+- We move completed items into the Done section at the bottom, grouped by week of year the items were completed
 
-### UI Bounce on Quick-Add Expand/Collapse (Deferred)
+## Prioritization
 
-**Problem**: When the quick-add input expands or collapses, the header bar and entire UI jumps/bounces.
+Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
-**CSS Fixes Attempted** (none fully resolved the issue):
-- Changed header from `position: sticky` to `position: fixed`
-- Added safe-area-inset-top padding to header
-- Made html, body, #root, .app all `position: fixed` with `overflow: hidden`
-- Added `overscroll-behavior: none` to prevent iOS elastic scrolling
-- Removed `-webkit-overflow-scrolling: touch` from scrollable areas
-- Increased main content `padding-top` multiple times (3.5rem → 4rem → 4.5rem)
-- Made main.saved-view the only scrollable area
+Today
+- [ ][desktop] merge peek-node into peek
+- [ ][all] unify data model across mobile/desktop/server
+- [ ][all] sync working between all three
+- [ ][desktop] daily data snapshots saved to compress archives in ~/sync/peek-backups
 
-**Native-Level Fix Idea**: The bounce may be caused by WKWebView's automatic keyboard/viewport adjustments. A native fix in Swift/Rust may be needed:
-- Set `scrollView.contentInsetAdjustmentBehavior = .never` on the WKWebView
-- Disable `automaticallyAdjustsScrollViewInsets` if available
-- Manually handle safe area insets rather than letting iOS auto-adjust
-- Consider using `inputAccessoryView` = nil to hide the iOS form accessory bar
+Later
+- [ ] tags on desktop
+- [ ][desktop] access to notes on filesystem, syncing them as markdown files in ~/sync/Notes/peek 
 
-### Cursor Position Bug in Textarea (Active)
+## To process
 
-**Problem**: In the quick-add textarea, the blinking cursor appears ~2 lines below where typed characters actually appear.
+Unclear / needs context:
+- [ ] demo script (see use-case sticky)
+- [ ] consolidate peek notes in signal to a peek note (copy all, have the robots format it)
+- [ ] jj+tangled
+- [ ] docs
+- [ ] Pageinfo
+- [ ] implement old context plan eg https://www.reddit.com/r/hackernews/comments/1qddidm/sun_position_calculator/
+- [ ] step counter: app level interaction tracing/counting. when is reset? when does action end and new one start?
+- [ ] tabstats for peek
+- [ ] peeks/slides as tagged addresses with metadata properties?
+- [ ] edgeworkernode/server vs what we got now (both?)
 
-**Fixes Attempted** (none resolved):
-- Removed min-height from textarea
-- Changed line-height to 1.5
-- Added vertical-align: top, display: block
-- Set explicit box-sizing: border-box
+## Ready for triage
 
-**Potential Fixes to Try**:
-- Use a contenteditable div instead of textarea
-- Check for iOS-specific webkit rendering issues
-- Ensure no conflicting transforms or position offsets
-- Test with explicit height instead of rows attribute
+### Data Model & Multi-platform Unification
 
----
+- [ ] merge peek-node into peek repo
+- [ ] resolve differences between mobile, node and desktop data models
+- [ ] prepare for multi-user, in the data model and at the filesystem level
+- [ ] update peek-node to support multi-user and the core types (maybe already done)
 
-## Performance
+### Sync Infrastructure
+
+- [ ] get desktop sync working
+- [ ] sync
+- [ ] mobile notes, server notes, desktop notes (make sync server dumber)
+- [ ] url+tag sync means groups on mobile/web/desktop
+- [ ] pull in from server node, configure in settings (pull from peek mobile and peek node)
+
+### Notes & Editor
+
+Editor
+- [ ] support for paste operations
+- [ ] todo/done tags get special checkbox rendering
+
+A Peek for local notes using editor
+- [ ] how to address a specific note in the editor?
+- [ ] maybe we need path or name-based ways of addressing "docs" in datastore?
+
+- [ ] using for notes (md dir sync, import stickies)
+
+Editor extensibility/bundling
+- [ ] we probably want it included by default
+- [ ] how - path/url in manifest for now
+- [ ] need a notes app, with ability to "pin" like stickies, noted as documents in the store, w/ tags eg #sticky
+
+### Groups & Tags UX
+
+- [ ] tags on desktop
+- [ ] tag buttons (tag + down arrow?)
+- [ ] tag buttons as standalone submissions - componentize, then make extension? or just notes without text?
+- [ ] figure out group mode (maybe needs cmd+l)
+- [ ] groups header overhaul
+- [ ] filtering search
+- [ ] space vs group (language)
+- [ ] groups == tags == cross-platform
+
+### UI Components & Rendering
+
+- [ ] ui rendering primitives: card, cards, button, button set, list, grid, chat, carousel, image viewer
+- [ ] cards + json schema
+
+### Commands Enhancement
+
+- [ ] command tags {str} to load tag in group view
+- [ ] peek addresses as cmds by title (http too?)
+- [ ] cmd/peek history (they don't show up in cmd!)
+- [ ] map cmd using OSM
+- [ ] open kagi via cmd
+- [ ] search history via cmd
+- [ ] all commands as a button board
+
+### Desktop Window UX
+
+- [ ] if url open in a window already, switch to it (for now)
+- [ ] history views (again using groups ui, maybe plug that into an extension itself?)
+- [ ] extension: explode windows using groups ui with transparent background and vi directionals, enter opens
+- [ ] click-to-drag on any window
+
+### Server & Peek-Node Backend
+
+- [ ] update peek-node to support text/urls/tagsets
+- [ ] headless sync server that's a "back-end" of Peek API… or just peek running headless?
+- [ ] route all external urls to peek node webhook, eg every bsky like, reddit save, oauthwonderwall?
+
+### Mobile
+
+- [ ] show oembed, or at least page title
+
+### Privacy & Archival
+
+- [ ] private links and private mode pages
+- [ ] private section altogether (eg gift ideas)
+- [ ] archived entries (lower score, hidden by default)
+
+### Session & State Management
+
+- [ ] restorable snapshots, export/import
+- [ ] session restore
+
+### Sharing & Publishing
+
+- [ ] share system
+- [ ] publish pages/apps?
+
+### Chaining & Compound Commands
+
+- [ ] execute a command which executes a userScript against a loaded page, detects list/table-ish things (with previews), lets you select one, which it exports as a "list" out (CSV? JSON?)
+- [ ] links on page -> list -> button cloud -> kb activate (then shorten to "link cloud" cmd)
+- [ ] compound cmds (like "link cloud". uses chaining? like a chain package?)
+
+### Extensions Architecture
+
+- [ ] extensions as *web* pages/tiles accessing injected api
+- [ ] start at boot?
+- [ ] app+browser history swiss army knife for querying and generating url lists via chaining, saving for offline (->txt) etc, maybe using connectors
+- [ ] cf: https://github.com/AgregoreWeb/agregore-browser
+- [ ] cf: https://github.com/samuelmaddock/electron-browser-shell
+
+### NER & Entity Extraction
+
+- [ ] get people, places, dates/times/events
+- [ ] get meaningful numbers, and their label
+- [ ] extract a table as csv
+- [ ] layer outside of web page, and in between pages (eg event page -> event -> any calendar page)
+
+### WebExtensions Support
+
+- [ ] ubo
+- [ ] proton pass
+- [ ] bpc
+
+### Feeds & Time-series
+
+- [ ] tag streaks -> atproto streaks (feeds + daytum)
+- [ ] hud for system data (number of windows, etc - using timeseries/feeds in datastore + page metadata / daytum / widgets framework) (widget sheets? kinda like window manager views/templates?)
+
+### Misc UX
+
+- [ ] click modifier to one-off peek a link
+- [ ] option to flash keyboard shortcuts on screen
+
+## Desktop Performance
 
 - [ ] Reduce startup time (currently ~550ms build)
 - [ ] Pre-compiled TypeScript: skip tsc during dev if no changes
@@ -60,44 +185,35 @@
 
 Commands like "theme dark here" operate on the "target window" - the window the user was looking at before opening the cmd palette. Currently this works but there's no visual indication.
 
-Phase 2 UX improvements:
-- [ ] Commands declare `scope: 'window' | 'page' | 'global'` in registration
+UX improvements:
+- [ ] Commands declare `scope: 'window' | 'page' | 'global'` in registration?
 - [ ] Cmd panel shows "Target: [window title]" header when window-scoped command is selected
-- [ ] Uses `get-target-window-info` IPC handler (already implemented)
-
-Files to modify:
-- `preload.js` - Add `scope` to command registration API
-- `app/index.js` - Add `scope: 'window'` to per-window theme commands
-- `extensions/cmd/background.js` - Store command scope in registry
-- `extensions/cmd/panel.js` - Query target info, show header indicator
-- `extensions/cmd/panel.css` - Style for target indicator
 
 ## Devtools
 
 - [ ] Devtools button in extension settings cards (open devtools for extension window)
-- [ ] Devtools command to open devtools for a specific extension
+- [ ] Devtools command to open devtools for a specific extension or window
 - [ ] Fix `api.extensions.devtools()` - currently not working for consolidated extensions
 
-## v? - Entity centrism (NER streams)
+## Entity centrism (NER streams)
 
-- [ ] Entity catalog definition
+- [ ] Entity catalog definition (eg Wikidata defs, or custom to start?)
 - [ ] Datastore support
-- [ ] Basic NER
+- [ ] Basic NER testing (regex, etc)
 - [ ] Page metadata viz
 - [ ] Entity search/browse
 - [ ] ML NER
 
-## v? - Browser status quo extensibility
+## Browser status quo extensibility
 
 Status quo
-- [ ] browser extensions (limited, mostly get a couple popular ones working)
-- [ ] opensearch
-- [ ] quicksearch
-- [ ] bookmarklets
-- [ ] userscripts
-- [ ] language packs
-
-- [ ] some kind of theming (https://github.com/AgregoreWeb/agregore-browser/pull/291)
+- [ ] Browser extensions (limited, to get a couple of popular ones working)
+- [ ] Opensearch plugins
+- [ ] Quicksearch
+- [ ] Bookmark keywords (equivalent)
+- [ ] Bookmarklets (equivalent)
+- [ ] Userscripts (cf general approach to content/user scripts)
+- [ ] Language packs (cf general approach to i18n/l10n)
 
 Search
 - [ ] Local
@@ -200,19 +316,9 @@ Example flow:
 
 - [ ] poke at remote loading + provenance
 
-## v? - Base "Extensions"
-
-Peek extensions
-- [x] see notes/extensibility.md
-- [x] window manager views (bad name, but what Peek "features" are now)
-- [x] commands (eg Quicksilver, Ubiquity, Raycast style)
-
 ## v? Portability
 
-- [x] Abstract back-end system
 - [ ] Back-end implementations
-  - [x] Electron
-  - [x] Tauri
   - [ ] Mobile (webview) back-end
   - [ ] Extension back-end
 - [ ] Common background runtime
@@ -222,185 +328,45 @@ Peek extensions
 
 ## v? Pages, Tagging & Groups
 
-Opening pages
-- [x] Open page by default in cmd
-- [x] Open page from OS, other apps
-
 Page model & metadata
 - [ ] Basic overlay
 - [ ] Page embedding
 
-Tagging
-- [x] Cmd to tag current page
-
 Groups
-- [x] Groups based on tags, for now
-- [x] Untagged -> default group
-- [x] Cmd to open groups home
-
-- [x] Escape for navigating back up the group views, not closing window
 - [ ] Visually communicate group-active
 - [ ] Determine which new-page routes qualify for staying in group vs not
 - [ ] When group-active, qualifying new pages are automatically tagged as in the group
 - [ ] Determine how/when to exit group for new pages opened (eg from external app)
-
-Cmd
-- [x] adaptive matching
-- [x] frecency
 
 ## v? Windowing model
 
 - [ ] active vs transient modality
 - [ ] configurable escape behavior per-window
 
-## V.0.3 - Datastore
-
-this needs a lot of work, but good enough for now.
-also, will be shaped as we move through the extensibility pieces.
-
-- [x] Datastore
-
-## v0.2 - MVCP (minimum viable concept preview)
-
-minimum viable concept preview.
-
-question: can others try this?
-
-Windows/system
-- [x] app showing in dock even tho disabled
-- [x] app not showing in tray, even tho enabled
-- [x] all api calls get source attached
-- [x] window cache s/custom/map/
-- [x] window cache all windows not just persistent
-- [x] window cache - evaluate key approach (use-case: apps need to identify windows they open)
-- [x] always return window id, so apps can manage it
-- [x] reimplement keys, so much easier for callers than managing ids
-- [x] account for number of renderer processes (seems double?)
-
-redo window system to be more webby
-- [x] prototype window.open
-- [x] evaluate webContents.setWindowOpenHandler
-- [x] stop using openWindow to show pre-existing hidden windows?
-  - [x] can track web windows locally
-  - [x] can identify web windows on both sides (key/name)
-  - [x] add new custom api for windows superpowers
-- [x] collapse window opening to span both approaches
-- [x] finish converting all openWindow to window.open
-
-Feature lifecycle (un/install and reloads)
-- [ ] feature unload/reload - init/uninit whole feature and window
-- [ ] track shortcuts by source, remove when unloaded
-- [ ] main: track window sources
-- [ ] main: close child windows when (before) closing source window
-- [ ] all features correctly load/unload from settings toggle
-
-Shortcut lifecycle
-- [x] main process should handle multiple registrations correctly
-- [x] send/track feature id/origin w/ each registration
-- [ ] unreg shortcuts on unload
+## 
 
 Window features
-- [x] add back in window features to window.open
-  - [x] show/hide (keep alive)
-  - [x] transparent
-- [ ] enable global window resize
-- [ ] add draggable as pref (draggable as default)
+- [ ] add draggable as pref, eg an opener can specify undraggable (draggable is default)
+- [ ] same for resize (but user can override?)
 
-Features clean themselves up for lifecycle events
-- [ ] load/unload peeks when enabled/disabled
-- [ ] load/unload slides when enabled/disabled
-- [ ] load/unload scripts when enabled/disabled
-
-Peeks/Slides
-- [x] only register shortcut and create window if a URL is configured
-- [ ] unreg shortcuts and close windows on peek un/configure
-- [ ] unreg shortcuts and close windows on slides un/configure
-
-Cmd
-- [ ] update to latest Cmd extension code
-- [ ] app-scoped multi-window pages open
-
-Settings
-- [x] fix window size
-- [x] transparency
-- [ ] core settings re-render on feature toggle, eg feature-settings link enabled
-- [ ] default position (size to screen)
-
-Daily driver blockers
-- [x] debug vs profile(s) for app dir
-- [x] fix ESC not working right
-- [x] fix ESC not working in web content
-- [x] fix ESC not working right in settings
-- [ ] ESC not working when a page doesn't load for any reason
-
-Dev stuff
-- [x] figure out single devtools window if possible
-
-Deployment
-- [ ] app updates
-- [ ] icons
-- [ ] about page
+## Demos / Tutorials / Comms
 
 Demo reel
+- [ ] Define demo reel
 - [ ] Peeks: translate, calendar, ai chat, currency conversion, everytimezone, tldraw
 - [ ] Slides: soundcloud, crypto prices, notepad, todo list
-- [ ] Scripts: eth price, weather change
-
-Survival
-- [ ] Settings feature to blow away local datastore
-- [ ] Schema versioning
-- [ ] Export config to file
-- [ ] Import config from file
-
-Tests
-- [ ] stacked defaults file
-- [ ] import file
-- [ ] run app-specific test suites (in app sub dir)
-- [ ] run full test suite
+- [ ] Scripts: stock price, weather change
 
 ## Unprioritized future
 
-Backburner wishlist
-- [ ] window switching order algo
-
-DX papercuts
-- [ ] why crashing on reload main
-- [ ] devtools stealing focus, put in backround
-- [ ] unified floating devtools
-
-Window features
-- [x] add transparency support to api
-- [ ] distentangle transparency and content-fit
-- [ ] add the rest of that shit
-
 App mgmt
 - [ ] uniform policy for feature id creation (lean on web/extensions)
-- [ ] collisions
+- [ ] deal with collisions
 
 App dev
 - [ ] app model - web? extension? P/IWA? other?
 - [ ] shared libs, eg utils
 - [ ] language: call them feature or apps? other? extensions? mods?
-
-Focus vs not focused app mode
-- [ ] openWindow option to not close on escape (perma windows w/ controls)
-- [ ] app focus detection in shortcuts
-- [ ] separate global shortcuts from app shortcuts (eg quit)
-- [ ] all-window show/hide when doing global shortcuts while app unfocused
-
-Install/load/address features
-- [x] built-in feature loading from origin not file
-- [x] app protocol? webextension? pwa? wtf?
-- [ ] combine settings and background in built-in features?
-    - eg, features can have default ui + bg services?
-- [ ] pull from manifest (load/install via manifest with special key?)
-- [ ] manifests for feature metadata
-- [ ] feature urls? eg peek://settings(/index.html)
-- [ ] feature metadata in manifest
-- [ ] move feature bg pages to iframes in core bg page?
-
-Settings
-- [ ] make it so start feature can be unset (eh)
 
 Navigation
 - [ ] make izui stack manager (part of window mgr?)
@@ -416,10 +382,9 @@ Window controls/persistence/etc (after perma window)
 - [ ] window size persistence where it makes sense (slides, peeks) and make configurable?
 - [ ] window controls
 - [ ] window resizers
+- [ ] cmds for all of this
 
 History
-- [ ] push navigations out through pubsub?
-- [ ] add history listener + storage to cmd
 - [ ] store central app action history
 - [ ] store content script data
 
@@ -430,7 +395,6 @@ Feature level rpc?
 - [ ] need to be able to get/set properties from other "features"?
 
 Window layout
-- [ ] try with settings maybe?
 - [ ] tile/untile
 
 Web Platform
@@ -439,12 +403,7 @@ Web Platform
 - [ ] blocklist
 
 After that
-- [ ] schema migration
-- [ ] Extension model?
-- [ ] Ubiquity-like
-- [ ] Panorama-like
 - [ ] Tray
-- [ ] Scratchpad
 - [ ] Identity
 - [ ] Contacts
 - [ ] Collaboration
@@ -454,7 +413,57 @@ Further
 - [ ] Extension model designed for web user agent user interface experimentation
 - [ ] Infinite lossless personal encrypted archive of web history
 
-## ✅ v0.1 - MVPOC
+## Done
+
+Newly done items go here, grouped under third-level headings by week of year.
+
+### Old completed items
+
+### Base Extensions
+- [x] see notes/extensibility.md
+- [x] window manager views (bad name, but what Peek "features" are now)
+- [x] commands (eg Quicksilver, Ubiquity, Raycast style)
+
+### Portability
+- [x] Abstract back-end system
+- [x] Electron back-end
+- [x] Tauri back-end
+
+### Pages, Tagging & Groups
+- [x] Open page by default in cmd
+- [x] Open page from OS, other apps
+- [x] Cmd to tag current page
+- [x] Groups based on tags, for now
+- [x] Untagged -> default group
+- [x] Cmd to open groups home
+- [x] Escape for navigating back up the group views, not closing window
+- [x] adaptive matching
+- [x] frecency
+
+### V.0.3 - Datastore
+- [x] Datastore
+
+### v0.2 - MVCP
+- [x] app showing in dock even tho disabled
+- [x] app not showing in tray, even tho enabled
+- [x] all api calls get source attached
+- [x] window cache s/custom/map/
+- [x] window cache all windows not just persistent
+- [x] window cache - evaluate key approach (use-case: apps need to identify windows they open)
+- [x] always return window id, so apps can manage it
+- [x] reimplement keys, so much easier for callers than managing ids
+- [x] account for number of renderer processes (seems double?)
+- [x] prototype window.open
+- [x] evaluate webContents.setWindowOpenHandler
+- [x] stop using openWindow to show pre-existing hidden windows?
+  - [x] can track web windows locally
+  - [x] can identify web windows on both sides (key/name)
+  - [x] add new custom api for windows superpowers
+- [x] collapse window opening to span both approaches
+- [x] finish converting all openWindow to window.open
+- [x] figure out single devtools window if possible
+
+### ✅ v0.1 - MVPOC
 
 minimum viable proof of concept.
 
@@ -516,4 +525,5 @@ Internal cleanup
 - [x] s/guid/id/
 - [x] fix label names, match to pwa manifest
 - [x] put readable log labels back in
+
 

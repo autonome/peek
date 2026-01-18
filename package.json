@@ -15,7 +15,8 @@
     "productName": "Peek",
     "files": [
       "**/*",
-      "!backend/tauri/**/*"
+      "!backend/tauri/**/*",
+      "!backend/server/**/*"
     ],
     "mac": {
       "icon": "assets/appicon.icns",
@@ -55,6 +56,13 @@
     "mobile:android:init": "cd backend/tauri-mobile/src-tauri && cargo tauri android init",
     "mobile:android:dev": "cd backend/tauri-mobile/src-tauri && cargo tauri android dev",
     "mobile:android:build": "cd backend/tauri-mobile/src-tauri && cargo tauri android build",
+    "//-- Server (webhook API backend in backend/server) --//": "",
+    "server:start": "cd backend/server && npm start",
+    "server:dev": "cd backend/server && npm run dev",
+    "server:test": "cd backend/server && npm test",
+    "server:test:api": "cd backend/server && npm run test:api",
+    "server:install": "cd backend/server && npm install",
+    "server:healthcheck": "cd backend/server && npm run healthcheck",
     "//-- Packaged Electron --//": "",
     "kill:packaged": "pkill -f 'out/mac-arm64/Peek.app' || true",
     "kill:prod": "pkill -f '/Applications/Peek.app' || true",

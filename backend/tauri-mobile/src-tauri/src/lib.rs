@@ -1812,6 +1812,21 @@ async fn get_image_data(id: String) -> Result<Option<String>, String> {
     Ok(result.map(|bytes| STANDARD.encode(&bytes)))
 }
 
+/// Save a captured image from camera (simplified interface)
+/// image_data is base64-encoded image bytes (without data URL prefix)
+#[tauri::command]
+async fn save_captured_image(
+    image_data: String,
+    mime_type: String,
+    tags: Vec<String>,
+) -> Result<String, String> {
+    println!("[Rust] save_captured_image called, mime_type: {}, tags: {:?}", mime_type, tags);
+
+    // Use the image data as its own thumbnail for display
+    // (camera images are typically already reasonably sized)
+    save_image(image_data.clone(), mime_type, tags, None, Some(image_data), None, None).await
+}
+
 /// Update image tags
 #[tauri::command]
 async fn update_image_tags(id: String, tags: Vec<String>) -> Result<(), String> {
@@ -2166,6 +2181,7 @@ pub fn run() {
             update_tagset,
             // Image commands
             save_image,
+            save_captured_image,
             get_saved_images,
             get_image_data,
             update_image_tags,

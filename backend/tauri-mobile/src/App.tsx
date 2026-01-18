@@ -94,6 +94,8 @@ function App() {
   // Text creation/editing state
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [editingTextContent, setEditingTextContent] = useState("");
+  const [editingTextTags, setEditingTextTags] = useState<Set<string>>(new Set());
+  const [editingTextTagInput, setEditingTextTagInput] = useState("");
 
   // Tagset editing state
   const [editingTagsetId, setEditingTagsetId] = useState<string | null>(null);
@@ -110,6 +112,12 @@ function App() {
   const [addInputTags, setAddInputTags] = useState<Set<string>>(new Set());
   const [addInputExpanded, setAddInputExpanded] = useState(false);
   const [addInputNewTag, setAddInputNewTag] = useState("");
+
+  // Camera capture state
+  const [capturedImage, setCapturedImage] = useState<string | null>(null); // base64 data URL
+  const [capturedImageTags, setCapturedImageTags] = useState<Set<string>>(new Set());
+  const [capturedImageTagInput, setCapturedImageTagInput] = useState("");
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   // Scroll ref for scroll-to-top
   const mainRef = useRef<HTMLElement>(null);
@@ -362,6 +370,7 @@ function App() {
   };
 
   const deleteUrl = async (id: string) => {
+    if (!confirm("Delete this page?")) return;
     console.log("[Frontend] deleteUrl called for id:", id);
     try {
       await invoke("delete_url", { id });
@@ -477,6 +486,91 @@ function App() {
     setAddInputNewTag("");
   };
 
+  // Camera functions
+  const openCamera = () => {
+    cameraInputRef.current?.click();
+  };
+
+  const handleCameraCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      setCapturedImage(dataUrl);
+      setCapturedImageTags(new Set());
+      setCapturedImageTagInput("");
+    };
+    reader.readAsDataURL(file);
+
+    // Reset input so same file can be selected again
+    e.target.value = "";
+  };
+
+  const toggleCapturedImageTag = (tagName: string) => {
+    const newTags = new Set(capturedImageTags);
+    if (newTags.has(tagName)) {
+      newTags.delete(tagName);
+    } else {
+      newTags.add(tagName);
+    }
+    setCapturedImageTags(newTags);
+  };
+
+  const addCapturedImageTag = () => {
+    const newTags = new Set(capturedImageTags);
+    const parts = capturedImageTagInput.split(",");
+    for (const part of parts) {
+      const trimmed = part.trim().toLowerCase();
+      if (trimmed) {
+        newTags.add(trimmed);
+      }
+    }
+    setCapturedImageTags(newTags);
+    setCapturedImageTagInput("");
+  };
+
+  const cancelCapturedImage = () => {
+    setCapturedImage(null);
+    setCapturedImageTags(new Set());
+    setCapturedImageTagInput("");
+  };
+
+  const saveCapturedImage = async () => {
+    if (!capturedImage) return;
+
+    // Include any text in the input field
+    const finalTags = new Set(capturedImageTags);
+    if (capturedImageTagInput.trim()) {
+      const parts = capturedImageTagInput.split(",");
+      for (const part of parts) {
+        const trimmed = part.trim().toLowerCase();
+        if (trimmed) {
+          finalTags.add(trimmed);
+        }
+      }
+    }
+
+    try {
+      // Extract base64 data from data URL
+      const base64Data = capturedImage.split(",")[1];
+      const mimeType = capturedImage.split(";")[0].split(":")[1];
+
+      await invoke("save_captured_image", {
+        imageData: base64Data,
+        mimeType,
+        tags: Array.from(finalTags),
+      });
+
+      cancelCapturedImage();
+      await loadSavedImages();
+      await loadAllTags();
+    } catch (error) {
+      console.error("Failed to save captured image:", error);
+    }
+  };
+
   const saveAddInput = async () => {
     const text = addInputText.trim();
 
@@ -541,20 +635,59 @@ function App() {
   const startEditingText = (item: SavedText) => {
     setEditingTextId(item.id);
     setEditingTextContent(item.content);
+    // Extract existing hashtags as tags
+    const existingTags = extractHashtags(item.content);
+    setEditingTextTags(new Set(existingTags));
+    setEditingTextTagInput("");
   };
 
   const cancelEditingText = () => {
     setEditingTextId(null);
     setEditingTextContent("");
+    setEditingTextTags(new Set());
+    setEditingTextTagInput("");
+  };
+
+  const toggleEditingTextTag = (tagName: string) => {
+    const newTags = new Set(editingTextTags);
+    if (newTags.has(tagName)) {
+      newTags.delete(tagName);
+    } else {
+      newTags.add(tagName);
+    }
+    setEditingTextTags(newTags);
+  };
+
+  const addEditingTextTag = () => {
+    const trimmed = editingTextTagInput.trim().toLowerCase();
+    if (trimmed) {
+      setEditingTextTags(new Set(editingTextTags).add(trimmed));
+      setEditingTextTagInput("");
+    }
   };
 
   const saveTextChanges = async () => {
     if (!editingTextId) return;
 
+    // Include any text in the tag input field
+    const finalTags = new Set(editingTextTags);
+    if (editingTextTagInput.trim()) {
+      finalTags.add(editingTextTagInput.trim().toLowerCase());
+    }
+
+    // Build content with hashtags appended
+    let content = editingTextContent;
+    // Remove existing hashtags from content
+    content = content.replace(/#\w+/g, '').trim();
+    // Append tags as hashtags
+    if (finalTags.size > 0) {
+      content += '\n' + Array.from(finalTags).map(t => `#${t}`).join(' ');
+    }
+
     try {
       await invoke("update_text", {
         id: editingTextId,
-        content: editingTextContent,
+        content: content.trim(),
       });
       await loadSavedTexts();
       await loadAllTags();
@@ -565,6 +698,7 @@ function App() {
   };
 
   const deleteText = async (id: string) => {
+    if (!confirm("Delete this note?")) return;
     try {
       await invoke("delete_url", { id }); // delete_url works for all item types
       await loadSavedTexts();
@@ -644,6 +778,7 @@ function App() {
   };
 
   const deleteTagset = async (id: string) => {
+    if (!confirm("Delete this tag set?")) return;
     try {
       await invoke("delete_url", { id }); // delete_url works for all item types
       await loadSavedTagsets();
@@ -807,6 +942,386 @@ function App() {
     return items.sort((a, b) => new Date(b.saved_at).getTime() - new Date(a.saved_at).getTime());
   };
 
+  // Check if any edit mode is active
+  const isEditing = editingUrlId || editingTextId || editingTagsetId || editingImageId;
+
+  // Render edit modal content
+  const renderEditModal = () => {
+    if (!isEditing) return null;
+
+    // URL editing
+    if (editingUrlId) {
+      const item = savedUrls.find(u => u.id === editingUrlId);
+      if (!item) return null;
+      const unusedTags = editingUrlTags.filter((tag) => !editingTags.has(tag.name));
+
+      return (
+        <div className="edit-modal-overlay" onClick={(e) => e.target === e.currentTarget && cancelEditing()}>
+          <div className="edit-modal">
+            <div className="edit-modal-header">
+              <h2>Edit Page</h2>
+            </div>
+            <div className="edit-modal-content">
+              <div className="edit-section">
+                <input
+                  type="url"
+                  className="edit-url-input"
+                  value={editingUrlValue}
+                  onChange={(e) => setEditingUrlValue(e.target.value)}
+                  placeholder="URL"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                />
+              </div>
+
+              <div className="edit-section">
+                <label className="edit-label">Selected Tags</label>
+                <div className="editing-tags">
+                  {editingTags.size === 0 ? (
+                    <span className="no-tags">No tags selected</span>
+                  ) : (
+                    Array.from(editingTags).sort().map((tag) => (
+                      <span key={tag} className="editing-tag">
+                        {tag}
+                        <button onClick={() => toggleTag(tag)}>&times;</button>
+                      </span>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="edit-section">
+                <div className="new-tag-input">
+                  <input
+                    type="text"
+                    value={newTagInput}
+                    onChange={(e) => setNewTagInput(e.target.value)}
+                    onKeyDown={handleNewTagKeyDown}
+                    placeholder="Add tag..."
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                  />
+                  <button onClick={addNewTag} disabled={!newTagInput.trim()}>
+                    Add
+                  </button>
+                </div>
+              </div>
+
+              {unusedTags.length > 0 && (
+                <div className="edit-section">
+                  <label className="edit-label">Available Tags</label>
+                  <div className="all-tags-list">
+                    {unusedTags.map((tag) => (
+                      <span
+                        key={tag.name}
+                        className="tag-chip"
+                        onClick={() => toggleTag(tag.name)}
+                      >
+                        {tag.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="edit-modal-buttons">
+              <button className="delete-btn" onClick={() => deleteUrl(editingUrlId)}>
+                Delete
+              </button>
+              <button className="cancel-btn" onClick={cancelEditing}>
+                Cancel
+              </button>
+              <button className="save-btn" onClick={saveChanges}>
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Text/Note editing
+    if (editingTextId) {
+      const unusedTags = allTags.filter((tag) => !editingTextTags.has(tag.name));
+
+      return (
+        <div className="edit-modal-overlay" onClick={(e) => e.target === e.currentTarget && cancelEditingText()}>
+          <div className="edit-modal">
+            <div className="edit-modal-header">
+              <h2>Edit Note</h2>
+            </div>
+            <div className="edit-modal-content">
+              <div className="edit-section">
+                <textarea
+                  className="edit-text-input"
+                  value={editingTextContent}
+                  onChange={(e) => setEditingTextContent(e.target.value)}
+                  placeholder="Note text..."
+                  rows={4}
+                />
+              </div>
+
+              <div className="edit-section">
+                <label className="edit-label">Selected Tags</label>
+                <div className="editing-tags">
+                  {editingTextTags.size === 0 ? (
+                    <span className="no-tags">No tags selected</span>
+                  ) : (
+                    Array.from(editingTextTags).sort().map((tag) => (
+                      <span key={tag} className="editing-tag">
+                        {tag}
+                        <button onClick={() => toggleEditingTextTag(tag)}>&times;</button>
+                      </span>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="edit-section">
+                <div className="new-tag-input">
+                  <input
+                    type="text"
+                    value={editingTextTagInput}
+                    onChange={(e) => setEditingTextTagInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addEditingTextTag();
+                      }
+                    }}
+                    placeholder="Add tag..."
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                  />
+                  <button onClick={addEditingTextTag} disabled={!editingTextTagInput.trim()}>
+                    Add
+                  </button>
+                </div>
+              </div>
+
+              {unusedTags.length > 0 && (
+                <div className="edit-section">
+                  <label className="edit-label">Available Tags</label>
+                  <div className="all-tags-list">
+                    {unusedTags.map((tag) => (
+                      <span
+                        key={tag.name}
+                        className="tag-chip"
+                        onClick={() => toggleEditingTextTag(tag.name)}
+                      >
+                        {tag.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="edit-modal-buttons">
+              <button className="delete-btn" onClick={() => deleteText(editingTextId)}>
+                Delete
+              </button>
+              <button className="cancel-btn" onClick={cancelEditingText}>
+                Cancel
+              </button>
+              <button className="save-btn" onClick={saveTextChanges}>
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Tagset editing
+    if (editingTagsetId) {
+      const unusedTags = allTags.filter((tag) => !editingTagsetTags.has(tag.name));
+
+      return (
+        <div className="edit-modal-overlay" onClick={(e) => e.target === e.currentTarget && cancelEditingTagset()}>
+          <div className="edit-modal">
+            <div className="edit-modal-header">
+              <h2>Edit Tag Set</h2>
+            </div>
+            <div className="edit-modal-content">
+              <div className="edit-section">
+                <label className="edit-label">Selected Tags</label>
+                <div className="editing-tags">
+                  {editingTagsetTags.size === 0 ? (
+                    <span className="no-tags">No tags selected</span>
+                  ) : (
+                    Array.from(editingTagsetTags).sort().map((tag) => (
+                      <span key={tag} className="editing-tag">
+                        {tag}
+                        <button onClick={() => toggleEditingTagsetTag(tag)}>&times;</button>
+                      </span>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="edit-section">
+                <div className="new-tag-input">
+                  <input
+                    type="text"
+                    value={editingTagsetInput}
+                    onChange={(e) => setEditingTagsetInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addEditingTagsetTag();
+                      }
+                    }}
+                    placeholder="Add tag..."
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                  />
+                  <button onClick={addEditingTagsetTag} disabled={!editingTagsetInput.trim()}>
+                    Add
+                  </button>
+                </div>
+              </div>
+
+              {unusedTags.length > 0 && (
+                <div className="edit-section">
+                  <label className="edit-label">Available Tags</label>
+                  <div className="all-tags-list">
+                    {unusedTags.map((tag) => (
+                      <span
+                        key={tag.name}
+                        className="tag-chip"
+                        onClick={() => toggleEditingTagsetTag(tag.name)}
+                      >
+                        {tag.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="edit-modal-buttons">
+              <button className="delete-btn" onClick={() => deleteTagset(editingTagsetId)}>
+                Delete
+              </button>
+              <button className="cancel-btn" onClick={cancelEditingTagset}>
+                Cancel
+              </button>
+              <button className="save-btn" onClick={saveTagsetChanges}>
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Image editing
+    if (editingImageId) {
+      const item = savedImages.find(i => i.id === editingImageId);
+      if (!item) return null;
+      const unusedTags = allTags.filter((tag) => !editingImageTags.has(tag.name));
+      const metadata = item.metadata as Record<string, unknown> | undefined;
+      const title = metadata?.title as string | undefined;
+
+      return (
+        <div className="edit-modal-overlay" onClick={(e) => e.target === e.currentTarget && cancelEditingImage()}>
+          <div className="edit-modal">
+            <div className="edit-modal-header">
+              <h2>Edit Image</h2>
+            </div>
+            <div className="edit-modal-content">
+              <div className="edit-section image-preview-section">
+                {item.thumbnail ? (
+                  <img
+                    src={`data:image/jpeg;base64,${item.thumbnail}`}
+                    alt={title || "Preview"}
+                    className="edit-modal-image"
+                  />
+                ) : (
+                  <div className="image-placeholder">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                      <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                      <polyline points="21 15 16 10 5 21"></polyline>
+                    </svg>
+                  </div>
+                )}
+                {title && <div className="edit-image-title">{title}</div>}
+              </div>
+
+              <div className="edit-section">
+                <label className="edit-label">Selected Tags</label>
+                <div className="editing-tags">
+                  {editingImageTags.size === 0 ? (
+                    <span className="no-tags">No tags selected</span>
+                  ) : (
+                    Array.from(editingImageTags).sort().map((tag) => (
+                      <span key={tag} className="editing-tag">
+                        {tag}
+                        <button onClick={() => toggleEditingImageTag(tag)}>&times;</button>
+                      </span>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="edit-section">
+                <div className="new-tag-input">
+                  <input
+                    type="text"
+                    value={editingImageTagInput}
+                    onChange={(e) => setEditingImageTagInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addEditingImageTag();
+                      }
+                    }}
+                    placeholder="Add tag..."
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                  />
+                  <button onClick={addEditingImageTag} disabled={!editingImageTagInput.trim()}>
+                    Add
+                  </button>
+                </div>
+              </div>
+
+              {unusedTags.length > 0 && (
+                <div className="edit-section">
+                  <label className="edit-label">Available Tags</label>
+                  <div className="all-tags-list">
+                    {unusedTags.map((tag) => (
+                      <span
+                        key={tag.name}
+                        className="tag-chip"
+                        onClick={() => toggleEditingImageTag(tag.name)}
+                      >
+                        {tag.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="edit-modal-buttons">
+              <button className="delete-btn" onClick={() => deleteImage(editingImageId)}>
+                Delete
+              </button>
+              <button className="cancel-btn" onClick={cancelEditingImage}>
+                Cancel
+              </button>
+              <button className="save-btn" onClick={saveImageChanges}>
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
   // Render unified item based on type
   const renderUnifiedItem = (item: UnifiedItem) => {
     switch (item.type) {
@@ -850,109 +1365,22 @@ function App() {
   };
 
   const renderUrlItem = (item: SavedUrl) => {
-    const isEditing = editingUrlId === item.id;
-
-    if (isEditing) {
-      // Use domain-boosted tags for unused tag suggestions
-      const unusedTags = editingUrlTags.filter((tag) => !editingTags.has(tag.name));
-
-      return (
-        <div key={item.id} className="saved-url-item editing">
-          <div className="edit-section">
-            <input
-              type="url"
-              className="edit-url-input"
-              value={editingUrlValue}
-              onChange={(e) => setEditingUrlValue(e.target.value)}
-              placeholder="URL"
-              autoCapitalize="none"
-              autoCorrect="off"
-            />
-          </div>
-
-          <div className="edit-section">
-            <div className="editing-tags">
-              {editingTags.size === 0 ? (
-                <span className="no-tags">No tags selected</span>
-              ) : (
-                Array.from(editingTags).sort().map((tag) => (
-                  <span key={tag} className="editing-tag">
-                    {tag}
-                    <button onClick={() => toggleTag(tag)}>&times;</button>
-                  </span>
-                ))
-              )}
-            </div>
-          </div>
-
-          <div className="edit-section">
-            <div className="new-tag-input">
-              <input
-                type="text"
-                value={newTagInput}
-                onChange={(e) => setNewTagInput(e.target.value)}
-                onKeyDown={handleNewTagKeyDown}
-                placeholder="Add tag..."
-                autoCapitalize="none"
-                autoCorrect="off"
-              />
-              <button onClick={addNewTag} disabled={!newTagInput.trim()}>
-                Add
-              </button>
-            </div>
-          </div>
-
-          {unusedTags.length > 0 && (
-            <div className="edit-section">
-              <div className="all-tags-list">
-                {unusedTags.map((tag) => (
-                  <span
-                    key={tag.name}
-                    className="tag-chip"
-                    onClick={() => toggleTag(tag.name)}
-                  >
-                    {tag.name}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="edit-buttons">
-            <button className="delete-btn" onClick={() => deleteUrl(item.id)}>
-              Delete
-            </button>
-            <button className="cancel-btn" onClick={cancelEditing}>
-              Cancel
-            </button>
-            <button className="save-btn" onClick={saveChanges}>
-              Save
-            </button>
-          </div>
-        </div>
-      );
-    }
-
-    const title = item.metadata?.title;
+    const title = item.metadata?.title as string | undefined;
 
     return (
-      <div key={item.id} className="saved-url-item">
-        <div className="item-type-indicator">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="2" y1="12" x2="22" y2="12"></line>
-            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-          </svg>
-          Page
-        </div>
-        <div className="url-row">
-          <div className="url-info">
-            {title && <div className="url-title">{title}</div>}
-            <a href={item.url} target="_blank" rel="noopener noreferrer" className={title ? "url-with-title" : ""}>
-              {item.url}
-            </a>
+      <div key={item.id} className="saved-item-card">
+        <div className="card-header">
+          <div className="card-type-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+            </svg>
           </div>
-          <div className="item-actions">
+          <a href={item.url} target="_blank" rel="noopener noreferrer" className="card-title">
+            {title || item.url}
+          </a>
+          <div className="card-actions">
             <button className="icon-btn" onClick={() => startEditing(item)} title="Edit">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -967,68 +1395,39 @@ function App() {
             </button>
           </div>
         </div>
-        <div className="saved-url-tags">
-          {item.tags.map((tag) => (
-            <span key={tag} className="saved-url-tag">
-              {tag}
-            </span>
-          ))}
-        </div>
-        <div className="saved-url-date">
-          {new Date(item.saved_at).toLocaleDateString()}
+        <div className="card-footer">
+          <div className="card-tags">
+            {item.tags.map((tag) => (
+              <span key={tag} className="card-tag">{tag}</span>
+            ))}
+          </div>
+          <div className="card-date">
+            {new Date(item.saved_at).toLocaleDateString()}
+          </div>
         </div>
       </div>
     );
   };
 
   const renderTextItem = (item: SavedText) => {
-    const isEditing = editingTextId === item.id;
     const tags = extractHashtags(item.content);
-
-    if (isEditing) {
-      return (
-        <div key={item.id} className="saved-text-item editing">
-          <div className="edit-section">
-            <textarea
-              className="edit-text-input"
-              value={editingTextContent}
-              onChange={(e) => setEditingTextContent(e.target.value)}
-              placeholder="Text with #hashtags..."
-              rows={4}
-            />
-          </div>
-          <div className="edit-section">
-            <p className="hashtag-hint">Hashtags in text become tags automatically</p>
-          </div>
-          <div className="edit-buttons">
-            <button className="delete-btn" onClick={() => deleteText(item.id)}>
-              Delete
-            </button>
-            <button className="cancel-btn" onClick={cancelEditingText}>
-              Cancel
-            </button>
-            <button className="save-btn" onClick={saveTextChanges}>
-              Save
-            </button>
-          </div>
-        </div>
-      );
-    }
+    // Get summary: first line or truncated content (without hashtags for display)
+    const contentWithoutTags = item.content.replace(/#\w+/g, '').trim();
+    const summary = contentWithoutTags.split('\n')[0].slice(0, 100) || item.content.slice(0, 100);
 
     return (
-      <div key={item.id} className="saved-text-item">
-        <div className="item-type-indicator">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-            <polyline points="14 2 14 8 20 8"></polyline>
-            <line x1="16" y1="13" x2="8" y2="13"></line>
-            <line x1="16" y1="17" x2="8" y2="17"></line>
-          </svg>
-          Note
-        </div>
-        <div className="text-row">
-          <div className="text-content">{item.content}</div>
-          <div className="item-actions">
+      <div key={item.id} className="saved-item-card">
+        <div className="card-header">
+          <div className="card-type-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+            </svg>
+          </div>
+          <div className="card-title">{summary}</div>
+          <div className="card-actions">
             <button className="icon-btn" onClick={() => startEditingText(item)} title="Edit">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -1043,116 +1442,32 @@ function App() {
             </button>
           </div>
         </div>
-        {tags.length > 0 && (
-          <div className="saved-text-tags">
+        <div className="card-footer">
+          <div className="card-tags">
             {tags.map((tag) => (
-              <span key={tag} className="saved-text-tag">
-                {tag}
-              </span>
+              <span key={tag} className="card-tag">{tag}</span>
             ))}
           </div>
-        )}
-        <div className="saved-text-date">
-          {new Date(item.saved_at).toLocaleDateString()}
+          <div className="card-date">
+            {new Date(item.saved_at).toLocaleDateString()}
+          </div>
         </div>
       </div>
     );
   };
 
   const renderTagsetItem = (item: SavedTagset) => {
-    const isEditing = editingTagsetId === item.id;
-
-    if (isEditing) {
-      const unusedTags = allTags.filter((tag) => !editingTagsetTags.has(tag.name));
-
-      return (
-        <div key={item.id} className="saved-tagset-item editing">
-          <div className="edit-section">
-            <div className="editing-tags">
-              {editingTagsetTags.size === 0 ? (
-                <span className="no-tags">No tags selected</span>
-              ) : (
-                Array.from(editingTagsetTags).sort().map((tag) => (
-                  <span key={tag} className="editing-tag">
-                    {tag}
-                    <button onClick={() => toggleEditingTagsetTag(tag)}>&times;</button>
-                  </span>
-                ))
-              )}
-            </div>
-          </div>
-
-          <div className="edit-section">
-            <div className="new-tag-input">
-              <input
-                type="text"
-                value={editingTagsetInput}
-                onChange={(e) => setEditingTagsetInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    addEditingTagsetTag();
-                  }
-                }}
-                placeholder="Add tag..."
-                autoCapitalize="none"
-                autoCorrect="off"
-              />
-              <button onClick={addEditingTagsetTag} disabled={!editingTagsetInput.trim()}>
-                Add
-              </button>
-            </div>
-          </div>
-
-          {unusedTags.length > 0 && (
-            <div className="edit-section">
-              <div className="all-tags-list">
-                {unusedTags.map((tag) => (
-                  <span
-                    key={tag.name}
-                    className="tag-chip"
-                    onClick={() => toggleEditingTagsetTag(tag.name)}
-                  >
-                    {tag.name}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="edit-buttons">
-            <button className="delete-btn" onClick={() => deleteTagset(item.id)}>
-              Delete
-            </button>
-            <button className="cancel-btn" onClick={cancelEditingTagset}>
-              Cancel
-            </button>
-            <button className="save-btn" onClick={saveTagsetChanges}>
-              Save
-            </button>
-          </div>
-        </div>
-      );
-    }
-
     return (
-      <div key={item.id} className="saved-tagset-item">
-        <div className="item-type-indicator">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
-            <line x1="7" y1="7" x2="7.01" y2="7"></line>
-          </svg>
-          Tag Set
-        </div>
-        <div className="tagset-row">
-          <div className="tagset-tags">
-            {item.tags.map((tag) => (
-              <span key={tag} className="saved-tagset-tag">
-                {tag}
-              </span>
-            ))}
+      <div key={item.id} className="saved-item-card">
+        <div className="card-header">
+          <div className="card-type-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+              <line x1="7" y1="7" x2="7.01" y2="7"></line>
+            </svg>
           </div>
-          <div className="item-actions">
+          <div className="card-title">{item.tags.join(', ')}</div>
+          <div className="card-actions">
             <button className="icon-btn" onClick={() => startEditingTagset(item)} title="Edit">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -1167,168 +1482,51 @@ function App() {
             </button>
           </div>
         </div>
-        <div className="saved-tagset-date">
-          {new Date(item.saved_at).toLocaleDateString()}
+        <div className="card-footer">
+          <div className="card-tags"></div>
+          <div className="card-date">
+            {new Date(item.saved_at).toLocaleDateString()}
+          </div>
         </div>
       </div>
     );
   };
 
   const deleteImage = async (id: string) => {
+    if (!confirm("Delete this image?")) return;
     try {
       await invoke("delete_url", { id }); // delete_url works for all item types
       await loadSavedImages();
+      cancelEditingImage();
     } catch (error) {
       console.error("Failed to delete image:", error);
     }
   };
 
   const renderImageItem = (item: SavedImage) => {
-    const isEditing = editingImageId === item.id;
     const metadata = item.metadata as Record<string, unknown> | undefined;
     const title = metadata?.title as string | undefined;
     const sourceUrl = metadata?.sourceUrl as string | undefined;
-    const dimensions = item.width && item.height ? `${item.width}×${item.height}` : null;
-
-    if (isEditing) {
-      const unusedTags = allTags.filter((tag) => !editingImageTags.has(tag.name));
-
-      return (
-        <div key={item.id} className="saved-image-item editing">
-          <div className="image-row">
-            <div className="image-preview">
-              {item.thumbnail ? (
-                <img
-                  src={`data:image/jpeg;base64,${item.thumbnail}`}
-                  alt={title || "Preview"}
-                  className="image-thumbnail"
-                />
-              ) : (
-                <div className="image-placeholder">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                    <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                    <polyline points="21 15 16 10 5 21"></polyline>
-                  </svg>
-                </div>
-              )}
-            </div>
-            <div className="image-info">
-              {title && <div className="image-title">{title}</div>}
-              {sourceUrl && (
-                <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className={`image-source ${title ? "with-title" : ""}`}>
-                  {sourceUrl}
-                </a>
-              )}
-            </div>
-          </div>
-
-          <div className="edit-section">
-            <div className="editing-tags">
-              {editingImageTags.size === 0 ? (
-                <span className="no-tags">No tags selected</span>
-              ) : (
-                Array.from(editingImageTags).sort().map((tag) => (
-                  <span key={tag} className="editing-tag">
-                    {tag}
-                    <button onClick={() => toggleEditingImageTag(tag)}>&times;</button>
-                  </span>
-                ))
-              )}
-            </div>
-          </div>
-
-          <div className="edit-section">
-            <div className="new-tag-input">
-              <input
-                type="text"
-                value={editingImageTagInput}
-                onChange={(e) => setEditingImageTagInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    addEditingImageTag();
-                  }
-                }}
-                placeholder="Add tag..."
-                autoCapitalize="none"
-                autoCorrect="off"
-              />
-              <button onClick={addEditingImageTag} disabled={!editingImageTagInput.trim()}>
-                Add
-              </button>
-            </div>
-          </div>
-
-          {unusedTags.length > 0 && (
-            <div className="edit-section">
-              <div className="all-tags-list">
-                {unusedTags.map((tag) => (
-                  <span
-                    key={tag.name}
-                    className="tag-chip"
-                    onClick={() => toggleEditingImageTag(tag.name)}
-                  >
-                    {tag.name}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="edit-buttons">
-            <button className="delete-btn" onClick={() => deleteImage(item.id)}>
-              Delete
-            </button>
-            <button className="cancel-btn" onClick={cancelEditingImage}>
-              Cancel
-            </button>
-            <button className="save-btn" onClick={saveImageChanges}>
-              Save
-            </button>
-          </div>
-        </div>
-      );
-    }
 
     return (
-      <div key={item.id} className="saved-image-item">
-        <div className="item-type-indicator">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-            <circle cx="8.5" cy="8.5" r="1.5"></circle>
-            <polyline points="21 15 16 10 5 21"></polyline>
-          </svg>
-          Image
-        </div>
-        <div className="image-row">
-          <div className="image-preview">
+      <div key={item.id} className="saved-item-card image-card">
+        <div className="card-header">
+          <div className="card-thumbnail">
             {item.thumbnail ? (
               <img
                 src={`data:image/jpeg;base64,${item.thumbnail}`}
                 alt={title || "Preview"}
-                className="image-thumbnail"
               />
             ) : (
-              <div className="image-placeholder">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                  <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                  <polyline points="21 15 16 10 5 21"></polyline>
-                </svg>
-              </div>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                <polyline points="21 15 16 10 5 21"></polyline>
+              </svg>
             )}
           </div>
-          <div className="image-info">
-            {title && <div className="image-title">{title}</div>}
-            {sourceUrl && (
-              <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className={`image-source ${title ? "with-title" : ""}`}>
-                {sourceUrl}
-              </a>
-            )}
-            {dimensions && <div className="image-dimensions">{dimensions}</div>}
-          </div>
-          <div className="item-actions">
+          <div className="card-title">{title || sourceUrl || "Image"}</div>
+          <div className="card-actions">
             <button className="icon-btn" onClick={() => startEditingImage(item)} title="Edit">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -1343,17 +1541,15 @@ function App() {
             </button>
           </div>
         </div>
-        {item.tags.length > 0 && (
-          <div className="saved-image-tags">
+        <div className="card-footer">
+          <div className="card-tags">
             {item.tags.map((tag) => (
-              <span key={tag} className="saved-image-tag">
-                {tag}
-              </span>
+              <span key={tag} className="card-tag">{tag}</span>
             ))}
           </div>
-        )}
-        <div className="saved-image-date">
-          {new Date(item.saved_at).toLocaleDateString()}
+          <div className="card-date">
+            {new Date(item.saved_at).toLocaleDateString()}
+          </div>
         </div>
       </div>
     );
@@ -1459,8 +1655,107 @@ function App() {
   const unifiedItems = getUnifiedItems();
   const totalCount = savedUrls.length + savedTexts.length + savedTagsets.length + savedImages.length;
 
+  // Hidden camera input
+  const cameraInput = (
+    <input
+      ref={cameraInputRef}
+      type="file"
+      accept="image/*"
+      capture="environment"
+      onChange={handleCameraCapture}
+      style={{ display: "none" }}
+    />
+  );
+
+  // Captured image edit view
+  if (capturedImage) {
+    return (
+      <div className="app">
+        {cameraInput}
+        <header>
+          <button className="header-btn back-btn" onClick={cancelCapturedImage}>
+            Cancel
+          </button>
+          <h1>Save Photo</h1>
+          <div className="header-spacer"></div>
+        </header>
+
+        <main className="saved-view">
+          <div className="captured-image-view">
+            <div className="captured-image-preview">
+              <img src={capturedImage} alt="Captured" />
+            </div>
+
+            <div className="edit-section">
+              <div className="editing-tags">
+                {capturedImageTags.size === 0 ? (
+                  <span className="no-tags">No tags selected</span>
+                ) : (
+                  Array.from(capturedImageTags).sort().map((tag) => (
+                    <span key={tag} className="editing-tag">
+                      {tag}
+                      <button onClick={() => toggleCapturedImageTag(tag)}>&times;</button>
+                    </span>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="edit-section">
+              <div className="new-tag-input">
+                <input
+                  type="text"
+                  value={capturedImageTagInput}
+                  onChange={(e) => setCapturedImageTagInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addCapturedImageTag();
+                    }
+                  }}
+                  placeholder="Add tag..."
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                />
+                <button onClick={addCapturedImageTag} disabled={!capturedImageTagInput.trim()}>
+                  Add
+                </button>
+              </div>
+            </div>
+
+            {allTags.length > 0 && (
+              <div className="edit-section">
+                <div className="all-tags-list">
+                  {allTags.filter((t) => !capturedImageTags.has(t.name)).map((tag) => (
+                    <span
+                      key={tag.name}
+                      className="tag-chip"
+                      onClick={() => toggleCapturedImageTag(tag.name)}
+                    >
+                      {tag.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="edit-buttons">
+              <button className="cancel-btn" onClick={cancelCapturedImage}>
+                Cancel
+              </button>
+              <button className="save-btn" onClick={saveCapturedImage}>
+                Save
+              </button>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="app">
+      {cameraInput}
       <header>
         <h1 onClick={activeFilter !== "all" ? showAll : scrollToTop} style={{ cursor: "pointer" }}>
           Peek
@@ -1527,16 +1822,24 @@ function App() {
         {/* Unified add input */}
         <div className={`unified-add-input ${addInputExpanded ? "expanded" : ""}`}>
           {!addInputExpanded ? (
-            <input
-              type="text"
-              className="add-input-collapsed"
-              placeholder="Add note, URL, or tags..."
-              value={addInputText}
-              onChange={(e) => setAddInputText(e.target.value)}
-              onFocus={() => setAddInputExpanded(true)}
-              autoCapitalize="none"
-              autoCorrect="off"
-            />
+            <div className="add-input-collapsed-row">
+              <input
+                type="text"
+                className="add-input-collapsed"
+                placeholder="Add note, URL, or tags..."
+                value={addInputText}
+                onChange={(e) => setAddInputText(e.target.value)}
+                onFocus={() => setAddInputExpanded(true)}
+                autoCapitalize="none"
+                autoCorrect="off"
+              />
+              <button className="camera-btn" onClick={openCamera} title="Take photo">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                  <circle cx="12" cy="13" r="4"></circle>
+                </svg>
+              </button>
+            </div>
           ) : (
             <>
               <textarea
@@ -1612,6 +1915,9 @@ function App() {
           )}
         </div>
       </main>
+
+      {/* Edit modal overlay */}
+      {renderEditModal()}
     </div>
   );
 }

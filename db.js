@@ -60,13 +60,12 @@ function initializeSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
     CREATE INDEX IF NOT EXISTS idx_items_content ON items(content);
     CREATE INDEX IF NOT EXISTS idx_items_deleted ON items(deleted_at);
-    CREATE INDEX IF NOT EXISTS idx_items_sync_id ON items(sync_id);
   `);
 
   // Migration: add metadata column and update CHECK constraint if needed
   migrateToImageSupport(db);
 
-  // Migration: add sync columns if needed
+  // Migration: add sync columns if needed (creates idx_items_sync_id)
   migrateSyncColumns(db);
 
   // tags table
@@ -211,12 +210,14 @@ function migrateSyncColumns(db) {
       db.exec("ALTER TABLE items ADD COLUMN sync_id TEXT DEFAULT ''");
       db.exec("ALTER TABLE items ADD COLUMN sync_source TEXT DEFAULT ''");
       db.exec("ALTER TABLE items ADD COLUMN synced_at TEXT");
-      db.exec("CREATE INDEX IF NOT EXISTS idx_items_sync_id ON items(sync_id)");
       console.log("Sync columns migration complete.");
     } catch (error) {
       console.log("Sync columns migration:", error.message);
     }
   }
+
+  // Always ensure index exists (safe to run after columns exist)
+  db.exec("CREATE INDEX IF NOT EXISTS idx_items_sync_id ON items(sync_id)");
 }
 
 function generateUUID() {

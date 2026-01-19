@@ -1,8 +1,8 @@
 /**
- * Integration test for Peek Mobile <-> Peek Node webhook sync
+ * Integration test for Peek Mobile <-> backend/server webhook sync
  *
  * This test:
- * 1. Starts peek-node server with a temp data directory
+ * 1. Starts the server (backend/server/) with a temp data directory
  * 2. Creates a test user and API key
  * 3. Submits test data (pages, texts, tagsets) via the webhook API
  * 4. Fetches data back and verifies it matches what was submitted
@@ -12,9 +12,11 @@
 import { spawn } from 'child_process';
 import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
-const PEEK_NODE_PATH = join(process.env.HOME, 'misc', 'peek-node');
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const PEEK_NODE_PATH = join(__dirname, '..', '..', 'server');
 const TEST_PORT = 3456;
 const BASE_URL = `http://localhost:${TEST_PORT}`;
 

@@ -193,7 +193,7 @@ CREATE TABLE settings (
 - `src/App.css` - Mobile-optimized styling with dark mode
 
 ### Tests
-- `tests/integration.test.js` - Integration tests against peek-node server
+- `tests/integration.test.js` - Integration tests against backend/server
 
 ### Configuration
 - `src-tauri/tauri.conf.json` - Bundle ID: `com.dietrich.peek-mobile`
@@ -313,10 +313,10 @@ The `build-ios.sh` script:
 
 ### Testing
 
-Integration tests verify the webhook sync with peek-node server:
+Integration tests verify the webhook sync with the backend server (`backend/server/`):
 
 ```bash
-# Run tests (starts peek-node server with temp data, runs tests, cleans up)
+# Run tests (starts server with temp data, runs tests, cleans up)
 npm test
 
 # Verbose mode (shows server logs)
@@ -331,7 +331,7 @@ Tests cover:
 - Tags frecency tracking
 - Update and delete operations
 
-**Requirements:** peek-node server at `~/misc/peek-node`
+**Requirements:** Server dependencies installed (`cd ../server && npm install`)
 
 ### Cleaning Data
 

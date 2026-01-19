@@ -12,6 +12,7 @@ Be able to use the app on mobile and desktop with the safety of knowing there's 
 
 Today
 - [ ][desktop] merge peek-node into peek
+- [ ][mobile] update server tests to use ./backend/server, the new home for it
 - [ ][all] unify data model across mobile/desktop/server
 - [ ][all] sync working between all three
 - [ ][desktop] daily data snapshots saved to compress archives in ~/sync/peek-backups

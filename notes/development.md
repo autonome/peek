@@ -29,6 +29,13 @@ yarn tauri:ios:dev        # Run on iOS simulator
 yarn tauri:ios:build      # Build for iOS
 yarn tauri:ios:xcode      # Open Xcode project
 yarn tauri:android:dev    # Run on Android emulator
+
+# Server (webhook API for mobile sync)
+yarn server:install       # Install server dependencies
+yarn server:start         # Run production server
+yarn server:dev           # Run with hot reload
+yarn server:test          # Run server tests
+yarn server:healthcheck   # Verify server starts
 ```
 
 ### Testing
@@ -69,18 +76,25 @@ yarn test:grep "pattern"  # Run specific test by name
 ### Backend Structure
 ```
 backend/
-├── electron/          # Electron backend (current primary)
+├── electron/          # Electron desktop backend (current primary)
 │   ├── datastore.ts   # SQLite via better-sqlite3
 │   ├── ipc.ts         # IPC handlers
 │   └── protocol.ts    # peek:// protocol handler
-└── tauri/             # Tauri backend (Rust)
-    ├── src-tauri/
-    │   ├── src/
-    │   │   ├── lib.rs          # App setup
-    │   │   ├── datastore.rs    # SQLite via rusqlite
-    │   │   └── commands/       # IPC command handlers
-    │   └── tests/smoke.rs      # Rust smoke tests
-    └── preload.js              # Peek API implementation (Tauri)
+├── tauri/             # Tauri desktop backend (Rust)
+│   ├── src-tauri/
+│   │   ├── src/
+│   │   │   ├── lib.rs          # App setup
+│   │   │   ├── datastore.rs    # SQLite via rusqlite
+│   │   │   └── commands/       # IPC command handlers
+│   │   └── tests/smoke.rs      # Rust smoke tests
+│   └── preload.js              # Peek API implementation (Tauri)
+├── tauri-mobile/      # Tauri mobile app (iOS/Android)
+│   ├── src/           # React frontend
+│   └── src-tauri/     # Rust backend
+└── server/            # Webhook API server for mobile sync
+    ├── index.js       # Hono HTTP server
+    ├── db.js          # SQLite via better-sqlite3
+    └── users.js       # Multi-user API key auth
 ```
 
 **Data Sync**: Both backends use the same SQLite database path (`~/.config/Peek/{profile}/datastore.sqlite`). Only one backend should run at a time (file lock).
@@ -188,3 +202,63 @@ Mobile development uses the separate `peek-save` app in `backend/tauri-mobile/`.
 
 **CRITICAL - Do NOT run `xcodegen generate`:**
 - The Xcode project has custom settings that xcodegen overwrites
+
+## Server Backend (Webhook API)
+
+The server backend (`backend/server/`) is a remote HTTP API for syncing data from the mobile app. It's separate from the desktop backends - it doesn't implement the Peek API, it's a standalone Node.js server.
+
+### Server Commands
+```bash
+# From project root
+yarn server:install      # Install dependencies (first time)
+yarn server:start        # Run production server (port 3000)
+yarn server:dev          # Run with hot reload
+yarn server:test         # Run unit tests (92 tests)
+yarn server:healthcheck  # Verify server starts and responds
+
+# From backend/server/
+npm install
+npm start
+npm run dev
+npm test
+npm run test:api:local   # Test against local server (needs PEEK_LOCAL_KEY)
+npm run test:api:prod    # Test against production (needs PEEK_PROD_KEY, PEEK_PROD_URL)
+```
+
+### Server Architecture
+- **Hono** - Lightweight HTTP framework (like Express but faster)
+- **better-sqlite3** - SQLite database (same as Electron backend)
+- **Multi-user** - Each user gets isolated database in `./data/{userId}/`
+- **API key auth** - Bearer token authentication, keys hashed with SHA-256
+
+### Server API Endpoints
+All endpoints except `/` require `Authorization: Bearer <api_key>` header.
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | GET | Health check (public) |
+| `/webhook` | POST | Receive items from mobile (`{ urls, texts, tagsets }`) |
+| `/urls` | GET | List saved URLs |
+| `/urls/:id` | DELETE | Delete URL |
+| `/urls/:id/tags` | PATCH | Update URL tags |
+| `/texts` | GET/POST | List or create texts |
+| `/tagsets` | GET/POST | List or create tagsets |
+| `/images` | GET/POST | List or upload images |
+| `/images/:id` | GET/DELETE | Get or delete image |
+| `/items` | GET/POST | Unified endpoint (filter with `?type=`) |
+| `/tags` | GET | List tags by frecency |
+
+### Server Deployment (Railway)
+The server is configured for Railway deployment:
+1. Connect Railway to `backend/server/` subdirectory
+2. Attach a persistent volume, set `DATA_DIR` env var to mount path
+3. Create users via the `users.js` module
+
+### Server Database Schema
+Different from desktop datastore - optimized for mobile sync:
+- `items` - Unified table (type: url/text/tagset/image)
+- `tags` - Tag names with frecency scoring
+- `item_tags` - Many-to-many junction
+- `settings` - Key-value config
+
+Images stored on disk in `./data/{userId}/images/` with content-hash deduplication.

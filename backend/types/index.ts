@@ -81,6 +81,11 @@ export interface AddressTag {
 
 // ==================== Item Types (for mobile-style lightweight content) ====================
 
+// Unified types across all platforms (mobile, desktop, server)
+// - url: Saved URLs/bookmarks
+// - text: Text content/notes
+// - tagset: Tag-only items
+// - image: Binary images
 export type ItemType = 'url' | 'text' | 'tagset' | 'image';
 
 export interface Item {
@@ -264,3 +269,30 @@ export const tableNames: TableName[] = [
   'items',
   'item_tags'
 ];
+
+// ==================== Sync Types ====================
+
+export interface SyncConfig {
+  serverUrl: string;
+  apiKey: string;
+  lastSyncTime: number;
+  autoSync: boolean;
+}
+
+export interface SyncResult {
+  pulled: number;
+  pushed: number;
+  conflicts: number;
+  lastSyncTime: number;
+}
+
+// Server item format (ISO timestamps, different field names)
+export interface ServerItem {
+  id: string;
+  type: ItemType;
+  content: string | null;
+  metadata?: Record<string, unknown> | null;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+}

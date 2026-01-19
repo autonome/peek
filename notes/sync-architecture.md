@@ -159,6 +159,25 @@ Tests cover:
 2. **No binary image sync**: Images are currently metadata-only (no file sync)
 3. **No real-time sync**: Polling-based, no WebSocket updates
 4. **Single-user per API key**: No multi-device account management
+5. **Mobile → Server only**: No pull/download sync from server to mobile
+
+## Deployment Order
+
+When deploying updates to both server and mobile:
+
+1. **Deploy server first**
+   - Server is stateless and can be updated independently
+   - Auto-migrations run on first request per user database
+   - Always run `npm test` before deploying
+
+2. **Update mobile second**
+   - Mobile works offline and adapts to server changes
+   - Users can update when ready
+
+**Why this order:**
+- Server changes can't break existing mobile apps (backwards compatible)
+- Mobile apps continue working offline if server is temporarily down
+- No data flows server→mobile, so server changes can't corrupt mobile data
 
 ## Future Improvements
 

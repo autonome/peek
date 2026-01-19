@@ -203,6 +203,37 @@ Mobile development uses the separate `peek-save` app in `backend/tauri-mobile/`.
 **CRITICAL - Do NOT run `xcodegen generate`:**
 - The Xcode project has custom settings that xcodegen overwrites
 
+### iOS Build Process (Detailed)
+
+**IMPORTANT**: Build BOTH debug (simulator) AND release (device) Rust libraries before opening Xcode.
+
+```bash
+# 1. Build frontend
+cd backend/tauri-mobile && npm install && npm run build
+
+# 2. Build debug library (for simulator)
+cd src-tauri
+cargo tauri build --target aarch64-apple-ios-sim --debug
+mkdir -p gen/apple/Externals/arm64/Debug
+cp target/aarch64-apple-ios-sim/debug/deps/libpeek_save_lib.a gen/apple/Externals/arm64/Debug/libapp.a
+
+# 3. Build release library (for device)
+cargo tauri build --target aarch64-apple-ios
+mkdir -p gen/apple/Externals/arm64/Release
+cp target/aarch64-apple-ios/release/deps/libpeek_save_lib.a gen/apple/Externals/arm64/Release/libapp.a
+
+# 4. Create assets symlink (if missing)
+ln -s ../../../dist gen/apple/assets
+
+# 5. Open Xcode and build from GUI
+open gen/apple/peek-save.xcodeproj
+```
+
+**Gotchas:**
+- The `gen/apple/assets` symlink must exist or Xcode fails with "No such file or directory"
+- Debug scheme = simulator, Release scheme = device
+- If Rust code changes, rebuild the library and copy again
+
 ## Server Backend (Webhook API)
 
 The server backend (`backend/server/`) is a remote HTTP API for syncing data from the mobile app. It's separate from the desktop backends - it doesn't implement the Peek API, it's a standalone Node.js server.
@@ -249,10 +280,39 @@ All endpoints except `/` require `Authorization: Bearer <api_key>` header.
 | `/tags` | GET | List tags by frecency |
 
 ### Server Deployment (Railway)
-The server is configured for Railway deployment:
+
+The server is configured for Railway deployment.
+
+**Initial Setup:**
 1. Connect Railway to `backend/server/` subdirectory
 2. Attach a persistent volume, set `DATA_DIR` env var to mount path
 3. Create users via the `users.js` module
+
+**Deploying Updates:**
+```bash
+# Link to project (one-time, from backend/server/)
+railway link -p <project-name> -s <service-name> -e production
+
+# Always run tests first
+npm test
+
+# Deploy
+railway up -d
+
+# Check logs
+railway logs -n 50
+
+# Health check
+curl https://peek-node.up.railway.app/
+```
+
+**Deployment Order (Server + Mobile):**
+1. **Server first** - stateless, has auto-migrations that run on first request
+2. **Mobile second** - works offline, adapts to server changes
+3. One-way sync only: mobile → server (no pull/download sync yet)
+
+**Migration Gotcha:**
+When adding database columns via migration, ensure indexes on those columns are created AFTER the column migration runs, not in the initial CREATE TABLE statement.
 
 ### Server Database Schema
 Different from desktop datastore - optimized for mobile sync:

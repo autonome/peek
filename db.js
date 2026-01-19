@@ -632,6 +632,87 @@ function deleteImage(userId, itemId) {
   }
 }
 
+/**
+ * Get items modified since a given timestamp
+ * Used for incremental sync - returns items where updated_at > timestamp
+ */
+function getItemsSince(userId, timestamp, type = null) {
+  const conn = getConnection(userId);
+
+  let query = `
+    SELECT id, type, content, metadata, created_at, updated_at
+    FROM items
+    WHERE deleted_at IS NULL AND updated_at > ?
+  `;
+  const params = [timestamp];
+
+  if (type) {
+    query += " AND type = ?";
+    params.push(type);
+  }
+
+  query += " ORDER BY updated_at ASC";
+
+  const items = conn.prepare(query).all(...params);
+
+  const getTagsStmt = conn.prepare(`
+    SELECT t.name
+    FROM tags t
+    JOIN item_tags it ON t.id = it.tag_id
+    WHERE it.item_id = ?
+  `);
+
+  return items.map((row) => {
+    const result = {
+      id: row.id,
+      type: row.type,
+      content: row.content,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      tags: getTagsStmt.all(row.id).map((t) => t.name),
+    };
+    if (row.metadata) {
+      result.metadata = JSON.parse(row.metadata);
+    }
+    return result;
+  });
+}
+
+/**
+ * Get a single item by ID
+ */
+function getItemById(userId, itemId) {
+  const conn = getConnection(userId);
+
+  const row = conn.prepare(`
+    SELECT id, type, content, metadata, created_at, updated_at
+    FROM items
+    WHERE id = ? AND deleted_at IS NULL
+  `).get(itemId);
+
+  if (!row) return null;
+
+  const getTagsStmt = conn.prepare(`
+    SELECT t.name
+    FROM tags t
+    JOIN item_tags it ON t.id = it.tag_id
+    WHERE it.item_id = ?
+  `);
+
+  const result = {
+    id: row.id,
+    type: row.type,
+    content: row.content,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    tags: getTagsStmt.all(row.id).map((t) => t.name),
+  };
+  if (row.metadata) {
+    result.metadata = JSON.parse(row.metadata);
+  }
+  return result;
+}
+
 module.exports = {
   getConnection,
   closeAllConnections,
@@ -639,6 +720,8 @@ module.exports = {
   // Unified functions
   saveItem,
   getItems,
+  getItemsSince,
+  getItemById,
   deleteItem,
   updateItemTags,
   // Type-specific helpers

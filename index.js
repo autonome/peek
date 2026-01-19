@@ -368,6 +368,41 @@ app.patch("/items/:id/tags", async (c) => {
   return c.json({ updated: true });
 });
 
+// === Sync endpoints ===
+
+// Get items modified since a timestamp (for incremental sync)
+app.get("/items/since/:timestamp", (c) => {
+  const userId = c.get("userId");
+  const timestamp = c.req.param("timestamp");
+  const type = c.req.query("type");
+
+  // Validate timestamp format (ISO string)
+  const date = new Date(timestamp);
+  if (isNaN(date.getTime())) {
+    return c.json({ error: "Invalid timestamp format. Use ISO 8601 format." }, 400);
+  }
+
+  if (type && !["url", "text", "tagset", "image"].includes(type)) {
+    return c.json({ error: "type must be 'url', 'text', 'tagset', or 'image'" }, 400);
+  }
+
+  const items = db.getItemsSince(userId, timestamp, type || null);
+  return c.json({ items, since: timestamp });
+});
+
+// Get a single item by ID
+app.get("/items/:id", (c) => {
+  const userId = c.get("userId");
+  const id = c.req.param("id");
+
+  const item = db.getItemById(userId, id);
+  if (!item) {
+    return c.json({ error: "item not found" }, 404);
+  }
+
+  return c.json({ item });
+});
+
 const port = process.env.PORT || 3000;
 
 // Migrate legacy API_KEY env var to multi-user system

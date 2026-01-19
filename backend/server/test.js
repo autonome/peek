@@ -571,6 +571,53 @@ describe("Database Tests", () => {
       assert.strictEqual(images[0].type, "image");
     });
   });
+
+  describe("Unified Item Types", () => {
+    it("should support url, text, tagset, image types", () => {
+      const urlId = db.saveUrl(TEST_USER_ID, "https://example.com");
+      const textId = db.saveText(TEST_USER_ID, "My note");
+      const tagsetId = db.saveTagset(TEST_USER_ID, ["tag1", "tag2"]);
+
+      const items = db.getItems(TEST_USER_ID);
+      const types = items.map((i) => i.type).sort();
+      assert.deepStrictEqual(types, ["tagset", "text", "url"]);
+    });
+
+    it("should save items with correct type values", () => {
+      const urlId = db.saveItem(TEST_USER_ID, "url", "https://test.com", ["web"]);
+      const textId = db.saveItem(TEST_USER_ID, "text", "Note content", ["note"]);
+      const tagsetId = db.saveItem(TEST_USER_ID, "tagset", null, ["exercise", "20"]);
+
+      const items = db.getItems(TEST_USER_ID);
+      const urlItem = items.find((i) => i.id === urlId);
+      const textItem = items.find((i) => i.id === textId);
+      const tagsetItem = items.find((i) => i.id === tagsetId);
+
+      assert.strictEqual(urlItem.type, "url");
+      assert.strictEqual(textItem.type, "text");
+      assert.strictEqual(tagsetItem.type, "tagset");
+    });
+  });
+
+  describe("Sync Columns Schema", () => {
+    it("should have sync columns in schema", () => {
+      const conn = db.getConnection(TEST_USER_ID);
+      const tableInfo = conn.prepare("PRAGMA table_info(items)").all();
+      const columnNames = tableInfo.map((col) => col.name);
+
+      assert.ok(columnNames.includes("sync_id"), "should have sync_id column");
+      assert.ok(columnNames.includes("sync_source"), "should have sync_source column");
+      assert.ok(columnNames.includes("synced_at"), "should have synced_at column");
+    });
+
+    it("should have sync_id index", () => {
+      const conn = db.getConnection(TEST_USER_ID);
+      const indexes = conn.prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='items'").all();
+      const indexNames = indexes.map((idx) => idx.name);
+
+      assert.ok(indexNames.includes("idx_items_sync_id"), "should have idx_items_sync_id index");
+    });
+  });
 });
 
 describe("Users Module Tests", () => {

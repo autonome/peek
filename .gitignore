@@ -27,7 +27,7 @@ CLAUDE.md
 # Experimental/unused files
 babel.config.json
 webpack.config.js
-debug.js
+/debug.js
 package.js
 protocol-imports.diff
 test/

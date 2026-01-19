@@ -50,6 +50,9 @@ function initializeSchema(db) {
       type TEXT NOT NULL CHECK(type IN ('url', 'text', 'tagset', 'image')),
       content TEXT,
       metadata TEXT,
+      sync_id TEXT DEFAULT '',
+      sync_source TEXT DEFAULT '',
+      synced_at TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       deleted_at TEXT
@@ -57,10 +60,14 @@ function initializeSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
     CREATE INDEX IF NOT EXISTS idx_items_content ON items(content);
     CREATE INDEX IF NOT EXISTS idx_items_deleted ON items(deleted_at);
+    CREATE INDEX IF NOT EXISTS idx_items_sync_id ON items(sync_id);
   `);
 
   // Migration: add metadata column and update CHECK constraint if needed
   migrateToImageSupport(db);
+
+  // Migration: add sync columns if needed
+  migrateSyncColumns(db);
 
   // tags table
   db.exec(`
@@ -190,6 +197,25 @@ function migrateToImageSupport(db) {
     `);
 
     console.log("Image support migration complete.");
+  }
+}
+
+function migrateSyncColumns(db) {
+  // Check if sync columns exist
+  const tableInfo = db.prepare("PRAGMA table_info(items)").all();
+  const hasSyncId = tableInfo.some((col) => col.name === "sync_id");
+
+  if (!hasSyncId) {
+    console.log("Adding sync columns to items table...");
+    try {
+      db.exec("ALTER TABLE items ADD COLUMN sync_id TEXT DEFAULT ''");
+      db.exec("ALTER TABLE items ADD COLUMN sync_source TEXT DEFAULT ''");
+      db.exec("ALTER TABLE items ADD COLUMN synced_at TEXT");
+      db.exec("CREATE INDEX IF NOT EXISTS idx_items_sync_id ON items(sync_id)");
+      console.log("Sync columns migration complete.");
+    } catch (error) {
+      console.log("Sync columns migration:", error.message);
+    }
   }
 }
 

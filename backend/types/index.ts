@@ -81,7 +81,7 @@ export interface AddressTag {
 
 // ==================== Item Types (for mobile-style lightweight content) ====================
 
-export type ItemType = 'note' | 'tagset' | 'image';
+export type ItemType = 'url' | 'text' | 'tagset' | 'image';
 
 export interface Item {
   id: string;
@@ -91,6 +91,7 @@ export interface Item {
   metadata: string;
   syncId: string;
   syncSource: string;
+  syncedAt: number;
   createdAt: number;
   updatedAt: number;
   deletedAt: number;

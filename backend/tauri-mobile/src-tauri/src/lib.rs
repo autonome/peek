@@ -11,7 +11,7 @@ use regex::Regex;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 enum ItemType {
-    Page,
+    Url,
     Text,
     Tagset,
     Image,
@@ -20,7 +20,7 @@ enum ItemType {
 impl ItemType {
     fn as_str(&self) -> &'static str {
         match self {
-            ItemType::Page => "page",
+            ItemType::Url => "url",
             ItemType::Text => "text",
             ItemType::Tagset => "tagset",
             ItemType::Image => "image",
@@ -29,7 +29,7 @@ impl ItemType {
 
     fn from_str(s: &str) -> Option<ItemType> {
         match s {
-            "page" => Some(ItemType::Page),
+            "url" => Some(ItemType::Url),
             "text" => Some(ItemType::Text),
             "tagset" => Some(ItemType::Tagset),
             "image" => Some(ItemType::Image),
@@ -200,10 +200,13 @@ fn ensure_database_initialized() -> Result<(), String> {
                 -- Create new items table
                 CREATE TABLE items (
                     id TEXT PRIMARY KEY,
-                    type TEXT NOT NULL DEFAULT 'page',
+                    type TEXT NOT NULL DEFAULT 'url',
                     url TEXT,
                     content TEXT,
                     metadata TEXT,
+                    sync_id TEXT DEFAULT '',
+                    sync_source TEXT DEFAULT '',
+                    synced_at TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     deleted_at TEXT
@@ -211,7 +214,7 @@ fn ensure_database_initialized() -> Result<(), String> {
 
                 -- Migrate data from urls to items
                 INSERT INTO items (id, type, url, created_at, updated_at, deleted_at)
-                    SELECT id, 'page', url, created_at, updated_at, deleted_at FROM urls;
+                    SELECT id, 'url', url, created_at, updated_at, deleted_at FROM urls;
 
                 -- Create new item_tags table
                 CREATE TABLE item_tags (
@@ -235,6 +238,7 @@ fn ensure_database_initialized() -> Result<(), String> {
                 CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
                 CREATE INDEX IF NOT EXISTS idx_items_url ON items(url);
                 CREATE INDEX IF NOT EXISTS idx_items_deleted ON items(deleted_at);
+                CREATE INDEX IF NOT EXISTS idx_items_sync_id ON items(sync_id);
                 ",
             ) {
                 init_result = Err(format!("Failed to migrate database: {}", e));
@@ -247,10 +251,13 @@ fn ensure_database_initialized() -> Result<(), String> {
                 "
                 CREATE TABLE IF NOT EXISTS items (
                     id TEXT PRIMARY KEY,
-                    type TEXT NOT NULL DEFAULT 'page',
+                    type TEXT NOT NULL DEFAULT 'url',
                     url TEXT,
                     content TEXT,
                     metadata TEXT,
+                    sync_id TEXT DEFAULT '',
+                    sync_source TEXT DEFAULT '',
+                    synced_at TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     deleted_at TEXT
@@ -291,6 +298,7 @@ fn ensure_database_initialized() -> Result<(), String> {
                 CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
                 CREATE INDEX IF NOT EXISTS idx_items_url ON items(url);
                 CREATE INDEX IF NOT EXISTS idx_items_deleted ON items(deleted_at);
+                CREATE INDEX IF NOT EXISTS idx_items_sync_id ON items(sync_id);
                 CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
                 CREATE INDEX IF NOT EXISTS idx_tags_frecency ON tags(frecency_score DESC);
                 CREATE INDEX IF NOT EXISTS idx_blobs_item ON blobs(item_id);
@@ -320,6 +328,41 @@ fn ensure_database_initialized() -> Result<(), String> {
             if let Err(e) = conn.execute("ALTER TABLE items ADD COLUMN metadata TEXT", []) {
                 println!("[Rust] Warning: Failed to add metadata column: {}", e);
                 // Not fatal - column may already exist
+            }
+        }
+
+        // Add sync columns if they don't exist (for existing installs)
+        let has_sync_id: bool = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('items') WHERE name='sync_id'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap_or(0) > 0;
+
+        if !has_sync_id {
+            println!("[Rust] Adding sync columns to items table...");
+            let _ = conn.execute("ALTER TABLE items ADD COLUMN sync_id TEXT DEFAULT ''", []);
+            let _ = conn.execute("ALTER TABLE items ADD COLUMN sync_source TEXT DEFAULT ''", []);
+            let _ = conn.execute("ALTER TABLE items ADD COLUMN synced_at TEXT", []);
+            let _ = conn.execute_batch("CREATE INDEX IF NOT EXISTS idx_items_sync_id ON items(sync_id)");
+        }
+
+        // Migrate 'page' type items to 'url' (for existing installs with old type name)
+        let page_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM items WHERE type = 'page'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+
+        if page_count > 0 {
+            println!("[Rust] Migrating {} 'page' items to 'url' type...", page_count);
+            if let Err(e) = conn.execute("UPDATE items SET type = 'url' WHERE type = 'page'", []) {
+                println!("[Rust] Warning: Failed to migrate page items: {}", e);
+            } else {
+                println!("[Rust] Page to URL migration complete");
             }
         }
 
@@ -580,7 +623,7 @@ async fn save_url(url: String, tags: Vec<String>, metadata: Option<serde_json::V
     // Check if URL already exists (as a page type)
     let existing_id: Option<String> = conn
         .query_row(
-            "SELECT id FROM items WHERE type = 'page' AND url = ? AND deleted_at IS NULL",
+            "SELECT id FROM items WHERE type = 'url' AND url = ? AND deleted_at IS NULL",
             params![&url],
             |row| row.get(0),
         )
@@ -765,7 +808,7 @@ async fn get_tags_by_frecency_for_url(url: String) -> Result<Vec<TagStats>, Stri
             "SELECT DISTINCT it.tag_id
              FROM item_tags it
              JOIN items i ON it.item_id = i.id
-             WHERE i.deleted_at IS NULL AND i.type = 'page'
+             WHERE i.deleted_at IS NULL AND i.type = 'url'
                AND (i.url LIKE ?1 OR i.url LIKE ?2 OR i.url LIKE ?3 OR i.url LIKE ?4)",
         )
         .map_err(|e| format!("Failed to prepare domain query: {}", e))?;
@@ -803,7 +846,7 @@ async fn get_saved_urls() -> Result<Vec<SavedUrl>, String> {
     // Get all non-deleted pages (type='page')
     let mut stmt = conn
         .prepare(
-            "SELECT id, url, created_at, metadata FROM items WHERE type = 'page' AND deleted_at IS NULL ORDER BY COALESCE(updated_at, created_at) DESC",
+            "SELECT id, url, created_at, metadata FROM items WHERE type = 'url' AND deleted_at IS NULL ORDER BY COALESCE(updated_at, created_at) DESC",
         )
         .map_err(|e| format!("Failed to prepare query: {}", e))?;
 
@@ -875,7 +918,7 @@ async fn update_url(id: String, url: String, tags: Vec<String>) -> Result<(), St
     // Verify item exists and is a page
     let exists: bool = conn
         .query_row(
-            "SELECT 1 FROM items WHERE id = ? AND type = 'page' AND deleted_at IS NULL",
+            "SELECT 1 FROM items WHERE id = ? AND type = 'url' AND deleted_at IS NULL",
             params![&id],
             |_| Ok(true),
         )
@@ -2210,20 +2253,26 @@ mod tests {
     use rusqlite::{params, Connection};
     use chrono::Utc;
 
-    /// Create the database schema for testing
+    /// Create the database schema for testing (unified model with sync columns)
     fn create_test_schema(conn: &Connection) {
         conn.execute_batch(
             "
             CREATE TABLE IF NOT EXISTS items (
                 id TEXT PRIMARY KEY,
-                type TEXT NOT NULL DEFAULT 'page',
+                type TEXT NOT NULL DEFAULT 'url',
                 url TEXT,
                 content TEXT,
                 metadata TEXT,
+                sync_id TEXT DEFAULT '',
+                sync_source TEXT DEFAULT '',
+                synced_at TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
                 deleted_at TEXT
             );
+
+            CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
+            CREATE INDEX IF NOT EXISTS idx_items_sync_id ON items(sync_id);
 
             CREATE TABLE IF NOT EXISTS tags (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2380,5 +2429,167 @@ mod tests {
         let saved_tags = get_item_tags(&conn, &item_id);
         assert!(saved_tags.contains(&"uppercase".to_string()), "Tag should be lowercase");
         assert!(saved_tags.contains(&"mixedcase".to_string()), "Tag should be lowercase");
+    }
+
+    // === Unified Item Type Tests ===
+
+    /// Save a URL item (tests url type)
+    fn save_url_item(conn: &Connection, url: &str) -> String {
+        let now = Utc::now().to_rfc3339();
+        let id = uuid::Uuid::new_v4().to_string();
+
+        conn.execute(
+            "INSERT INTO items (id, type, url, created_at, updated_at) VALUES (?, 'url', ?, ?, ?)",
+            params![&id, url, &now, &now],
+        )
+        .expect("Failed to insert url item");
+
+        id
+    }
+
+    /// Save a tagset item (tests tagset type)
+    fn save_tagset_item(conn: &Connection, tags: &[String]) -> String {
+        let now = Utc::now().to_rfc3339();
+        let id = uuid::Uuid::new_v4().to_string();
+
+        conn.execute(
+            "INSERT INTO items (id, type, created_at, updated_at) VALUES (?, 'tagset', ?, ?)",
+            params![&id, &now, &now],
+        )
+        .expect("Failed to insert tagset item");
+
+        // Add tags
+        for tag_name in tags {
+            let normalized = tag_name.trim().to_lowercase();
+            if normalized.is_empty() {
+                continue;
+            }
+
+            let tag_id: i64 = match conn.query_row(
+                "SELECT id FROM tags WHERE name = ?",
+                params![&normalized],
+                |row| row.get(0),
+            ) {
+                Ok(existing_id) => existing_id,
+                Err(_) => {
+                    conn.execute(
+                        "INSERT INTO tags (name, frequency, last_used, frecency_score, created_at, updated_at) VALUES (?, 1, ?, 10.0, ?, ?)",
+                        params![&normalized, &now, &now, &now],
+                    )
+                    .expect("Failed to insert tag");
+                    conn.last_insert_rowid()
+                }
+            };
+
+            conn.execute(
+                "INSERT OR IGNORE INTO item_tags (item_id, tag_id, created_at) VALUES (?, ?, ?)",
+                params![&id, tag_id, &now],
+            )
+            .expect("Failed to link tag");
+        }
+
+        id
+    }
+
+    #[test]
+    fn test_unified_item_types() {
+        let conn = Connection::open_in_memory().expect("Failed to create in-memory database");
+        create_test_schema(&conn);
+
+        // Create items of each type
+        let url_id = save_url_item(&conn, "https://example.com");
+        let text_id = save_text_with_tags(&conn, "My note", &[]);
+        let tagset_id = save_tagset_item(&conn, &["tag1".to_string(), "tag2".to_string()]);
+
+        // Verify url type
+        let url_type: String = conn
+            .query_row("SELECT type FROM items WHERE id = ?", params![&url_id], |row| row.get(0))
+            .expect("Failed to query url type");
+        assert_eq!(url_type, "url", "URL item should have type 'url'");
+
+        // Verify text type
+        let text_type: String = conn
+            .query_row("SELECT type FROM items WHERE id = ?", params![&text_id], |row| row.get(0))
+            .expect("Failed to query text type");
+        assert_eq!(text_type, "text", "Text item should have type 'text'");
+
+        // Verify tagset type
+        let tagset_type: String = conn
+            .query_row("SELECT type FROM items WHERE id = ?", params![&tagset_id], |row| row.get(0))
+            .expect("Failed to query tagset type");
+        assert_eq!(tagset_type, "tagset", "Tagset item should have type 'tagset'");
+    }
+
+    #[test]
+    fn test_sync_columns_exist() {
+        let conn = Connection::open_in_memory().expect("Failed to create in-memory database");
+        create_test_schema(&conn);
+
+        // Verify sync columns exist by inserting an item with sync values
+        let now = Utc::now().to_rfc3339();
+        let id = uuid::Uuid::new_v4().to_string();
+
+        conn.execute(
+            "INSERT INTO items (id, type, url, sync_id, sync_source, synced_at, created_at, updated_at) VALUES (?, 'url', ?, ?, ?, ?, ?, ?)",
+            params![&id, "https://sync-test.com", "remote-123", "server", &now, &now, &now],
+        )
+        .expect("Failed to insert item with sync columns");
+
+        // Retrieve and verify
+        let (sync_id, sync_source, synced_at): (String, String, String) = conn
+            .query_row(
+                "SELECT sync_id, sync_source, synced_at FROM items WHERE id = ?",
+                params![&id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("Failed to query sync columns");
+
+        assert_eq!(sync_id, "remote-123", "sync_id should be saved");
+        assert_eq!(sync_source, "server", "sync_source should be saved");
+        assert_eq!(synced_at, now, "synced_at should be saved");
+    }
+
+    #[test]
+    fn test_sync_id_index() {
+        let conn = Connection::open_in_memory().expect("Failed to create in-memory database");
+        create_test_schema(&conn);
+
+        // Verify the sync_id index exists
+        let index_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_items_sync_id'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("Failed to query index");
+
+        assert_eq!(index_count, 1, "idx_items_sync_id index should exist");
+    }
+
+    #[test]
+    fn test_filter_items_by_type() {
+        let conn = Connection::open_in_memory().expect("Failed to create in-memory database");
+        create_test_schema(&conn);
+
+        // Create items of different types
+        save_url_item(&conn, "https://example1.com");
+        save_url_item(&conn, "https://example2.com");
+        save_text_with_tags(&conn, "Note 1", &[]);
+        save_tagset_item(&conn, &["tag".to_string()]);
+
+        // Count by type
+        let url_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM items WHERE type = 'url'", [], |row| row.get(0))
+            .expect("Failed to count urls");
+        let text_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM items WHERE type = 'text'", [], |row| row.get(0))
+            .expect("Failed to count texts");
+        let tagset_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM items WHERE type = 'tagset'", [], |row| row.get(0))
+            .expect("Failed to count tagsets");
+
+        assert_eq!(url_count, 2, "Should have 2 url items");
+        assert_eq!(text_count, 1, "Should have 1 text item");
+        assert_eq!(tagset_count, 1, "Should have 1 tagset item");
     }
 }

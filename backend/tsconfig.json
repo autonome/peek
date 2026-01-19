@@ -20,6 +20,8 @@
   ],
   "exclude": [
     "node_modules",
-    "tauri/**"
+    "tauri/**",
+    "tauri-mobile/**",
+    "server/**"
   ]
 }

@@ -243,12 +243,13 @@ const createTableStatements = `
 
   CREATE TABLE IF NOT EXISTS items (
     id TEXT PRIMARY KEY,
-    type TEXT NOT NULL CHECK(type IN ('note', 'tagset', 'image')),
+    type TEXT NOT NULL CHECK(type IN ('url', 'text', 'tagset', 'image')),
     content TEXT,
     mimeType TEXT DEFAULT '',
     metadata TEXT DEFAULT '{}',
     syncId TEXT DEFAULT '',
     syncSource TEXT DEFAULT '',
+    syncedAt INTEGER DEFAULT 0,
     createdAt INTEGER NOT NULL,
     updatedAt INTEGER NOT NULL,
     deletedAt INTEGER DEFAULT 0,
@@ -286,6 +287,7 @@ export function initDatabase(dbPath: string): Database.Database {
 
   migrateTinyBaseData();
   migrateSyncColumns();
+  migrateItemTypes();
 
   DEBUG && console.log('main', 'database initialized successfully');
   return db;
@@ -474,6 +476,130 @@ function migrateSyncColumns(): void {
         // Column might already exist in some edge cases
         DEBUG && console.log('main', `Sync columns migration for ${table}:`, (error as Error).message);
       }
+    }
+  }
+}
+
+/**
+ * Helper to detect if content looks like a URL
+ */
+function isUrlLike(content: string | null): boolean {
+  if (!content) return false;
+  try {
+    const url = new URL(content);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Migrate item types from old 'note' to new 'url'/'text' types
+ * Also adds syncedAt column if missing
+ */
+function migrateItemTypes(): void {
+  if (!db) return;
+
+  // Check if items table exists
+  const tableExists = db.prepare(
+    `SELECT name FROM sqlite_master WHERE type='table' AND name='items'`
+  ).get();
+
+  if (!tableExists) return;
+
+  // Check columns and constraint
+  const columns = db.prepare(`PRAGMA table_info(items)`).all() as { name: string }[];
+  const hasSyncedAt = columns.some(col => col.name === 'syncedAt');
+
+  // Add syncedAt column if missing
+  if (!hasSyncedAt) {
+    DEBUG && console.log('main', 'Adding syncedAt column to items table');
+    try {
+      db.exec(`ALTER TABLE items ADD COLUMN syncedAt INTEGER DEFAULT 0`);
+    } catch (error) {
+      DEBUG && console.log('main', `syncedAt column migration:`, (error as Error).message);
+    }
+  }
+
+  // Check if we have any 'note' type items that need migration
+  const noteItems = db.prepare(`SELECT id, content FROM items WHERE type = 'note'`).all() as { id: string; content: string | null }[];
+
+  if (noteItems.length > 0) {
+    DEBUG && console.log('main', `Migrating ${noteItems.length} 'note' items to 'url'/'text' types`);
+
+    // SQLite doesn't allow modifying CHECK constraints, so we need to recreate the table
+    // But first, let's try updating the type values - if the constraint was created with the new schema, this will work
+    try {
+      const updateStmt = db.prepare(`UPDATE items SET type = ? WHERE id = ?`);
+      for (const item of noteItems) {
+        const newType = isUrlLike(item.content) ? 'url' : 'text';
+        updateStmt.run(newType, item.id);
+      }
+      DEBUG && console.log('main', 'Item type migration complete');
+    } catch (error) {
+      // If CHECK constraint fails, we need to recreate the table
+      DEBUG && console.log('main', 'Recreating items table with new CHECK constraint...');
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS items_new (
+          id TEXT PRIMARY KEY,
+          type TEXT NOT NULL CHECK(type IN ('url', 'text', 'tagset', 'image')),
+          content TEXT,
+          mimeType TEXT DEFAULT '',
+          metadata TEXT DEFAULT '{}',
+          syncId TEXT DEFAULT '',
+          syncSource TEXT DEFAULT '',
+          syncedAt INTEGER DEFAULT 0,
+          createdAt INTEGER NOT NULL,
+          updatedAt INTEGER NOT NULL,
+          deletedAt INTEGER DEFAULT 0,
+          starred INTEGER DEFAULT 0,
+          archived INTEGER DEFAULT 0
+        )
+      `);
+
+      // Copy data, converting 'note' type
+      const allItems = db.prepare(`SELECT * FROM items`).all() as Array<Record<string, unknown>>;
+      const insertStmt = db.prepare(`
+        INSERT INTO items_new (id, type, content, mimeType, metadata, syncId, syncSource, syncedAt, createdAt, updatedAt, deletedAt, starred, archived)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      for (const item of allItems) {
+        let newType = item.type as string;
+        if (newType === 'note') {
+          newType = isUrlLike(item.content as string | null) ? 'url' : 'text';
+        }
+        insertStmt.run(
+          item.id,
+          newType,
+          item.content,
+          item.mimeType || '',
+          item.metadata || '{}',
+          item.syncId || '',
+          item.syncSource || '',
+          item.syncedAt || 0,
+          item.createdAt,
+          item.updatedAt,
+          item.deletedAt || 0,
+          item.starred || 0,
+          item.archived || 0
+        );
+      }
+
+      db.exec(`DROP TABLE items`);
+      db.exec(`ALTER TABLE items_new RENAME TO items`);
+
+      // Recreate indexes
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
+        CREATE INDEX IF NOT EXISTS idx_items_syncId ON items(syncId);
+        CREATE INDEX IF NOT EXISTS idx_items_deletedAt ON items(deletedAt);
+        CREATE INDEX IF NOT EXISTS idx_items_createdAt ON items(createdAt DESC);
+        CREATE INDEX IF NOT EXISTS idx_items_starred ON items(starred);
+      `);
+
+      DEBUG && console.log('main', 'Items table migration complete');
     }
   }
 }

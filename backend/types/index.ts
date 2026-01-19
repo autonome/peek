@@ -296,3 +296,18 @@ export interface ServerItem {
   created_at: string;
   updated_at: string;
 }
+
+// ==================== Backup Types ====================
+
+export interface BackupConfig {
+  enabled: boolean;
+  backupDir: string;
+  retentionCount: number;
+  lastBackupTime: number;
+}
+
+export interface BackupResult {
+  success: boolean;
+  path?: string;
+  error?: string;
+}

@@ -35,6 +35,15 @@
     <button onclick="clearExtensionSettings()" style="background: #f44336;">Clear extension_settings</button>
   </div>
 
+  <div class="section" style="margin-top: 20px; padding: 15px; background: #2d2d2d; border-radius: 5px;">
+    <h3 style="margin-top: 0; color: #4fc3f7;">Backup Tools</h3>
+    <p style="color: #aaa; font-size: 12px;">Create and manage database backups:</p>
+    <button onclick="createBackup()">Backup Now</button>
+    <button onclick="listBackups()">List Backups</button>
+    <button onclick="openBackupFolder()">Open Backup Folder</button>
+    <div id="backup-output" style="margin-top: 15px;"></div>
+  </div>
+
   <div id="output"></div>
 
   <script type="module">
@@ -314,6 +323,92 @@
 
       log('Notification', 'Sent settings-changed for all extensions');
       await window.dumpDatastore();
+    };
+
+    // ==================== Backup Functions ====================
+
+    const backupOutput = document.getElementById('backup-output');
+
+    function logBackup(title, content, isError = false) {
+      backupOutput.innerHTML = `<h4 style="color: ${isError ? '#f44336' : '#4fc3f7'}; margin: 0 0 10px 0;">${title}</h4><pre style="margin: 0; max-height: 300px; overflow-y: auto;">${content}</pre>`;
+    }
+
+    const BACKUP_NOT_CONFIGURED_MSG = `Backup directory not configured.\n\nTo enable backups:\n1. Go to Settings > Core\n2. Set "backupDir" to your desired backup location\n   (e.g., ~/sync/peek-backups)\n3. Backups will run automatically on app startup (daily)`;
+
+    window.createBackup = async function() {
+      logBackup('Creating Backup', 'Please wait...');
+      try {
+        const result = await api.invoke('backup-create');
+        if (result.success) {
+          logBackup('Backup Created', `Successfully created backup:\n${result.path}`);
+        } else {
+          logBackup('Backup Failed', result.error || 'Unknown error', true);
+        }
+      } catch (err) {
+        logBackup('Backup Error', err.message, true);
+      }
+    };
+
+    window.listBackups = async function() {
+      logBackup('Loading', 'Fetching backup list...');
+      try {
+        const result = await api.invoke('backup-list');
+        if (result.success) {
+          const { backups, backupDir } = result.data;
+
+          if (!backupDir) {
+            logBackup('Not Configured', BACKUP_NOT_CONFIGURED_MSG);
+            return;
+          }
+
+          if (backups.length === 0) {
+            logBackup('Backups', `No backups found in:\n${backupDir}\n\nClick "Backup Now" to create your first backup.`);
+            return;
+          }
+
+          let html = `Backup directory: ${backupDir}\n\n`;
+          html += `Found ${backups.length} backup(s):\n\n`;
+
+          backups.forEach((backup, i) => {
+            const sizeKB = (backup.size / 1024).toFixed(1);
+            const sizeMB = (backup.size / (1024 * 1024)).toFixed(2);
+            const sizeStr = backup.size > 1024 * 1024 ? `${sizeMB} MB` : `${sizeKB} KB`;
+            const date = new Date(backup.date).toLocaleString();
+            html += `${i + 1}. <span class="key">${backup.name}</span>\n   Size: ${sizeStr} | Date: ${date}\n\n`;
+          });
+
+          logBackup('Backups', html);
+        } else {
+          logBackup('List Failed', result.error || 'Unknown error', true);
+        }
+      } catch (err) {
+        logBackup('List Error', err.message, true);
+      }
+    };
+
+    window.openBackupFolder = async function() {
+      try {
+        const configResult = await api.invoke('backup-get-config');
+        if (!configResult.success) {
+          logBackup('Error', 'Failed to get backup config: ' + configResult.error, true);
+          return;
+        }
+
+        const backupDir = configResult.data.backupDir;
+        if (!backupDir) {
+          logBackup('Not Configured', BACKUP_NOT_CONFIGURED_MSG);
+          return;
+        }
+
+        const result = await api.invoke('shell-open-path', { path: backupDir });
+        if (result.success) {
+          logBackup('Opened', `Opened backup folder:\n${backupDir}`);
+        } else {
+          logBackup('Open Failed', result.error || 'Unknown error', true);
+        }
+      } catch (err) {
+        logBackup('Open Error', err.message, true);
+      }
     };
 
     // Auto-dump on load

@@ -5,7 +5,7 @@
  * Handlers are thin wrappers that delegate to backend functions.
  */
 
-import { ipcMain, nativeTheme, dialog, BrowserWindow, app, screen } from 'electron';
+import { ipcMain, nativeTheme, dialog, BrowserWindow, app, screen, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -112,6 +112,13 @@ import {
   syncAll,
   getSyncStatus,
 } from './sync.js';
+
+import {
+  getBackupConfig,
+  setBackupConfig,
+  createBackup,
+  listBackups,
+} from './backup.js';
 
 // ============================================================================
 // Window Focus Tracking for Window-Targeted Commands
@@ -2003,6 +2010,22 @@ export function registerMiscHandlers(onQuit: () => void): void {
       }
     };
   });
+
+  // Open a path in the system file manager (Finder on macOS)
+  ipcMain.handle('shell-open-path', async (_ev, data) => {
+    try {
+      const pathToOpen = data.path || data;
+      // Ensure directory exists before opening
+      if (!fs.existsSync(pathToOpen)) {
+        fs.mkdirSync(pathToOpen, { recursive: true });
+      }
+      await shell.openPath(pathToOpen);
+      return { success: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
 }
 
 /**
@@ -2094,6 +2117,62 @@ export function registerSyncHandlers(): void {
 }
 
 /**
+ * Register backup-related IPC handlers
+ */
+export function registerBackupHandlers(): void {
+  // Get backup configuration
+  ipcMain.handle('backup-get-config', async () => {
+    try {
+      const config = getBackupConfig();
+      return { success: true, data: config };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // Set backup configuration
+  ipcMain.handle('backup-set-config', async (_ev, data) => {
+    try {
+      setBackupConfig(data);
+      return { success: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // Create a backup manually
+  ipcMain.handle('backup-create', async () => {
+    try {
+      const result = await createBackup();
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // List existing backups
+  ipcMain.handle('backup-list', async () => {
+    try {
+      const backups = listBackups();
+      const config = getBackupConfig();
+      return {
+        success: true,
+        data: {
+          backups,
+          backupDir: config.backupDir,
+        }
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+}
+
+/**
  * Register all IPC handlers
  */
 export function registerAllHandlers(onQuit: () => void): void {
@@ -2102,5 +2181,6 @@ export function registerAllHandlers(onQuit: () => void): void {
   registerExtensionHandlers();
   registerWindowHandlers();
   registerSyncHandlers();
+  registerBackupHandlers();
   registerMiscHandlers(onQuit);
 }

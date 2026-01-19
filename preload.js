@@ -1205,6 +1205,21 @@ if (isExtensionHost) {
   };
 }
 
+// Generic IPC invoke for core pages (permission required for security)
+// Used by diagnostic page and other core utilities
+if (isCore) {
+  /**
+   * Invoke an IPC handler by channel name
+   * Only available to core pages (peek://app/...)
+   * @param {string} channel - IPC channel name
+   * @param {any} data - Optional data to send
+   * @returns {Promise<any>} - Result from IPC handler
+   */
+  api.invoke = (channel, data) => {
+    return ipcRenderer.invoke(channel, data);
+  };
+}
+
 contextBridge.exposeInMainWorld('app', api);
 DEBUG && console.log(src, 'api exposed in', Date.now() - preloadStart, 'ms');
 

@@ -115,12 +115,14 @@
     "lint": "echo \"No linting configured\""
   },
   "dependencies": {
+    "archiver": "^7.0.0",
     "better-sqlite3": "^12.5.0",
     "electron-unhandled": "^5.0.0"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.2",
     "@playwright/test": "^1.57.0",
+    "@types/archiver": "^6.0.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.0.3",
     "electron": "^35.7.5",

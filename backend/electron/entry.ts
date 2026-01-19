@@ -61,6 +61,7 @@ import {
 } from './index.js';
 
 import { startHotReload, stopHotReload } from './hotreload.js';
+import { checkAndRunDailyBackup } from './backup.js';
 
 // Catch unhandled errors and promise rejections without showing alert dialogs
 unhandled({
@@ -208,6 +209,11 @@ const onReady = async () => {
 
   // Register all IPC handlers from backend
   registerAllHandlers(onQuit);
+
+  // Run daily backup check (non-blocking)
+  checkAndRunDailyBackup().catch(err => {
+    console.error('[startup] Backup check failed:', err);
+  });
 
   // Store startup time for reporting
   (global as Record<string, unknown>).__startupStart = startupStart;

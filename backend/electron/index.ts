@@ -78,6 +78,8 @@ export type {
   AddressOptions,
   VisitOptions,
   ContentOptions,
+  BackupConfig,
+  BackupResult,
 } from '../types/index.js';
 
 export { tableNames } from '../types/index.js';
@@ -219,6 +221,16 @@ export {
   closeChildWindows,
   getSystemThemeBackgroundColor,
 } from './windows.js';
+
+// Backup module
+export {
+  getBackupConfig,
+  setBackupConfig,
+  createBackup,
+  checkAndRunDailyBackup,
+  cleanOldBackups,
+  listBackups,
+} from './backup.js';
 
 // Re-export frontend API types (the contract that preload.js implements)
 export type {

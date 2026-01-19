@@ -49,6 +49,11 @@ const prefsSchema = {
       "type": "string",
       "default": "Option+q"
     },
+    "backupDir": {
+      "description": "Directory for daily database backups. Leave empty to disable automatic backups.",
+      "type": "string",
+      "default": ""
+    },
   },
   "required": [ "shortcutKey", "startupFeature", "enableTrayIcon", "showInDockAndSwitcher", "quitShortcut" ]
 };
@@ -117,7 +122,8 @@ const defaults = {
     width: 800,
     startupFeature: 'peek://app/settings/settings.html',
     showTrayIcon: true,
-    showInDockAndSwitcher: true
+    showInDockAndSwitcher: true,
+    backupDir: ''
   },
   items: [
     { id: 'cee1225d-40ac-41e5-a34c-e2edba69d599',

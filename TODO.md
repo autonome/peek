@@ -11,8 +11,8 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
-- [ ][desktop] merge peek-node into peek
-- [ ][mobile] update server tests to use ./backend/server, the new home for it
+- [x][desktop] merge peek-node into peek
+- [ ][mobile] update mobile app to use backend/server for API tests
 - [ ][all] unify data model across mobile/desktop/server
 - [ ][all] sync working between all three
 - [ ][desktop] daily data snapshots saved to compress archives in ~/sync/peek-backups
@@ -39,10 +39,10 @@ Unclear / needs context:
 
 ### Data Model & Multi-platform Unification
 
-- [ ] merge peek-node into peek repo
+- [x] merge peek-node into peek repo (now at backend/server/)
 - [ ] resolve differences between mobile, node and desktop data models
 - [ ] prepare for multi-user, in the data model and at the filesystem level
-- [ ] update peek-node to support multi-user and the core types (maybe already done)
+- [x] update peek-node to support multi-user and the core types (already supports multi-user with API keys)
 
 ### Sync Infrastructure
 
@@ -104,7 +104,7 @@ Editor extensibility/bundling
 
 ### Server & Peek-Node Backend
 
-- [ ] update peek-node to support text/urls/tagsets
+- [x] update peek-node to support text/urls/tagsets (already supports urls, texts, tagsets, images)
 - [ ] headless sync server that's a "back-end" of Peek API… or just peek running headless?
 - [ ] route all external urls to peek node webhook, eg every bsky like, reddit save, oauthwonderwall?
 
@@ -417,6 +417,11 @@ Further
 ## Done
 
 Newly done items go here, grouped under third-level headings by week of year.
+
+### 2026-W03
+
+- [x] merge peek-node into peek repo (now at backend/server/)
+- [x] update peek-node to support multi-user and the core types (already done)
 
 ### Old completed items
 

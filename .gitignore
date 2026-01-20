@@ -13,6 +13,10 @@ dist/
 # Tauri build output
 backend/tauri/src-tauri/target/
 backend/tauri/src-tauri/gen/
+backend/tauri-mobile/src-tauri/target/
+
+# Server data (local testing)
+backend/server/data/
 
 # Test output
 test-results/
@@ -32,3 +36,4 @@ webpack.config.js
 package.js
 protocol-imports.diff
 test/
+tmp/

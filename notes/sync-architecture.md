@@ -89,6 +89,26 @@ ipcMain.handle('sync-full')          // Full bidirectional sync
 ipcMain.handle('sync-status')        // Get sync status
 ```
 
+### Mobile Tauri Commands (Rust)
+
+```rust
+// Configuration (uses 'webhook_url' and 'webhook_api_key' settings keys)
+get_webhook_url()              // Get server URL
+set_webhook_url(url)           // Save server URL
+get_webhook_api_key()          // Get API key
+set_webhook_api_key(key)       // Save API key
+
+// Sync operations
+pull_from_server()             // Pull items from server, merge into local DB
+push_to_server()               // Push unsynced items to server via POST /items
+sync_all()                     // Pull then push, update last_sync timestamp
+get_sync_status()              // Returns { configured, last_sync_time, pending_count }
+get_last_sync()                // Get last sync timestamp
+
+// Legacy (still works but superseded by bidirectional sync)
+sync_to_webhook()              // Push all items to server (webhook format)
+```
+
 ## Configuration
 
 Sync settings are stored in the `extension_settings` table with `extensionId = 'sync'`:
@@ -159,7 +179,6 @@ Tests cover:
 2. **No binary image sync**: Images are currently metadata-only (no file sync)
 3. **No real-time sync**: Polling-based, no WebSocket updates
 4. **Single-user per API key**: No multi-device account management
-5. **Mobile → Server only**: No pull/download sync from server to mobile
 
 ## Deployment Order
 
@@ -177,7 +196,44 @@ When deploying updates to both server and mobile:
 **Why this order:**
 - Server changes can't break existing mobile apps (backwards compatible)
 - Mobile apps continue working offline if server is temporarily down
-- No data flows server→mobile, so server changes can't corrupt mobile data
+
+## Mobile Sync Details
+
+The mobile app (Tauri iOS) now supports full bidirectional sync, matching the desktop implementation.
+
+### Mobile Settings Storage
+
+Mobile stores sync settings in the same SQLite database as items, in the `settings` table:
+
+| Key | Description |
+|-----|-------------|
+| `webhook_url` | Server URL (e.g., `http://192.168.1.100:3000`) |
+| `webhook_api_key` | API key for authentication |
+| `last_sync` | ISO 8601 timestamp of last successful sync |
+
+### Mobile UI
+
+The Settings screen provides:
+- Server URL input field
+- API Key input field (with show/hide toggle)
+- Save Settings button
+- Last synced timestamp display
+- Pending items count
+- **Sync All** button (primary action - pull then push)
+- **Pull** button (fetch from server only)
+- **Push** button (send to server only)
+
+### Mobile Sync Result
+
+```typescript
+interface BidirectionalSyncResult {
+  success: boolean;
+  pulled: number;   // Items received from server
+  pushed: number;   // Items sent to server
+  conflicts: number; // Items where local was newer (kept local)
+  message: string;
+}
+```
 
 ## Future Improvements
 

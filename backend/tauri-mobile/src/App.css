@@ -1117,6 +1117,28 @@ body.dark .toggle-visibility-btn:hover {
   cursor: not-allowed;
 }
 
+.sync-btn.primary {
+  background: #007aff;
+}
+
+.sync-btn.secondary {
+  background: #666;
+  flex: 1;
+}
+
+.sync-btn-row {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.sync-pending-info {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: #ff9500;
+  text-align: center;
+}
+
 .sync-message {
   margin-top: 1rem;
   padding: 0.75rem;
@@ -1174,8 +1196,20 @@ body.dark .sync-btn {
   background: #30d158;
 }
 
-body.dark .sync-btn:disabled {
+body.dark .sync-btn.primary {
+  background: #0a84ff;
+}
+
+body.dark .sync-btn.secondary {
   background: #555;
+}
+
+body.dark .sync-btn:disabled {
+  background: #444;
+}
+
+body.dark .sync-pending-info {
+  color: #ff9f0a;
 }
 
 body.dark .last-sync-info {

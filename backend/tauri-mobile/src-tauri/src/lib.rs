@@ -7,49 +7,6 @@ use std::path::PathBuf;
 use reqwest;
 use regex::Regex;
 
-// Item types for unified data model
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-enum ItemType {
-    Url,
-    Text,
-    Tagset,
-    Image,
-}
-
-impl ItemType {
-    fn as_str(&self) -> &'static str {
-        match self {
-            ItemType::Url => "url",
-            ItemType::Text => "text",
-            ItemType::Tagset => "tagset",
-            ItemType::Image => "image",
-        }
-    }
-
-    fn from_str(s: &str) -> Option<ItemType> {
-        match s {
-            "url" => Some(ItemType::Url),
-            "text" => Some(ItemType::Text),
-            "tagset" => Some(ItemType::Tagset),
-            "image" => Some(ItemType::Image),
-            _ => None,
-        }
-    }
-}
-
-// Unified item model
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct SavedItem {
-    id: String,
-    #[serde(rename = "type")]
-    item_type: ItemType,
-    url: Option<String>,
-    content: Option<String>,
-    tags: Vec<String>,
-    saved_at: String,
-}
-
 // Legacy model for backward compatibility (webhook, etc.)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SavedUrl {
@@ -117,11 +74,56 @@ struct WebhookPayload {
     tagsets: Vec<SavedTagset>,
 }
 
+// Old webhook sync result (kept for backward compatibility)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SyncResult {
     success: bool,
     synced_count: usize,
     message: String,
+}
+
+// New bidirectional sync result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct BidirectionalSyncResult {
+    success: bool,
+    pulled: usize,
+    pushed: usize,
+    conflicts: usize,
+    message: String,
+}
+
+// Server item format (from GET /items)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ServerItem {
+    id: String,
+    #[serde(rename = "type")]
+    item_type: String,
+    content: Option<String>,
+    tags: Vec<String>,
+    metadata: Option<serde_json::Value>,
+    created_at: String,
+    updated_at: String,
+}
+
+// Server response for GET /items
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ServerItemsResponse {
+    items: Vec<ServerItem>,
+}
+
+// Server response for POST /items
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ServerCreateResponse {
+    id: String,
+    created: bool,
+}
+
+// Sync status for UI display
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SyncStatus {
+    configured: bool,
+    last_sync_time: Option<String>,
+    pending_count: usize,
 }
 
 // App Group bridge - just need the container path now
@@ -2204,6 +2206,556 @@ async fn auto_sync_if_needed() -> Result<Option<SyncResult>, String> {
     }
 }
 
+// ==================== Bidirectional Sync ====================
+
+/// Helper to convert ISO string to chrono DateTime
+fn parse_iso_datetime(iso: &str) -> Option<chrono::DateTime<Utc>> {
+    chrono::DateTime::parse_from_rfc3339(iso)
+        .ok()
+        .map(|dt| dt.with_timezone(&Utc))
+}
+
+/// Get items that need to be pushed (never synced or modified since last sync)
+fn get_items_to_push(conn: &Connection, last_sync: Option<&str>) -> Result<Vec<(String, String, Option<String>, Option<String>, String, String)>, String> {
+    // Returns: (id, type, url, content, metadata, updated_at)
+    if let Some(sync_time) = last_sync {
+        // Items never synced OR modified after last sync
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, type, url, content, COALESCE(metadata, ''), updated_at FROM items
+                 WHERE deleted_at IS NULL AND (sync_source = '' OR sync_source IS NULL OR updated_at > ?)"
+            )
+            .map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+        let items: Vec<(String, String, Option<String>, Option<String>, String, String)> = stmt
+            .query_map(params![sync_time], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?))
+            })
+            .map_err(|e| format!("Failed to query items: {}", e))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(items)
+    } else {
+        // All items that haven't been synced
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, type, url, content, COALESCE(metadata, ''), updated_at FROM items
+                 WHERE deleted_at IS NULL AND (sync_source = '' OR sync_source IS NULL)"
+            )
+            .map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+        let items: Vec<(String, String, Option<String>, Option<String>, String, String)> = stmt
+            .query_map([], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?))
+            })
+            .map_err(|e| format!("Failed to query items: {}", e))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(items)
+    }
+}
+
+/// Get tags for an item
+fn get_item_tags(conn: &Connection, item_id: &str) -> Result<Vec<String>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT t.name FROM tags t
+             JOIN item_tags it ON t.id = it.tag_id
+             WHERE it.item_id = ?
+             ORDER BY t.name"
+        )
+        .map_err(|e| format!("Failed to prepare tag query: {}", e))?;
+
+    let tags: Vec<String> = stmt
+        .query_map(params![item_id], |row| row.get(0))
+        .map_err(|e| format!("Failed to query tags: {}", e))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(tags)
+}
+
+/// Merge a server item into the local database
+fn merge_server_item(conn: &Connection, server_item: &ServerItem) -> Result<&'static str, String> {
+    let now = Utc::now().to_rfc3339();
+    let server_updated = parse_iso_datetime(&server_item.updated_at)
+        .ok_or("Invalid server updated_at timestamp")?;
+
+    // Find local item by sync_id matching server id
+    let local_item: Option<(String, String)> = conn
+        .query_row(
+            "SELECT id, updated_at FROM items WHERE sync_id = ? AND deleted_at IS NULL",
+            params![&server_item.id],
+            |row| Ok((row.get(0)?, row.get(1)?))
+        )
+        .ok();
+
+    if let Some((local_id, local_updated_str)) = local_item {
+        // Item exists locally - check timestamps for conflict resolution
+        let local_updated = parse_iso_datetime(&local_updated_str);
+
+        if let Some(local_dt) = local_updated {
+            if server_updated > local_dt {
+                // Server is newer - update local
+                println!("[Rust] Sync: Updating local item from server: {}", server_item.id);
+
+                let metadata_json = server_item.metadata.as_ref()
+                    .map(|m| serde_json::to_string(m).unwrap_or_default());
+
+                // Map server type to local type (server uses "url", mobile may have used "page")
+                let item_type = &server_item.item_type;
+
+                // Determine content field based on type
+                let (url_val, content_val): (Option<&str>, Option<&str>) = match item_type.as_str() {
+                    "url" | "page" => (server_item.content.as_deref(), None),
+                    _ => (None, server_item.content.as_deref()),
+                };
+
+                conn.execute(
+                    "UPDATE items SET type = ?, url = ?, content = ?, metadata = ?, updated_at = ? WHERE id = ?",
+                    params![item_type, url_val, content_val, &metadata_json, &server_item.updated_at, &local_id],
+                )
+                .map_err(|e| format!("Failed to update item: {}", e))?;
+
+                // Update tags
+                update_item_tags_from_server(conn, &local_id, &server_item.tags)?;
+
+                return Ok("pulled");
+            } else if local_dt > server_updated {
+                // Local is newer - conflict, local wins
+                println!("[Rust] Sync: Conflict - local is newer for {}, keeping local", server_item.id);
+                return Ok("conflict");
+            }
+        }
+
+        // Same timestamp - skip
+        return Ok("skipped");
+    }
+
+    // Item doesn't exist locally - insert it
+    println!("[Rust] Sync: Inserting new item from server: {}", server_item.id);
+
+    let new_id = uuid::Uuid::new_v4().to_string();
+    let metadata_json = server_item.metadata.as_ref()
+        .map(|m| serde_json::to_string(m).unwrap_or_default());
+
+    // Map server type to local type
+    let item_type = &server_item.item_type;
+
+    // Determine content field based on type
+    let (url_val, content_val): (Option<&str>, Option<&str>) = match item_type.as_str() {
+        "url" | "page" => (server_item.content.as_deref(), None),
+        _ => (None, server_item.content.as_deref()),
+    };
+
+    conn.execute(
+        "INSERT INTO items (id, type, url, content, metadata, sync_id, sync_source, synced_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'server', ?, ?, ?)",
+        params![
+            &new_id,
+            item_type,
+            url_val,
+            content_val,
+            &metadata_json,
+            &server_item.id,
+            &now,
+            &server_item.created_at,
+            &server_item.updated_at
+        ],
+    )
+    .map_err(|e| format!("Failed to insert item: {}", e))?;
+
+    // Add tags
+    update_item_tags_from_server(conn, &new_id, &server_item.tags)?;
+
+    Ok("pulled")
+}
+
+/// Update tags for an item based on server data
+fn update_item_tags_from_server(conn: &Connection, item_id: &str, tag_names: &[String]) -> Result<(), String> {
+    let now = Utc::now().to_rfc3339();
+
+    // Remove existing tags for this item
+    conn.execute("DELETE FROM item_tags WHERE item_id = ?", params![item_id])
+        .map_err(|e| format!("Failed to remove old tags: {}", e))?;
+
+    // Add new tags
+    for tag_name in tag_names {
+        // Get or create tag
+        let tag_id: i64 = match conn.query_row(
+            "SELECT id FROM tags WHERE name = ?",
+            params![tag_name],
+            |row| row.get(0),
+        ) {
+            Ok(id) => {
+                // Update existing tag stats
+                let frequency: u32 = conn
+                    .query_row("SELECT frequency FROM tags WHERE id = ?", params![id], |row| row.get(0))
+                    .unwrap_or(0);
+
+                let new_frequency = frequency + 1;
+                let frecency = calculate_frecency(new_frequency, &now);
+
+                conn.execute(
+                    "UPDATE tags SET frequency = ?, last_used = ?, frecency_score = ?, updated_at = ? WHERE id = ?",
+                    params![new_frequency, &now, frecency, &now, id],
+                ).ok();
+
+                id
+            }
+            Err(_) => {
+                // Create new tag
+                let frecency = calculate_frecency(1, &now);
+                conn.execute(
+                    "INSERT INTO tags (name, frequency, last_used, frecency_score, created_at, updated_at) VALUES (?, 1, ?, ?, ?, ?)",
+                    params![tag_name, &now, frecency, &now, &now],
+                )
+                .map_err(|e| format!("Failed to insert tag: {}", e))?;
+
+                conn.last_insert_rowid()
+            }
+        };
+
+        // Create item-tag association
+        conn.execute(
+            "INSERT OR IGNORE INTO item_tags (item_id, tag_id, created_at) VALUES (?, ?, ?)",
+            params![item_id, tag_id, &now],
+        )
+        .map_err(|e| format!("Failed to link tag: {}", e))?;
+    }
+
+    Ok(())
+}
+
+/// Pull items from server and merge into local database
+#[tauri::command]
+async fn pull_from_server() -> Result<BidirectionalSyncResult, String> {
+    println!("[Rust] pull_from_server called");
+
+    // Get server URL and API key
+    let conn = get_connection()?;
+    let server_url: String = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'webhook_url'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|_| "No server URL configured".to_string())?;
+
+    if server_url.is_empty() {
+        return Err("No server URL configured".to_string());
+    }
+
+    let api_key: Option<String> = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'webhook_api_key'",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
+
+    let last_sync: Option<String> = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'last_sync'",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
+
+    drop(conn); // Close connection before async call
+
+    // Build request URL
+    let items_url = if let Some(ref sync_time) = last_sync {
+        // Incremental sync - get items since last sync
+        format!("{}/items/since/{}", server_url.trim_end_matches('/'), sync_time)
+    } else {
+        // Full sync - get all items
+        format!("{}/items", server_url.trim_end_matches('/'))
+    };
+
+    println!("[Rust] Pulling from: {}", items_url);
+
+    // Fetch items from server
+    let client = reqwest::Client::new();
+    let mut request = client.get(&items_url);
+
+    if let Some(key) = &api_key {
+        if !key.is_empty() {
+            request = request.header("Authorization", format!("Bearer {}", key));
+        }
+    }
+
+    let response = request
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch from server: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("Server returned error {}: {}", status, body));
+    }
+
+    let server_response: ServerItemsResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse server response: {}", e))?;
+
+    println!("[Rust] Received {} items from server", server_response.items.len());
+
+    // Merge items into local database
+    let conn = get_connection()?;
+    let mut pulled = 0;
+    let mut conflicts = 0;
+
+    for server_item in &server_response.items {
+        match merge_server_item(&conn, server_item)? {
+            "pulled" => pulled += 1,
+            "conflict" => conflicts += 1,
+            _ => {}
+        }
+    }
+
+    println!("[Rust] Pull complete: {} pulled, {} conflicts", pulled, conflicts);
+
+    Ok(BidirectionalSyncResult {
+        success: true,
+        pulled,
+        pushed: 0,
+        conflicts,
+        message: format!("Pulled {} items, {} conflicts", pulled, conflicts),
+    })
+}
+
+/// Push local items to server using POST /items
+#[tauri::command]
+async fn push_to_server() -> Result<BidirectionalSyncResult, String> {
+    println!("[Rust] push_to_server called");
+
+    // Get server URL and API key
+    let conn = get_connection()?;
+    let server_url: String = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'webhook_url'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|_| "No server URL configured".to_string())?;
+
+    if server_url.is_empty() {
+        return Err("No server URL configured".to_string());
+    }
+
+    let api_key: Option<String> = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'webhook_api_key'",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
+
+    let last_sync: Option<String> = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'last_sync'",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
+
+    // Get items to push
+    let items = get_items_to_push(&conn, last_sync.as_deref())?;
+    println!("[Rust] Found {} items to push", items.len());
+
+    if items.is_empty() {
+        return Ok(BidirectionalSyncResult {
+            success: true,
+            pulled: 0,
+            pushed: 0,
+            conflicts: 0,
+            message: "No items to push".to_string(),
+        });
+    }
+
+    let client = reqwest::Client::new();
+    let post_url = format!("{}/items", server_url.trim_end_matches('/'));
+    let mut pushed = 0;
+    let mut failed = 0;
+
+    for (item_id, item_type, url_opt, content_opt, metadata_str, _updated_at) in &items {
+        // Get tags for this item
+        let tags = get_item_tags(&conn, item_id)?;
+
+        // Determine content based on type
+        let content = match item_type.as_str() {
+            "url" | "page" => url_opt.clone(),
+            _ => content_opt.clone(),
+        };
+
+        // Map "page" type to "url" for server
+        let server_type = if item_type == "page" { "url" } else { item_type };
+
+        // Parse metadata
+        let metadata: Option<serde_json::Value> = if !metadata_str.is_empty() {
+            serde_json::from_str(metadata_str).ok()
+        } else {
+            None
+        };
+
+        // Build request body
+        let body = serde_json::json!({
+            "type": server_type,
+            "content": content,
+            "tags": tags,
+            "metadata": metadata,
+        });
+
+        let mut request = client.post(&post_url).json(&body);
+
+        if let Some(key) = &api_key {
+            if !key.is_empty() {
+                request = request.header("Authorization", format!("Bearer {}", key));
+            }
+        }
+
+        match request.send().await {
+            Ok(response) => {
+                if response.status().is_success() {
+                    // Parse response to get server ID
+                    if let Ok(create_response) = response.json::<ServerCreateResponse>().await {
+                        // Update local item with sync info
+                        let now = Utc::now().to_rfc3339();
+                        conn.execute(
+                            "UPDATE items SET sync_id = ?, sync_source = 'server', synced_at = ? WHERE id = ?",
+                            params![&create_response.id, &now, item_id],
+                        ).ok();
+
+                        println!("[Rust] Pushed item {} -> {}", item_id, create_response.id);
+                        pushed += 1;
+                    } else {
+                        failed += 1;
+                    }
+                } else {
+                    let status = response.status();
+                    println!("[Rust] Failed to push item {}: {}", item_id, status);
+                    failed += 1;
+                }
+            }
+            Err(e) => {
+                println!("[Rust] Failed to push item {}: {}", item_id, e);
+                failed += 1;
+            }
+        }
+    }
+
+    println!("[Rust] Push complete: {} pushed, {} failed", pushed, failed);
+
+    Ok(BidirectionalSyncResult {
+        success: failed == 0,
+        pulled: 0,
+        pushed,
+        conflicts: 0,
+        message: if failed > 0 {
+            format!("Pushed {} items, {} failed", pushed, failed)
+        } else {
+            format!("Pushed {} items", pushed)
+        },
+    })
+}
+
+/// Full bidirectional sync: pull then push
+#[tauri::command]
+async fn sync_all() -> Result<BidirectionalSyncResult, String> {
+    println!("[Rust] sync_all called");
+
+    // Pull first
+    let pull_result = pull_from_server().await?;
+
+    // Then push
+    let push_result = push_to_server().await?;
+
+    // Update last sync time
+    let conn = get_connection()?;
+    let now = Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('last_sync', ?)",
+        params![&now],
+    ).ok();
+
+    let total_pulled = pull_result.pulled;
+    let total_pushed = push_result.pushed;
+    let total_conflicts = pull_result.conflicts;
+
+    println!("[Rust] Sync complete: {} pulled, {} pushed, {} conflicts", total_pulled, total_pushed, total_conflicts);
+
+    Ok(BidirectionalSyncResult {
+        success: true,
+        pulled: total_pulled,
+        pushed: total_pushed,
+        conflicts: total_conflicts,
+        message: format!("Synced: {} pulled, {} pushed", total_pulled, total_pushed),
+    })
+}
+
+/// Get current sync status
+#[tauri::command]
+fn get_sync_status() -> Result<SyncStatus, String> {
+    let conn = get_connection()?;
+
+    // Check if configured
+    let server_url: Option<String> = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'webhook_url'",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
+
+    let api_key: Option<String> = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'webhook_api_key'",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
+
+    let configured = server_url.as_ref().map(|s| !s.is_empty()).unwrap_or(false)
+        && api_key.as_ref().map(|s| !s.is_empty()).unwrap_or(false);
+
+    // Get last sync time
+    let last_sync_time: Option<String> = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'last_sync'",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
+
+    // Count pending items (never synced or modified since last sync)
+    let pending_count: usize = if let Some(ref sync_time) = last_sync_time {
+        conn.query_row(
+            "SELECT COUNT(*) FROM items WHERE deleted_at IS NULL AND (sync_source = '' OR sync_source IS NULL OR updated_at > ?)",
+            params![sync_time],
+            |row| row.get::<_, i64>(0),
+        )
+        .unwrap_or(0) as usize
+    } else {
+        conn.query_row(
+            "SELECT COUNT(*) FROM items WHERE deleted_at IS NULL AND (sync_source = '' OR sync_source IS NULL)",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .unwrap_or(0) as usize
+    };
+
+    Ok(SyncStatus {
+        configured,
+        last_sync_time,
+        pending_count,
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -2241,6 +2793,11 @@ pub fn run() {
             sync_to_webhook,
             get_last_sync,
             auto_sync_if_needed,
+            // Bidirectional sync
+            pull_from_server,
+            push_to_server,
+            sync_all,
+            get_sync_status,
             // Legacy/deprecated
             get_shared_url
         ])

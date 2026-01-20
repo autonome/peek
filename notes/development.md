@@ -203,9 +203,55 @@ Mobile development uses the separate `peek-save` app in `backend/tauri-mobile/`.
 **CRITICAL - Do NOT run `xcodegen generate`:**
 - The Xcode project has custom settings that xcodegen overwrites
 
-### iOS Build Process (Detailed)
+### Quick Start (One Command)
 
-**IMPORTANT**: Build BOTH debug (simulator) AND release (device) Rust libraries before opening Xcode. This avoids the "Build Rust Code" pre-build script hang issue.
+The easiest way to set up mobile development with sync testing:
+
+```bash
+cd backend/tauri-mobile
+
+# First time: build both debug and release Rust libraries
+npm run build                    # Build frontend
+cd src-tauri
+cargo build --target aarch64-apple-ios-sim      # Debug (simulator)
+cargo build --target aarch64-apple-ios --release # Release (device)
+cd ..
+
+# Start everything (servers, configure iOS, seed test data, open Xcode)
+npm run dev:ios
+```
+
+`npm run dev:ios` does all of this automatically:
+1. Resets server data for a clean slate
+2. Starts backend server on a random port (10000-19999)
+3. Starts frontend dev server on port 1420
+4. Configures iOS simulator with server URL and API key
+5. Copies both debug and release Rust libraries
+6. Opens Xcode
+7. Seeds test data (3 items on server, 3 on iOS)
+
+### Available npm Scripts
+
+```bash
+# Development
+npm run dev:ios      # Full dev setup (servers + config + seed + Xcode)
+npm run xcode        # Just copy libraries and open Xcode
+npm run seed         # Seed test data (needs SERVER_URL and API_KEY env vars)
+npm run reset:server # Delete server data directory
+
+# Building
+npm run build        # Build frontend (tsc + vite)
+npm run build:ios    # Build frontend + debug Rust library
+npm run build:ios:release  # Build frontend + release Rust library
+
+# Testing
+npm run test         # Run integration tests
+npm run test:verbose # Run tests with verbose output
+```
+
+### iOS Build Process (Manual)
+
+If you need to build manually instead of using `npm run dev:ios`:
 
 ```bash
 # 1. Build frontend
@@ -229,11 +275,33 @@ ln -s ../../../dist gen/apple/assets
 open gen/apple/peek-save.xcodeproj
 ```
 
+### Testing Bidirectional Sync
+
+After running `npm run dev:ios`, test data is automatically seeded:
+
+**Server has 3 items:**
+- URL: https://github.com/from-server (tags: server, github)
+- URL: https://example.com/from-server-1 (tags: server, test)
+- Text: "This is a text note from the server" (tags: server, note)
+
+**iOS Simulator has 3 items:**
+- URL: https://mobile-only-1.example.com (tags: mobile, local)
+- URL: https://mobile-news.example.com (tags: local)
+- Text: "This text was created on mobile only" (tags: mobile)
+
+**To test:**
+1. Build and run in Xcode (Cmd+R)
+2. Go to Settings in the app
+3. Settings should already be configured (server URL and API key)
+4. Tap **Sync All** to pull and push
+5. After sync, both server and iOS should have 6 items
+
 **Gotchas:**
 - The `gen/apple/assets` symlink must exist or Xcode fails with "No such file or directory"
 - Debug scheme = simulator, Release scheme = device
 - If Rust code changes, rebuild the library and copy again
 - The "Build Rust Code" pre-build script in Xcode can hang indefinitely - pre-building avoids this
+- iOS simulator can't reach `localhost` - use Mac's IP address (dev:ios handles this automatically)
 
 ## Server Backend (Webhook API)
 

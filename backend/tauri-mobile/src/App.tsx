@@ -52,10 +52,18 @@ interface TagStats {
   frecency_score: number;
 }
 
-interface SyncResult {
+interface BidirectionalSyncResult {
   success: boolean;
-  synced_count: number;
+  pulled: number;
+  pushed: number;
+  conflicts: number;
   message: string;
+}
+
+interface SyncStatus {
+  configured: boolean;
+  last_sync_time: string | null;
+  pending_count: number;
 }
 
 // Unified item for combined list
@@ -149,6 +157,7 @@ function App() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
 
   // Detect system dark mode via native iOS API
   useEffect(() => {
@@ -212,6 +221,7 @@ function App() {
     loadWebhookUrl();
     loadWebhookApiKey();
     loadLastSync();
+    loadSyncStatus();
     tryAutoSync();
 
     // Reload when app comes back to foreground (to pick up items from share extension)
@@ -277,6 +287,18 @@ function App() {
     }
   };
 
+  const loadSyncStatus = async () => {
+    try {
+      const status = await invoke<SyncStatus>("get_sync_status");
+      setSyncStatus(status);
+      if (status.last_sync_time) {
+        setLastSync(status.last_sync_time);
+      }
+    } catch (error) {
+      console.error("Failed to load sync status:", error);
+    }
+  };
+
   const saveWebhookSettings = async () => {
     try {
       await invoke("set_webhook_url", { url: webhookUrlInput });
@@ -292,9 +314,10 @@ function App() {
     }
   };
 
-  const syncToWebhook = async () => {
+  // Bidirectional sync: pull then push
+  const syncAll = async () => {
     if (!webhookUrl) {
-      setSyncMessage("Please save a webhook URL first");
+      setSyncMessage("Please save a server URL first");
       setTimeout(() => setSyncMessage(null), 3000);
       return;
     }
@@ -303,13 +326,78 @@ function App() {
     setSyncMessage(null);
 
     try {
-      const result = await invoke<SyncResult>("sync_to_webhook");
-      setSyncMessage(result.message);
-      await loadLastSync(); // Refresh last sync timestamp
-      setTimeout(() => setSyncMessage(null), 3000);
+      const result = await invoke<BidirectionalSyncResult>("sync_all");
+      const msg = `Synced: ${result.pulled} pulled, ${result.pushed} pushed${result.conflicts > 0 ? `, ${result.conflicts} conflicts` : ''}`;
+      setSyncMessage(msg);
+      await loadLastSync();
+      await loadSyncStatus();
+      // Reload data to show new items from server
+      loadSavedUrls();
+      loadSavedTexts();
+      loadSavedTagsets();
+      loadSavedImages();
+      loadAllTags();
+      setTimeout(() => setSyncMessage(null), 4000);
     } catch (error) {
       console.error("Failed to sync:", error);
       setSyncMessage(`Sync failed: ${error}`);
+      setTimeout(() => setSyncMessage(null), 5000);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Pull only from server
+  const pullFromServer = async () => {
+    if (!webhookUrl) {
+      setSyncMessage("Please save a server URL first");
+      setTimeout(() => setSyncMessage(null), 3000);
+      return;
+    }
+
+    setIsSyncing(true);
+    setSyncMessage(null);
+
+    try {
+      const result = await invoke<BidirectionalSyncResult>("pull_from_server");
+      const msg = `Pulled ${result.pulled} items${result.conflicts > 0 ? `, ${result.conflicts} conflicts` : ''}`;
+      setSyncMessage(msg);
+      await loadSyncStatus();
+      // Reload data to show new items from server
+      loadSavedUrls();
+      loadSavedTexts();
+      loadSavedTagsets();
+      loadSavedImages();
+      loadAllTags();
+      setTimeout(() => setSyncMessage(null), 4000);
+    } catch (error) {
+      console.error("Failed to pull:", error);
+      setSyncMessage(`Pull failed: ${error}`);
+      setTimeout(() => setSyncMessage(null), 5000);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Push only to server
+  const pushToServer = async () => {
+    if (!webhookUrl) {
+      setSyncMessage("Please save a server URL first");
+      setTimeout(() => setSyncMessage(null), 3000);
+      return;
+    }
+
+    setIsSyncing(true);
+    setSyncMessage(null);
+
+    try {
+      const result = await invoke<BidirectionalSyncResult>("push_to_server");
+      setSyncMessage(`Pushed ${result.pushed} items`);
+      await loadSyncStatus();
+      setTimeout(() => setSyncMessage(null), 4000);
+    } catch (error) {
+      console.error("Failed to push:", error);
+      setSyncMessage(`Push failed: ${error}`);
       setTimeout(() => setSyncMessage(null), 5000);
     } finally {
       setIsSyncing(false);
@@ -1635,9 +1723,9 @@ function App() {
 
         <main className="settings-view">
           <div className="settings-section">
-            <h2>Webhook Sync</h2>
+            <h2>Server Sync</h2>
             <p className="settings-description">
-              Enter a webhook URL to sync your saved items. Items are automatically sent when saved, and you can also sync all items manually.
+              Sync your saved items with the server. Pull to get items from other devices, push to send local items, or sync all to do both.
             </p>
 
             <div className="webhook-input">
@@ -1645,7 +1733,7 @@ function App() {
                 type="url"
                 value={webhookUrlInput}
                 onChange={(e) => setWebhookUrlInput(e.target.value)}
-                placeholder="https://example.com/webhook"
+                placeholder="https://your-server.example.com"
                 autoCapitalize="none"
                 autoCorrect="off"
               />
@@ -1656,7 +1744,7 @@ function App() {
                 type={showApiKey ? "text" : "password"}
                 value={webhookApiKeyInput}
                 onChange={(e) => setWebhookApiKeyInput(e.target.value)}
-                placeholder="API key (optional)"
+                placeholder="API key"
                 autoCapitalize="none"
                 autoCorrect="off"
               />
@@ -1693,13 +1781,36 @@ function App() {
               </p>
             )}
 
+            {syncStatus && syncStatus.pending_count > 0 && (
+              <p className="sync-pending-info">
+                {syncStatus.pending_count} item{syncStatus.pending_count === 1 ? '' : 's'} pending sync
+              </p>
+            )}
+
             <button
-              className="sync-btn"
-              onClick={syncToWebhook}
+              className="sync-btn primary"
+              onClick={syncAll}
               disabled={!webhookUrl || isSyncing}
             >
-              {isSyncing ? "Syncing..." : lastSync ? "Sync Now" : `Sync All Items (${savedUrls.length + savedTexts.length + savedTagsets.length + savedImages.length})`}
+              {isSyncing ? "Syncing..." : "Sync All"}
             </button>
+
+            <div className="sync-btn-row">
+              <button
+                className="sync-btn secondary"
+                onClick={pullFromServer}
+                disabled={!webhookUrl || isSyncing}
+              >
+                Pull
+              </button>
+              <button
+                className="sync-btn secondary"
+                onClick={pushToServer}
+                disabled={!webhookUrl || isSyncing}
+              >
+                Push
+              </button>
+            </div>
 
             {syncMessage && (
               <div className={`sync-message ${syncMessage.includes("failed") || syncMessage.includes("Failed") ? "error" : "success"}`}>

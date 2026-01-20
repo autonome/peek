@@ -11,7 +11,6 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
-- [ ][mobile] update to full sync (not just webhook push) - prep for reading experience
 - [ ][sync] e2e sync test: desktop + mobile in prod, verify via railway logs
 - [ ][desktop] daily data snapshots saved to compress archives in ~/sync/peek-backups
 - [ ][dekstop] first real look at the web page experience
@@ -170,6 +169,8 @@ Editor extensibility/bundling
 - [ ] Reduce startup time (currently ~550ms build)
 - [ ] Pre-compiled TypeScript: skip tsc during dev if no changes
 - [ ] Lazy extension loading: load on first access instead of startup
+- [ ] Suspend inactive tabs (reduce memory for background pages)
+- [ ] Performant BrowserWindow unloading (fully release resources when not needed)
 
 ## Groups
 
@@ -426,6 +427,7 @@ Newly done items go here, grouped under third-level headings by week of year.
 
 ### 2026-W04
 
+- [x][mobile] update to full bidirectional sync (pull + push, not just webhook push)
 - [x][sync] E2E integration tests for desktop-server sync
 
 ### 2026-W03

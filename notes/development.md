@@ -205,7 +205,7 @@ Mobile development uses the separate `peek-save` app in `backend/tauri-mobile/`.
 
 ### iOS Build Process (Detailed)
 
-**IMPORTANT**: Build BOTH debug (simulator) AND release (device) Rust libraries before opening Xcode.
+**IMPORTANT**: Build BOTH debug (simulator) AND release (device) Rust libraries before opening Xcode. This avoids the "Build Rust Code" pre-build script hang issue.
 
 ```bash
 # 1. Build frontend
@@ -233,6 +233,7 @@ open gen/apple/peek-save.xcodeproj
 - The `gen/apple/assets` symlink must exist or Xcode fails with "No such file or directory"
 - Debug scheme = simulator, Release scheme = device
 - If Rust code changes, rebuild the library and copy again
+- The "Build Rust Code" pre-build script in Xcode can hang indefinitely - pre-building avoids this
 
 ## Server Backend (Webhook API)
 

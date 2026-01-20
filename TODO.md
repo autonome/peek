@@ -3,7 +3,7 @@
 How we work:
 - We track actionable items in this file
 - This file is not for notes or description - link to documents in ./notes for that
-- We use the "- [ ]" syntax to denote actionable items and "- [x]" to mark as complete
+- Checkbox states: `- [ ]` pending, `- [~]` in-progress, `- [x]` done
 - We move completed items into the Done section at the bottom, grouped by week of year the items were completed
 
 ## Prioritization
@@ -11,9 +11,9 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
-- [x][desktop] merge peek-node into peek
-- [x][all] unify data model across mobile/desktop/server
-- [x][all] sync working between all three
+- [ ][mobile] test and deploy ios to prod
+- [ ][desktop] test sync and package
+- [ ][sync] e2e sync test: desktop + mobile in prod, verify via railway logs
 - [ ][desktop] daily data snapshots saved to compress archives in ~/sync/peek-backups
 
 Later
@@ -106,10 +106,14 @@ Editor extensibility/bundling
 - [x] update peek-node to support text/urls/tagsets (already supports urls, texts, tagsets, images)
 - [ ] headless sync server that's a "back-end" of Peek API… or just peek running headless?
 - [ ] route all external urls to peek node webhook, eg every bsky like, reddit save, oauthwonderwall?
+- [ ] diagnostic/status API: resource usage, overall disk usage, per-user disk stats
 
 ### Mobile
 
 - [ ] show oembed, or at least page title
+- [ ] api key should be optional (for local-only use)
+- [ ] sync now button in settings
+- [ ] save images to server (look at how binaries are stored)
 
 ### Privacy & Archival
 
@@ -421,6 +425,8 @@ Newly done items go here, grouped under third-level headings by week of year.
 
 - [x] merge peek-node into peek repo (now at backend/server/)
 - [x] update peek-node to support multi-user and the core types (already done)
+- [x] unify data model across mobile/desktop/server
+- [x] sync working between all three
 
 ### Old completed items
 

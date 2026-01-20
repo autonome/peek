@@ -11,10 +11,9 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
-- [ ][mobile] test and deploy ios to prod
-- [ ][desktop] test sync and package
 - [ ][sync] e2e sync test: desktop + mobile in prod, verify via railway logs
 - [ ][desktop] daily data snapshots saved to compress archives in ~/sync/peek-backups
+- [ ][dekstop] first real look at the web page experience
 
 Later
 - [ ] tags on desktop
@@ -25,9 +24,6 @@ Later
 Unclear / needs context:
 - [ ] demo script (see use-case sticky)
 - [ ] consolidate peek notes in signal to a peek note (copy all, have the robots format it)
-- [ ] jj+tangled
-- [ ] docs
-- [ ] Pageinfo
 - [ ] implement old context plan eg https://www.reddit.com/r/hackernews/comments/1qddidm/sun_position_calculator/
 - [ ] step counter: app level interaction tracing/counting. when is reset? when does action end and new one start?
 - [ ] tabstats for peek
@@ -39,7 +35,7 @@ Unclear / needs context:
 ### Data Model & Multi-platform Unification
 
 - [x] merge peek-node into peek repo (now at backend/server/)
-- [ ] resolve differences between mobile, node and desktop data models
+- [x] resolve differences between mobile, node and desktop data models
 - [ ] prepare for multi-user, in the data model and at the filesystem level
 - [x] update peek-node to support multi-user and the core types (already supports multi-user with API keys)
 
@@ -226,7 +222,7 @@ Search
 Web extensions
 - [ ] WebExtension integration for priority only, on some platforms
 
-## v? - Minimum viable web workbench
+## Minimum viable web workbench
 
 - [ ] Design philosophy write-up w/ driving principles and characteristics
 - [ ] Multi-protocol architecture
@@ -236,7 +232,7 @@ Web extensions
 - [ ] Images
 - [ ] Lists/feeds
 
-## v? - Editor & Notes
+## Editor & Notes
 
 Requires chaining and "activities"
 
@@ -245,7 +241,7 @@ Requires chaining and "activities"
 - [ ] Vim mode
 - [ ] List editor
 
-## v? - Theming
+## Theming
 
 - [ ] customizable theme(s)
   - [ ] portable/packageable system
@@ -261,7 +257,7 @@ Requires chaining and "activities"
   - [ ] reflect system theme (eg about:blank should not be always a white flash before page load)
   - [ ] reflect peek configured theme
 
-## v? - UI Componentry
+## UI Componentry
 
 - [ ] popup system
   - [ ] see ~/sync/Sites/base/hud.html/css/js
@@ -275,7 +271,7 @@ Requires chaining and "activities"
 - [ ] tag input field
 - [ ] reactive schema+card+data framework
 
-## v? - Feeds, time-series, scripts
+## Feeds, time-series, scripts
 
 - [ ] API for logging outputs to datastore (time series data, feeds)
 - [ ] Command support for blocking on a content script running
@@ -284,9 +280,15 @@ Requires chaining and "activities"
 - [ ] Support for scheduling scripts (or maybe that's just in the extension... harder to manage tho)
 - [ ] Page load triggers for background scripts
 
-## v? - Page metadata, actions, ui
+## Page loading experience
 
-- over/underlay infra (window templates)
+- [ ] determine how we load pages - raw browserwindow (what we do now), webview in an html page?
+- [ ] over/underlay infra (maybe this requires window templates, but not for first take)
+- [ ] Page metadata
+- [ ] Interaction with cmd actions
+
+Later
+- [ ] widgets that have actions
 
 ## v? - Chaining / Connecting
 
@@ -423,10 +425,12 @@ Newly done items go here, grouped under third-level headings by week of year.
 
 ### 2026-W03
 
+- [x][desktop] test sync and package
 - [x] merge peek-node into peek repo (now at backend/server/)
 - [x] update peek-node to support multi-user and the core types (already done)
 - [x] unify data model across mobile/desktop/server
 - [x] sync working between all three
+- [x][mobile] test and deploy ios to prod
 
 ### Old completed items
 

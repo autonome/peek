@@ -587,6 +587,322 @@ const renderThemesSettings = async () => {
   return container;
 };
 
+// Render sync settings
+const renderSyncSettings = async () => {
+  const container = document.createElement('div');
+
+  // State
+  let config = { serverUrl: '', apiKey: '', autoSync: false };
+  let status = { configured: false, lastSync: 0, pendingCount: 0 };
+  let isSyncing = false;
+
+  // Load initial config and status
+  try {
+    const configResult = await api.sync.getConfig();
+    if (configResult.success && configResult.data) {
+      config = { ...config, ...configResult.data };
+    }
+
+    const statusResult = await api.sync.getStatus();
+    if (statusResult.success && statusResult.data) {
+      status = { ...status, ...statusResult.data };
+    }
+  } catch (err) {
+    console.error('[settings] Failed to load sync config:', err);
+  }
+
+  // Server Configuration section
+  const configSection = document.createElement('div');
+  configSection.className = 'form-section';
+
+  const configTitle = document.createElement('h3');
+  configTitle.className = 'form-section-title';
+  configTitle.textContent = 'Server Configuration';
+  configSection.appendChild(configTitle);
+
+  // Server URL input
+  const serverUrlGroup = createInput('Server URL', config.serverUrl, async (val) => {
+    config.serverUrl = val;
+    await api.sync.setConfig({ serverUrl: val });
+    updateStatus();
+  }, { type: 'url', helpText: 'Full URL to sync server (e.g., https://peek.example.com)' });
+  configSection.appendChild(serverUrlGroup);
+
+  // API Key input with show/hide toggle
+  const apiKeyGroup = document.createElement('div');
+  apiKeyGroup.className = 'form-group';
+
+  const apiKeyLabel = document.createElement('label');
+  apiKeyLabel.textContent = 'API Key';
+  apiKeyGroup.appendChild(apiKeyLabel);
+
+  const apiKeyWrapper = document.createElement('div');
+  apiKeyWrapper.style.cssText = 'display: flex; gap: 8px;';
+
+  const apiKeyInput = document.createElement('input');
+  apiKeyInput.type = 'password';
+  apiKeyInput.value = config.apiKey || '';
+  apiKeyInput.style.cssText = 'flex: 1;';
+  apiKeyInput.addEventListener('change', async (e) => {
+    config.apiKey = e.target.value;
+    await api.sync.setConfig({ apiKey: e.target.value });
+    updateStatus();
+  });
+  apiKeyWrapper.appendChild(apiKeyInput);
+
+  const toggleBtn = document.createElement('button');
+  toggleBtn.textContent = 'Show';
+  toggleBtn.style.cssText = `
+    padding: 6px 12px;
+    font-size: 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    min-width: 50px;
+  `;
+  toggleBtn.addEventListener('click', () => {
+    if (apiKeyInput.type === 'password') {
+      apiKeyInput.type = 'text';
+      toggleBtn.textContent = 'Hide';
+    } else {
+      apiKeyInput.type = 'password';
+      toggleBtn.textContent = 'Show';
+    }
+  });
+  apiKeyWrapper.appendChild(toggleBtn);
+  apiKeyGroup.appendChild(apiKeyWrapper);
+
+  const apiKeyHelp = document.createElement('div');
+  apiKeyHelp.className = 'help-text';
+  apiKeyHelp.textContent = 'API key for authenticating with the sync server';
+  apiKeyGroup.appendChild(apiKeyHelp);
+
+  configSection.appendChild(apiKeyGroup);
+
+  // Auto-sync checkbox
+  const autoSyncCheckbox = createCheckbox('Auto-sync', config.autoSync, async (val) => {
+    config.autoSync = val;
+    await api.sync.setConfig({ autoSync: val });
+  }, { helpText: 'Automatically sync when items are added or modified' });
+  configSection.appendChild(autoSyncCheckbox);
+
+  container.appendChild(configSection);
+
+  // Sync Status section
+  const statusSection = document.createElement('div');
+  statusSection.className = 'form-section';
+  statusSection.style.marginTop = '24px';
+
+  const statusTitle = document.createElement('h3');
+  statusTitle.className = 'form-section-title';
+  statusTitle.textContent = 'Sync Status';
+  statusSection.appendChild(statusTitle);
+
+  const statusContainer = document.createElement('div');
+  statusContainer.style.cssText = 'padding: 12px; background: var(--bg-tertiary); border-radius: 6px; margin-bottom: 16px;';
+
+  const statusLine = document.createElement('div');
+  statusLine.className = 'help-text';
+  statusLine.style.marginBottom = '4px';
+  statusContainer.appendChild(statusLine);
+
+  const lastSyncLine = document.createElement('div');
+  lastSyncLine.className = 'help-text';
+  lastSyncLine.style.marginBottom = '4px';
+  statusContainer.appendChild(lastSyncLine);
+
+  const pendingLine = document.createElement('div');
+  pendingLine.className = 'help-text';
+  statusContainer.appendChild(pendingLine);
+
+  statusSection.appendChild(statusContainer);
+
+  // Function to update status display
+  const updateStatus = async () => {
+    try {
+      const statusResult = await api.sync.getStatus();
+      if (statusResult.success && statusResult.data) {
+        status = statusResult.data;
+      }
+    } catch (err) {
+      console.error('[settings] Failed to get sync status:', err);
+    }
+
+    const isConfigured = config.serverUrl && config.apiKey;
+    statusLine.textContent = `Status: ${isConfigured ? 'Configured' : 'Not configured'}`;
+    statusLine.style.color = isConfigured ? 'var(--text-primary)' : 'var(--text-tertiary)';
+
+    if (status.lastSync && status.lastSync > 0) {
+      const lastSyncDate = new Date(status.lastSync);
+      lastSyncLine.textContent = `Last sync: ${lastSyncDate.toLocaleString()}`;
+    } else {
+      lastSyncLine.textContent = 'Last sync: Never';
+    }
+
+    pendingLine.textContent = `Pending items: ${status.pendingCount || 0}`;
+  };
+
+  // Initial status update
+  await updateStatus();
+
+  container.appendChild(statusSection);
+
+  // Manual Sync section
+  const syncSection = document.createElement('div');
+  syncSection.className = 'form-section';
+  syncSection.style.marginTop = '24px';
+
+  const syncTitle = document.createElement('h3');
+  syncTitle.className = 'form-section-title';
+  syncTitle.textContent = 'Manual Sync';
+  syncSection.appendChild(syncTitle);
+
+  // Result display area
+  const resultArea = document.createElement('div');
+  resultArea.style.cssText = 'padding: 12px; border-radius: 6px; margin-bottom: 16px; display: none;';
+  syncSection.appendChild(resultArea);
+
+  // Function to show result message
+  const showResult = (message, isError = false) => {
+    resultArea.textContent = message;
+    resultArea.style.display = 'block';
+    resultArea.style.background = isError ? 'var(--error-bg, #fef2f2)' : 'var(--success-bg, #f0fdf4)';
+    resultArea.style.border = isError ? '1px solid var(--error-border, #fecaca)' : '1px solid var(--success-border, #bbf7d0)';
+    resultArea.style.color = isError ? 'var(--error-text, #dc2626)' : 'var(--success-text, #16a34a)';
+
+    // Auto-hide after 5 seconds
+    setTimeout(() => {
+      resultArea.style.display = 'none';
+    }, 5000);
+  };
+
+  // Button container
+  const buttonContainer = document.createElement('div');
+  buttonContainer.style.cssText = 'display: flex; gap: 8px; flex-wrap: wrap;';
+
+  // Helper to create action buttons
+  const createActionButton = (text, action) => {
+    const btn = document.createElement('button');
+    btn.textContent = text;
+    btn.style.cssText = `
+      padding: 10px 16px;
+      font-size: 13px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-primary);
+      border-radius: 6px;
+      color: var(--text-primary);
+      cursor: pointer;
+      flex: 1;
+      min-width: 120px;
+    `;
+    btn.addEventListener('mouseenter', () => {
+      if (!btn.disabled) btn.style.background = 'var(--bg-hover)';
+    });
+    btn.addEventListener('mouseleave', () => {
+      if (!btn.disabled) btn.style.background = 'var(--bg-tertiary)';
+    });
+    btn.addEventListener('click', async () => {
+      if (isSyncing) return;
+
+      // Check if configured
+      if (!config.serverUrl || !config.apiKey) {
+        showResult('Please configure server URL and API key first', true);
+        return;
+      }
+
+      isSyncing = true;
+      const originalText = btn.textContent;
+      btn.textContent = 'Syncing...';
+      btn.disabled = true;
+      btn.style.opacity = '0.6';
+      btn.style.cursor = 'not-allowed';
+
+      // Disable all buttons during operation
+      buttonContainer.querySelectorAll('button').forEach(b => {
+        b.disabled = true;
+        b.style.opacity = '0.6';
+        b.style.cursor = 'not-allowed';
+      });
+
+      try {
+        const result = await action();
+        if (result.success) {
+          const data = result.data || {};
+          let message = '';
+          if (data.pulled !== undefined && data.pushed !== undefined) {
+            message = `Synced: ${data.pulled} pulled, ${data.pushed} pushed`;
+            if (data.conflicts) message += `, ${data.conflicts} conflicts`;
+          } else if (data.pulled !== undefined) {
+            message = `Pulled ${data.pulled} items`;
+            if (data.conflicts) message += ` (${data.conflicts} conflicts)`;
+          } else if (data.pushed !== undefined) {
+            message = `Pushed ${data.pushed} items`;
+            if (data.skipped) message += ` (${data.skipped} skipped)`;
+          } else {
+            message = 'Sync completed';
+          }
+          showResult(message, false);
+        } else {
+          showResult(result.error || 'Sync failed', true);
+        }
+      } catch (err) {
+        showResult(err.message || 'Sync error', true);
+      } finally {
+        isSyncing = false;
+        btn.textContent = originalText;
+
+        // Re-enable all buttons
+        buttonContainer.querySelectorAll('button').forEach(b => {
+          b.disabled = false;
+          b.style.opacity = '1';
+          b.style.cursor = 'pointer';
+          b.style.background = 'var(--bg-tertiary)';
+        });
+
+        // Update status after sync
+        await updateStatus();
+      }
+    });
+    return btn;
+  };
+
+  // Pull button
+  const pullBtn = createActionButton('Pull from Server', () => api.sync.pull());
+  buttonContainer.appendChild(pullBtn);
+
+  // Push button
+  const pushBtn = createActionButton('Push to Server', () => api.sync.push());
+  buttonContainer.appendChild(pushBtn);
+
+  // Sync All button
+  const syncAllBtn = createActionButton('Sync All', () => api.sync.syncAll());
+  syncAllBtn.style.background = 'var(--base0D)';
+  syncAllBtn.style.color = 'white';
+  syncAllBtn.style.border = '1px solid var(--base0D)';
+  syncAllBtn.addEventListener('mouseenter', () => {
+    if (!syncAllBtn.disabled) syncAllBtn.style.background = 'var(--base0D)';
+  });
+  syncAllBtn.addEventListener('mouseleave', () => {
+    if (!syncAllBtn.disabled) syncAllBtn.style.background = 'var(--base0D)';
+  });
+  buttonContainer.appendChild(syncAllBtn);
+
+  syncSection.appendChild(buttonContainer);
+
+  // Help text
+  const helpText = document.createElement('div');
+  helpText.className = 'help-text';
+  helpText.style.marginTop = '12px';
+  helpText.textContent = 'Pull downloads new items from the server. Push uploads local items. Sync All does both.';
+  syncSection.appendChild(helpText);
+
+  container.appendChild(syncSection);
+
+  return container;
+};
+
 // Render extensions settings
 const renderExtensionsSettings = async () => {
   const container = document.createElement('div');
@@ -1433,6 +1749,31 @@ const init = async () => {
       window._refreshExtensionsList();
     }
   }, api.scopes.GLOBAL);
+
+  // Add Sync management section (between Extensions and Themes)
+  const syncNav = document.createElement('a');
+  syncNav.className = 'nav-item';
+  syncNav.textContent = 'Sync';
+  syncNav.dataset.section = 'sync';
+  syncNav.addEventListener('click', () => showSection('sync'));
+  sidebarNav.appendChild(syncNav);
+
+  // Create sync section with async content
+  const syncSection = document.createElement('div');
+  syncSection.className = 'section';
+  syncSection.id = 'section-sync';
+
+  const syncTitle = document.createElement('h2');
+  syncTitle.className = 'section-title';
+  syncTitle.textContent = 'Sync';
+  syncSection.appendChild(syncTitle);
+
+  // Load sync content async
+  renderSyncSettings().then(content => {
+    syncSection.appendChild(content);
+  });
+
+  contentArea.appendChild(syncSection);
 
   // Add Themes management section
   const themesNav = document.createElement('a');

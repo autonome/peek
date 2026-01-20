@@ -11,6 +11,7 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
+- [ ][mobile] update to full sync (not just webhook push) - prep for reading experience
 - [ ][sync] e2e sync test: desktop + mobile in prod, verify via railway logs
 - [ ][desktop] daily data snapshots saved to compress archives in ~/sync/peek-backups
 - [ ][dekstop] first real look at the web page experience
@@ -425,6 +426,7 @@ Newly done items go here, grouped under third-level headings by week of year.
 
 ### 2026-W03
 
+- [x][desktop] settings UI for sync
 - [x][desktop] test sync and package
 - [x] merge peek-node into peek repo (now at backend/server/)
 - [x] update peek-node to support multi-user and the core types (already done)

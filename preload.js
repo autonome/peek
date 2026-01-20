@@ -550,6 +550,60 @@ api.theme = {
   }
 };
 
+// Sync API - server synchronization for bidirectional sync
+api.sync = {
+  /**
+   * Get sync configuration
+   * @returns {Promise<{success: boolean, data?: {serverUrl: string, apiKey: string, autoSync: boolean}, error?: string}>}
+   */
+  getConfig: () => {
+    return ipcRenderer.invoke('sync-get-config');
+  },
+
+  /**
+   * Set sync configuration
+   * @param {object} config - { serverUrl?, apiKey?, autoSync? }
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  setConfig: (config) => {
+    return ipcRenderer.invoke('sync-set-config', config);
+  },
+
+  /**
+   * Pull items from server
+   * @param {object} options - { since?: number } - optional timestamp to pull changes since
+   * @returns {Promise<{success: boolean, data?: {pulled: number, conflicts: number}, error?: string}>}
+   */
+  pull: (options = {}) => {
+    return ipcRenderer.invoke('sync-pull', options);
+  },
+
+  /**
+   * Push local items to server
+   * @param {object} options - { force?: boolean } - force push even if conflicts
+   * @returns {Promise<{success: boolean, data?: {pushed: number, skipped: number}, error?: string}>}
+   */
+  push: (options = {}) => {
+    return ipcRenderer.invoke('sync-push', options);
+  },
+
+  /**
+   * Full bidirectional sync (pull then push)
+   * @returns {Promise<{success: boolean, data?: {pulled: number, pushed: number, conflicts: number}, error?: string}>}
+   */
+  syncAll: () => {
+    return ipcRenderer.invoke('sync-full');
+  },
+
+  /**
+   * Get current sync status
+   * @returns {Promise<{success: boolean, data?: {configured: boolean, lastSync: number, pendingCount: number}, error?: string}>}
+   */
+  getStatus: () => {
+    return ipcRenderer.invoke('sync-status');
+  }
+};
+
 // Track per-window color scheme override (null = use global)
 let windowColorSchemeOverride = null;
 

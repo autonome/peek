@@ -424,6 +424,10 @@ Further
 
 Newly done items go here, grouped under third-level headings by week of year.
 
+### 2026-W04
+
+- [x][sync] E2E integration tests for desktop-server sync
+
 ### 2026-W03
 
 - [x][desktop] settings UI for sync

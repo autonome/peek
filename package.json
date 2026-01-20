@@ -66,6 +66,8 @@
     "//-- Sync Tests --//": "",
     "test:sync": "node backend/tests/sync-integration.test.js",
     "test:sync:verbose": "VERBOSE=1 node backend/tests/sync-integration.test.js",
+    "test:sync:e2e": "node backend/tests/sync-e2e.test.js",
+    "test:sync:e2e:verbose": "VERBOSE=1 node backend/tests/sync-e2e.test.js",
     "test:mobile": "cd backend/tauri-mobile && npm test",
     "//-- Packaged Electron --//": "",
     "kill:packaged": "pkill -f 'out/mac-arm64/Peek.app' || true",

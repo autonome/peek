@@ -11,10 +11,10 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
+- [ ][desktop] daily data snapshots saved to compress archives in ~/sync/peek-backups
+- [ ][desktop] e2e sync test: desktop + server in debug and then in prod, verify via railway logs for production package
 - [ ][mobile] pull-to-refresh triggers sync
 - [ ][mobile] fix big bottom bar showing again
-- [ ][sync] e2e sync test: desktop + mobile in prod, verify via railway logs
-- [ ][desktop] daily data snapshots saved to compress archives in ~/sync/peek-backups
 
 Later
 - [ ][dekstop] first real look at the web page experience - see Page loading experience section

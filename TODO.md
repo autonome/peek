@@ -11,7 +11,6 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
-- [~][server] document Railway deployment info so agents don't have to relearn each time
 - [~][desktop] fix better-sqlite3 node vs electron version mismatch
 - [ ][sync] investigate remaining sync edge cases
 - [ ][mobile] pull-to-refresh triggers sync
@@ -425,6 +424,7 @@ Newly done items go here, grouped under third-level headings by week of year.
 
 ### 2026-W04
 
+- [x][server] document Railway deployment info so agents don't have to relearn each time
 - [x][sync] fix duplicates: add sync_id parameter for server-side deduplication
 - [x][mobile] update to full bidirectional sync (pull + push, not just webhook push)
 - [x][sync] E2E integration tests for desktop-server sync

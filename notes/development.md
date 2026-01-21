@@ -350,6 +350,8 @@ All endpoints except `/` require `Authorization: Bearer <api_key>` header.
 
 ### Server Deployment (Railway)
 
+> **For the comprehensive deployment guide**, see the "Railway Deployment (Peek Server)" section in `CLAUDE.md`. This includes step-by-step workflow, user management, production testing, and troubleshooting.
+
 The server is configured for Railway deployment.
 
 **Initial Setup:**

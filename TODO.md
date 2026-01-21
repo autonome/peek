@@ -170,6 +170,7 @@ Editor extensibility/bundling
 - [ ] option to flash keyboard shortcuts on screen
 - [ ] pop up a board of built-in shortcuts/actions
 - [ ] pop up a board of common shortcuts/actions you use
+- [ ] back/forward shortcuts for web pages
 
 ## Desktop Performance
 

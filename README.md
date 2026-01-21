@@ -90,10 +90,12 @@ API keys are hashed with SHA-256 and stored in the system database.
 
 Configured for Railway (`railway.json`) using Nixpacks builder with automatic restart on failure.
 
-To deploy:
+> **For detailed Railway deployment guide** including step-by-step workflow, user/API key management, production testing, and troubleshooting, see `CLAUDE.md` in the project root.
+
+**Quick setup:**
 1. Connect your Railway project to this subdirectory (`backend/server/`)
 2. Attach a volume and set `DATA_DIR` to the mount path for persistent storage
-3. Create users and their API keys
+3. Create users and their API keys (see CLAUDE.md for commands)
 
 ## Environment Variables
 

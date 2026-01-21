@@ -53,6 +53,7 @@
     "mobile:ios:build": "cd backend/tauri-mobile && ./build-ios.sh",
     "mobile:ios:build:release": "cd backend/tauri-mobile && ./build-release.sh",
     "mobile:ios:xcode": "open backend/tauri-mobile/src-tauri/gen/apple/peek-save.xcodeproj",
+    "mobile:ios:test": "cd backend/tauri-mobile && ./dev-setup.sh",
     "mobile:android:init": "cd backend/tauri-mobile/src-tauri && cargo tauri android init",
     "mobile:android:dev": "cd backend/tauri-mobile/src-tauri && cargo tauri android dev",
     "mobile:android:build": "cd backend/tauri-mobile/src-tauri && cargo tauri android build",

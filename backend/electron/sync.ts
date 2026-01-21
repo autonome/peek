@@ -347,10 +347,12 @@ async function pushSingleItem(
     content?: string | null;
     tags: string[];
     metadata?: Record<string, unknown>;
+    sync_id?: string;
   } = {
     type: item.type,
     content: item.content,
     tags: tagNames,
+    sync_id: item.syncId || item.id,  // Use existing syncId or local id
   };
 
   if (metadata) {

@@ -2609,6 +2609,7 @@ async fn push_to_server() -> Result<BidirectionalSyncResult, String> {
             "content": content,
             "tags": tags,
             "metadata": metadata,
+            "sync_id": item_id,  // Send local id as sync_id for deduplication
         });
 
         let mut request = client.post(&post_url).json(&body);

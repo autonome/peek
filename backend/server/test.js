@@ -618,6 +618,106 @@ describe("Database Tests", () => {
       assert.ok(indexNames.includes("idx_items_sync_id"), "should have idx_items_sync_id index");
     });
   });
+
+  describe("sync_id Deduplication", () => {
+    it("should deduplicate by sync_id and return same server id", () => {
+      // Simulate same item pushed twice with same sync_id
+      const clientSyncId = "client-item-abc123";
+      const id1 = db.saveItem(TEST_USER_ID, "url", "https://example.com", ["tag1"], null, clientSyncId);
+      const id2 = db.saveItem(TEST_USER_ID, "url", "https://example.com", ["tag2"], null, clientSyncId);
+
+      // Should return same server ID
+      assert.strictEqual(id1, id2, "should return same id for same sync_id");
+
+      // Should only have one item
+      const items = db.getItems(TEST_USER_ID);
+      assert.strictEqual(items.length, 1);
+      // Tags should be replaced
+      assert.deepStrictEqual(items[0].tags, ["tag2"]);
+    });
+
+    it("should deduplicate by sync_id even with different content", () => {
+      // Client updates content before syncing again
+      const clientSyncId = "client-item-xyz789";
+      const id1 = db.saveItem(TEST_USER_ID, "url", "https://old-url.com", [], null, clientSyncId);
+      const id2 = db.saveItem(TEST_USER_ID, "url", "https://new-url.com", [], null, clientSyncId);
+
+      // Should return same server ID (sync_id match takes priority)
+      assert.strictEqual(id1, id2, "should return same id for same sync_id even with different content");
+
+      // Should only have one item
+      const items = db.getItems(TEST_USER_ID);
+      assert.strictEqual(items.length, 1);
+    });
+
+    it("should still use content-based dedup when no sync_id provided", () => {
+      // Backwards compatibility: no sync_id uses content-based dedup
+      const id1 = db.saveItem(TEST_USER_ID, "url", "https://example.com", ["tag1"]);
+      const id2 = db.saveItem(TEST_USER_ID, "url", "https://example.com", ["tag2"]);
+
+      // Should return same server ID (content match)
+      assert.strictEqual(id1, id2);
+
+      // Should only have one item
+      const items = db.getItems(TEST_USER_ID);
+      assert.strictEqual(items.length, 1);
+    });
+
+    it("should create new item when sync_id and content are both new", () => {
+      const id1 = db.saveItem(TEST_USER_ID, "url", "https://first.com", [], null, "sync-1");
+      const id2 = db.saveItem(TEST_USER_ID, "url", "https://second.com", [], null, "sync-2");
+
+      // Should create different items
+      assert.notStrictEqual(id1, id2);
+
+      const items = db.getItems(TEST_USER_ID);
+      assert.strictEqual(items.length, 2);
+    });
+
+    it("should update sync_id when matching by content", () => {
+      // First save without sync_id
+      const id1 = db.saveItem(TEST_USER_ID, "url", "https://example.com", []);
+
+      // Second save with sync_id but same content
+      const id2 = db.saveItem(TEST_USER_ID, "url", "https://example.com", [], null, "new-sync-id");
+
+      // Should return same server ID
+      assert.strictEqual(id1, id2);
+
+      // Check that sync_id was updated
+      const conn = db.getConnection(TEST_USER_ID);
+      const item = conn.prepare("SELECT sync_id FROM items WHERE id = ?").get(id1);
+      assert.strictEqual(item.sync_id, "new-sync-id");
+    });
+
+    it("should not match deleted items by sync_id", () => {
+      // Create and delete an item
+      const id1 = db.saveItem(TEST_USER_ID, "url", "https://example.com", [], null, "deleted-sync-id");
+      db.deleteItem(TEST_USER_ID, id1);
+
+      // Create new item with same sync_id
+      const id2 = db.saveItem(TEST_USER_ID, "url", "https://example.com", [], null, "deleted-sync-id");
+
+      // Should create new item (deleted items should not match)
+      assert.notStrictEqual(id1, id2);
+    });
+
+    it("should handle two devices pushing same content with different sync_ids", () => {
+      // Device 1 pushes first
+      const id1 = db.saveItem(TEST_USER_ID, "url", "https://shared.com", ["from-device-1"], null, "device-1-id");
+
+      // Device 2 pushes same content with different sync_id
+      // This should match by content and return same server ID
+      const id2 = db.saveItem(TEST_USER_ID, "url", "https://shared.com", ["from-device-2"], null, "device-2-id");
+
+      // Should return same server ID (content-based dedup kicks in after sync_id misses)
+      assert.strictEqual(id1, id2, "should return same id when content matches");
+
+      // Should only have one item
+      const items = db.getItems(TEST_USER_ID);
+      assert.strictEqual(items.length, 1);
+    });
+  });
 });
 
 describe("Users Module Tests", () => {

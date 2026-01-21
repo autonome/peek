@@ -433,6 +433,89 @@ async function testIncrementalSync() {
   console.log('  PASSED');
 }
 
+async function testSyncIdDuplicatePrevention() {
+  console.log('\n--- Test: sync_id Duplicate Prevention ---');
+
+  // Simulate two devices pushing the same content with different sync_ids
+  // The server should deduplicate and return the same server ID
+
+  const sharedContent = 'https://shared-between-devices.com/unique-' + Date.now();
+
+  // Device 1 pushes (simulated via direct API call with sync_id)
+  const device1SyncId = 'device-1-local-id-' + Math.random().toString(36).substring(2);
+  const res1 = await serverRequest('POST', '/items', {
+    type: 'url',
+    content: sharedContent,
+    tags: ['device-1'],
+    sync_id: device1SyncId,
+  });
+  console.log(`  Device 1 pushed, got server id: ${res1.id}`);
+
+  // Device 2 pushes same content with different sync_id
+  const device2SyncId = 'device-2-local-id-' + Math.random().toString(36).substring(2);
+  const res2 = await serverRequest('POST', '/items', {
+    type: 'url',
+    content: sharedContent,
+    tags: ['device-2'],
+    sync_id: device2SyncId,
+  });
+  console.log(`  Device 2 pushed, got server id: ${res2.id}`);
+
+  // Both should get the same server ID (content-based dedup after sync_id miss)
+  if (res1.id !== res2.id) {
+    throw new Error(`Expected same server ID, but got ${res1.id} and ${res2.id}`);
+  }
+
+  // Verify only one item exists on server
+  const serverItems = await serverRequest('GET', '/items');
+  const matchingItems = serverItems.items.filter(i => i.content === sharedContent);
+  if (matchingItems.length !== 1) {
+    throw new Error(`Expected 1 item on server, got ${matchingItems.length}`);
+  }
+
+  console.log('  PASSED');
+}
+
+async function testSyncIdDeduplication() {
+  console.log('\n--- Test: sync_id Based Deduplication ---');
+
+  // Test that the same device pushing twice with same sync_id updates instead of duplicates
+  const uniqueContent = 'https://test-sync-id-dedup.com/' + Date.now();
+  const clientSyncId = 'client-sync-id-' + Math.random().toString(36).substring(2);
+
+  // First push
+  const res1 = await serverRequest('POST', '/items', {
+    type: 'url',
+    content: uniqueContent,
+    tags: ['first-push'],
+    sync_id: clientSyncId,
+  });
+  console.log(`  First push, got server id: ${res1.id}`);
+
+  // Second push with same sync_id but different tags
+  const res2 = await serverRequest('POST', '/items', {
+    type: 'url',
+    content: uniqueContent,
+    tags: ['second-push'],
+    sync_id: clientSyncId,
+  });
+  console.log(`  Second push, got server id: ${res2.id}`);
+
+  // Should get same server ID
+  if (res1.id !== res2.id) {
+    throw new Error(`Expected same server ID for same sync_id, but got ${res1.id} and ${res2.id}`);
+  }
+
+  // Verify tags were updated (second push should replace)
+  const serverItems = await serverRequest('GET', '/items');
+  const item = serverItems.items.find(i => i.id === res1.id);
+  if (!item.tags.includes('second-push')) {
+    throw new Error(`Expected tags to be updated, got: ${item.tags.join(', ')}`);
+  }
+
+  console.log('  PASSED');
+}
+
 // ==================== Test Runner ====================
 
 async function runTests() {
@@ -455,6 +538,8 @@ async function runTests() {
       ['Conflict - Server Newer Wins', testConflictServerNewerWins],
       ['Conflict - Desktop Newer Wins', testConflictDesktopNewerWins],
       ['Incremental Sync', testIncrementalSync],
+      ['sync_id Duplicate Prevention', testSyncIdDuplicatePrevention],
+      ['sync_id Based Deduplication', testSyncIdDeduplication],
     ];
 
     for (const [name, testFn] of tests) {

@@ -11,14 +11,16 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
-- [ ][sync] investigate duplicates in mobile/server when syncing
+- [ ][desktop] fix better-sqlite3 node vs electron version mismatch
+- [~][sync] investigate duplicates in mobile/server when syncing
 - [ ][sync] e2e sync test: desktop + mobile in prod, verify via railway logs
 - [ ][desktop] daily data snapshots saved to compress archives in ~/sync/peek-backups
 - [ ][dekstop] first real look at the web page experience
 
 Later
 - [ ] tags on desktop
-- [ ][desktop] access to notes on filesystem, syncing them as markdown files in ~/sync/Notes/peek 
+- [ ][desktop] access to notes on filesystem, syncing them as markdown files in ~/sync/Notes/peek
+- [ ] profile/account switching in desktop and iOS 
 
 ## To process
 

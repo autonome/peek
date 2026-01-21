@@ -68,6 +68,9 @@ function initializeSchema(db) {
   // Migration: add sync columns if needed (creates idx_items_sync_id)
   migrateSyncColumns(db);
 
+  // Migration: remove existing duplicates (can remove after deployed)
+  migrateRemoveDuplicates(db);
+
   // tags table
   db.exec(`
     CREATE TABLE IF NOT EXISTS tags (
@@ -220,6 +223,47 @@ function migrateSyncColumns(db) {
   db.exec("CREATE INDEX IF NOT EXISTS idx_items_sync_id ON items(sync_id)");
 }
 
+function migrateRemoveDuplicates(db) {
+  // Find and soft-delete duplicate items (same type+content, keeping oldest)
+  // This is a one-time cleanup that can be removed after running on all DBs
+
+  const duplicates = db.prepare(`
+    SELECT id, type, content, created_at
+    FROM items
+    WHERE deleted_at IS NULL
+      AND content IS NOT NULL
+      AND type != 'tagset'
+    ORDER BY type, content, created_at ASC
+  `).all();
+
+  const seen = new Map(); // key: "type|content" -> oldest id
+  const toDelete = [];
+
+  for (const item of duplicates) {
+    const key = `${item.type}|${item.content}`;
+    if (seen.has(key)) {
+      // This is a duplicate - mark for deletion
+      toDelete.push(item.id);
+    } else {
+      // First occurrence - keep it
+      seen.set(key, item.id);
+    }
+  }
+
+  if (toDelete.length > 0) {
+    const timestamp = new Date().toISOString();
+    const deleteStmt = db.prepare(
+      "UPDATE items SET deleted_at = ? WHERE id = ?"
+    );
+
+    for (const id of toDelete) {
+      deleteStmt.run(timestamp, id);
+    }
+
+    console.log(`Cleaned up ${toDelete.length} duplicate items`);
+  }
+}
+
 function generateUUID() {
   return crypto.randomUUID();
 }
@@ -258,13 +302,35 @@ function getOrCreateTagWithConn(conn, name, timestamp) {
 }
 
 // Unified save function for all item types
-function saveItem(userId, type, content, tags = [], metadata = null) {
+function saveItem(userId, type, content, tags = [], metadata = null, syncId = null) {
   const conn = getConnection(userId);
   const timestamp = now();
   const metadataJson = metadata ? JSON.stringify(metadata) : null;
 
   let itemId;
-  if (type !== "tagset" && content) {
+
+  // FIRST: Check for existing item by sync_id (if provided)
+  if (syncId) {
+    const existingBySyncId = conn.prepare(
+      "SELECT id FROM items WHERE sync_id = ? AND deleted_at IS NULL"
+    ).get(syncId);
+
+    if (existingBySyncId) {
+      itemId = existingBySyncId.id;
+      // Update existing item
+      if (metadataJson) {
+        conn.prepare("UPDATE items SET updated_at = ?, metadata = ? WHERE id = ?")
+          .run(timestamp, metadataJson, itemId);
+      } else {
+        conn.prepare("UPDATE items SET updated_at = ? WHERE id = ?")
+          .run(timestamp, itemId);
+      }
+      conn.prepare("DELETE FROM item_tags WHERE item_id = ?").run(itemId);
+    }
+  }
+
+  // SECOND: Content-based deduplication (existing logic)
+  if (!itemId && type !== "tagset" && content) {
     const existing = conn.prepare(
       "SELECT id FROM items WHERE type = ? AND content = ? AND deleted_at IS NULL"
     ).get(type, content);
@@ -278,15 +344,20 @@ function saveItem(userId, type, content, tags = [], metadata = null) {
         conn.prepare("UPDATE items SET updated_at = ? WHERE id = ?").run(timestamp, itemId);
       }
       conn.prepare("DELETE FROM item_tags WHERE item_id = ?").run(itemId);
+      // Also update sync_id if we're matching by content but have a new syncId
+      if (syncId) {
+        conn.prepare("UPDATE items SET sync_id = ? WHERE id = ?").run(syncId, itemId);
+      }
     }
   }
 
+  // THIRD: Create new item with sync_id stored
   if (!itemId) {
     itemId = generateUUID();
     conn.prepare(`
-      INSERT INTO items (id, type, content, metadata, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(itemId, type, content, metadataJson, timestamp, timestamp);
+      INSERT INTO items (id, type, content, metadata, sync_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(itemId, type, content, metadataJson, syncId || '', timestamp, timestamp);
   }
 
   for (const tagName of tags) {

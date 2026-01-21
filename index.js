@@ -296,7 +296,7 @@ app.patch("/images/:id/tags", async (c) => {
 app.post("/items", async (c) => {
   const userId = c.get("userId");
   const body = await c.req.json();
-  const { type, content, tags = [], metadata = null } = body;
+  const { type, content, tags = [], metadata = null, sync_id = null } = body;
 
   if (!type || !["url", "text", "tagset", "image"].includes(type)) {
     return c.json({ error: "type must be 'url', 'text', 'tagset', or 'image'" }, 400);
@@ -339,7 +339,7 @@ app.post("/items", async (c) => {
     }
   }
 
-  const id = db.saveItem(userId, type, content || null, tags, metadata);
+  const id = db.saveItem(userId, type, content || null, tags, metadata, sync_id);
   return c.json({ id, type, created: true });
 });
 

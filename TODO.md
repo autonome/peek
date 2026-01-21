@@ -11,10 +11,11 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
-- [ ][server] document Railway deployment info so agents don't have to relearn each time
+- [~][server] document Railway deployment info so agents don't have to relearn each time
 - [ ][desktop] fix better-sqlite3 node vs electron version mismatch
 - [ ][sync] investigate remaining sync edge cases
 - [ ][mobile] pull-to-refresh triggers sync
+- [ ][mobile] fix big bottom bar showing again
 - [ ][sync] e2e sync test: desktop + mobile in prod, verify via railway logs
 - [ ][desktop] daily data snapshots saved to compress archives in ~/sync/peek-backups
 - [ ][dekstop] first real look at the web page experience

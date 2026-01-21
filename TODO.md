@@ -11,7 +11,7 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
-- [ ][desktop] e2e sync test: desktop + server in debug and then in prod, verify via railway logs for production package
+- [~][desktop] e2e sync test: desktop + server in debug and then in prod, verify via railway logs for production package
 - [ ][mobile] pull-to-refresh triggers sync
 - [ ][mobile] fix big bottom bar showing again
 

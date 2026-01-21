@@ -39,6 +39,7 @@ Unclear / needs context:
 - [x] resolve differences between mobile, node and desktop data models
 - [ ] prepare for multi-user, in the data model and at the filesystem level
 - [x] update peek-node to support multi-user and the core types (already supports multi-user with API keys)
+- [ ] try DuckDB as datastore storage backend instead of SQLite
 
 ### Sync Infrastructure
 

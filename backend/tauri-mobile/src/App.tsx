@@ -159,6 +159,10 @@ function App() {
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
 
+  // Pull-to-refresh state
+  const pullStartY = useRef<number | null>(null);
+  const PULL_THRESHOLD = 80;
+
   // Detect system dark mode via native iOS API
   useEffect(() => {
     const checkDarkMode = async () => {
@@ -978,6 +982,55 @@ function App() {
   const scrollToTop = () => {
     mainRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   };
+
+  // Pull-to-refresh touch handlers
+  const handleTouchStart = (e: React.TouchEvent) => {
+    // Ignore if editing, add input expanded, or already syncing
+    const anyEditing = editingUrlId || editingTextId || editingTagsetId || editingImageId;
+    if (anyEditing || addInputExpanded || isSyncing) return;
+
+    const main = mainRef.current;
+    if (!main) return;
+
+    // Only track if at scroll top
+    if (main.scrollTop <= 0) {
+      pullStartY.current = e.touches[0].clientY;
+    }
+  };
+
+  const handleTouchMove = (e: TouchEvent) => {
+    if (pullStartY.current === null) return;
+
+    const pullDistance = e.touches[0].clientY - pullStartY.current;
+
+    // If pulling down past threshold, prevent default scroll
+    if (pullDistance > PULL_THRESHOLD) {
+      e.preventDefault();
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (pullStartY.current === null) return;
+
+    const pullDistance = e.changedTouches[0].clientY - pullStartY.current;
+    pullStartY.current = null;
+
+    // Trigger sync if pulled past threshold
+    if (pullDistance > PULL_THRESHOLD) {
+      syncAll();
+    }
+  };
+
+  // Attach touchmove with passive: false to allow preventDefault
+  useEffect(() => {
+    const main = mainRef.current;
+    if (!main) return;
+
+    main.addEventListener("touchmove", handleTouchMove, { passive: false });
+    return () => {
+      main.removeEventListener("touchmove", handleTouchMove);
+    };
+  }, [editingUrlId, editingTextId, editingTagsetId, editingImageId, addInputExpanded, isSyncing]);
 
   // Reset to show all types (home view) and scroll to top
   const showAll = () => {
@@ -1989,7 +2042,12 @@ function App() {
         </button>
       </header>
 
-      <main className="saved-view" ref={mainRef}>
+      <main
+        className="saved-view"
+        ref={mainRef}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
         {/* Quick add - expandable in place */}
         <div className={`expandable-card ${addInputExpanded ? 'expanded' : ''}`}>
           {!addInputExpanded ? (

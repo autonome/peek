@@ -298,6 +298,16 @@ app.post("/items", async (c) => {
   const body = await c.req.json();
   const { type, content, tags = [], metadata = null, sync_id = null } = body;
 
+  // Sync logging for e2e test verification
+  console.log("=== Sync Item Received ===");
+  console.log("User:", userId);
+  console.log("Timestamp:", new Date().toISOString());
+  console.log("Type:", type);
+  console.log("sync_id:", sync_id || "(none)");
+  console.log("Content preview:", content?.substring(0, 100) || "(null)");
+  console.log("Tags:", tags.join(", ") || "(none)");
+  console.log("==========================");
+
   if (!type || !["url", "text", "tagset", "image"].includes(type)) {
     return c.json({ error: "type must be 'url', 'text', 'tagset', or 'image'" }, 400);
   }

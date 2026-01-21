@@ -11,304 +11,103 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
-- [ ][desktop] titlebar investigation and controls: why do some window.open links show titlebars? add universal hide/show pref, commands, and show on hover at top edge
-- [ ][mobile] fix big bottom bar showing again
 
 Later
-- [ ][dekstop] first real look at the web page experience - see Page loading experience section
-- [ ] tags on desktop
+
 - [ ][desktop] access to notes on filesystem, syncing them as markdown files in ~/sync/Notes/peek
-- [ ] profile/account switching in desktop and iOS 
 
 ## To process
 
 Unclear / needs context:
-- [ ] demo script (see use-case sticky)
-- [ ] consolidate peek notes in signal to a peek note (copy all, have the robots format it)
+- [ ] import signal note-to-self archive into peek notes
 - [ ] implement old context plan eg https://www.reddit.com/r/hackernews/comments/1qddidm/sun_position_calculator/
 - [ ] step counter: app level interaction tracing/counting. when is reset? when does action end and new one start?
 - [ ] tabstats for peek
 - [ ] peeks/slides as tagged addresses with metadata properties?
 - [ ] edgeworkernode/server vs what we got now (both?)
 
-## Ready for triage
-
-### Data Model & Multi-platform Unification
-
-- [x] merge peek-node into peek repo (now at backend/server/)
-- [x] resolve differences between mobile, node and desktop data models
-- [ ] prepare for multi-user, in the data model and at the filesystem level
-- [x] update peek-node to support multi-user and the core types (already supports multi-user with API keys)
-- [ ] try DuckDB as datastore storage backend instead of SQLite
-
-### Sync Infrastructure
-
-- [ ] get desktop sync working
-- [ ] sync
-- [ ] mobile notes, server notes, desktop notes (make sync server dumber)
-- [ ] url+tag sync means groups on mobile/web/desktop
-- [ ] pull in from server node, configure in settings (pull from peek mobile and peek node)
-
-### Notes & Editor
-
-Editor
-- [ ] support for paste operations
-- [ ] todo/done tags get special checkbox rendering
-
-A Peek for local notes using editor
-- [ ] how to address a specific note in the editor?
-- [ ] maybe we need path or name-based ways of addressing "docs" in datastore?
-
-- [ ] using for notes (md dir sync, import stickies)
-
-Editor extensibility/bundling
-- [ ] we probably want it included by default
-- [ ] how - path/url in manifest for now
-- [ ] need a notes app, with ability to "pin" like stickies, noted as documents in the store, w/ tags eg #sticky
-
-### Groups & Tags UX
-
-- [ ] tags on desktop
-- [ ] tag buttons (tag + down arrow?)
-- [ ] tag buttons as standalone submissions - componentize, then make extension? or just notes without text?
-- [ ] figure out group mode (maybe needs cmd+l)
-- [ ] groups header overhaul
-- [ ] filtering search
-- [ ] space vs group (language)
-- [ ] groups == tags == cross-platform
-
-### UI Components & Rendering
-
-- [ ] ui rendering primitives: card, cards, button, button set, list, grid, chat, carousel, image viewer
-- [ ] cards + json schema
-
-### Commands Enhancement
-
-- [ ] detect URL input without http(s):// prefix, auto-add https:// and open
-- [ ] command tags {str} to load tag in group view
-- [ ] peek addresses as cmds by title (http too?)
-- [ ] cmd/peek history (they don't show up in cmd!)
-- [ ] map cmd using OSM
-- [ ] open kagi via cmd
-- [ ] search history via cmd
-- [ ] all commands as a button board
-
-### Desktop Window UX
-
-- [ ] if url open in a window already, switch to it (for now)
-- [ ] history views (again using groups ui, maybe plug that into an extension itself?)
-- [ ] extension: explode windows using groups ui with transparent background and vi directionals, enter opens
-- [ ] click-to-drag on any window
-
-### Server & Peek-Node Backend
-
-- [x] update peek-node to support text/urls/tagsets (already supports urls, texts, tagsets, images)
-- [ ] headless sync server that's a "back-end" of Peek API… or just peek running headless?
-- [ ] route all external urls to peek node webhook, eg every bsky like, reddit save, oauthwonderwall?
-- [ ] diagnostic/status API: resource usage, overall disk usage, per-user disk stats
-
-### Mobile
-
-- [ ] show oembed, or at least page title
-- [ ] api key should be optional (for local-only use)
-- [ ] sync now button in settings
-- [ ] save images to server (look at how binaries are stored)
-
-### Privacy & Archival
-
-- [ ] private links and private mode pages
-- [ ] private section altogether (eg gift ideas)
-- [ ] archived entries (lower score, hidden by default)
-
-### Session & State Management
-
-- [ ] restorable snapshots, export/import
-- [ ] session restore
-
-### Sharing & Publishing
-
-- [ ] share system
-- [ ] publish pages/apps?
-
-### Chaining & Compound Commands
-
-- [ ] execute a command which executes a userScript against a loaded page, detects list/table-ish things (with previews), lets you select one, which it exports as a "list" out (CSV? JSON?)
-- [ ] links on page -> list -> button cloud -> kb activate (then shorten to "link cloud" cmd)
-- [ ] compound cmds (like "link cloud". uses chaining? like a chain package?)
-
-### Extensions Architecture
-
-- [ ] extensions as *web* pages/tiles accessing injected api
-- [ ] start at boot?
-- [ ] app+browser history swiss army knife for querying and generating url lists via chaining, saving for offline (->txt) etc, maybe using connectors
-- [ ] cf: https://github.com/AgregoreWeb/agregore-browser
-- [ ] cf: https://github.com/samuelmaddock/electron-browser-shell
-
-### NER & Entity Extraction
-
-- [ ] get people, places, dates/times/events
-- [ ] get meaningful numbers, and their label
-- [ ] extract a table as csv
-- [ ] layer outside of web page, and in between pages (eg event page -> event -> any calendar page)
-
-### WebExtensions Support
-
-- [ ] ubo
-- [ ] proton pass
-- [ ] bpc
-
-### Feeds & Time-series
-
-- [ ] tag streaks -> atproto streaks (feeds + daytum)
-- [ ] hud for system data (number of windows, etc - using timeseries/feeds in datastore + page metadata / daytum / widgets framework) (widget sheets? kinda like window manager views/templates?)
-
-### Misc
-
+misc
 - [ ] click modifier to one-off peek a link
 - [ ] option to flash keyboard shortcuts on screen
 - [ ] pop up a board of built-in shortcuts/actions
 - [ ] pop up a board of common shortcuts/actions you use
-- [ ] back/forward shortcuts for web pages
 
-## Desktop Performance
+App dev
+- [ ] shared libs, eg utils
+- [ ] language: call them feature or apps? other? extensions? mods?
 
-- [ ] Reduce startup time (currently ~550ms build)
-- [ ] Pre-compiled TypeScript: skip tsc during dev if no changes
-- [ ] Lazy extension loading: load on first access instead of startup
-- [ ] Suspend inactive tabs (reduce memory for background pages)
-- [ ] Performant BrowserWindow unloading (fully release resources when not needed)
+Navigation
+- [ ] make izui stack manager (part of window mgr?)
+- [ ] esc stack: from feature settings back to core settings
+- [ ] add to izui stack (and ix w/ history?)
+- [ ] interactions between peek:// and other
 
-## Groups
 
-- [ ] Define relationship between page groups and tags (are they the same? different views?)
-- [ ] Searchable/indexable command API for dynamic content (e.g., group names, bookmarks)
-- [ ] Refresh dynamic group commands when groups change (after tagging)
+## Data Model & Multi-platform Unification
 
-## Commands
+- [x] merge peek-node into peek repo (now at backend/server/)
+- [x] resolve differences between mobile, node and desktop data models
+- [x] prepare for multi-user, in the data model and at the filesystem level (server has full multi-user; desktop uses profile isolation)
+- [x] update peek-node to support multi-user and the core types (already supports multi-user with API keys)
+
+## Profiles
+
+data model and on-disk
+- [ ][desktop] profile at OS level, eg the electron+chromium profile (and tauri)
+- [ ][mobile] switches db
+- [ ][server] switches db
+- [ ] profiles across platform are connected by api key for now
+  - [ ] each profile has key generated at creation time
+  - [ ] get key from one to initialize sync with another
+  - [ ] profile creation asks for optional api key from an existing profile
+
+mobile/desktop
+- [ ][desktop] settings app has profiles section
+- [ ][mobile] settings pane has profiles section
+- [ ] there's a default profile
+- [ ] can add named profiles
+- [ ] can switch profiles (reloads almost entirety of app)
+- [ ] can delete profiles (prompt - no undo!)
+  - [ ] profiles only deleted on device, does not sync
+- [ ] must always have at least one profile
+
+## Sync Infrastructure
+
+- [x] get desktop sync working (bidirectional sync implemented)
+- [ ] mobile notes, server notes, desktop notes (make sync server dumber)
+- [x] pull in from server node, configure in settings (sync config in settings UI)
+
+## Commands - Settings Navigation
 
 - [ ] Add commands for settings nav sections: core, extensions, themes, datastore, diagnostic
 - [ ] Add commands to open specific extension settings
 
-## Window-Targeted Commands UX
-
-Commands like "theme dark here" operate on the "target window" - the window the user was looking at before opening the cmd palette. Currently this works but there's no visual indication.
-
-UX improvements:
-- [ ] Commands declare `scope: 'window' | 'page' | 'global'` in registration?
-- [ ] Cmd panel shows "Target: [window title]" header when window-scoped command is selected
-
-## Devtools
-
-- [ ] Devtools button in extension settings cards (open devtools for extension window)
-- [ ] Devtools command to open devtools for a specific extension or window
-- [ ] Fix `api.extensions.devtools()` - currently not working for consolidated extensions
-
-## Entity centrism (NER streams)
-
-- [ ] Entity catalog definition (eg Wikidata defs, or custom to start?)
-- [ ] Datastore support
-- [ ] Basic NER testing (regex, etc)
-- [ ] Page metadata viz
-- [ ] Entity search/browse
-- [ ] ML NER
-
-## Browser status quo extensibility
-
-Status quo
-- [ ] Browser extensions (limited, to get a couple of popular ones working)
-- [ ] Opensearch plugins
-- [ ] Quicksearch
-- [ ] Bookmark keywords (equivalent)
-- [ ] Bookmarklets (equivalent)
-- [ ] Userscripts (cf general approach to content/user scripts)
-- [ ] Language packs (cf general approach to i18n/l10n)
-
-Search
-- [ ] Local
-- [ ] OpenSearch
-
-Web extensions
-- [ ] WebExtension integration for priority only, on some platforms
-
-## Minimum viable web workbench
-
-- [ ] Design philosophy write-up w/ driving principles and characteristics
-- [ ] Multi-protocol architecture
-- [ ] Content publishing
-- [ ] Event model
-- [ ] Chaining
-- [ ] Images
-- [ ] Lists/feeds
-
-## Editor & Notes
-
-Requires chaining and "activities"
-
-- [ ] Notes in datastore
-- [ ] Editor app (in/out datastore)
-- [ ] Vim mode
-- [ ] List editor
-
 ## Theming
 
-- [ ] customizable theme(s)
-  - [ ] portable/packageable system
-  - [ ] extension variant, or is there a standard/convention?
-  - [ ] extensions can import/use in their web content
-  - [ ] review agregore/peersky approach
-    - https://github.com/AgregoreWeb/agregore-browser/issues/289
-    - https://github.com/AgregoreWeb/agregore-browser/pull/291
-    - https://github.com/p2plabsxyz/peersky-browser/pull/43
-- [ ] update default theme in peek
-  - [ ] start with styles in ~/misc/peek-mobile
-- [ ] look at applying/changing default theme for http web pages
-  - [ ] reflect system theme (eg about:blank should not be always a white flash before page load)
-  - [ ] reflect peek configured theme
+Core theming is done (themes/, CSS variables, peek://theme/ protocol, light/dark/system modes).
 
-## UI Componentry
+Remaining:
+- [ ] review agregore/peersky approach for improvements
+- [ ] apply theme to http web pages (about:blank flash, user pref)
 
-- [ ] popup system
-  - [ ] see ~/sync/Sites/base/hud.html/css/js
-  - [ ] design for pagestream, eg vertical up/down chat-style history of pages/actions, w/ left/right for page-specific stuff (maybe uses window template?)
-  - [ ] port cmd chaining and previews
-- [ ] window templates?
-  - [ ] eg page overlay
-- [ ] button groups
-  - [ ] add/remove/both modes
-  - [ ] on/off mode
-- [ ] tag input field
-- [ ] reactive schema+card+data framework
+## Portability
 
-## Feeds, time-series, scripts
+Backend abstraction done (Electron, Tauri, Tauri Mobile, Server all share app/ code).
 
-- [ ] API for logging outputs to datastore (time series data, feeds)
-- [ ] Command support for blocking on a content script running
-- [ ] Extension api for executing arbitrary scripts against a page
-- [ ] Timeouts for page scripts in commands
-- [ ] Support for scheduling scripts (or maybe that's just in the extension... harder to manage tho)
-- [ ] Page load triggers for background scripts
+Remaining:
+- [ ] Extension back-end (browser extension version)
+- [ ] Define subset of core API for portability documentation
 
-## Page loading experience
+## Extensions Architecture
 
-Core
-- [ ] determine how we load pages - raw browserwindow (what we do now), webview in an html page?
-- [ ] overlay infrastructure for showing metadata, security info, extension widgets etc
-  - [ ] (maybe this requires window templates, but not for first take)
-- [ ] Page metadata
-- [ ] Interaction with cmd actions
+Core extension system done (web pages with injected window.app API, iframe/BrowserWindow hosting).
 
-Page model & metadata
-- [ ] Basic overlay
-- [ ] Page embedding
+Remaining:
+- [ ] configurable start-at-boot per extension
+- [ ] cf: https://github.com/AgregoreWeb/agregore-browser
+- [ ] cf: https://github.com/samuelmaddock/electron-browser-shell
 
-Web Platform
-- [ ] need a web loader that's not full BrowserWindow maybe?
-- [ ] sandboxing
-
-Later
-- [ ] pageinfo widgets - defaults, scripts, metadata, media, actions
-
-## v? - Chaining / Connecting
+## Chaining / Connecting
 
 Now that we have commands, we need to be able to chain them together for more complex "workbench-y" interactions. Chaining reqs inputs/outputs (eg activities/intents/applets), so that API unlocks the rest.
 
@@ -336,35 +135,271 @@ Example flow:
   - [ ] User can navigate list w/ arrow up/down, j/k and tab/shift-tab
   - [ ] If cmd response has a previewAddress property, show a preview pane w/ that address
 
-## v? - Publishing, Provenance, Remote Extensions?
+examples
+- [ ] execute a command which executes a userScript against a loaded page, detects list/table-ish things (with previews), lets you select one, which it exports as a "list" out (CSV? JSON?)
+- [ ] links on page -> list -> button cloud -> kb activate (then shorten to "link cloud" cmd)
+- [ ] compound cmds (like "link cloud". uses chaining? like a chain package?)
 
-- [ ] poke at remote loading + provenance
+## Modes/scopes
 
-## Portability
+notes
+- Pages have a specific mode, with specific hotkeys, etc.
+- Commands like "theme dark here" operate on the "target window".
+- Target window is usually what the user was looking at before opening cmd.
+- Currently this works but there's no visual indication.
 
-- [ ] Back-end implementations
-  - [ ] Mobile (webview) back-end
-  - [ ] Extension back-end
-- [ ] Define subset of core API for portability
+- [ ] How to do page "mode" (for example) with conditional context/hotkeys/actions
+- [ ] Should commands declare `scope: 'window' | 'page' | 'global'` in registration?
+- [ ] How does cmd indicate scope/target?
+   - [ ] eg "Target: [window title]" header when window-scoped command is selected?
 
-## Tagging & Groups
+
+## Desktop windows
+
+Window controls
+- [ ] titlebar investigation and controls: why do some window.open links show titlebars?
+- [ ] show titlebar on hover at top edge
+- [ ] add universal hide/show pref (default hide)
+- [ ] add pref to settings
+- [ ] command flip default
+- [ ] command to flip current
+
+Window persistence
+- [ ] window position persistence where it makes sense (settings, groups, cmd) and make configurable?
+- [ ] window size persistence where it makes sense (slides, peeks) and make configurable?
+
+Window size/move
+- [x] windows are draggable/moveable (click-and-hold in app/drag.js)
+- [ ] window are resizable
+- [ ] pin window on top (app)
+- [ ] pin window on top (os)
+- [ ] window.open api param for draggable
+- [ ] window.open api param for resize
+- [ ] cmds for all of this
+
+Window interaction/integration
+- [ ] configurable escape behavior per-window
+
+Window animations
+- [ ] add window open animation (to/from coords, time) to openWindow
+- [ ] update slides impl to use animation again
+
+Window layout (depends on ui components)
+- [ ] tile/untile, eg the Explode extension
+- [ ] explode: windows using groups ui with transparent background and vi directionals, enter opens
+
+
+## UI Componentry
+
+reactive schema+card+data system
+- [ ] cards + json schema + data?
+- [ ] ui rendering primitives: card, cards, button, button set, list, grid, chat, carousel, image viewer
+
+popup carousel system
+- [ ] see ~/sync/Sites/base/hud.html/css/js for basic ui system
+- [ ] horizontal and vertical carousel components
+- [ ] active item focused in popup
+- [ ] arrow controls and vim directionals
+- [ ] port cmd chaining to horizontal carousel popups
+- [ ] port cmd previews to vertical carousel popups
+
+window templates
+- [ ] eg page overlay
+
+button groups
+- [ ] add/remove/both modes
+- [ ] on/off mode
+
+tags
+- [ ] tag input field
+
+## Web page experience
+
+Page loading core
+- [ ] how to load pages - raw browserwindow (what we do now), webview in a default transparent page that hosts overlay??
+- [ ] overlay infrastructure for showing metadata, security info
+  - [ ] maybe this requires window templates?
+- [ ] interaction with cmd actions (page mode again?)
+
+Basic nav etc
+- [ ] hotkey to select url
+- [ ] back/forward
+- [ ] reload
+- [ ] undo last close
+- [ ] if url selected in cmd is open in a window already, switch to it (for now)
+
+Page info/metadata/action widgets (depends on window templates maybe?)
+- [ ] defaults, eg sec ui
+- [ ] metadata (og, whatnot)
+- [ ] media (imgs, rss, etc)
+- [ ] actions (new extension cmd type?)
+- [ ] scripts (tbd)
+
+## Pagestream
+
+- a new peek web navigational system
+- vertical up/down chat-style history of pages/actions
+- left/right for page-specific stuff
+- maybe uses carousels + window template from ui componentry?
+
+## Notes & Editor
+
+Editor
+- [ ] include by default from ~/misc/peek-editor
+- [ ] support for paste operations
+- [ ] settings option for url to external editor (expects peek connector support), defaults to built-in address
+- [ ] tags in content detected, added/removed from tag system
+
+Notes app
+- [ ] see all notes
+- [ ] filtering search on notes
+- [ ] click to edit
+- [ ] how to address a specific note in the editor?
+- [ ] maybe we need path or name-based ways of addressing "docs" in datastore?
+
+Integrations
+- [ ] local dir sync
+- [ ] import macos stickies
+
+Stickies
+- [ ] cards layout primitive (requires UI componentry?)
+- [ ] "pin" notes to stickies using a tag
+
+Requires chaining and connectors
+- [x] Notes in datastore (items table with type='text')
+- [ ] List editor
+
+## Groups & Tags UX
+
+- [ ] Define relationship between page groups and tags (are they the same? different views?)
 
 Groups
-- [ ] Visually communicate group-active
+- [ ] Visually communicate group-active (a "mode"? see Mode/scope section)
 - [ ] Determine which new-page routes qualify for staying in group vs not
 - [ ] When group-active, qualifying new pages are automatically tagged as in the group
 - [ ] Determine how/when to exit group for new pages opened (eg from external app)
 
-## v? Windowing model
+mobile
+- [ ] filtering search of tags in tag input box
+- [ ] view tag groups
 
-- [ ] active vs transient modality
-- [ ] configurable escape behavior per-window
+cmd
+- [ ] port tagging ui from mobile, eg:
+  - [ ] see and be able to remove already added tags
+  - [ ] input box for typing new tags and filtering unselected tag list
+  - [ ] unselected tag list, each as clickable button
 
-## Window features
+tagsets
+- [ ] 
 
-Window features
-- [ ] add draggable as pref, eg an opener can specify undraggable (draggable is default)
-- [ ] same for resize (but user can override?)
+general
+- [ ] space vs group (language)
+
+desktop
+- [ ] figure out group mode (maybe needs cmd+l)
+- [ ] groups header overhaul
+
+## Commands
+
+- [ ] detect URL input without http(s):// prefix, auto-add https:// and open
+- [ ] command tags {str} to load tag in group view
+- [ ] peek addresses as cmds by title (http too?)
+- [ ] cmd/peek history (they don't show up in cmd!)
+- [ ] map cmd using OSM
+- [ ] open kagi via cmd
+- [ ] search history via cmd
+- [ ] all commands as a button board
+
+- [ ] app+browser history swiss army knife for querying and generating url lists via chaining, saving for offline (->txt) etc, maybe using connectors
+
+
+## Server Backend
+
+- [x] update peek-node to support text/urls/tagsets (already supports urls, texts, tagsets, images)
+- [ ] headless sync server that's a "back-end" of Peek API… or just peek running headless?
+- [ ] route all external urls to peek node webhook, eg every bsky like, reddit save, oauthwonderwall?
+- [ ] diagnostic/status API: resource usage, overall disk usage, per-user disk stats
+
+## Mobile
+
+- [ ] fix big bottom bar showing again
+- [ ] show oembed, or at least page title
+- [ ] save images to server (look at how binaries are stored, and across profiles)
+
+## Session & State Management
+
+- [x] backup/restore snapshots (daily automated + manual in backend/electron/backup.ts)
+- [ ] export/import
+- [ ] session restore
+
+## Browser status quo extensibility
+
+Status quo
+- [ ] Browser extensions (limited, to get a couple of popular ones working)
+- [ ] Opensearch plugins
+- [ ] Quicksearch
+- [ ] Bookmark keywords (equivalent)
+- [ ] Bookmarklets (equivalent)
+- [ ] Userscripts (cf general approach to content/user scripts)
+- [ ] Language packs (cf general approach to i18n/l10n)
+
+Search
+- [ ] Local
+- [ ] OpenSearch
+
+Web extensions
+- [ ] WebExtension integration for priority only, on some platforms
+- [ ] ubo
+- [ ] proton pass
+- [ ] bpc
+
+## Feeds, time-series, scripts
+
+- [ ] API for logging outputs to datastore (time series data, feeds)
+- [ ] Command support for blocking on a content script running
+- [ ] Extension api for executing arbitrary scripts against a page
+- [ ] Timeouts for page scripts in commands
+- [ ] Support for scheduling scripts (or maybe that's just in the extension... harder to manage tho)
+- [ ] Page load triggers for background scripts
+
+- [ ] tag streaks -> atproto streaks (feeds + daytum)
+- [ ] hud for system data (number of windows, etc - using timeseries/feeds in datastore + page metadata / daytum / widgets framework) (widget sheets? kinda like window manager views/templates?)
+
+## Entity centrism (NER streams)
+
+- [ ] get people, places, dates/times/events
+- [ ] get meaningful numbers, and their label
+- [ ] extract a table as csv
+- [ ] layer outside of web page, and in between pages (eg event page -> event -> any calendar page)
+
+
+- [ ] Entity catalog definition (eg Wikidata defs, or custom to start?)
+- [ ] Datastore support
+- [ ] Basic NER testing (regex, etc)
+- [ ] Page metadata viz
+- [ ] Entity search/browse
+- [ ] ML NER
+
+## Archiving / expiration
+
+- [ ] archived notes (lower score, hidden by default)
+
+## Sorting/scoring/magic
+
+- [ ] Implement the Firefox "awesomebar" scoring and search algorithm so that Peek *learns* you
+
+## Desktop Performance
+
+- [ ] Reduce startup time (currently ~550ms build)
+- [ ] Pre-compiled TypeScript: skip tsc during dev if no changes
+- [ ] Lazy extension loading: load on first access instead of startup
+- [ ] Suspend inactive tabs (reduce memory for background pages)
+- [ ] Performant BrowserWindow unloading (fully release resources when not needed)
+
+## Private mode
+
+- [ ] private links and private mode pages
+- [ ] private section altogether (eg gift ideas)
 
 ## Demos / Tutorials / Comms
 
@@ -374,48 +409,48 @@ Demo reel
 - [ ] Slides: soundcloud, crypto prices, notepad, todo list
 - [ ] Scripts: stock price, weather change
 
-## Unprioritized future
+## History 
 
-App mgmt
-- [ ] uniform policy for feature id creation (lean on web/extensions)
-- [ ] deal with collisions
+- [ ] history views (again using groups ui, maybe plug that into an extension itself?)
 
-App dev
-- [ ] app model - web? extension? P/IWA? other?
-- [ ] shared libs, eg utils
-- [ ] language: call them feature or apps? other? extensions? mods?
-
-Navigation
-- [ ] make izui stack manager (part of window mgr?)
-- [ ] esc stack: from feature settings back to core settings
-- [ ] add to izui stack (and ix w/ history?)
-
-Window animations
-- [ ] add window open animation (to/from coords, time) to openWindow
-- [ ] update slides impl to use animation again
-
-Window controls/persistence/etc (after perma window)
-- [ ] window position persistence where it makes sense (settings, groups, cmd) and make configurable?
-- [ ] window size persistence where it makes sense (slides, peeks) and make configurable?
-- [ ] window controls
-- [ ] window resizers
-- [ ] cmds for all of this
-
-History
-- [ ] store central app action history
-
-Window layout
-- [ ] tile/untile
-
-After that
-- [ ] Tray
-- [ ] Identity
-- [ ] Contacts
-- [ ] Collaboration
-
-Further
-- [ ] Implement the Firefox "awesomebar" scoring and search algorithm so that Peek *learns* you
+History (depends on ui primitives)
+- [x] store central app action history (visits table with source, duration, metadata)
+- [ ] history viewer
+- [ ] history search
 - [ ] Infinite lossless personal encrypted archive of web history
+
+## Publishing, Provenance, Remote Extensions?
+
+- [ ] share system
+- [ ] poke at remote loading + provenance
+- [ ] publish pages/apps?
+- [ ] local publishing w/ Helia or something like this
+
+## Minimum viable web workbench
+
+- [ ] Design philosophy write-up w/ driving principles and characteristics
+- [ ] Multi-protocol architecture
+- [ ] Content publishing
+- [ ] Event model
+- [ ] Chaining
+- [ ] Images
+- [ ] Lists/feeds
+
+## Devtools
+
+- [ ] Devtools button in extension settings cards (open devtools for extension window)
+- [ ] Devtools command to open devtools for a specific extension or window
+- [ ] Fix `api.extensions.devtools()` - currently not working for consolidated extensions
+
+
+## Later
+
+- [ ] try DuckDB as datastore storage backend instead of SQLite
+
+- [ ] Tray work
+- [ ] Identities system?
+- [ ] Contacts integration
+- [ ] Collaboration
 
 ## Done
 

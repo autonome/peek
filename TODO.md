@@ -11,6 +11,7 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
+- [ ][desktop] titlebar investigation and controls: why do some window.open links show titlebars? add universal hide/show pref, commands, and show on hover at top edge
 - [ ][mobile] shared iOS build artifacts in ./tmp to avoid full rebuilds per workspace (one mobile task at a time)
 - [~][desktop] ensure yarn start always runs with correct better-sqlite3 build for Electron
 - [~][mobile] pull-to-refresh triggers sync

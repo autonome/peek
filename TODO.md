@@ -11,7 +11,6 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
-- [ ][workflow] fix jj commit/merge strategy - agents having bookmark conflicts
 - [ ][workflow] restore git/github push for Railway deploys
 - [~][desktop] fix better-sqlite3 node vs electron version mismatch
 - [~][sync] investigate remaining sync edge cases
@@ -427,6 +426,7 @@ Newly done items go here, grouped under third-level headings by week of year.
 
 ### 2026-W04
 
+- [x][workflow] fix jj commit/merge strategy - agents no longer touch main bookmark
 - [x][server] document Railway deployment info so agents don't have to relearn each time
 - [x][sync] fix duplicates: add sync_id parameter for server-side deduplication
 - [x][mobile] update to full bidirectional sync (pull + push, not just webhook push)

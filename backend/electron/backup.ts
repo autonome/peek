@@ -13,6 +13,7 @@
  */
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import archiver from 'archiver';
 import { app } from 'electron';
@@ -26,6 +27,22 @@ const BACKUP_SETTINGS_KEY = 'backup';
 const CORE_SETTINGS_KEY = 'core';
 const DEFAULT_RETENTION_COUNT = 7;
 const BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+// ==================== Helpers ====================
+
+/**
+ * Expand tilde (~) in file paths to user's home directory.
+ * Node.js fs operations don't expand ~ automatically.
+ */
+function expandTilde(filepath: string): string {
+  if (filepath.startsWith('~/')) {
+    return path.join(os.homedir(), filepath.slice(2));
+  }
+  if (filepath === '~') {
+    return os.homedir();
+  }
+  return filepath;
+}
 
 // ==================== Settings Storage ====================
 
@@ -43,7 +60,8 @@ function getBackupDirFromCoreSettings(): string {
     if (!row?.value) return '';
 
     const prefs = JSON.parse(row.value);
-    return prefs?.backupDir || '';
+    const backupDir = prefs?.backupDir || '';
+    return expandTilde(backupDir);
   } catch {
     return '';
   }

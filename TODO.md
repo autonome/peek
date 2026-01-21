@@ -11,7 +11,6 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
-- [~][desktop] daily data snapshots saved to compress archives in ~/sync/peek-backups
 - [ ][desktop] e2e sync test: desktop + server in debug and then in prod, verify via railway logs for production package
 - [ ][mobile] pull-to-refresh triggers sync
 - [ ][mobile] fix big bottom bar showing again
@@ -423,6 +422,7 @@ Newly done items go here, grouped under third-level headings by week of year.
 
 ### 2026-W04
 
+- [x][desktop] daily data snapshots saved to compress archives in ~/sync/peek-backups
 - [x][workflow] restore git/github push for Railway deploys
 - [x][desktop] fix better-sqlite3 node vs electron version mismatch
 - [x][sync] investigate remaining sync edge cases

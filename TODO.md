@@ -12,6 +12,7 @@ Be able to use the app on mobile and desktop with the safety of knowing there's 
 
 Today
 - [ ] update main README
+- [ ][desktop] update release build and drive it
 
 Later
 - [ ][desktop] access to notes on filesystem, syncing them as markdown files in ~/sync/Notes/peek

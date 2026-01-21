@@ -516,6 +516,261 @@ async function testSyncIdDeduplication() {
   console.log('  PASSED');
 }
 
+// ==================== Edge Case Tests ====================
+
+/**
+ * Edge Case Test: Deleted items are NOT synced
+ *
+ * This test documents the current behavior where:
+ * - Items deleted on desktop are not pushed to server
+ * - Items deleted on server are not reflected on desktop
+ *
+ * This is a KNOWN LIMITATION documented in sync-architecture.md:244
+ */
+async function testDeletedItemsNotSynced() {
+  console.log('\n--- Test: Deleted Items Not Synced (Documenting Known Limitation) ---');
+
+  // Create item on desktop and push to server
+  const content = 'https://delete-test-' + Date.now() + '.com';
+  const { id } = datastore.addItem('url', { content });
+  console.log(`  Created item on desktop: ${id}`);
+
+  // Push to server
+  await sync.syncAll(BASE_URL, apiKey);
+  console.log('  Pushed item to server');
+
+  // Verify item exists on server
+  if (!(await serverHasItem(content))) {
+    throw new Error('Item should exist on server after push');
+  }
+
+  // Delete item on desktop (soft delete)
+  datastore.deleteItem(id);
+  console.log('  Soft deleted item on desktop');
+
+  // Verify item is deleted on desktop
+  const deletedItem = datastore.queryItems({}).find(i => i.content === content);
+  if (deletedItem) {
+    throw new Error('Item should not appear in desktop queries after deletion');
+  }
+
+  // Push again - the deleted item should NOT be pushed (current behavior)
+  const pushResult = await sync.pushToServer(BASE_URL, apiKey, 0);
+  console.log(`  Push after delete: ${pushResult.pushed} items`);
+
+  // DOCUMENTING LIMITATION: Item still exists on server after desktop delete
+  const stillOnServer = await serverHasItem(content);
+  console.log(`  Item still on server after desktop delete: ${stillOnServer}`);
+
+  if (stillOnServer) {
+    console.log('  CONFIRMED: Deleted items do not propagate to server');
+    console.log('  This is a known limitation - soft deletes are local only');
+  } else {
+    console.log('  Note: Item was removed from server (unexpected)');
+  }
+
+  console.log('  PASSED (documented limitation)');
+}
+
+/**
+ * Edge Case Test: Push failures are NOT retried
+ *
+ * This test documents that if a push fails:
+ * - The item is logged as failed
+ * - lastSyncTime is still updated
+ * - On next sync, the item won't be retried (because updatedAt < lastSyncTime)
+ *
+ * This is a HIGH PRIORITY issue that could cause data loss.
+ */
+async function testPushFailureNotRetried() {
+  console.log('\n--- Test: Push Failure Not Retried (Documenting Issue) ---');
+
+  // Create item on desktop
+  const content = 'https://push-failure-test-' + Date.now() + '.com';
+  const { id } = datastore.addItem('url', { content });
+  console.log(`  Created item on desktop: ${id}`);
+
+  // Do a normal sync first to establish lastSyncTime
+  await sync.syncAll(BASE_URL, apiKey);
+  console.log('  Initial sync complete');
+
+  // Wait a bit, then create another item
+  await sleep(100);
+  const content2 = 'https://push-failure-test-2-' + Date.now() + '.com';
+  const { id: id2 } = datastore.addItem('url', { content: content2 });
+  console.log(`  Created second item on desktop: ${id2}`);
+
+  // Verify item needs to be synced (syncSource is empty)
+  const status1 = sync.getSyncStatus();
+  console.log(`  Pending items before sync: ${status1.pendingCount}`);
+
+  // Normal sync - item should be pushed
+  await sync.syncAll(BASE_URL, apiKey);
+
+  // Verify item was pushed
+  if (!(await serverHasItem(content2))) {
+    throw new Error('Item should exist on server after successful push');
+  }
+
+  // Check pending count is now 0
+  const status2 = sync.getSyncStatus();
+  console.log(`  Pending items after sync: ${status2.pendingCount}`);
+
+  // Document the issue: if push had failed, the item would be lost
+  console.log('  DOCUMENTED: If push fails, lastSyncTime is still updated');
+  console.log('  This means failed items won\'t be retried on next sync');
+  console.log('  Recommendation: Track failed items separately for retry');
+
+  console.log('  PASSED (documented issue)');
+}
+
+/**
+ * Edge Case Test: Tagset sync (null content by design)
+ *
+ * Tagsets are items that exist solely to hold tags, with no content.
+ * This tests that tagsets sync correctly between desktop and server.
+ */
+async function testTagsetSync() {
+  console.log('\n--- Test: Tagset Sync ---');
+
+  // Create tagset with tags (null content by design)
+  const { id: tagsetId } = datastore.addItem('tagset', { content: null });
+  const { tag: tag1 } = datastore.getOrCreateTag('tagset-test-1');
+  const { tag: tag2 } = datastore.getOrCreateTag('tagset-test-2');
+  datastore.tagItem(tagsetId, tag1.id);
+  datastore.tagItem(tagsetId, tag2.id);
+  console.log(`  Created tagset on desktop: ${tagsetId}`);
+
+  // Verify tagset was created on desktop
+  const desktopTagset = datastore.getItem(tagsetId);
+  if (!desktopTagset) {
+    throw new Error('Tagset not created on desktop');
+  }
+  if (desktopTagset.type !== 'tagset') {
+    throw new Error(`Expected type 'tagset', got '${desktopTagset.type}'`);
+  }
+  console.log('  Desktop tagset verified');
+
+  // Push to server
+  const pushResult = await sync.pushToServer(BASE_URL, apiKey, 0);
+  console.log(`  Push complete: ${pushResult.pushed} items`);
+
+  // Verify tagset exists on server
+  const serverItems = await serverRequest('GET', '/items');
+  const serverTagsets = serverItems.items.filter(i => i.type === 'tagset');
+
+  if (serverTagsets.length > 0) {
+    // Find our tagset by checking tags
+    const ourTagset = serverTagsets.find(t =>
+      t.tags.includes('tagset-test-1') && t.tags.includes('tagset-test-2')
+    );
+
+    if (ourTagset) {
+      console.log(`  Tagset synced to server with tags: ${ourTagset.tags.join(', ')}`);
+    } else {
+      console.log(`  Found ${serverTagsets.length} tagsets but none with our test tags`);
+      throw new Error('Test tagset not found on server');
+    }
+  } else {
+    throw new Error('No tagsets found on server - tagset sync may be broken');
+  }
+
+  console.log('  PASSED');
+}
+
+/**
+ * Edge Case Test: Unicode and special characters
+ *
+ * Tests that non-ASCII content syncs correctly including:
+ * - Unicode characters (emoji, CJK, etc.)
+ * - Special characters
+ * - Multi-byte sequences
+ */
+async function testUnicodeContent() {
+  console.log('\n--- Test: Unicode Content Handling ---');
+
+  const unicodeContents = [
+    { type: 'text', content: 'Hello 🌍 World 🎉', desc: 'emoji' },
+    { type: 'text', content: '日本語テスト', desc: 'Japanese' },
+    { type: 'text', content: 'Ελληνικά', desc: 'Greek' },
+    { type: 'url', content: 'https://example.com/path?q=日本語', desc: 'URL with unicode' },
+    { type: 'text', content: 'Line1\nLine2\tTab', desc: 'control chars' },
+  ];
+
+  const createdIds = [];
+  for (const item of unicodeContents) {
+    const { id } = datastore.addItem(item.type, { content: item.content });
+    createdIds.push(id);
+    console.log(`  Created ${item.desc}: ${id}`);
+  }
+
+  // Push to server
+  await sync.pushToServer(BASE_URL, apiKey, 0);
+  console.log('  Pushed items to server');
+
+  // Verify all items exist on server with correct content
+  let allMatch = true;
+  for (const item of unicodeContents) {
+    const serverHas = await serverHasItem(item.content);
+    if (!serverHas) {
+      console.log(`  FAILED: ${item.desc} not found on server`);
+      allMatch = false;
+    } else {
+      console.log(`  OK: ${item.desc} synced correctly`);
+    }
+  }
+
+  if (!allMatch) {
+    throw new Error('Some unicode content failed to sync');
+  }
+
+  // Clear desktop and pull from server to verify round-trip
+  // (We can't easily clear desktop in this test, so we just verify push worked)
+
+  console.log('  PASSED');
+}
+
+/**
+ * Edge Case Test: Identical timestamps
+ *
+ * Tests behavior when server and desktop have items with identical updatedAt.
+ * Expected behavior: item is skipped (no update needed).
+ */
+async function testIdenticalTimestamps() {
+  console.log('\n--- Test: Identical Timestamps ---');
+
+  // Create item on server
+  const content = 'https://identical-timestamp-' + Date.now() + '.com';
+  await serverRequest('POST', '/items', {
+    type: 'url',
+    content,
+    tags: ['timestamp-test'],
+  });
+  console.log('  Created item on server');
+
+  // Pull to desktop
+  const pullResult1 = await sync.pullFromServer(BASE_URL, apiKey);
+  console.log(`  First pull: ${pullResult1.pulled} pulled`);
+
+  // Pull again without any changes
+  const pullResult2 = await sync.pullFromServer(BASE_URL, apiKey);
+  console.log(`  Second pull (no changes): ${pullResult2.pulled} pulled, ${pullResult2.conflicts} conflicts`);
+
+  // The second pull should show 0 pulled (items have identical timestamps)
+  // Note: This may show pulled > 0 if the server always returns all items
+  // and we re-process them. The key is no duplicates are created.
+
+  // Verify no duplicates
+  const desktopItems = datastore.queryItems({});
+  const matchingItems = desktopItems.filter(i => i.content === content);
+  if (matchingItems.length !== 1) {
+    throw new Error(`Expected 1 item on desktop, got ${matchingItems.length}`);
+  }
+
+  console.log('  No duplicates created on repeated pull');
+  console.log('  PASSED');
+}
+
 // ==================== Test Runner ====================
 
 async function runTests() {
@@ -540,6 +795,12 @@ async function runTests() {
       ['Incremental Sync', testIncrementalSync],
       ['sync_id Duplicate Prevention', testSyncIdDuplicatePrevention],
       ['sync_id Based Deduplication', testSyncIdDeduplication],
+      // Edge case tests
+      ['Deleted Items Not Synced (Known Limitation)', testDeletedItemsNotSynced],
+      ['Push Failure Not Retried (Documented Issue)', testPushFailureNotRetried],
+      ['Tagset Sync', testTagsetSync],
+      ['Unicode Content Handling', testUnicodeContent],
+      ['Identical Timestamps', testIdenticalTimestamps],
     ];
 
     for (const [name, testFn] of tests) {

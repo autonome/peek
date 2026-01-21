@@ -11,6 +11,7 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
+- [ ][sync] investigate duplicates in mobile/server when syncing
 - [ ][sync] e2e sync test: desktop + mobile in prod, verify via railway logs
 - [ ][desktop] daily data snapshots saved to compress archives in ~/sync/peek-backups
 - [ ][dekstop] first real look at the web page experience

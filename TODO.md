@@ -18,9 +18,9 @@ Today
 - [ ][mobile] fix big bottom bar showing again
 - [ ][sync] e2e sync test: desktop + mobile in prod, verify via railway logs
 - [ ][desktop] daily data snapshots saved to compress archives in ~/sync/peek-backups
-- [ ][dekstop] first real look at the web page experience
 
 Later
+- [ ][dekstop] first real look at the web page experience - see Page loading experience section
 - [ ] tags on desktop
 - [ ][desktop] access to notes on filesystem, syncing them as markdown files in ~/sync/Notes/peek
 - [ ] profile/account switching in desktop and iOS 
@@ -165,10 +165,12 @@ Editor extensibility/bundling
 - [ ] tag streaks -> atproto streaks (feeds + daytum)
 - [ ] hud for system data (number of windows, etc - using timeseries/feeds in datastore + page metadata / daytum / widgets framework) (widget sheets? kinda like window manager views/templates?)
 
-### Misc UX
+### Misc
 
 - [ ] click modifier to one-off peek a link
 - [ ] option to flash keyboard shortcuts on screen
+- [ ] pop up a board of built-in shortcuts/actions
+- [ ] pop up a board of common shortcuts/actions you use
 
 ## Desktop Performance
 
@@ -290,13 +292,23 @@ Requires chaining and "activities"
 
 ## Page loading experience
 
+Core
 - [ ] determine how we load pages - raw browserwindow (what we do now), webview in an html page?
-- [ ] over/underlay infra (maybe this requires window templates, but not for first take)
+- [ ] overlay infrastructure for showing metadata, security info, extension widgets etc
+  - [ ] (maybe this requires window templates, but not for first take)
 - [ ] Page metadata
 - [ ] Interaction with cmd actions
 
+Page model & metadata
+- [ ] Basic overlay
+- [ ] Page embedding
+
+Web Platform
+- [ ] need a web loader that's not full BrowserWindow maybe?
+- [ ] sandboxing
+
 Later
-- [ ] widgets that have actions
+- [ ] pageinfo widgets - defaults, scripts, metadata, media, actions
 
 ## v? - Chaining / Connecting
 
@@ -330,21 +342,14 @@ Example flow:
 
 - [ ] poke at remote loading + provenance
 
-## v? Portability
+## Portability
 
 - [ ] Back-end implementations
   - [ ] Mobile (webview) back-end
   - [ ] Extension back-end
-- [ ] Common background runtime
-  - [ ] Datastore -> background
-  - [ ] API -> background
 - [ ] Define subset of core API for portability
 
-## v? Pages, Tagging & Groups
-
-Page model & metadata
-- [ ] Basic overlay
-- [ ] Page embedding
+## Tagging & Groups
 
 Groups
 - [ ] Visually communicate group-active
@@ -357,7 +362,7 @@ Groups
 - [ ] active vs transient modality
 - [ ] configurable escape behavior per-window
 
-## 
+## Window features
 
 Window features
 - [ ] add draggable as pref, eg an opener can specify undraggable (draggable is default)
@@ -400,21 +405,9 @@ Window controls/persistence/etc (after perma window)
 
 History
 - [ ] store central app action history
-- [ ] store content script data
-
-Feature level rpc?
-- [ ] how can other features query history vs store and query locally?
-- [ ] how to know what urls there are to open? publish paths in manifests?
-- [ ] discover + execute cmds?
-- [ ] need to be able to get/set properties from other "features"?
 
 Window layout
 - [ ] tile/untile
-
-Web Platform
-- [ ] need a web loader that's not full BrowserWindow?
-- [ ] sandboxing
-- [ ] blocklist
 
 After that
 - [ ] Tray
@@ -424,7 +417,6 @@ After that
 
 Further
 - [ ] Implement the Firefox "awesomebar" scoring and search algorithm so that Peek *learns* you
-- [ ] Extension model designed for web user agent user interface experimentation
 - [ ] Infinite lossless personal encrypted archive of web history
 
 ## Done

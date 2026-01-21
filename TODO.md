@@ -11,7 +11,6 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
-- [ ][mobile] shared iOS build artifacts in ./tmp to avoid full rebuilds per workspace (one mobile task at a time)
 - [ ][desktop] titlebar investigation and controls: why do some window.open links show titlebars? add universal hide/show pref, commands, and show on hover at top edge
 - [ ][mobile] fix big bottom bar showing again
 
@@ -84,6 +83,7 @@ Editor extensibility/bundling
 
 ### Commands Enhancement
 
+- [ ] detect URL input without http(s):// prefix, auto-add https:// and open
 - [ ] command tags {str} to load tag in group view
 - [ ] peek addresses as cmds by title (http too?)
 - [ ] cmd/peek history (they don't show up in cmd!)
@@ -422,6 +422,7 @@ Newly done items go here, grouped under third-level headings by week of year.
 
 ### 2026-W04
 
+- [x][mobile] shared iOS build cache to avoid Rust rebuilds across agent workspaces
 - [x][desktop] debug and stabilize build on new Electron (stale node_modules after upgrade)
 - [x][desktop] upgrade Electron to 40 + pin Node to 24 (ensure yarn start always runs with correct better-sqlite3)
 - [x][mobile] pull-to-refresh gesture triggers sync

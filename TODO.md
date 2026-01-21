@@ -13,7 +13,6 @@ Be able to use the app on mobile and desktop with the safety of knowing there's 
 Today
 - [ ][mobile] shared iOS build artifacts in ./tmp to avoid full rebuilds per workspace (one mobile task at a time)
 - [ ][desktop] titlebar investigation and controls: why do some window.open links show titlebars? add universal hide/show pref, commands, and show on hover at top edge
-- [~][desktop] ensure yarn start always runs with correct better-sqlite3 build for Electron
 - [ ][mobile] fix big bottom bar showing again
 
 Later
@@ -423,6 +422,7 @@ Newly done items go here, grouped under third-level headings by week of year.
 
 ### 2026-W04
 
+- [x][desktop] upgrade Electron to 40 + pin Node to 24 (ensure yarn start always runs with correct better-sqlite3)
 - [x][mobile] pull-to-refresh gesture triggers sync
 - [x][desktop] click-and-hold window dragging for frameless windows
 - [x][desktop] fix better-sqlite3 node/electron version mismatch with postinstall script

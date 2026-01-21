@@ -6,10 +6,16 @@ Peek is a web user agent application that provides alternative ways to interact 
 
 **Multi-Backend Architecture**: Peek supports multiple backends (Electron, Tauri) that can coexist and sync data. The `app/` directory is **backend-agnostic** and must not contain backend-specific code. Backend-specific code lives in `backend/{electron,tauri}/`.
 
+## Requirements
+
+- **Node.js 24+** - Required for both desktop (Electron 40) and server
+- Install via `nvm install 24` or download from nodejs.org
+
 ## Key Commands
 
 ### Development
 ```bash
+nvm use 24                # Ensure Node 24 is active
 yarn install              # Install dependencies
 yarn debug                # Run in development mode (with devtools)
 yarn start                # Start normally

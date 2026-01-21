@@ -28,6 +28,7 @@
     }
   },
   "scripts": {
+    "postinstall": "electron-rebuild -f -w better-sqlite3",
     "//-- Development (BACKEND=electron|tauri, defaults to electron) --//": "",
     "dev": "[ \"${BACKEND:-}\" = \"tauri\" ] && yarn dev:tauri || yarn dev:electron",
     "dev:electron": "./scripts/timed.sh sh -c 'yarn build && DEBUG=1 electron .'",

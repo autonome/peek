@@ -11,7 +11,6 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
-- [ ][desktop] fix better-sqlite3 node/electron version mismatch for real - need rebuild script or postinstall hook
 - [ ][mobile] pull-to-refresh triggers sync
 - [ ][mobile] fix big bottom bar showing again
 
@@ -422,6 +421,7 @@ Newly done items go here, grouped under third-level headings by week of year.
 
 ### 2026-W04
 
+- [x][desktop] fix better-sqlite3 node/electron version mismatch with postinstall script
 - [x][desktop] e2e sync test infrastructure for production
 - [x][desktop] daily data snapshots saved to compress archives in ~/sync/peek-backups
 - [x][workflow] restore git/github push for Railway deploys

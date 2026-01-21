@@ -12,7 +12,7 @@ Be able to use the app on mobile and desktop with the safety of knowing there's 
 
 Today
 - [~][desktop] fix better-sqlite3 node vs electron version mismatch
-- [ ][sync] investigate remaining sync edge cases
+- [~][sync] investigate remaining sync edge cases
 - [ ][mobile] pull-to-refresh triggers sync
 - [ ][mobile] fix big bottom bar showing again
 - [ ][sync] e2e sync test: desktop + mobile in prod, verify via railway logs

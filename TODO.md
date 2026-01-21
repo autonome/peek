@@ -422,6 +422,7 @@ Newly done items go here, grouped under third-level headings by week of year.
 
 ### 2026-W04
 
+- [x][desktop] debug and stabilize build on new Electron (stale node_modules after upgrade)
 - [x][desktop] upgrade Electron to 40 + pin Node to 24 (ensure yarn start always runs with correct better-sqlite3)
 - [x][mobile] pull-to-refresh gesture triggers sync
 - [x][desktop] click-and-hold window dragging for frameless windows

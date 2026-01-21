@@ -182,6 +182,7 @@ export default extension;
 7. Datastore API returns `{ success, data }` - always check `result.success`
 8. Pubsub subscriptions are keyed by source - same source subscribing twice overwrites
 9. **Never put backend-specific code in `app/`**
+10. **Run `yarn install` after Electron upgrades** - Native modules (better-sqlite3) must be recompiled for the new Electron ABI. The postinstall script handles this automatically, but you must run `yarn install` to trigger it. System Node and Electron have different ABIs even at the same major version (e.g., Node 24 = ABI 137, Electron 40 = ABI 143).
 
 ## Code Style
 

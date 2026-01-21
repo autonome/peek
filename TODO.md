@@ -12,7 +12,7 @@ Be able to use the app on mobile and desktop with the safety of knowing there's 
 
 Today
 - [~][server] document Railway deployment info so agents don't have to relearn each time
-- [ ][desktop] fix better-sqlite3 node vs electron version mismatch
+- [~][desktop] fix better-sqlite3 node vs electron version mismatch
 - [ ][sync] investigate remaining sync edge cases
 - [ ][mobile] pull-to-refresh triggers sync
 - [ ][mobile] fix big bottom bar showing again

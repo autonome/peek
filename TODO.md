@@ -11,6 +11,8 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
+- [ ][workflow] fix jj commit/merge strategy - agents having bookmark conflicts
+- [ ][workflow] restore git/github push for Railway deploys
 - [~][desktop] fix better-sqlite3 node vs electron version mismatch
 - [~][sync] investigate remaining sync edge cases
 - [ ][mobile] pull-to-refresh triggers sync

@@ -14,9 +14,9 @@ body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, "Helvetica Neue", sans-serif;
   color: white;
   border-radius: 8px;
-  -webkit-app-region: drag; /* Allow dragging by entire window */
+  /* -webkit-app-region: drag; -- Replaced by click-and-hold drag.js */
   user-select: none; /* Prevent text selection when dragging */
-  
+
   /* Table display for perfect vertical centering */
   display: table;
 }
@@ -79,4 +79,14 @@ body {
   display: none !important;
   opacity: 0 !important;
   visibility: hidden !important;
+}
+
+/* Visual feedback during drag */
+body.is-dragging {
+  cursor: grabbing !important;
+}
+
+body.is-dragging * {
+  cursor: grabbing !important;
+  user-select: none !important;
 }

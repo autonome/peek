@@ -286,6 +286,13 @@ api.window = {
       height
     });
   },
+  getPosition: (id = null) => {
+    DEBUG && console.log('window.getPosition', id);
+    return ipcRenderer.invoke('window-get-position', {
+      source: sourceAddress,
+      id
+    });
+  },
   focus: (id) => {
     DEBUG && console.log('window.focus', id);
     return ipcRenderer.invoke('window-focus', {
@@ -1280,6 +1287,155 @@ DEBUG && console.log(src, 'api exposed in', Date.now() - preloadStart, 'ms');
 window.addEventListener('load', () => {
   DEBUG && console.log(src, 'window.load in', Date.now() - preloadStart, 'ms');
 });
+
+// ============================================================================
+// Click-and-hold window dragging
+// Allows dragging frameless windows by holding mouse down anywhere (~300ms)
+// ============================================================================
+(function initWindowDrag() {
+  const HOLD_DELAY = 300; // ms before drag starts
+  const MOVE_THRESHOLD = 5; // px - cancel hold if mouse moves more than this
+
+  let isDragging = false;
+  let holdTimer = null;
+  let startMouse = null;
+  let startWindowPos = null;
+  let windowId = null;
+
+  // Elements that should not trigger drag
+  const isInteractive = (el) => {
+    if (!el) return false;
+    const tag = el.tagName?.toLowerCase();
+    if (['input', 'textarea', 'button', 'a', 'select', 'label'].includes(tag)) return true;
+    if (el.isContentEditable) return true;
+    if (el.hasAttribute('data-no-drag')) return true;
+    if (el.closest('[data-no-drag]')) return true;
+    // Check for -webkit-app-region: no-drag
+    try {
+      const style = getComputedStyle(el);
+      if (style.webkitAppRegion === 'no-drag') return true;
+    } catch (e) {
+      // Ignore errors from pseudo-elements
+    }
+    return false;
+  };
+
+  const cancelHold = () => {
+    if (holdTimer) {
+      clearTimeout(holdTimer);
+      holdTimer = null;
+    }
+  };
+
+  const endDrag = () => {
+    cancelHold();
+    if (isDragging) {
+      isDragging = false;
+      document.body.style.cursor = '';
+      document.body.classList.remove('is-dragging');
+    }
+    startMouse = null;
+    startWindowPos = null;
+    windowId = null;
+  };
+
+  const onMouseDown = async (e) => {
+    // Only left click, not on interactive elements
+    if (e.button !== 0) return;
+    if (isInteractive(e.target)) return;
+
+    startMouse = { x: e.screenX, y: e.screenY };
+
+    holdTimer = setTimeout(async () => {
+      try {
+        // If text was selected during hold period, don't start drag
+        if (hasTextSelection()) {
+          startMouse = null;
+          return;
+        }
+
+        // Get window ID and position (use ipcRenderer directly since we're in preload)
+        windowId = await ipcRenderer.invoke('get-window-id');
+        if (!windowId) return;
+
+        const pos = await ipcRenderer.invoke('window-get-position', { id: windowId });
+        if (!pos.success) return;
+
+        startWindowPos = { x: pos.x, y: pos.y };
+        isDragging = true;
+        document.body.style.cursor = 'grabbing';
+        document.body.classList.add('is-dragging');
+      } catch (err) {
+        DEBUG && console.error('Failed to start drag:', err);
+      }
+    }, HOLD_DELAY);
+  };
+
+  // Check if text is being selected
+  const hasTextSelection = () => {
+    const selection = window.getSelection();
+    return selection && selection.toString().length > 0;
+  };
+
+  const onMouseMove = (e) => {
+    if (!startMouse) return;
+
+    if (!isDragging) {
+      // Cancel hold if mouse moves too much before delay
+      const dx = Math.abs(e.screenX - startMouse.x);
+      const dy = Math.abs(e.screenY - startMouse.y);
+      if (dx > MOVE_THRESHOLD || dy > MOVE_THRESHOLD) {
+        cancelHold();
+        startMouse = null;
+      }
+      // Cancel hold if text selection starts
+      if (hasTextSelection()) {
+        cancelHold();
+        startMouse = null;
+      }
+      return;
+    }
+
+    // If text got selected somehow during drag, end drag and let selection win
+    if (hasTextSelection()) {
+      endDrag();
+      return;
+    }
+
+    // Calculate and apply new position
+    const deltaX = e.screenX - startMouse.x;
+    const deltaY = e.screenY - startMouse.y;
+    const newX = startWindowPos.x + deltaX;
+    const newY = startWindowPos.y + deltaY;
+
+    ipcRenderer.invoke('window-move', { id: windowId, x: newX, y: newY });
+  };
+
+  const onMouseUp = () => {
+    endDrag();
+  };
+
+  // Also end drag if window loses focus
+  const onBlur = () => {
+    endDrag();
+  };
+
+  // Initialize on DOMContentLoaded
+  const init = () => {
+    document.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('blur', onBlur);
+
+    DEBUG && console.log('[preload] Window drag initialized');
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
 
 /*
 const handleMainWindow = () => {

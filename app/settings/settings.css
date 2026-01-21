@@ -380,3 +380,13 @@ body {
     padding: 24px 20px;
   }
 }
+
+/* Visual feedback during drag */
+body.is-dragging {
+  cursor: grabbing !important;
+}
+
+body.is-dragging * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}

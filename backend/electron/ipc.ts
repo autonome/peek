@@ -1836,6 +1836,26 @@ export function registerMiscHandlers(onQuit: () => void): void {
     return win ? win.id : null;
   });
 
+  // Get window position
+  ipcMain.handle('window-get-position', (ev, msg) => {
+    try {
+      let win: BrowserWindow | null = null;
+      if (msg?.id) {
+        win = BrowserWindow.fromId(msg.id);
+      } else {
+        win = BrowserWindow.fromWebContents(ev.sender);
+      }
+      if (!win) {
+        return { success: false, error: 'Window not found' };
+      }
+      const [x, y] = win.getPosition();
+      return { success: true, x, y };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
   // Get last focused visible window ID (for per-window commands)
   // Returns the most recently focused window that isn't a background/internal window
   ipcMain.handle('get-focused-visible-window-id', () => {

@@ -11,6 +11,7 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
+- [ ][desktop] fix better-sqlite3 node/electron version mismatch for real - need rebuild script or postinstall hook
 - [ ][mobile] pull-to-refresh triggers sync
 - [ ][mobile] fix big bottom bar showing again
 

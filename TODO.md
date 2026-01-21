@@ -12,7 +12,7 @@ Be able to use the app on mobile and desktop with the safety of knowing there's 
 
 Today
 - [ ][desktop] fix better-sqlite3 node vs electron version mismatch
-- [~][sync] investigate duplicates in mobile/server when syncing
+- [ ][sync] investigate remaining sync edge cases
 - [ ][sync] e2e sync test: desktop + mobile in prod, verify via railway logs
 - [ ][desktop] daily data snapshots saved to compress archives in ~/sync/peek-backups
 - [ ][dekstop] first real look at the web page experience
@@ -430,6 +430,7 @@ Newly done items go here, grouped under third-level headings by week of year.
 
 ### 2026-W04
 
+- [x][sync] fix duplicates: add sync_id parameter for server-side deduplication
 - [x][mobile] update to full bidirectional sync (pull + push, not just webhook push)
 - [x][sync] E2E integration tests for desktop-server sync
 

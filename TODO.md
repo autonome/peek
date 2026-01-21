@@ -13,7 +13,6 @@ Be able to use the app on mobile and desktop with the safety of knowing there's 
 Today
 
 Later
-
 - [ ][desktop] access to notes on filesystem, syncing them as markdown files in ~/sync/Notes/peek
 
 ## To process
@@ -43,13 +42,6 @@ Navigation
 - [ ] interactions between peek:// and other
 
 
-## Data Model & Multi-platform Unification
-
-- [x] merge peek-node into peek repo (now at backend/server/)
-- [x] resolve differences between mobile, node and desktop data models
-- [x] prepare for multi-user, in the data model and at the filesystem level (server has full multi-user; desktop uses profile isolation)
-- [x] update peek-node to support multi-user and the core types (already supports multi-user with API keys)
-
 ## Profiles
 
 data model and on-disk
@@ -73,9 +65,7 @@ mobile/desktop
 
 ## Sync Infrastructure
 
-- [x] get desktop sync working (bidirectional sync implemented)
 - [ ] mobile notes, server notes, desktop notes (make sync server dumber)
-- [x] pull in from server node, configure in settings (sync config in settings UI)
 
 ## Commands - Settings Navigation
 
@@ -169,7 +159,6 @@ Window persistence
 - [ ] window size persistence where it makes sense (slides, peeks) and make configurable?
 
 Window size/move
-- [x] windows are draggable/moveable (click-and-hold in app/drag.js)
 - [ ] window are resizable
 - [ ] pin window on top (app)
 - [ ] pin window on top (os)
@@ -266,7 +255,6 @@ Stickies
 - [ ] "pin" notes to stickies using a tag
 
 Requires chaining and connectors
-- [x] Notes in datastore (items table with type='text')
 - [ ] List editor
 
 ## Groups & Tags UX
@@ -315,7 +303,6 @@ desktop
 
 ## Server Backend
 
-- [x] update peek-node to support text/urls/tagsets (already supports urls, texts, tagsets, images)
 - [ ] headless sync server that's a "back-end" of Peek API… or just peek running headless?
 - [ ] route all external urls to peek node webhook, eg every bsky like, reddit save, oauthwonderwall?
 - [ ] diagnostic/status API: resource usage, overall disk usage, per-user disk stats
@@ -328,7 +315,6 @@ desktop
 
 ## Session & State Management
 
-- [x] backup/restore snapshots (daily automated + manual in backend/electron/backup.ts)
 - [ ] export/import
 - [ ] session restore
 
@@ -414,7 +400,6 @@ Demo reel
 - [ ] history views (again using groups ui, maybe plug that into an extension itself?)
 
 History (depends on ui primitives)
-- [x] store central app action history (visits table with source, duration, metadata)
 - [ ] history viewer
 - [ ] history search
 - [ ] Infinite lossless personal encrypted archive of web history
@@ -458,6 +443,14 @@ Newly done items go here, grouped under third-level headings by week of year.
 
 ### 2026-W04
 
+- [x] data model: multi-user support (server full, desktop profile isolation)
+- [x] desktop sync working (bidirectional in backend/electron/sync.ts)
+- [x] sync config in settings UI
+- [x] windows draggable/moveable (click-and-hold in app/drag.js)
+- [x] notes in datastore (items table with type='text')
+- [x] peek-node supports text/urls/tagsets/images
+- [x] backup/restore snapshots (daily automated + manual)
+- [x] action history storage (visits table)
 - [x][mobile] shared iOS build cache to avoid Rust rebuilds across agent workspaces
 - [x][desktop] debug and stabilize build on new Electron (stale node_modules after upgrade)
 - [x][desktop] upgrade Electron to 40 + pin Node to 24 (ensure yarn start always runs with correct better-sqlite3)

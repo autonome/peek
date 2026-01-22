@@ -2529,3 +2529,47 @@ body.dark .view-mode-btn {
 body.dark .view-mode-btn.active {
   color: #0a84ff;
 }
+
+/* Toast notifications */
+.toast {
+  position: fixed;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 80px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.75rem 1.25rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  z-index: 10000;
+  animation: toast-in 0.2s ease-out;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.toast-success {
+  background: #34c759;
+  color: white;
+}
+
+.toast-error {
+  background: #ff3b30;
+  color: white;
+}
+
+body.dark .toast-success {
+  background: #30d158;
+}
+
+body.dark .toast-error {
+  background: #ff453a;
+}

@@ -155,6 +155,27 @@ function App() {
   const viewModeStartY = useRef<number | null>(null);
   const VIEW_SWIPE_THRESHOLD = 100;
 
+  // Toast notification state
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = (message: string, type: "success" | "error" = "success") => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    setToast({ message, type });
+    toastTimeoutRef.current = setTimeout(() => setToast(null), 3000);
+  };
+
+  // Discard changes confirmation state
+  const [pendingDiscard, setPendingDiscard] = useState<{ type: ItemType } | null>(null);
+
+  // Track original values for dirty checking
+  const [originalEditValues, setOriginalEditValues] = useState<{
+    url?: string; tags?: string[]; content?: string;
+  } | null>(null);
+
+  // URL validation state
+  const [editingUrlError, setEditingUrlError] = useState<string | null>(null);
+
   // UI state
   const [isDark, setIsDark] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -462,11 +483,44 @@ function App() {
     }
   };
 
+  // URL validation
+  const validateUrl = (url: string): string | null => {
+    if (!url.trim()) return "URL is required";
+    try {
+      const parsed = new URL(url);
+      if (!["http:", "https:"].includes(parsed.protocol)) return "URL must start with http:// or https://";
+      return null;
+    } catch { return "Invalid URL format"; }
+  };
+
+  const handleUrlBlur = () => setEditingUrlError(validateUrl(editingUrlValue));
+  const handleUrlChange = (value: string) => { setEditingUrlValue(value); if (editingUrlError) setEditingUrlError(null); };
+
+  // Dirty checking helpers
+  const hasUrlChanges = (): boolean => {
+    if (!originalEditValues) return false;
+    return editingUrlValue !== originalEditValues.url || JSON.stringify(Array.from(editingTags).sort()) !== JSON.stringify(originalEditValues.tags);
+  };
+  const hasTextChanges = (): boolean => {
+    if (!originalEditValues) return false;
+    return editingTextContent !== originalEditValues.content || JSON.stringify(Array.from(editingTextTags).sort()) !== JSON.stringify(originalEditValues.tags);
+  };
+  const hasTagsetChanges = (): boolean => {
+    if (!originalEditValues) return false;
+    return JSON.stringify(Array.from(editingTagsetTags).sort()) !== JSON.stringify(originalEditValues.tags);
+  };
+  const hasImageChanges = (): boolean => {
+    if (!originalEditValues) return false;
+    return JSON.stringify(Array.from(editingImageTags).sort()) !== JSON.stringify(originalEditValues.tags);
+  };
+
   const startEditing = async (item: SavedUrl) => {
     setEditingUrlId(item.id);
     setEditingUrlValue(item.url);
+    setEditingUrlError(null);
     setEditingTags(new Set(item.tags));
     setNewTagInput("");
+    setOriginalEditValues({ url: item.url, tags: [...item.tags].sort() });
 
     // Fetch domain-boosted tags for this URL
     try {
@@ -481,9 +535,16 @@ function App() {
   const cancelEditing = () => {
     setEditingUrlId(null);
     setEditingUrlValue("");
+    setEditingUrlError(null);
     setEditingTags(new Set());
     setEditingUrlTags([]);
     setNewTagInput("");
+    setOriginalEditValues(null);
+  };
+
+  const requestCancelEditing = () => {
+    if (hasUrlChanges()) setPendingDiscard({ type: "page" });
+    else cancelEditing();
   };
 
   const deleteUrl = async (id: string) => {
@@ -537,37 +598,23 @@ function App() {
   const saveChanges = async () => {
     if (!editingUrlId) return;
 
-    // If there's text in the new tag field, add it first (matches share extension behavior)
     const finalTags = new Set(editingTags);
     if (newTagInput.trim()) {
-      const parts = newTagInput.split(",");
-      for (const part of parts) {
-        const trimmed = part.trim().toLowerCase();
-        if (trimmed) {
-          finalTags.add(trimmed);
-        }
+      for (const tag of newTagInput.split(",").map(t => t.trim().toLowerCase()).filter(t => t.length > 0)) {
+        finalTags.add(tag);
       }
       setNewTagInput("");
     }
 
-    const tagsArray = Array.from(finalTags);
-    console.log("[Frontend] saveChanges called");
-    console.log("[Frontend] editingUrlId:", editingUrlId);
-    console.log("[Frontend] url:", editingUrlValue);
-    console.log("[Frontend] tags to save:", tagsArray);
-
     try {
-      await invoke("update_url", {
-        id: editingUrlId,
-        url: editingUrlValue,
-        tags: tagsArray,
-      });
-      console.log("[Frontend] update_url invoke succeeded");
+      await invoke("update_url", { id: editingUrlId, url: editingUrlValue, tags: Array.from(finalTags) });
       await loadSavedUrls();
       await loadAllTags();
       cancelEditing();
+      showToast("Page saved");
     } catch (error) {
       console.error("[Frontend] Failed to update URL:", error);
+      showToast("Failed to save page", "error");
     }
   };
 
@@ -717,8 +764,10 @@ function App() {
         resetAddInput();
         await loadSavedUrls();
         await loadAllTags();
+        showToast("Page saved");
       } catch (error) {
         console.error("Failed to save URL:", error);
+        showToast("Failed to save page", "error");
       }
     } else if (text) {
       // Save as text (note)
@@ -728,8 +777,10 @@ function App() {
         resetAddInput();
         await loadSavedTexts();
         await loadAllTags();
+        showToast("Note saved");
       } catch (error) {
         console.error("Failed to save text:", error);
+        showToast("Failed to save note", "error");
       }
     } else if (tags.length > 0) {
       // Save as tagset (tags only, no text)
@@ -738,8 +789,10 @@ function App() {
         resetAddInput();
         await loadSavedTagsets();
         await loadAllTags();
+        showToast("Tags saved");
       } catch (error) {
         console.error("Failed to save tagset:", error);
+        showToast("Failed to save tags", "error");
       }
     }
   };
@@ -756,10 +809,10 @@ function App() {
   const startEditingText = (item: SavedText) => {
     setEditingTextId(item.id);
     setEditingTextContent(item.content);
-    // Use actual tags from database, fallback to hashtags in content
     const existingTags = item.tags.length > 0 ? item.tags : extractHashtags(item.content);
     setEditingTextTags(new Set(existingTags));
     setEditingTextTagInput("");
+    setOriginalEditValues({ content: item.content, tags: [...existingTags].sort() });
   };
 
   const cancelEditingText = () => {
@@ -767,6 +820,12 @@ function App() {
     setEditingTextContent("");
     setEditingTextTags(new Set());
     setEditingTextTagInput("");
+    setOriginalEditValues(null);
+  };
+
+  const requestCancelEditingText = () => {
+    if (hasTextChanges()) setPendingDiscard({ type: "text" });
+    else cancelEditingText();
   };
 
   const toggleEditingTextTag = (tagName: string) => {
@@ -790,31 +849,22 @@ function App() {
   const saveTextChanges = async () => {
     if (!editingTextId) return;
 
-    // Include any text in the tag input field
     const finalTags = new Set(editingTextTags);
     if (editingTextTagInput.trim()) {
-      finalTags.add(editingTextTagInput.trim().toLowerCase());
-    }
-
-    // Build content with hashtags appended
-    let content = editingTextContent;
-    // Remove existing hashtags from content
-    content = content.replace(/#\w+/g, '').trim();
-    // Append tags as hashtags
-    if (finalTags.size > 0) {
-      content += '\n' + Array.from(finalTags).map(t => `#${t}`).join(' ');
+      for (const tag of editingTextTagInput.split(",").map(t => t.trim().toLowerCase()).filter(t => t.length > 0)) {
+        finalTags.add(tag);
+      }
     }
 
     try {
-      await invoke("update_text", {
-        id: editingTextId,
-        content: content.trim(),
-      });
+      await invoke("update_text", { id: editingTextId, content: editingTextContent.trim(), tags: Array.from(finalTags) });
       await loadSavedTexts();
       await loadAllTags();
       cancelEditingText();
+      showToast("Note saved");
     } catch (error) {
       console.error("Failed to update text:", error);
+      showToast("Failed to save note", "error");
     }
   };
 
@@ -833,12 +883,19 @@ function App() {
     setEditingTagsetId(item.id);
     setEditingTagsetTags(new Set(item.tags));
     setEditingTagsetInput("");
+    setOriginalEditValues({ tags: [...item.tags].sort() });
   };
 
   const cancelEditingTagset = () => {
     setEditingTagsetId(null);
     setEditingTagsetTags(new Set());
     setEditingTagsetInput("");
+    setOriginalEditValues(null);
+  };
+
+  const requestCancelEditingTagset = () => {
+    if (hasTagsetChanges()) setPendingDiscard({ type: "tagset" });
+    else cancelEditingTagset();
   };
 
   const toggleEditingTagsetTag = (tagName: string) => {
@@ -867,33 +924,27 @@ function App() {
   const saveTagsetChanges = async () => {
     if (!editingTagsetId) return;
 
-    // Include any text in the input field
     const finalTags = new Set(editingTagsetTags);
     if (editingTagsetInput.trim()) {
-      const parts = editingTagsetInput.split(",");
-      for (const part of parts) {
-        const trimmed = part.trim().toLowerCase();
-        if (trimmed) {
-          finalTags.add(trimmed);
-        }
+      for (const tag of editingTagsetInput.split(",").map(t => t.trim().toLowerCase()).filter(t => t.length > 0)) {
+        finalTags.add(tag);
       }
     }
 
     if (finalTags.size === 0) {
-      console.error("At least one tag is required");
+      showToast("At least one tag is required", "error");
       return;
     }
 
     try {
-      await invoke("update_tagset", {
-        id: editingTagsetId,
-        tags: Array.from(finalTags),
-      });
+      await invoke("update_tagset", { id: editingTagsetId, tags: Array.from(finalTags) });
       await loadSavedTagsets();
       await loadAllTags();
       cancelEditingTagset();
+      showToast("Tags saved");
     } catch (error) {
       console.error("Failed to update tagset:", error);
+      showToast("Failed to save tags", "error");
     }
   };
 
@@ -912,12 +963,19 @@ function App() {
     setEditingImageId(item.id);
     setEditingImageTags(new Set(item.tags));
     setEditingImageTagInput("");
+    setOriginalEditValues({ tags: [...item.tags].sort() });
   };
 
   const cancelEditingImage = () => {
     setEditingImageId(null);
     setEditingImageTags(new Set());
     setEditingImageTagInput("");
+    setOriginalEditValues(null);
+  };
+
+  const requestCancelEditingImage = () => {
+    if (hasImageChanges()) setPendingDiscard({ type: "image" });
+    else cancelEditingImage();
   };
 
   const toggleEditingImageTag = (tagName: string) => {
@@ -966,8 +1024,10 @@ function App() {
       await loadSavedImages();
       await loadAllTags();
       cancelEditingImage();
+      showToast("Image saved");
     } catch (error) {
       console.error("Failed to update image:", error);
+      showToast("Failed to save image", "error");
     }
   };
 
@@ -1240,7 +1300,7 @@ function App() {
       const unusedTags = editingUrlTags.filter((tag) => !editingTags.has(tag.name));
 
       return (
-        <div className="edit-overlay" onClick={(e) => e.target === e.currentTarget && cancelEditing()}>
+        <div className="edit-overlay" onClick={(e) => e.target === e.currentTarget && requestCancelEditing()}>
           <div className="expandable-card expanded">
             <div className="expandable-card-input-row">
               <input
@@ -1255,21 +1315,18 @@ function App() {
             </div>
 
             <div className="expandable-card-scroll">
-              <div className="expandable-card-section">
-                <label className="edit-label">Selected Tags</label>
-                <div className="editing-tags">
-                  {editingTags.size === 0 ? (
-                    <span className="no-tags">No tags selected</span>
-                  ) : (
-                    Array.from(editingTags).sort().map((tag) => (
+              {editingTags.size > 0 && (
+                <div className="expandable-card-section">
+                  <div className="editing-tags">
+                    {Array.from(editingTags).sort().map((tag) => (
                       <span key={tag} className="editing-tag">
                         {tag}
                         <button onClick={() => toggleTag(tag)}>&times;</button>
                       </span>
-                    ))
-                  )}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="expandable-card-section">
                 <div className="new-tag-input">
@@ -1281,6 +1338,8 @@ function App() {
                     placeholder="Add tag..."
                     autoCapitalize="none"
                     autoCorrect="off"
+                    autoComplete="off"
+                    spellCheck={false}
                   />
                   <button onClick={addNewTag} disabled={!newTagInput.trim()}>
                     Add
@@ -1290,7 +1349,6 @@ function App() {
 
               {unusedTags.length > 0 && (
                 <div className="expandable-card-section">
-                  <label className="edit-label">Available Tags</label>
                   <div className="all-tags-list">
                     {unusedTags.map((tag) => (
                       <span
@@ -1310,7 +1368,7 @@ function App() {
               <button className="delete-btn" onClick={() => requestDelete(editingUrlId, "page")}>
                 Delete
               </button>
-              <button className="cancel-btn" onClick={cancelEditing}>
+              <button className="cancel-btn" onClick={requestCancelEditing}>
                 Cancel
               </button>
               <button className="save-btn" onClick={saveChanges}>
@@ -1327,7 +1385,7 @@ function App() {
       const unusedTags = allTags.filter((tag) => !editingTextTags.has(tag.name));
 
       return (
-        <div className="edit-overlay" onClick={(e) => e.target === e.currentTarget && cancelEditingText()}>
+        <div className="edit-overlay" onClick={(e) => e.target === e.currentTarget && requestCancelEditingText()}>
           <div className="expandable-card expanded">
             <div className="expandable-card-input-row">
               <textarea
@@ -1338,25 +1396,24 @@ function App() {
                 rows={3}
                 autoCapitalize="none"
                 autoCorrect="off"
+                autoComplete="off"
+                spellCheck={false}
               />
             </div>
 
             <div className="expandable-card-scroll">
-              <div className="expandable-card-section">
-                <label className="edit-label">Selected Tags</label>
-                <div className="editing-tags">
-                  {editingTextTags.size === 0 ? (
-                    <span className="no-tags">No tags selected</span>
-                  ) : (
-                    Array.from(editingTextTags).sort().map((tag) => (
+              {editingTextTags.size > 0 && (
+                <div className="expandable-card-section">
+                  <div className="editing-tags">
+                    {Array.from(editingTextTags).sort().map((tag) => (
                       <span key={tag} className="editing-tag">
                         {tag}
                         <button onClick={() => toggleEditingTextTag(tag)}>&times;</button>
                       </span>
-                    ))
-                  )}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="expandable-card-section">
                 <div className="new-tag-input">
@@ -1373,6 +1430,8 @@ function App() {
                     placeholder="Add tag..."
                     autoCapitalize="none"
                     autoCorrect="off"
+                    autoComplete="off"
+                    spellCheck={false}
                   />
                   <button onClick={addEditingTextTag} disabled={!editingTextTagInput.trim()}>
                     Add
@@ -1382,7 +1441,6 @@ function App() {
 
               {unusedTags.length > 0 && (
                 <div className="expandable-card-section">
-                  <label className="edit-label">Available Tags</label>
                   <div className="all-tags-list">
                     {unusedTags.map((tag) => (
                       <span
@@ -1402,7 +1460,7 @@ function App() {
               <button className="delete-btn" onClick={() => requestDelete(editingTextId, "text")}>
                 Delete
               </button>
-              <button className="cancel-btn" onClick={cancelEditingText}>
+              <button className="cancel-btn" onClick={requestCancelEditingText}>
                 Cancel
               </button>
               <button className="save-btn" onClick={saveTextChanges}>
@@ -1419,24 +1477,21 @@ function App() {
       const unusedTags = allTags.filter((tag) => !editingTagsetTags.has(tag.name));
 
       return (
-        <div className="edit-overlay" onClick={(e) => e.target === e.currentTarget && cancelEditingTagset()}>
+        <div className="edit-overlay" onClick={(e) => e.target === e.currentTarget && requestCancelEditingTagset()}>
           <div className="expandable-card expanded">
             <div className="expandable-card-scroll" style={{ paddingTop: '0.75rem' }}>
-              <div className="expandable-card-section">
-                <label className="edit-label">Selected Tags</label>
-                <div className="editing-tags">
-                  {editingTagsetTags.size === 0 ? (
-                    <span className="no-tags">No tags selected</span>
-                  ) : (
-                    Array.from(editingTagsetTags).sort().map((tag) => (
+              {editingTagsetTags.size > 0 && (
+                <div className="expandable-card-section">
+                  <div className="editing-tags">
+                    {Array.from(editingTagsetTags).sort().map((tag) => (
                       <span key={tag} className="editing-tag">
                         {tag}
                         <button onClick={() => toggleEditingTagsetTag(tag)}>&times;</button>
                       </span>
-                    ))
-                  )}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="expandable-card-section">
                 <div className="new-tag-input">
@@ -1453,6 +1508,8 @@ function App() {
                     placeholder="Add tag..."
                     autoCapitalize="none"
                     autoCorrect="off"
+                    autoComplete="off"
+                    spellCheck={false}
                   />
                   <button onClick={addEditingTagsetTag} disabled={!editingTagsetInput.trim()}>
                     Add
@@ -1462,7 +1519,6 @@ function App() {
 
               {unusedTags.length > 0 && (
                 <div className="expandable-card-section">
-                  <label className="edit-label">Available Tags</label>
                   <div className="all-tags-list">
                     {unusedTags.map((tag) => (
                       <span
@@ -1482,7 +1538,7 @@ function App() {
               <button className="delete-btn" onClick={() => requestDelete(editingTagsetId, "tagset")}>
                 Delete
               </button>
-              <button className="cancel-btn" onClick={cancelEditingTagset}>
+              <button className="cancel-btn" onClick={requestCancelEditingTagset}>
                 Cancel
               </button>
               <button className="save-btn" onClick={saveTagsetChanges}>
@@ -1503,7 +1559,7 @@ function App() {
       const title = metadata?.title as string | undefined;
 
       return (
-        <div className="edit-overlay" onClick={(e) => e.target === e.currentTarget && cancelEditingImage()}>
+        <div className="edit-overlay" onClick={(e) => e.target === e.currentTarget && requestCancelEditingImage()}>
           <div className="expandable-card expanded">
             <div className="expandable-card-scroll" style={{ paddingTop: '0.75rem' }}>
               <div className="expandable-card-section image-preview-section">
@@ -1525,21 +1581,18 @@ function App() {
                 {title && <div className="edit-image-title">{title}</div>}
               </div>
 
-              <div className="expandable-card-section">
-                <label className="edit-label">Selected Tags</label>
-                <div className="editing-tags">
-                  {editingImageTags.size === 0 ? (
-                    <span className="no-tags">No tags selected</span>
-                  ) : (
-                    Array.from(editingImageTags).sort().map((tag) => (
+              {editingImageTags.size > 0 && (
+                <div className="expandable-card-section">
+                  <div className="editing-tags">
+                    {Array.from(editingImageTags).sort().map((tag) => (
                       <span key={tag} className="editing-tag">
                         {tag}
                         <button onClick={() => toggleEditingImageTag(tag)}>&times;</button>
                       </span>
-                    ))
-                  )}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="expandable-card-section">
                 <div className="new-tag-input">
@@ -1556,6 +1609,8 @@ function App() {
                     placeholder="Add tag..."
                     autoCapitalize="none"
                     autoCorrect="off"
+                    autoComplete="off"
+                    spellCheck={false}
                   />
                   <button onClick={addEditingImageTag} disabled={!editingImageTagInput.trim()}>
                     Add
@@ -1565,7 +1620,6 @@ function App() {
 
               {unusedTags.length > 0 && (
                 <div className="expandable-card-section">
-                  <label className="edit-label">Available Tags</label>
                   <div className="all-tags-list">
                     {unusedTags.map((tag) => (
                       <span
@@ -1585,7 +1639,7 @@ function App() {
               <button className="delete-btn" onClick={() => requestDelete(editingImageId, "image")}>
                 Delete
               </button>
-              <button className="cancel-btn" onClick={cancelEditingImage}>
+              <button className="cancel-btn" onClick={requestCancelEditingImage}>
                 Cancel
               </button>
               <button className="save-btn" onClick={saveImageChanges}>
@@ -1788,20 +1842,77 @@ function App() {
     const { id, type } = pendingDelete;
     setPendingDelete(null);
 
+    const typeLabels: Record<ItemType, string> = {
+      page: "Page",
+      text: "Note",
+      tagset: "Tags",
+      image: "Image",
+    };
+
+    try {
+      switch (type) {
+        case "page":
+          await deleteUrl(id);
+          break;
+        case "text":
+          await deleteText(id);
+          break;
+        case "tagset":
+          await deleteTagset(id);
+          break;
+        case "image":
+          await deleteImage(id);
+          break;
+      }
+      showToast(`${typeLabels[type]} deleted`);
+    } catch (error) {
+      console.error("Failed to delete:", error);
+      showToast("Failed to delete", "error");
+    }
+  };
+
+  const cancelDiscard = () => {
+    setPendingDiscard(null);
+  };
+
+  const confirmDiscard = () => {
+    if (!pendingDiscard) return;
+    const { type } = pendingDiscard;
+    setPendingDiscard(null);
     switch (type) {
       case "page":
-        await deleteUrl(id);
+        cancelEditing();
         break;
       case "text":
-        await deleteText(id);
+        cancelEditingText();
         break;
       case "tagset":
-        await deleteTagset(id);
+        cancelEditingTagset();
         break;
       case "image":
-        await deleteImage(id);
+        cancelEditingImage();
         break;
     }
+  };
+
+  const renderDiscardConfirmModal = () => {
+    if (!pendingDiscard) return null;
+
+    return (
+      <div className="confirm-modal-overlay" onClick={cancelDiscard}>
+        <div className="confirm-modal" onClick={(e) => e.stopPropagation()}>
+          <p>Discard unsaved changes?</p>
+          <div className="confirm-modal-buttons">
+            <button className="cancel-btn" onClick={cancelDiscard}>
+              Cancel
+            </button>
+            <button className="delete-btn" onClick={confirmDiscard}>
+              Discard
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const renderDeleteConfirmModal = () => {
@@ -2107,20 +2218,18 @@ function App() {
               <img src={capturedImage} alt="Captured" />
             </div>
 
-            <div className="edit-section">
-              <div className="editing-tags">
-                {capturedImageTags.size === 0 ? (
-                  <span className="no-tags">No tags selected</span>
-                ) : (
-                  Array.from(capturedImageTags).sort().map((tag) => (
+            {capturedImageTags.size > 0 && (
+              <div className="edit-section">
+                <div className="editing-tags">
+                  {Array.from(capturedImageTags).sort().map((tag) => (
                     <span key={tag} className="editing-tag">
                       {tag}
                       <button onClick={() => toggleCapturedImageTag(tag)}>&times;</button>
                     </span>
-                  ))
-                )}
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="edit-section">
               <div className="new-tag-input">
@@ -2137,6 +2246,8 @@ function App() {
                   placeholder="Add tag..."
                   autoCapitalize="none"
                   autoCorrect="off"
+                  autoComplete="off"
+                  spellCheck={false}
                 />
                 <button onClick={addCapturedImageTag} disabled={!capturedImageTagInput.trim()}>
                   Add
@@ -2279,6 +2390,8 @@ function App() {
                 onFocus={() => setAddInputExpanded(true)}
                 autoCapitalize="none"
                 autoCorrect="off"
+                autoComplete="off"
+                spellCheck={false}
               />
               <button className="camera-btn" onClick={openCamera} title="Take photo">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -2298,25 +2411,26 @@ function App() {
                   value={addInputText}
                   onChange={(e) => setAddInputText(e.target.value)}
                   rows={3}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  autoComplete="off"
+                  spellCheck={false}
                 />
               </div>
 
               <div className="expandable-card-scroll">
-                <div className="expandable-card-section">
-                  <label className="edit-label">Selected Tags</label>
-                  <div className="editing-tags">
-                    {addInputTags.size === 0 ? (
-                      <span className="no-tags">No tags selected</span>
-                    ) : (
-                      Array.from(addInputTags).sort().map((tag) => (
+                {addInputTags.size > 0 && (
+                  <div className="expandable-card-section">
+                    <div className="editing-tags">
+                      {Array.from(addInputTags).sort().map((tag) => (
                         <span key={tag} className="editing-tag">
                           {tag}
                           <button onClick={() => toggleAddInputTag(tag)}>&times;</button>
                         </span>
-                      ))
-                    )}
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="expandable-card-section">
                   <div className="new-tag-input">
@@ -2333,6 +2447,8 @@ function App() {
                       placeholder="Add new tag..."
                       autoCapitalize="none"
                       autoCorrect="off"
+                      autoComplete="off"
+                      spellCheck={false}
                     />
                     <button onClick={addInputAddNewTag} disabled={!addInputNewTag.trim()}>
                       Add
@@ -2342,7 +2458,6 @@ function App() {
 
                 {allTags.filter((tag) => !addInputTags.has(tag.name)).length > 0 && (
                   <div className="expandable-card-section">
-                    <label className="edit-label">Available Tags</label>
                     <div className="all-tags-list">
                       {allTags.filter((tag) => !addInputTags.has(tag.name)).map((tag) => (
                         <span
@@ -2398,6 +2513,16 @@ function App() {
 
       {/* Delete confirmation modal */}
       {renderDeleteConfirmModal()}
+
+      {/* Discard changes confirmation modal */}
+      {renderDiscardConfirmModal()}
+
+      {/* Toast notification */}
+      {toast && (
+        <div className={`toast toast-${toast.type}`}>
+          {toast.message}
+        </div>
+      )}
     </div>
   );
 }

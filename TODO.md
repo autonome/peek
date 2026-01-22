@@ -12,6 +12,7 @@ Be able to use the app on mobile and desktop with the safety of knowing there's 
 
 Today
 - [~][server] add daily snapshot backups on server, test locally, deploy, test and confirm working on railway
+- [~][mobile] mobile ux - add viewing ui and iterate on add/edit ux fixes
 
 Later
 - [ ][desktop] access to notes on filesystem, syncing them as markdown files in ~/sync/Notes/peek

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline';">
+  <title>Tags Extension</title>
+</head>
+<body>
+<script type="module">
+  import extension from './background.js';
+
+  // Feature detection - check if Peek API is available
+  const hasPeekAPI = typeof window.app !== 'undefined';
+  const api = hasPeekAPI ? window.app : null;
+  const extId = extension.id;
+
+  console.log(`[ext:${extId}] background.html loaded`);
+  console.log(`[ext:${extId}] Peek API available:`, hasPeekAPI);
+
+  if (hasPeekAPI) {
+    // Running as a Peek extension - full functionality
+
+    // Signal ready to main process
+    api.publish('ext:ready', {
+      id: extId,
+      manifest: {
+        id: extension.id,
+        labels: extension.labels,
+        version: '1.0.0'
+      }
+    }, api.scopes.SYSTEM);
+
+    // Initialize extension
+    if (extension.init) {
+      console.log(`[ext:${extId}] calling init()`);
+      extension.init();
+    }
+
+    // Handle shutdown request from main process
+    api.subscribe('app:shutdown', () => {
+      console.log(`[ext:${extId}] received shutdown`);
+      if (extension.uninit) {
+        extension.uninit();
+      }
+    }, api.scopes.SYSTEM);
+
+    // Handle extension-specific shutdown
+    api.subscribe(`ext:${extId}:shutdown`, () => {
+      console.log(`[ext:${extId}] received extension shutdown`);
+      if (extension.uninit) {
+        extension.uninit();
+      }
+    }, api.scopes.SYSTEM);
+
+  } else {
+    // Running as a regular website - limited functionality
+    console.log(`[ext:${extId}] Running in standalone mode (no Peek API)`);
+
+    // Initialize with limited functionality
+    if (extension.init) {
+      extension.init();
+    }
+
+    // Show a message indicating standalone mode
+    document.body.innerHTML = `
+      <div style="font-family: system-ui; padding: 20px; max-width: 600px; margin: 0 auto;">
+        <h1>Tags Extension</h1>
+        <p>Running in standalone mode (Peek API not available).</p>
+        <p>When running inside Peek, this extension provides:</p>
+        <ul>
+          <li>Tag visualization and management</li>
+          <li>Global shortcut (Option+T to open)</li>
+          <li>Type and tag filtering</li>
+        </ul>
+        <p><a href="./home.html">Open Tags →</a></p>
+      </div>
+    `;
+  }
+</script>
+</body>
+</html>

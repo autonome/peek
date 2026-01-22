@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline';">
+    <meta name="viewport" content="width=device-width,user-scalable=no,initial-scale=1">
+    <title>Tags</title>
+    <link rel="stylesheet" type="text/css" href="home.css">
+  </head>
+  <body>
+    <header class="header">
+      <div class="header-left">
+        <h1 class="header-title">Tags</h1>
+        <span class="active-tag-indicator"></span>
+      </div>
+      <div class="filter-icons">
+        <button class="filter-btn" data-filter="page" title="Pages">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+          </svg>
+          <span class="filter-count" data-count="page">0</span>
+        </button>
+        <button class="filter-btn" data-filter="text" title="Notes">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+          </svg>
+          <span class="filter-count" data-count="text">0</span>
+        </button>
+        <button class="filter-btn" data-filter="tagset" title="Tag Sets">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+            <line x1="7" y1="7" x2="7.01" y2="7"></line>
+          </svg>
+          <span class="filter-count" data-count="tagset">0</span>
+        </button>
+        <button class="filter-btn" data-filter="image" title="Images">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <circle cx="8.5" cy="8.5" r="1.5"></circle>
+            <polyline points="21 15 16 10 5 21"></polyline>
+          </svg>
+          <span class="filter-count" data-count="image">0</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="search-container">
+      <input type="text" class="search-input" placeholder="Search items and tags...">
+    </div>
+
+    <div class="content-wrapper">
+      <aside class="tag-sidebar">
+        <h2 class="sidebar-title">Tags</h2>
+        <div class="tag-list"></div>
+      </aside>
+
+      <main class="items-container">
+        <div class="cards"></div>
+      </main>
+    </div>
+
+    <!-- Edit Modal -->
+    <div class="modal-overlay" id="editModal">
+      <div class="modal">
+        <div class="modal-header">
+          <h2 class="modal-title">Edit Tags</h2>
+          <button class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="modal-item-info">
+            <img class="modal-favicon" src="" alt="">
+            <div class="modal-item-details">
+              <div class="modal-item-title"></div>
+              <div class="modal-item-url"></div>
+            </div>
+          </div>
+
+          <div class="edit-section">
+            <label class="edit-label">Current Tags</label>
+            <div class="current-tags"></div>
+          </div>
+
+          <div class="edit-section">
+            <label class="edit-label">Add Tag</label>
+            <div class="new-tag-row">
+              <input type="text" class="new-tag-input" placeholder="Enter new tag...">
+              <button class="add-tag-btn">Add</button>
+            </div>
+          </div>
+
+          <div class="edit-section">
+            <label class="edit-label">Available Tags</label>
+            <div class="available-tags"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="home.js"></script>
+  </body>
+</html>

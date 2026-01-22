@@ -1,0 +1,9 @@
+{
+  "id": "tags",
+  "shortname": "tags",
+  "name": "Tags",
+  "description": "Tag visualization and management",
+  "version": "1.0.0",
+  "background": "background.html",
+  "builtin": true
+}

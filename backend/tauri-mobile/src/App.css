@@ -2375,3 +2375,157 @@ body.dark .confirm-modal-buttons .cancel-btn {
 body.dark .confirm-modal-buttons .delete-btn {
   background: #ff453a;
 }
+
+/* View Mode (Search/Browse) */
+.view-mode-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0.5rem;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
+}
+
+/* Search box - matches quick-add styling */
+.view-mode-search {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  padding-right: 0.5rem;
+  flex-shrink: 0;
+}
+
+.view-mode-search-input {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-family: inherit;
+  background: transparent;
+  box-sizing: border-box;
+}
+
+.view-mode-search-input:focus {
+  outline: none;
+}
+
+.view-mode-search-clear {
+  padding: 0.4rem;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.view-mode-search-clear:active {
+  background: #f0f0f0;
+}
+
+/* Tags container - 25% of viewport height */
+.view-mode-tags-container {
+  height: 25vh;
+  min-height: 120px;
+  max-height: 200px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin-bottom: 0.5rem;
+  padding: 0.75rem;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  flex-shrink: 0;
+}
+
+.view-mode-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.view-mode-empty-tags {
+  color: #999;
+  font-style: italic;
+  font-size: 0.9rem;
+  text-align: center;
+  padding: 1rem;
+}
+
+/* Results list - fills remaining space */
+.view-mode-results {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.view-mode-results-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.view-mode-empty-results {
+  color: #999;
+  font-style: italic;
+  font-size: 0.9rem;
+  text-align: center;
+  padding: 2rem 1rem;
+}
+
+/* View mode button in header */
+.view-mode-btn {
+  color: #888;
+}
+
+.view-mode-btn.active {
+  color: #007aff;
+}
+
+.view-mode-btn svg {
+  transition: color 0.15s;
+}
+
+/* Dark mode for view mode */
+body.dark .view-mode-search {
+  background: #2c2c2e;
+}
+
+body.dark .view-mode-search-input {
+  color: #f6f6f6;
+}
+
+body.dark .view-mode-search-clear {
+  color: #666;
+}
+
+body.dark .view-mode-search-clear:active {
+  background: #3a3a3c;
+}
+
+body.dark .view-mode-tags-container {
+  background: #2c2c2e;
+}
+
+body.dark .view-mode-empty-tags {
+  color: #666;
+}
+
+body.dark .view-mode-empty-results {
+  color: #666;
+}
+
+body.dark .view-mode-btn {
+  color: #666;
+}
+
+body.dark .view-mode-btn.active {
+  color: #0a84ff;
+}

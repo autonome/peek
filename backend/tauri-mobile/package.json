@@ -12,6 +12,7 @@
     "tauri": "tauri",
     "xcode": "cp src-tauri/target/aarch64-apple-ios-sim/debug/deps/libpeek_save_lib.a src-tauri/gen/apple/Externals/arm64/Debug/libapp.a && cp src-tauri/target/aarch64-apple-ios/release/deps/libpeek_save_lib.a src-tauri/gen/apple/Externals/arm64/Release/libapp.a && open src-tauri/gen/apple/peek-save.xcodeproj",
     "dev:ios": "./dev-setup.sh",
+    "dev:ios:quick": "mkdir -p src-tauri/gen/apple/Externals/arm64/Debug && cp src-tauri/target/aarch64-apple-ios-sim/debug/deps/libpeek_save_lib.a src-tauri/gen/apple/Externals/arm64/Debug/libapp.a && open src-tauri/gen/apple/peek-save.xcodeproj && npx vite --port 1420",
     "archive": "./build-archive.sh",
     "build:release": "./build-release.sh",
     "build:release:full": "./build-release.sh --force",

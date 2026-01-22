@@ -146,6 +146,15 @@ function App() {
   // Delete confirmation state
   const [pendingDelete, setPendingDelete] = useState<{ id: string; type: ItemType } | null>(null);
 
+  // View mode state (search/browse)
+  const [viewModeActive, setViewModeActive] = useState(false);
+  const [viewSearchText, setViewSearchText] = useState("");
+  const [viewSelectedTags, setViewSelectedTags] = useState<Set<string>>(new Set());
+
+  // View mode swipe tracking
+  const viewModeStartY = useRef<number | null>(null);
+  const VIEW_SWIPE_THRESHOLD = 100;
+
   // UI state
   const [isDark, setIsDark] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -1038,6 +1047,122 @@ function App() {
     scrollToTop();
   };
 
+  // View mode functions
+  const openViewMode = () => {
+    setViewModeActive(true);
+    setViewSearchText("");
+    setViewSelectedTags(new Set());
+  };
+
+  const closeViewMode = () => {
+    setViewModeActive(false);
+    setViewSearchText("");
+    setViewSelectedTags(new Set());
+  };
+
+  const toggleViewTag = (tagName: string) => {
+    const newTags = new Set(viewSelectedTags);
+    if (newTags.has(tagName)) {
+      newTags.delete(tagName);
+    } else {
+      newTags.add(tagName);
+    }
+    setViewSelectedTags(newTags);
+  };
+
+  // View mode swipe handlers
+  const handleViewModeTouchStart = (e: React.TouchEvent) => {
+    viewModeStartY.current = e.touches[0].clientY;
+  };
+
+  const handleViewModeTouchEnd = (e: React.TouchEvent) => {
+    if (viewModeStartY.current === null) return;
+    const deltaY = e.changedTouches[0].clientY - viewModeStartY.current;
+    viewModeStartY.current = null;
+    if (deltaY > VIEW_SWIPE_THRESHOLD) {
+      closeViewMode();
+    }
+  };
+
+  // Filter tags for view mode
+  const getFilteredViewTags = () => {
+    if (!viewSearchText.trim()) return allTags;
+    const search = viewSearchText.toLowerCase();
+    return allTags.filter(tag => tag.name.toLowerCase().includes(search));
+  };
+
+  // Filter items for view mode
+  const getFilteredViewItems = (): UnifiedItem[] => {
+    const items: UnifiedItem[] = [];
+
+    // Include all item types in view mode
+    savedUrls.forEach((url) => {
+      items.push({
+        id: url.id,
+        type: "page",
+        url: url.url,
+        tags: url.tags,
+        saved_at: url.saved_at,
+        metadata: url.metadata,
+      });
+    });
+
+    savedTexts.forEach((text) => {
+      items.push({
+        id: text.id,
+        type: "text",
+        content: text.content,
+        tags: text.tags,
+        saved_at: text.saved_at,
+        metadata: text.metadata,
+      });
+    });
+
+    savedTagsets.forEach((tagset) => {
+      items.push({
+        id: tagset.id,
+        type: "tagset",
+        tags: tagset.tags,
+        saved_at: tagset.saved_at,
+        metadata: tagset.metadata,
+      });
+    });
+
+    savedImages.forEach((image) => {
+      items.push({
+        id: image.id,
+        type: "image",
+        tags: image.tags,
+        saved_at: image.saved_at,
+        metadata: image.metadata,
+        thumbnail: image.thumbnail,
+        mime_type: image.mime_type,
+        width: image.width,
+        height: image.height,
+      });
+    });
+
+    // Filter by search text and selected tags
+    const searchLower = viewSearchText.toLowerCase();
+    const filtered = items.filter(item => {
+      // Match search text against tags, url, content, or title
+      const matchesSearch = !viewSearchText.trim() ||
+        item.tags.some(t => t.toLowerCase().includes(searchLower)) ||
+        item.url?.toLowerCase().includes(searchLower) ||
+        item.content?.toLowerCase().includes(searchLower) ||
+        item.metadata?.title?.toLowerCase().includes(searchLower);
+
+      // Match selected tags (AND filter - item must have all selected tags)
+      const matchesTags = viewSelectedTags.size === 0 ||
+        Array.from(viewSelectedTags).every(t => item.tags.includes(t));
+
+      return matchesSearch && matchesTags;
+    });
+
+    // Sort by date, newest first
+    return filtered.sort((a, b) => new Date(b.saved_at).getTime() - new Date(a.saved_at).getTime());
+  };
+
   // Create unified sorted list
   const getUnifiedItems = (): UnifiedItem[] => {
     const items: UnifiedItem[] = [];
@@ -1763,6 +1888,78 @@ function App() {
     loadAllTags();
   };
 
+  // Render view mode UI
+  const renderViewMode = () => {
+    const filteredTags = getFilteredViewTags();
+    const filteredItems = getFilteredViewItems();
+
+    return (
+      <div
+        className="view-mode-container"
+        onTouchStart={handleViewModeTouchStart}
+        onTouchEnd={handleViewModeTouchEnd}
+      >
+        {/* Search box - matches quick-add styling */}
+        <div className="view-mode-search">
+          <input
+            type="text"
+            className="view-mode-search-input"
+            placeholder="Search tags or items..."
+            value={viewSearchText}
+            onChange={(e) => setViewSearchText(e.target.value)}
+            autoCapitalize="none"
+            autoCorrect="off"
+          />
+          {viewSearchText && (
+            <button
+              className="view-mode-search-clear"
+              onClick={() => setViewSearchText("")}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          )}
+        </div>
+
+        {/* Tags container - 25% height, scrollable */}
+        <div className="view-mode-tags-container">
+          {filteredTags.length === 0 ? (
+            <div className="view-mode-empty-tags">No matching tags</div>
+          ) : (
+            <div className="view-mode-tags">
+              {filteredTags.map((tag) => (
+                <span
+                  key={tag.name}
+                  className={`tag-chip ${viewSelectedTags.has(tag.name) ? "selected" : ""}`}
+                  onClick={() => toggleViewTag(tag.name)}
+                >
+                  {tag.name}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Results list - fills remaining space */}
+        <div className="view-mode-results">
+          {filteredItems.length === 0 ? (
+            <div className="view-mode-empty-results">
+              {viewSearchText || viewSelectedTags.size > 0
+                ? "No matching items"
+                : "No items saved yet"}
+            </div>
+          ) : (
+            <div className="view-mode-results-list">
+              {filteredItems.map((item) => renderUnifiedItem(item))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   if (showSettings) {
     return (
       <div className="app">
@@ -1981,9 +2178,26 @@ function App() {
     <div className="app">
       {cameraInput}
       <header>
-        <h1 onClick={activeFilter !== "all" ? showAll : scrollToTop} style={{ cursor: "pointer" }}>
+        <h1
+          onClick={() => {
+            if (viewModeActive) closeViewMode();
+            else if (activeFilter !== "all") showAll();
+            else scrollToTop();
+          }}
+          style={{ cursor: "pointer" }}
+        >
           Peek
         </h1>
+        <button
+          className={`header-btn view-mode-btn ${viewModeActive ? "active" : ""}`}
+          onClick={() => viewModeActive ? closeViewMode() : openViewMode()}
+          title="Search & Browse"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </button>
         <div className="filter-icons">
           <button
             className={`filter-btn ${activeFilter === "page" ? "active" : ""}`}
@@ -2034,7 +2248,7 @@ function App() {
             <span className="filter-count">{savedImages.length}</span>
           </button>
         </div>
-        <button className="header-btn settings-btn" onClick={() => setShowSettings(true)}>
+        <button className="header-btn settings-btn" onClick={() => { closeViewMode(); setShowSettings(true); }}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="3"></circle>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
@@ -2042,6 +2256,9 @@ function App() {
         </button>
       </header>
 
+      {viewModeActive ? (
+        renderViewMode()
+      ) : (
       <main
         className="saved-view"
         ref={mainRef}
@@ -2174,6 +2391,7 @@ function App() {
           )}
         </div>
       </main>
+      )}
 
       {/* Edit modal overlay */}
       {renderEditModal()}

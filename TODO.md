@@ -11,7 +11,6 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
-- [ ][desktop] test packaged builds: create command to build/run packaged in-place with temp profile, investigate why out/mac-arm64/Peek.app is 5GB
 - [ ] update main README
 - [ ][desktop] update release build and drive it
 
@@ -446,6 +445,7 @@ Newly done items go here, grouped under third-level headings by week of year.
 
 ### 2026-W04
 
+- [x][desktop] fix 5GB packaged build by adding exclusions to electron-builder.yml (~280MB now)
 - [x] data model: multi-user support (server full, desktop profile isolation)
 - [x] desktop sync working (bidirectional in backend/electron/sync.ts)
 - [x] sync config in settings UI

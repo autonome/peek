@@ -611,6 +611,90 @@ api.sync = {
   }
 };
 
+// Profiles API - user profile management
+api.profiles = {
+  /**
+   * List all profiles
+   * @returns {Promise<{success: boolean, data?: Profile[], error?: string}>}
+   */
+  list: () => {
+    return ipcRenderer.invoke('profiles:list');
+  },
+
+  /**
+   * Create a new profile
+   * @param {string} name - Profile name (e.g., "Work", "Personal")
+   * @returns {Promise<{success: boolean, data?: Profile, error?: string}>}
+   */
+  create: (name) => {
+    return ipcRenderer.invoke('profiles:create', { name });
+  },
+
+  /**
+   * Get a specific profile by slug
+   * @param {string} slug - Profile slug (e.g., "work", "personal")
+   * @returns {Promise<{success: boolean, data?: Profile, error?: string}>}
+   */
+  get: (slug) => {
+    return ipcRenderer.invoke('profiles:get', { slug });
+  },
+
+  /**
+   * Delete a profile (cannot delete default or active profile)
+   * @param {string} id - Profile ID
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  delete: (id) => {
+    return ipcRenderer.invoke('profiles:delete', { id });
+  },
+
+  /**
+   * Get the currently active profile
+   * @returns {Promise<{success: boolean, data?: Profile, error?: string}>}
+   */
+  getCurrent: () => {
+    return ipcRenderer.invoke('profiles:getCurrent');
+  },
+
+  /**
+   * Switch to a different profile (causes app restart)
+   * @param {string} slug - Profile slug to switch to
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  switch: (slug) => {
+    return ipcRenderer.invoke('profiles:switch', { slug });
+  },
+
+  /**
+   * Enable sync for a profile
+   * @param {string} profileId - Profile ID
+   * @param {string} apiKey - Server API key
+   * @param {string} serverProfileSlug - Server profile slug to sync with
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  enableSync: (profileId, apiKey, serverProfileSlug) => {
+    return ipcRenderer.invoke('profiles:enableSync', { profileId, apiKey, serverProfileSlug });
+  },
+
+  /**
+   * Disable sync for a profile
+   * @param {string} profileId - Profile ID
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  disableSync: (profileId) => {
+    return ipcRenderer.invoke('profiles:disableSync', { profileId });
+  },
+
+  /**
+   * Get sync configuration for a profile
+   * @param {string} profileId - Profile ID
+   * @returns {Promise<{success: boolean, data?: {apiKey: string, serverProfileSlug: string} | null, error?: string}>}
+   */
+  getSyncConfig: (profileId) => {
+    return ipcRenderer.invoke('profiles:getSyncConfig', { profileId });
+  }
+};
+
 // Track per-window color scheme override (null = use global)
 let windowColorSchemeOverride = null;
 

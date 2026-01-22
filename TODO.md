@@ -13,7 +13,7 @@ Be able to use the app on mobile and desktop with the safety of knowing there's 
 Today
 - [ ][mobile] mobile editing ux - improve add/edit flows, fix any rough edges in item creation and editing
 - [ ][desktop] now that data syncing from server and mobile, add a new extension for experimenting with visualizations of tags - start by porting over the tag viewing/filtering system from the mobile app, for a desktop view, so we can search, view and edit notes/urls/tagsets/images by tag button interfaces, see also the Groups & Tags UX section
-- [ ][all] add user profiles and profile switching
+- [x][desktop+server] add user profiles and profile switching (desktop done, server done, mobile seamlessly uses default profile)
 
 Later
 - [ ][desktop] access to notes on filesystem, syncing them as markdown files in ~/sync/Notes/peek
@@ -47,24 +47,69 @@ Navigation
 
 ## Profiles
 
-data model and on-disk
-- [ ][desktop] profile at OS level, eg the electron+chromium profile (and tauri)
-- [ ][mobile] switches db file
-- [ ][server] switches db file
-- [ ] profiles across platform are connected by api key for now
-  - [ ] each profile has key generated at creation time
-  - [ ] get key from one to initialize sync with another
-  - [ ] profile creation asks for optional api key from an existing profile
+**Status**: Desktop + Server complete. Mobile works seamlessly with default profile (no changes needed).
 
-mobile/desktop
-- [ ][desktop] settings app has profiles section
-- [ ][mobile] settings pane has profiles section
-- [ ] there's a default profile
-- [ ] can add named profiles
-- [ ] can switch profiles (reloads almost entirety of app)
-- [ ] can delete profiles (prompt - no undo!)
-  - [ ] profiles only deleted on device, does not sync
-- [ ] must always have at least one profile
+### Desktop + Server (✅ Complete)
+- [x][desktop] profile at OS level (electron+chromium profile isolation)
+- [x][server] profile-aware connection pooling (userId:profileSlug)
+- [x][desktop] settings app has profiles section
+- [x] there's a default profile (auto-created, cannot be deleted)
+- [x] can add named profiles
+- [x] can switch profiles (app restart required)
+- [x] can delete profiles (prompt - no undo, cannot delete default/active)
+- [x] production/dev profile isolation (dev NEVER touches production)
+- [x] profiles across platform connected by per-profile API key + server profile slug
+- [x] per-profile sync configuration
+- [x] automatic migration (non-destructive on desktop, needs backup on server)
+
+See: `docs/profiles.md`, `SERVER-MIGRATION-SAFETY-IMPROVEMENTS.md`
+
+### Testing (In Progress)
+- [ ] Test creating new profile via Settings UI
+- [ ] Test switching profiles (verify app restarts correctly)
+- [ ] Test enabling sync for a profile with API key and server profile slug
+- [ ] Test data isolation between profiles
+- [ ] Test deleting a profile (verify cannot delete default/active)
+
+### Server Safety Improvements (Priority)
+- [ ] Add pre-migration backup to server migration (HIGH PRIORITY)
+  - Current migration uses fs.renameSync() without backup
+  - Risk of data loss if migration fails
+  - See SERVER-MIGRATION-SAFETY-IMPROVEMENTS.md for full plan
+- [ ] Add migration dry-run mode
+- [ ] Add database integrity verification
+- [ ] Add automatic backup cleanup after grace period
+
+### Mobile Profile Support (Optional - Future)
+
+**Current**: Mobile seamlessly uses "default" profile via server backward compatibility.
+
+**When to implement**: Only if users request multiple profiles on mobile.
+
+**Implementation plan**:
+1. Add profile selector in mobile settings UI
+2. Store selected profile slug in settings table:
+   ```rust
+   INSERT OR REPLACE INTO settings (key, value) VALUES ('profile_slug', ?)
+   ```
+3. Append profile to sync URLs:
+   ```rust
+   let profile_slug = get_profile_slug()?; // From settings
+   let items_url = format!("{}/items?profile={}", server_url, profile_slug);
+   let post_url = format!("{}/items?profile={}", server_url, profile_slug);
+   ```
+4. Test:
+   - Create "Work" profile on desktop with sync enabled
+   - Switch mobile to "Work" profile
+   - Sync on mobile
+   - Verify items go to correct server profile
+   - Switch back to "default", verify data isolation
+
+**Considerations**:
+- Mobile profile switching doesn't require app restart (simpler than desktop)
+- No Chromium session isolation on mobile (just database)
+- Keep UI simple - dropdown in settings
+- Default to "default" profile if not configured
 
 ## Modes/scopes
 

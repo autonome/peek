@@ -62,6 +62,12 @@ import {
 
 import { startHotReload, stopHotReload } from './hotreload.js';
 import { checkAndRunDailyBackup } from './backup.js';
+import {
+  initProfilesDb,
+  migrateExistingProfiles,
+  ensureDefaultProfile,
+  getActiveProfile,
+} from './profiles.js';
 
 // Catch unhandled errors and promise rejections without showing alert dialogs
 unhandled({
@@ -123,14 +129,44 @@ const isDevPackagedBuild = (): boolean => {
   return execPath.includes('/out/') || execPath.includes('\\out\\');
 };
 
+// Initialize profiles database and migrate existing profiles FIRST
+// This must happen before we determine the PROFILE to use
+const defaultUserDataPath = app.getPath('userData');
+
+try {
+  initProfilesDb(defaultUserDataPath);
+  migrateExistingProfiles();
+  ensureDefaultProfile();
+  DEBUG && console.log('[profiles] Profiles database initialized');
+} catch (error) {
+  console.error('[profiles] Failed to initialize profiles:', error);
+  // Continue with fallback behavior
+}
+
 // Profile selection:
-// 1. Explicit PROFILE env var takes precedence
-// 2. Packaged app in /Applications uses 'default' (production)
-// 3. Packaged app in out/ directory uses 'dev' (dev packaged build)
-// 4. Running from source uses 'dev' (development)
-const PROFILE = profileIsLegit(process.env.PROFILE)
-  ? process.env.PROFILE
-  : (app.isPackaged && !isDevPackagedBuild() ? 'default' : 'dev');
+// 1. Explicit PROFILE env var takes precedence (for dev/testing)
+// 2. Active profile from profiles.db (normal operation)
+// 3. Packaged app in /Applications uses 'default' (production fallback)
+// 4. Packaged app in out/ directory uses 'dev' (dev packaged build fallback)
+// 5. Running from source uses 'dev' (development fallback)
+let PROFILE: string;
+
+if (profileIsLegit(process.env.PROFILE)) {
+  // Explicit env var takes precedence
+  PROFILE = process.env.PROFILE;
+  DEBUG && console.log('[profiles] Using PROFILE env var:', PROFILE);
+} else {
+  // Try to get active profile from profiles.db
+  try {
+    const activeProfile = getActiveProfile();
+    PROFILE = activeProfile.slug;
+    DEBUG && console.log('[profiles] Using active profile from profiles.db:', PROFILE);
+  } catch (error) {
+    // Fallback to default behavior if profiles.db fails
+    PROFILE = app.isPackaged && !isDevPackagedBuild() ? 'default' : 'dev';
+    DEBUG && console.log('[profiles] Fallback to default PROFILE:', PROFILE);
+  }
+}
 
 DEBUG && console.log('PROFILE', PROFILE, app.isPackaged ? (isDevPackagedBuild() ? '(dev-packaged)' : '(packaged)') : '(source)');
 
@@ -143,7 +179,6 @@ setProfile(PROFILE);
 // {home} / {appData} / {userData} / {profileDir} / {sessionData}
 
 // specify various app data paths and make if not exist
-const defaultUserDataPath = app.getPath('userData');
 const profileDataPath = path.join(defaultUserDataPath, PROFILE);
 const sessionDataPath = path.join(profileDataPath, 'chromium');
 

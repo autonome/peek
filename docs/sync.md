@@ -52,13 +52,22 @@ All platforms use the same unified types:
 
 ### Server
 
+All endpoints accept an optional `?profile={slug}` parameter (defaults to `default`):
+
 ```
-GET  /items                    # All items
-GET  /items/since/:timestamp   # Items modified after timestamp
-GET  /items/:id               # Single item
-POST /items                   # Create item
-PATCH /items/:id/tags         # Update tags
-DELETE /items/:id             # Delete item
+GET  /items?profile=work                    # All items in work profile
+GET  /items/since/:timestamp?profile=work   # Items modified after timestamp
+GET  /items/:id?profile=work               # Single item
+POST /items?profile=work                   # Create item in profile
+PATCH /items/:id/tags?profile=work         # Update tags
+DELETE /items/:id?profile=work             # Delete item
+```
+
+**Profile Management:**
+```
+GET  /profiles                 # List user's profiles
+POST /profiles                 # Create profile
+DELETE /profiles/:id           # Delete profile
 ```
 
 ### Desktop IPC
@@ -75,11 +84,23 @@ await window.app.sync.full()          // Full bidirectional sync
 
 ### Desktop
 
-Sync settings stored in `extension_settings` table:
-- `sync.serverUrl` - Server URL
-- `sync.apiKey` - API key
-- `sync.lastSyncTime` - Last sync timestamp
-- `sync.autoSync` - Enable auto-sync
+Sync configuration is **per-profile** and stored in `profiles.db`:
+- `api_key` - API key (authenticates with server user)
+- `server_profile_slug` - Which server profile to sync to
+- `last_sync_at` - Last sync timestamp
+- `sync_enabled` - Enable sync for this profile
+
+**Server URL** is environment-based (`SYNC_SERVER_URL` env var or default).
+
+Each desktop profile can independently sync to different server profiles under the same server user account.
+
+**Example:**
+```
+Desktop Profile    API Key        Server Profile
+──────────────     ──────────     ──────────────
+Work               alice's key    work
+Personal           alice's key    personal
+```
 
 ### Mobile
 

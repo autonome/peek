@@ -167,9 +167,18 @@ export default extension;
 - Tables: `addresses`, `visits`, `content`, `tags`, `blobs`, `scripts_data`, `feeds`
 
 **Profile Management**:
-- Packaged app uses `default` profile
-- Running from source (`yarn start`) uses `dev` profile
-- `PROFILE` env var overrides automatic detection
+
+Peek supports user profiles for isolated data workspaces. See `docs/profiles.md` for full details.
+
+- **Production builds** (installed in /Applications) use `default` profile
+- **Development builds** (`yarn start`) ALWAYS use `dev` profile (isolated from production)
+- **Custom profiles** can be created via Settings UI
+- Profile switching requires app restart
+- Each profile has its own:
+  - SQLite database (`datastore.sqlite`)
+  - Chromium session data (cookies, cache, localStorage)
+  - Sync configuration (optional API key + server profile mapping)
+- `PROFILE` env var overrides automatic detection (for testing)
 
 ## Critical Rules
 

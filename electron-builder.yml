@@ -15,6 +15,32 @@ nodeGypRebuild: false
 files:
   - "**/*"
   - "assets/**/*"
+  # Exclude build output (critical - prevents recursive bloat)
+  - "!out/**/*"
+  # Exclude version control and tooling
+  - "!.jj/**/*"
+  - "!.yarn/**/*"
+  - "!.claude/**/*"
+  # Exclude agent workflow (symlink to external directory)
+  - "!.agent-workflow"
+  - "!.agent-task.md"
+  # Exclude backend directories not needed for Electron
+  - "!backend/tauri/**/*"
+  - "!backend/server/**/*"
+  - "!backend/tauri-mobile/**/*"
+  - "!backend/tests/**/*"
+  # Exclude development/test directories
+  - "!tests/**/*"
+  - "!notes/**/*"
+  - "!docs/**/*"
+  - "!old-extension/**/*"
+  # Exclude dev scripts and config
+  - "!scripts/**/*"
+  - "!playwright.config.ts"
+  # Exclude dev artifacts and docs
+  - "!settings-screenshot.png"
+  - "!*.md"
+  # Standard node_modules exclusions
   - "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}"
   - "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}"
   - "!**/node_modules/*.d.ts"

@@ -41,3 +41,4 @@ package.js
 protocol-imports.diff
 test/
 tmp/
+.agent-workflow

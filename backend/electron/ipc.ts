@@ -2270,14 +2270,27 @@ export function registerProfileHandlers(): void {
   // Switch to a different profile (causes app restart)
   ipcMain.handle('profiles:switch', async (_ev, data: { slug: string }) => {
     try {
+      DEBUG && console.log(`[ipc:profiles] Switch requested to profile: ${data.slug}`);
+
+      const currentProfile = getActiveProfile();
+      DEBUG && console.log(`[ipc:profiles] Current profile: ${currentProfile.slug}`);
+
+      // Check if already on this profile
+      if (currentProfile.slug === data.slug) {
+        DEBUG && console.log('[ipc:profiles] Already on requested profile, no-op');
+        return { success: true, message: 'Already on this profile' };
+      }
+
       const profile = getProfile(data.slug);
       if (!profile) {
         return { success: false, error: 'Profile not found' };
       }
 
       // Set as active profile
+      DEBUG && console.log(`[ipc:profiles] Setting active profile to: ${data.slug}`);
       setActiveProfile(data.slug);
 
+      DEBUG && console.log('[ipc:profiles] Relaunching app...');
       // Relaunch the app with the new profile
       // The app will pick up the new active profile from profiles.db on restart
       app.relaunch();

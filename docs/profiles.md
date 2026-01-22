@@ -330,6 +330,134 @@ yarn start                    # Should use dev profile
 # Verify items go to correct server profile
 ```
 
+## Implementation Notes
+
+### Files Modified/Created
+
+**Server:**
+- `backend/server/users.js` - Added profiles table and CRUD functions
+- `backend/server/db.js` - Profile-aware connection pooling (userId:profileSlug)
+- `backend/server/index.js` - Profile API endpoints + data migration
+
+**Desktop:**
+- `backend/electron/profiles.ts` - Profile management module (NEW)
+- `backend/electron/entry.ts` - Profile initialization and selection
+- `backend/electron/ipc.ts` - Profile IPC handlers
+- `backend/electron/sync.ts` - Per-profile sync configuration
+- `app/settings/settings.js` - Profiles UI section
+- `preload.js` - Profiles API exposure
+
+**Documentation:**
+- `docs/profiles.md` - This file
+- `DEVELOPMENT.md` - Updated profile management section
+- `docs/sync.md` - Updated with per-profile sync
+
+### Design Principles
+
+**1. Production/Dev Isolation**
+
+The most critical rule: development builds NEVER touch production data.
+
+```typescript
+// Profile selection logic (entry.ts)
+if (PROFILE_ENV_VAR) {
+  PROFILE = PROFILE_ENV_VAR;  // Explicit override
+} else if (!app.isPackaged || isDevPackagedBuild()) {
+  PROFILE = 'dev';  // Development ALWAYS uses dev
+} else {
+  PROFILE = getActiveProfile().slug;  // Production uses profiles.db
+}
+```
+
+**2. Single-Instance Lock**
+
+```typescript
+export function requestSingleInstance(): boolean {
+  // Skip lock for dev/test profiles
+  if (isDevProfile() || isTestProfile()) {
+    return true;  // Allow multiple instances
+  }
+
+  // Production profiles enforce single instance
+  return app.requestSingleInstanceLock();
+}
+```
+
+This allows dev and production to run simultaneously without conflicts.
+
+**3. Automatic Migration**
+
+On first launch with profiles support:
+1. `initProfilesDb()` creates `profiles.db` if missing
+2. `migrateExistingProfiles()` detects existing profile directories
+3. Existing data preserved in original locations
+4. Profile records created in profiles.db
+
+No user action required, zero data loss.
+
+**4. Nested Profile Relationship**
+
+Peek profiles contain Chromium profiles:
+- Peek manages the outer profile (application data)
+- Electron manages the inner profile (browser session)
+- User never directly interacts with Chromium profiles
+- Isolation is automatic and transparent
+
+### Backward Compatibility
+
+- `PROFILE` env var still works (overrides all logic)
+- Existing profile directories detected and migrated
+- Server API endpoints default to `profile=default`
+- Old clients continue working without changes
+
+### Migration Strategy
+
+**Server Migration:**
+- `migrateUserDataToProfiles()` runs automatically on first request
+- Moves `data/{userId}/peek.db` → `data/{userId}/profiles/default/datastore.sqlite`
+- Creates "default" profile record in system.db
+- Idempotent (safe to run multiple times)
+
+**Desktop Migration:**
+- Runs on startup before profile selection
+- Detects `{userData}/default/` and `{userData}/dev/` directories
+- Creates profile records if they don't exist
+- Never deletes or moves data
+
+### Commits
+
+Implementation was completed in 11 atomic commits:
+
+1. `feat(server): add profiles support to users.js`
+2. `feat(server): add profile-aware connection pooling to db.js`
+3. `feat(server): add profile endpoints and migration to index.js`
+4. `feat(client): create profiles.ts module for profile management`
+5. `feat(client): add profile IPC handlers to ipc.ts`
+6. `feat(client): update entry.ts to initialize profiles`
+7. `feat(sync): update sync.ts for per-profile configuration`
+8. `feat(settings): add profiles section to settings UI`
+9. `feat(frontend): add profiles API to preload`
+10. `fix(profiles): enforce dev profile isolation from production`
+11. `docs: add comprehensive profiles documentation`
+
+### Testing Considerations
+
+**Automated Tests:**
+- Existing tests already use profile isolation via `getTestProfile()`
+- Each test gets unique profile: `test-{name}-{timestamp}`
+- No test modifications required
+
+**Scripts:**
+- `yarn start` → Automatically uses dev profile
+- `yarn package:install` → Packaged build uses default profile
+- `PROFILE` env var for testing overrides
+
+### Known Issues
+
+1. **Profile switching requires app restart** - Electron limitation (userData path set once)
+2. **No prompt for already-selected profile** - Radio button behavior (change event only fires on actual change)
+3. **API keys stored in plaintext** - In local SQLite file (consider encryption for future)
+
 ## Future Enhancements
 
 - Profile import/export functionality
@@ -339,3 +467,5 @@ yarn start                    # Should use dev profile
 - Mobile profile support (Tauri)
 - Profile encryption at rest
 - Profile-specific extension configurations
+- Profile migration between machines
+- Cloud backup of profiles

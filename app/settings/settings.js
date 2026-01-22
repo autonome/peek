@@ -1678,18 +1678,30 @@ const renderProfilesSettings = async () => {
     const radio = document.createElement('input');
     radio.type = 'radio';
     radio.name = 'profile-switch';
-    radio.checked = currentProfile && profile.id === currentProfile.id;
+    const isCurrentProfile = currentProfile && profile.id === currentProfile.id;
+    radio.checked = isCurrentProfile;
     radio.style.cursor = 'pointer';
     radio.addEventListener('change', () => {
       if (radio.checked) {
-        if (confirm(`Switch to ${profile.name}? The app will restart.`)) {
+        console.log(`[profiles] Switching to profile: ${profile.name} (slug: ${profile.slug})`);
+
+        // Double check we're not already on this profile
+        if (isCurrentProfile) {
+          console.log('[profiles] Already on this profile, skipping switch');
+          return;
+        }
+
+        if (confirm(`Switch to "${profile.name}"?\n\nThe app will restart to apply the change.`)) {
+          console.log('[profiles] User confirmed switch');
           api.profiles.switch(profile.slug).then(result => {
             if (!result.success) {
+              console.error('[profiles] Switch failed:', result.error);
               alert(`Failed to switch profile: ${result.error}`);
               radio.checked = false;
             }
           });
         } else {
+          console.log('[profiles] User cancelled switch');
           radio.checked = false;
         }
       }

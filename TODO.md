@@ -11,6 +11,7 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
+- [ ][desktop] test packaged builds: create command to build/run packaged in-place with temp profile, investigate why out/mac-arm64/Peek.app is 5GB
 - [ ] update main README
 - [ ][desktop] update release build and drive it
 

@@ -171,6 +171,26 @@ export default extension;
 - Running from source (`yarn start`) uses `dev` profile
 - `PROFILE` env var overrides automatic detection
 
+## Critical Rules
+
+### Protected Directories
+
+**NEVER modify files in `./app` without explicit review.** The `app/` directory is backend-agnostic - it must work unchanged with both Electron and Tauri backends. All backend-specific code belongs in `backend/{electron,tauri}/`.
+
+### Process Management
+
+**Only use `yarn kill` to kill dev processes.** NEVER use generic pkill commands like `pkill -f "Peek"` or `pkill -f "electron"` - these will kill the production app if it's running.
+
+```bash
+yarn kill  # ONLY way to kill dev Peek
+```
+
+**Testing without UI**: When testing startup, logs, or non-interactive behavior, use headless mode:
+```bash
+./scripts/test-headless.sh 8    # Run headless for 8 seconds, auto-kills
+yarn test:electron              # Run automated tests
+```
+
 ## Common Pitfalls
 
 1. Don't use relative paths in peek:// URLs - use absolute paths
@@ -181,8 +201,8 @@ export default extension;
 6. Check if items are enabled (`item.enabled == true`) before registering shortcuts
 7. Datastore API returns `{ success, data }` - always check `result.success`
 8. Pubsub subscriptions are keyed by source - same source subscribing twice overwrites
-9. **Never put backend-specific code in `app/`**
-10. **Run `yarn install` after Electron upgrades** - Native modules (better-sqlite3) must be recompiled for the new Electron ABI. The postinstall script handles this automatically, but you must run `yarn install` to trigger it. System Node and Electron have different ABIs even at the same major version (e.g., Node 24 = ABI 137, Electron 40 = ABI 143).
+9. **Never put backend-specific code in `app/`** - see Critical Rules above
+10. **Run `yarn install` after Electron upgrades** - Native modules (better-sqlite3) must be recompiled for the new Electron ABI. The postinstall script handles this automatically, but you must run `yarn install` to trigger it.
 
 ## Code Style
 
@@ -357,7 +377,7 @@ All endpoints except `/` require `Authorization: Bearer <api_key>` header.
 
 ### Server Deployment (Railway)
 
-> **For the comprehensive deployment guide**, see the "Railway Deployment (Peek Server)" section in `CLAUDE.md`. This includes step-by-step workflow, user management, production testing, and troubleshooting.
+> **For the comprehensive deployment guide**, see the "Railway Deployment (Peek Server)" section in `AGENTS.md`. This includes step-by-step workflow, user management, production testing, and troubleshooting.
 
 The server is configured for Railway deployment.
 

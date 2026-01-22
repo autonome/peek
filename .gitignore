@@ -24,7 +24,7 @@ playwright-report/
 
 # Claude Code local settings
 .claude/
-CLAUDE.md
+**/CLAUDE.md
 
 # Backup files
 *.bak

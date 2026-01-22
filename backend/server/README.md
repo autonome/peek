@@ -90,12 +90,20 @@ API keys are hashed with SHA-256 and stored in the system database.
 
 Configured for Railway (`railway.json`) using Nixpacks builder with automatic restart on failure.
 
-> **For detailed Railway deployment guide** including step-by-step workflow, user/API key management, production testing, and troubleshooting, see `CLAUDE.md` in the project root.
+> **For detailed Railway deployment guide** including step-by-step workflow, user/API key management, production testing, and troubleshooting, see `AGENTS.md` in the project root.
 
 **Quick setup:**
 1. Connect your Railway project to this subdirectory (`backend/server/`)
 2. Attach a volume and set `DATA_DIR` to the mount path for persistent storage
-3. Create users and their API keys (see CLAUDE.md for commands)
+3. Create users and their API keys (see AGENTS.md for commands)
+
+## Testing
+
+```bash
+npm test                    # Run unit tests
+npm run test:api:local      # Test against local server (needs PEEK_LOCAL_KEY env var)
+npm run test:api:prod       # Test against production (needs PEEK_PROD_KEY, PEEK_PROD_URL)
+```
 
 ## Environment Variables
 

@@ -530,6 +530,15 @@ function migrateFromLegacyApiKey() {
 
 // Migrate existing user data to profiles structure
 function migrateUserDataToProfiles() {
+  // DRY RUN MODE: Set MIGRATION_DRY_RUN=true to test without moving data
+  const DRY_RUN = process.env.MIGRATION_DRY_RUN === 'true';
+
+  if (DRY_RUN) {
+    console.log('[migration] ========================================');
+    console.log('[migration] DRY RUN MODE - No data will be moved');
+    console.log('[migration] ========================================');
+  }
+
   if (!fs.existsSync(DATA_DIR)) {
     return; // No data directory, nothing to migrate
   }
@@ -539,17 +548,48 @@ function migrateUserDataToProfiles() {
     .map(dirent => dirent.name);
 
   let migratedCount = 0;
+  let skippedCount = 0;
+  let dryRunCount = 0;
 
   for (const userId of userDirs) {
     const oldDbPath = path.join(DATA_DIR, userId, "peek.db");
     const newDbPath = path.join(DATA_DIR, userId, "profiles", "default", "datastore.sqlite");
+    const backupPath = `${oldDbPath}.pre-migration-backup`;
 
     // Skip if old DB doesn't exist or new DB already exists
-    if (!fs.existsSync(oldDbPath) || fs.existsSync(newDbPath)) {
+    if (!fs.existsSync(oldDbPath)) {
+      continue;
+    }
+
+    if (fs.existsSync(newDbPath)) {
+      skippedCount++;
+      continue;
+    }
+
+    // DRY RUN: Just report what would be migrated
+    if (DRY_RUN) {
+      console.log(`[migration] [DRY RUN] Would migrate ${userId}:`);
+      console.log(`[migration]   From: ${oldDbPath}`);
+      console.log(`[migration]   To:   ${newDbPath}`);
+
+      const oldImagesDir = path.join(DATA_DIR, userId, "images");
+      if (fs.existsSync(oldImagesDir)) {
+        const newImagesDir = path.join(DATA_DIR, userId, "profiles", "default", "images");
+        console.log(`[migration]   Images: ${oldImagesDir} -> ${newImagesDir}`);
+      }
+
+      dryRunCount++;
       continue;
     }
 
     try {
+      // SAFETY: Create pre-migration backup
+      if (!fs.existsSync(backupPath)) {
+        console.log(`[migration] Creating pre-migration backup for ${userId}`);
+        fs.copyFileSync(oldDbPath, backupPath);
+        console.log(`[migration] Backup created: ${backupPath}`);
+      }
+
       // Create profile directory
       const profileDir = path.dirname(newDbPath);
       if (!fs.existsSync(profileDir)) {
@@ -558,31 +598,67 @@ function migrateUserDataToProfiles() {
 
       // Move database file
       fs.renameSync(oldDbPath, newDbPath);
-      console.log(`Migrated ${userId} data to profiles/default/datastore.sqlite`);
+      console.log(`[migration] Migrated ${userId} data to profiles/default/datastore.sqlite`);
 
-      // Check if profile record exists, create if not
+      // Verify the move succeeded
+      if (!fs.existsSync(newDbPath)) {
+        throw new Error('Migration verification failed: new DB not found after move');
+      }
+
+      // Create profile record
       const existingProfile = users.getProfile(userId, "default");
       if (!existingProfile) {
         users.createProfile(userId, "default", "Default");
-        console.log(`Created default profile for user ${userId}`);
+        console.log(`[migration] Created default profile for user ${userId}`);
       }
 
       // Move images directory if it exists
       const oldImagesDir = path.join(DATA_DIR, userId, "images");
       const newImagesDir = path.join(DATA_DIR, userId, "profiles", "default", "images");
       if (fs.existsSync(oldImagesDir) && !fs.existsSync(newImagesDir)) {
+        // Backup images directory too
+        const imagesBackupDir = `${oldImagesDir}.pre-migration-backup`;
+        if (!fs.existsSync(imagesBackupDir)) {
+          console.log(`[migration] Backing up images directory for ${userId}`);
+          // Copy entire directory recursively
+          fs.cpSync(oldImagesDir, imagesBackupDir, { recursive: true });
+        }
+
         fs.renameSync(oldImagesDir, newImagesDir);
-        console.log(`Migrated ${userId} images to profiles/default/images`);
+        console.log(`[migration] Migrated ${userId} images to profiles/default/images`);
       }
+
+      console.log(`[migration] ✓ Migration successful for ${userId}`);
+      console.log(`[migration] Backup available at: ${backupPath}`);
+      console.log(`[migration] (Backup can be manually deleted after verifying data integrity)`);
 
       migratedCount++;
     } catch (error) {
-      console.error(`Failed to migrate ${userId}:`, error.message);
+      console.error(`[migration] ✗ Failed to migrate ${userId}:`, error.message);
+
+      // SAFETY: Attempt rollback if backup exists
+      if (fs.existsSync(backupPath) && !fs.existsSync(oldDbPath)) {
+        console.error(`[migration] Attempting rollback for ${userId}...`);
+        try {
+          fs.copyFileSync(backupPath, oldDbPath);
+          console.log(`[migration] ✓ Rollback successful for ${userId}`);
+        } catch (rollbackError) {
+          console.error(`[migration] ✗ CRITICAL: Rollback failed for ${userId}:`, rollbackError.message);
+          console.error(`[migration] Manual recovery required. Backup at: ${backupPath}`);
+        }
+      }
     }
   }
 
-  if (migratedCount > 0) {
-    console.log(`Migration complete: ${migratedCount} user(s) migrated to profiles structure`);
+  if (DRY_RUN) {
+    console.log('[migration] ========================================');
+    console.log(`[migration] DRY RUN COMPLETE: ${dryRunCount} user(s) would be migrated`);
+    console.log(`[migration] ${skippedCount} user(s) already migrated`);
+    console.log('[migration] ========================================');
+  } else if (migratedCount > 0) {
+    console.log(`[migration] Migration complete: ${migratedCount} user(s) migrated, ${skippedCount} already migrated`);
+  } else if (skippedCount > 0) {
+    console.log(`[migration] All users already migrated (${skippedCount} found)`);
   }
 }
 

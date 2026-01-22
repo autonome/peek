@@ -16,7 +16,8 @@
     "files": [
       "**/*",
       "!backend/tauri/**/*",
-      "!backend/server/**/*"
+      "!backend/server/**/*",
+      "!backend/tauri-mobile/**/*"
     ],
     "mac": {
       "icon": "assets/appicon.icns",

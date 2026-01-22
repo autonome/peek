@@ -145,25 +145,28 @@ try {
 
 // Profile selection:
 // 1. Explicit PROFILE env var takes precedence (for dev/testing)
-// 2. Active profile from profiles.db (normal operation)
-// 3. Packaged app in /Applications uses 'default' (production fallback)
-// 4. Packaged app in out/ directory uses 'dev' (dev packaged build fallback)
-// 5. Running from source uses 'dev' (development fallback)
+// 2. Development builds (source/dev-packaged) ALWAYS use 'dev' (isolation from production)
+// 3. Production packaged builds use active profile from profiles.db
+// 4. Fallback to 'default' if profiles.db fails
 let PROFILE: string;
 
 if (profileIsLegit(process.env.PROFILE)) {
   // Explicit env var takes precedence
   PROFILE = process.env.PROFILE;
   DEBUG && console.log('[profiles] Using PROFILE env var:', PROFILE);
+} else if (!app.isPackaged || isDevPackagedBuild()) {
+  // Development builds ALWAYS use 'dev' profile (never touch production profiles)
+  PROFILE = 'dev';
+  DEBUG && console.log('[profiles] Development build, forcing dev profile');
 } else {
-  // Try to get active profile from profiles.db
+  // Production packaged build - use active profile from profiles.db
   try {
     const activeProfile = getActiveProfile();
     PROFILE = activeProfile.slug;
     DEBUG && console.log('[profiles] Using active profile from profiles.db:', PROFILE);
   } catch (error) {
-    // Fallback to default behavior if profiles.db fails
-    PROFILE = app.isPackaged && !isDevPackagedBuild() ? 'default' : 'dev';
+    // Fallback to default if profiles.db fails
+    PROFILE = 'default';
     DEBUG && console.log('[profiles] Fallback to default PROFILE:', PROFILE);
   }
 }

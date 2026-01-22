@@ -27,6 +27,21 @@ function getSystemDb() {
       );
       CREATE INDEX IF NOT EXISTS idx_users_hash ON users(api_key_hash);
     `);
+
+    // Initialize profiles table
+    systemDb.exec(`
+      CREATE TABLE IF NOT EXISTS profiles (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        slug TEXT NOT NULL,
+        name TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        last_used_at TEXT NOT NULL,
+        UNIQUE(user_id, slug),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_profiles_user ON profiles(user_id);
+    `);
   }
   return systemDb;
 }
@@ -148,6 +163,110 @@ function closeSystemDb() {
   }
 }
 
+// ==================== Profile Management ====================
+
+/**
+ * Create a new profile for a user.
+ * @param {string} userId - The user ID
+ * @param {string} slug - Filesystem-safe profile name (e.g., "work", "personal")
+ * @param {string} name - User-visible profile name (e.g., "Work", "Personal")
+ * @returns {object} Profile object with id, userId, slug, name
+ */
+function createProfile(userId, slug, name) {
+  const db = getSystemDb();
+
+  // Check if user exists
+  const user = db.prepare("SELECT id FROM users WHERE id = ?").get(userId);
+  if (!user) {
+    throw new Error(`User '${userId}' does not exist`);
+  }
+
+  // Check if profile already exists
+  const existing = db.prepare(
+    "SELECT id FROM profiles WHERE user_id = ? AND slug = ?"
+  ).get(userId, slug);
+  if (existing) {
+    throw new Error(`Profile '${slug}' already exists for user '${userId}'`);
+  }
+
+  const profileId = crypto.randomUUID();
+  const timestamp = new Date().toISOString();
+
+  db.prepare(`
+    INSERT INTO profiles (id, user_id, slug, name, created_at, last_used_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(profileId, userId, slug, name, timestamp, timestamp);
+
+  return { id: profileId, userId, slug, name, created_at: timestamp, last_used_at: timestamp };
+}
+
+/**
+ * List all profiles for a user.
+ * @param {string} userId - The user ID
+ * @returns {Array} Array of profile objects
+ */
+function listProfiles(userId) {
+  const db = getSystemDb();
+  return db.prepare(`
+    SELECT id, user_id, slug, name, created_at, last_used_at
+    FROM profiles
+    WHERE user_id = ?
+    ORDER BY last_used_at DESC
+  `).all(userId);
+}
+
+/**
+ * Get a specific profile by user ID and slug.
+ * @param {string} userId - The user ID
+ * @param {string} slug - Profile slug
+ * @returns {object|null} Profile object or null if not found
+ */
+function getProfile(userId, slug) {
+  const db = getSystemDb();
+  return db.prepare(`
+    SELECT id, user_id, slug, name, created_at, last_used_at
+    FROM profiles
+    WHERE user_id = ? AND slug = ?
+  `).get(userId, slug);
+}
+
+/**
+ * Update last_used_at timestamp for a profile.
+ * @param {string} userId - The user ID
+ * @param {string} slug - Profile slug
+ */
+function updateProfileLastUsed(userId, slug) {
+  const db = getSystemDb();
+  const timestamp = new Date().toISOString();
+  db.prepare(`
+    UPDATE profiles SET last_used_at = ? WHERE user_id = ? AND slug = ?
+  `).run(timestamp, userId, slug);
+}
+
+/**
+ * Delete a profile by profile ID.
+ * @param {string} userId - The user ID (for verification)
+ * @param {string} profileId - The profile ID to delete
+ */
+function deleteProfile(userId, profileId) {
+  const db = getSystemDb();
+
+  // Verify profile belongs to user
+  const profile = db.prepare(
+    "SELECT id, slug FROM profiles WHERE id = ? AND user_id = ?"
+  ).get(profileId, userId);
+
+  if (!profile) {
+    throw new Error(`Profile '${profileId}' not found for user '${userId}'`);
+  }
+
+  // Delete profile record
+  db.prepare("DELETE FROM profiles WHERE id = ?").run(profileId);
+
+  // Note: Profile data directory is NOT deleted here - data is preserved
+  // Client should handle profile data cleanup if desired
+}
+
 module.exports = {
   createUser,
   createUserWithKey,
@@ -156,6 +275,12 @@ module.exports = {
   listUsers,
   regenerateApiKey,
   closeSystemDb,
+  // Profile management
+  createProfile,
+  listProfiles,
+  getProfile,
+  updateProfileLastUsed,
+  deleteProfile,
   // Exposed for testing
   hashApiKey,
   getSystemDb,

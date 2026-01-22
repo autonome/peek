@@ -24,7 +24,10 @@ playwright-report/
 
 # Claude Code local settings
 .claude/
-**/CLAUDE.md
+
+# Multi-agent workflow (cloned via yarn agent-setup)
+.agent-workflow/
+/CLAUDE.md
 
 # Backup files
 *.bak

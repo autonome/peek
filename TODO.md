@@ -12,6 +12,7 @@ Be able to use the app on mobile and desktop with the safety of knowing there's 
 
 Today
 - [~][mobile] mobile ux - add viewing ui and iterate on add/edit ux fixes
+- [ ][desktop] now that data syncing from server and mobile, add a new extension for experimenting with visualizations of tags - start by porting over the tag viewing/filtering system from the mobile app, for a desktop view, so we can search, view and edit notes/urls/tagsets/images by tag button interfaces, see also the Groups & Tags UX section
 
 Later
 - [ ][desktop] access to notes on filesystem, syncing them as markdown files in ~/sync/Notes/peek
@@ -64,39 +65,9 @@ mobile/desktop
   - [ ] profiles only deleted on device, does not sync
 - [ ] must always have at least one profile
 
-## Sync Infrastructure
+## Extension back-end
 
-- [ ] mobile notes, server notes, desktop notes (make sync server dumber)
-
-## Commands - Settings Navigation
-
-- [ ] Add commands for settings nav sections: core, extensions, themes, datastore, diagnostic
-- [ ] Add commands to open specific extension settings
-
-## Theming
-
-Core theming is done (themes/, CSS variables, peek://theme/ protocol, light/dark/system modes).
-
-Remaining:
-- [ ] review agregore/peersky approach for improvements
-- [ ] apply theme to http web pages (about:blank flash, user pref)
-
-## Portability
-
-Backend abstraction done (Electron, Tauri, Tauri Mobile, Server all share app/ code).
-
-Remaining:
-- [ ] Extension back-end (browser extension version)
-- [ ] Define subset of core API for portability documentation
-
-## Extensions Architecture
-
-Core extension system done (web pages with injected window.app API, iframe/BrowserWindow hosting).
-
-Remaining:
-- [ ] configurable start-at-boot per extension
-- [ ] cf: https://github.com/AgregoreWeb/agregore-browser
-- [ ] cf: https://github.com/samuelmaddock/electron-browser-shell
+- [ ] tbd
 
 ## Chaining / Connecting
 

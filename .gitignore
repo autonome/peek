@@ -27,6 +27,7 @@ playwright-report/
 
 # Multi-agent workflow (cloned via yarn agent-setup)
 .agent-workflow/
+.agent-task.md
 /CLAUDE.md
 
 # Backup files

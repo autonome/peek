@@ -18,6 +18,11 @@ backend/tauri-mobile/src-tauri/target/
 # Server data (local testing)
 backend/server/data/
 
+# Environment files (contain secrets)
+.env
+.env.local
+.env.*.local
+
 # Test output
 test-results/
 playwright-report/

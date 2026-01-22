@@ -1,22 +1,42 @@
 /**
  * API Integration Tests
  *
+ * Setup: Copy .env.example to .env and fill in your API keys
+ *
  * Run against local server:
  *   npm run test:api:local
  *
  * Run against production:
- *   API_KEY=your-key BASE_URL=https://your-app.railway.app npm run test:api
+ *   npm run test:api:prod
  */
 
 const { test, describe, before, after } = require("node:test");
 const assert = require("node:assert");
 
-const BASE_URL = process.env.BASE_URL || "http://localhost:3000";
-const API_KEY = process.env.API_KEY;
+// Determine environment from command line args
+const args = process.argv.slice(2);
+const isLocal = args.includes("--local");
+const isProd = args.includes("--prod");
+
+let BASE_URL, API_KEY;
+
+if (isLocal) {
+  BASE_URL = "http://localhost:3000";
+  API_KEY = process.env.PEEK_LOCAL_KEY;
+} else if (isProd) {
+  BASE_URL = process.env.PEEK_PROD_URL || "https://peek-node.up.railway.app";
+  API_KEY = process.env.PEEK_PROD_KEY;
+} else {
+  // Fallback to legacy env vars for backwards compatibility
+  BASE_URL = process.env.BASE_URL || "http://localhost:3000";
+  API_KEY = process.env.API_KEY;
+}
 
 if (!API_KEY) {
-  console.error("ERROR: API_KEY environment variable is required");
-  console.error("Usage: API_KEY=your-key npm run test:api");
+  console.error("ERROR: API key not found");
+  console.error("Setup: Copy .env.example to .env and fill in your keys");
+  console.error("  npm run test:api:local  (uses PEEK_LOCAL_KEY)");
+  console.error("  npm run test:api:prod   (uses PEEK_PROD_KEY)");
   process.exit(1);
 }
 

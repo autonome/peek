@@ -11,9 +11,7 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
-- [ ][server] add daily snapshot backups on server, test locally, deploy, test and confirm working on railway
-- [ ] update main README
-- [ ][desktop] update release build and drive it
+- [~][server] add daily snapshot backups on server, test locally, deploy, test and confirm working on railway
 
 Later
 - [ ][desktop] access to notes on filesystem, syncing them as markdown files in ~/sync/Notes/peek
@@ -446,6 +444,8 @@ Newly done items go here, grouped under third-level headings by week of year.
 
 ### 2026-W04
 
+- [x] update main README
+- [x][desktop] update release build and drive it
 - [x][desktop] fix 5GB packaged build by adding exclusions to electron-builder.yml (~280MB now)
 - [x] data model: multi-user support (server full, desktop profile isolation)
 - [x] desktop sync working (bidirectional in backend/electron/sync.ts)

@@ -8,90 +8,6 @@ Peek is not a browser. It's a workbench for experimenting with task-aligned inte
 
 <img width="969" alt="settings screenshot" src="settings-screenshot.png">
 
-## Features
-
-- **Peeks** - Keyboard-activated modal web pages (`Opt+0-9`)
-- **Slides** - Gesture-activated pages that slide in from screen edges (`Opt+arrows`)
-- **Scripts** - Background page monitors that extract and track data
-- **Commands** - Command palette for opening pages and executing actions
-- **Groups** - Tag-based page organization (like Firefox Panorama)
-- **Sync** - Cross-device sync between desktop, mobile, and server
-
-## Quick Start
-
-```bash
-# Requirements: Node.js 24+
-nvm use 24
-
-# Install and run
-yarn install
-yarn debug        # Development mode with devtools
-yarn start        # Normal mode
-```
-
-See [DEVELOPMENT.md](DEVELOPMENT.md) for full development guide.
-
-## Architecture
-
-Peek supports multiple backends sharing the same storage/api approach:
-
-```
-peek/
-├── app/                    # Renderer (backend-agnostic)
-├── extensions/             # Built-in extensions
-├── backend/
-│   ├── electron/           # Desktop (primary)
-│   ├── tauri/              # Desktop (Rust alternative)
-│   ├── tauri-mobile/       # iOS/Android
-│   └── server/             # Sync server (Node.js/Hono)
-└── docs/                   # Documentation
-```
-
-## Documentation
-
-| Doc | Description |
-|-----|-------------|
-| [DEVELOPMENT.md](DEVELOPMENT.md) | Development setup, commands, architecture |
-| [docs/api.md](docs/api.md) | Peek API reference (`window.app`) |
-| [docs/extensions.md](docs/extensions.md) | Extension development |
-| [docs/cmd.md](docs/cmd.md) | Command palette extension |
-| [docs/themes.md](docs/themes.md) | Theme system |
-| [docs/datastore.md](docs/datastore.md) | Data storage and schema |
-| [docs/sync.md](docs/sync.md) | Cross-device sync |
-| [docs/mobile.md](docs/mobile.md) | Mobile development (iOS/Android) |
-
-## Notes
-
-Design thinking, research, and implementation notes in `notes/`:
-
-| Note | Topic |
-|------|-------|
-| [design-vision](notes/design-vision.md) | Original vision, use cases, project history |
-| [extensibility](notes/extensibility.md) | Extension model design |
-| [escape-navigation](notes/escape-navigation.md) | IZUI navigation model |
-| [commands](notes/commands.md) | Command palette design |
-| [cmd-backend-notes](notes/cmd-backend-notes.md) | Cmd chaining backend implementation |
-| [core-api](notes/core-api.md) | API design notes |
-| [shortcuts-api](notes/shortcuts-api.md) | Keyboard shortcuts |
-| [groups-model](notes/groups-model.md) | Tab groups / Panorama |
-| [page-model](notes/page-model.md) | Page abstraction |
-| [ux-rules](notes/ux-rules.md) | UX guidelines |
-| [backup](notes/backup.md) | Backup strategy |
-| [datastore-*](notes/) | Datastore research (5 files) |
-| [sync-*](notes/) | Sync research (2 files) |
-
-## Contributing
-
-Concept stage - contributions welcome but expect dragons.
-
-## License
-
-MIT
-
----
-
-# Design Notes (to review/archive)
-
 ## Core Design Philosophy
 
 Many user tasks on the web are either transient, chained or persistent, data oriented, or some mix of those. Neither the document-oriented nor application-centric web meets those needs. Traditional browser makers can't meet those needs well, for many reasons.
@@ -431,3 +347,84 @@ Peek was a browser extension that let you quickly peek at your favorite web page
 However, as browser extension APIs became increasingly limited, it was not possible to create a decent user experience and I abandoned it. You can access the extension in this repo [in the extension directory](/autonome/peek/extension/).
 
 The only way to create the ideal user experience for a web user agent that *Does What I Want* is to make it a browser-ish application, and that's what Peek is now.
+
+---
+
+## Automated Summary
+
+Quick reference for developers.
+
+### Features
+
+- **Peeks** - Keyboard-activated modal web pages (`Opt+0-9`)
+- **Slides** - Gesture-activated pages that slide in from screen edges (`Opt+arrows`)
+- **Scripts** - Background page monitors that extract and track data
+- **Commands** - Command palette for opening pages and executing actions
+- **Groups** - Tag-based page organization (like Firefox Panorama)
+- **Sync** - Cross-device sync between desktop, mobile, and server
+
+### Quick Start
+
+```bash
+# Requirements: Node.js 24+
+nvm use 24
+
+# Install and run
+yarn install
+yarn debug        # Development mode with devtools
+yarn start        # Normal mode
+```
+
+See [DEVELOPMENT.md](DEVELOPMENT.md) for full development guide.
+
+### Architecture
+
+Peek supports multiple backends sharing the same storage/api approach:
+
+```
+peek/
+├── app/                    # Renderer (backend-agnostic)
+├── extensions/             # Built-in extensions
+├── backend/
+│   ├── electron/           # Desktop (primary)
+│   ├── tauri/              # Desktop (Rust alternative)
+│   ├── tauri-mobile/       # iOS/Android
+│   └── server/             # Sync server (Node.js/Hono)
+└── docs/                   # Documentation
+```
+
+### Documentation
+
+| Doc | Description |
+|-----|-------------|
+| [DEVELOPMENT.md](DEVELOPMENT.md) | Development setup, commands, architecture |
+| [docs/api.md](docs/api.md) | Peek API reference (`window.app`) |
+| [docs/extensions.md](docs/extensions.md) | Extension development |
+| [docs/cmd.md](docs/cmd.md) | Command palette extension |
+| [docs/themes.md](docs/themes.md) | Theme system |
+| [docs/datastore.md](docs/datastore.md) | Data storage and schema |
+| [docs/sync.md](docs/sync.md) | Cross-device sync |
+| [docs/mobile.md](docs/mobile.md) | Mobile development (iOS/Android) |
+
+### Notes
+
+Design thinking, research, and implementation notes in `notes/`:
+
+| Note | Topic |
+|------|-------|
+| [extensibility](notes/extensibility.md) | Extension model design |
+| [escape-navigation](notes/escape-navigation.md) | IZUI navigation model |
+| [commands](notes/commands.md) | Command palette design |
+| [cmd-backend-notes](notes/cmd-backend-notes.md) | Cmd chaining backend implementation |
+| [core-api](notes/core-api.md) | API design notes |
+| [shortcuts-api](notes/shortcuts-api.md) | Keyboard shortcuts |
+| [groups-model](notes/groups-model.md) | Tab groups / Panorama |
+| [page-model](notes/page-model.md) | Page abstraction |
+| [ux-rules](notes/ux-rules.md) | UX guidelines |
+| [backup](notes/backup.md) | Backup strategy |
+| [datastore-*](notes/) | Datastore research (5 files) |
+| [sync-*](notes/) | Sync research (2 files) |
+
+### License
+
+MIT

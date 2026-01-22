@@ -29,7 +29,7 @@
   },
   "scripts": {
     "postinstall": "electron-rebuild -f -w better-sqlite3",
-    "agent-setup": "git clone https://tangled.sh/burrito.space/multi-agent-workflow .agent-workflow && cp .agent-workflow/CLAUDE.md .",
+    "agent-setup": "git clone https://tangled.sh/burrito.space/multi-agent-workflow .agent-workflow && cp .agent-workflow/CLAUDE.md . && echo '' && echo 'Setup complete! Next steps:' && echo '  1. Create AGENTS.md with project-specific rules' && echo '  2. Create TODO.md with tasks (Today/Later/Done sections)' && echo '  3. Start working:' && echo '     tmux new-session -s $(basename $PWD) -n coord' && echo '     source .agent-workflow/multi-agent.zsh' && echo '     claude' && echo ''",
     "//-- Development (BACKEND=electron|tauri, defaults to electron) --//": "",
     "dev": "[ \"${BACKEND:-}\" = \"tauri\" ] && yarn dev:tauri || yarn dev:electron",
     "dev:electron": "./scripts/timed.sh sh -c 'yarn build && DEBUG=1 electron .'",

@@ -1,65 +1,8 @@
-# Peek
+# Peek Design Vision
 
-Peek is a web user agent application designed for using the web where, when and how you want.
+Design thinking, use cases, and research notes extracted from early README.
 
-Today's browsers are one-size-fits-all applications, cramming the vast universe of user needs across an unimaginably large web into in an unmodifiable tabbed-window design.
-
-Peek is a web user agent that is a workbench for experimenting with task alignment - making it easy to create new user interface shapes for the web which fit our need in the moment.
-
-We often use the web with a specific goal in mind - that goal should drive the design of the interface of the web user agent.
-
-<img width="969" alt="settings screenshot" src="settings-screenshot.png">
-
-## Important notes
-
-___PEEK IS NOT A WEB BROWSER___
-
-Peek is not a web browser, and will never be a browser in the way you are probably familiar with: There are no tabs, and no windows in the tabbed-browser-like sense of them. Peek likely does not have many other of many details we are used to in web browsers, but do not notice until they are missing. Peek may be most useful to you if you view it as an entirely different type of application than a traditional web browser.
-
-___PEEK IS A CONCEPT PREVIEW___
-
-Peek is not safe for daily use yet! It is a proof of concept. Do not use it for anything critical. Peek does not have the same security approach as traditional web browsers, and its security model and security user interface have not yet been determined. Peek has not had a security audit.
-
-## Features
-
-You can use Peek in a few ways, with more coming:
-
-- Peeks - Keyboard-activated modal chromeless web pages for quickly glancing at or interacting with pages
-- Slides - Keyboard- or gesture-activated modal chromeless web pages which slide in from any screen edges
-- Scripts - Scripts periodically executed against a web page in the background which extract data for you to route to other pages or applications, or to aggregate, store and process later
-
-In progress, or thinking about:
-
-- Commands - a graphical command entry palette (GCLI) for opening pages or executing commands against them
-- Groups - a way to categorize, recall and interact with groups of pages
-- "native" web apps - using Peek as a way to "install" web pages on the local device, as separate applications instead of just separate processes
-- "Peeklets" HUD - select parts of pages to add to collection which are rendered as an overlay, toggled by shortcut
-
-### Usage
-
-- Settings
-  * In app, `Cmd/Ctrl+r,` or launch app to open settings, or click tray icon
-  * Configure Peeks/Slides/Scripts in settings
-- Peeks
-  * `Opt+0-9` to open Peeks
-- Slides
-  * `Opt+←→↑↓` to open Slides
-
-### Peeks
-
-Peeks are keyboard activated modal chromeless web pages mapped to `Opt+0-9` and closed on blur, the `Escape` key or `cmd/ctrl+w`.
-
-### Slides
-
-Slides are gesture activated modal chromeless web pages which slide in from left/right/bottom/top, and closed on blur, the `Escape` key or `cmd/ctrl+w`.
-
-### Scripts
-
-Scripts periodically load a web page in the background and extract data matching a CSS selector, stores it, and notify the user when the resulting data changes.
-
-Ok, so not really "scripts" yet. But safe and effective enough for now.
-
-## Design
+## Core Design Philosophy
 
 Many user tasks on the web are either transient, chained or persistent, data oriented, or some mix of those. Neither the document-oriented nor application-centric web meets those needs. Traditional browser makers can't meet those needs well, for many reasons.
 
@@ -77,13 +20,13 @@ Some thoughts driving the design of Peek:
 - Windows and tabs should have died a long time ago, a mixed metaphor constraining the ability of the web to grow/thrive/change and meet user needs
 - Security user interface must be a clear articulation of risks and trade-offs, and users should own the decisions
 
-### Escape IZUI
+## Escape IZUI
 
 TODO: articulate the escape-to-leave aspect, eg you can peek from *other* applications and ESC to go back to exactly where you were without breaking the task flow.
 
 Escape is an inverted zooming user interface (IZUI) design for a flexible window manager that makes possible a web user agent application than can have multiple entry points and a heterogeneous windowing ecosystem.
 
-IZUI vs ZUI
+### IZUI vs ZUI
 
 * ZUIs navigate by starting from a known root and user navigates by zooming ever further in, and then back out
 * Escape can enter a window stack at any point, and via a variety of methods, often from outside the application
@@ -91,12 +34,12 @@ IZUI vs ZUI
 * This design allows unbounded and diverse entry points, but with predictable behavior
 * Regardless of the entry point, the user always has a consistent path to familiar ground
 
-Escape navigation model
+### Escape navigation model
 * navigation base can start at any level in stack
 * forward navigations are added on top of stack
 * backwards navigations walk the stack in reverse up the tree to the root
 
-## Architecture / Implementation
+## Architecture Principles
 
 About this space:
 
@@ -105,20 +48,19 @@ About this space:
 - Decouple html+js+css from http+dns+ssl - not entirely, but that trust+security model is not a required starting point
 - Javascript is ok here
 
-Peek is designed to be modular and configurable around the idea that parts of it
-can run in different environments.
+Peek is designed to be modular and configurable around the idea that parts of it can run in different environments.
 
 For example:
 - Planning on a mobile app which syncs and runs your peeks/slides/scripts
 - I'd like to have a decentralized compute option for running your scripts outside of your clients and syncing the data
 - Want cloud storage for all config and data, esp infinite history, so can do fun things with it
 
-### Feature extensibility
+## Feature Extensibility
 
 An extensibility model for achieving "personal web workbench" requires a few things:
 - UI extensibility requires OS-level window features beyond what the web allows today (also a baby step towards a minimal OS user interface)
 - Data harvest/transform/process/publish requires a method of moving data between features (web apps) *locally*, cf Web Actions/Intents/Applets, MCP, pubsub, MQTT etc
-- Portable ways of accessing network, storage and compute, which address 
+- Portable ways of accessing network, storage and compute, which address
 
 The current implementation has only a few sketches of that world implemented, and has gone through a few iterations:
 - first proof of concept was all Electron - so, privileged JS
@@ -133,13 +75,11 @@ However it's pretty portable given the small custom API surface area.
 
 It would be nice, but not required, to have some alignment with the WebExtension spec - blur your eyes and they're in a similar direction.
 
-### Peek API
+## Peek API Design
 
-Initially the prototype was all Electron. But that's not interesting, and doesn't
-really tell us anything about constraints of the web itself.
+Initially the prototype was all Electron. But that's not interesting, and doesn't really tell us anything about constraints of the web itself.
 
-So instead I asked this question: What's the minimum capability set that a web app would
-need to build the features I need?
+So instead I asked this question: What's the minimum capability set that a web app would need to build the features I need?
 
 The answer, so far, is giving `peek` apps the following APIs:
 
@@ -149,7 +89,7 @@ The answer, so far, is giving `peek` apps the following APIs:
 
 Custom window api might be able to away entirely, by passing window.open features, working on that.
 
-### Desktop App
+## Desktop App Notes
 
 Proof of concept is Electron. By far the best option today for cross-platform desktop apps which need a web rendering engine. There's really nothing else remotely suited (yet).
 
@@ -157,39 +97,34 @@ User interface:
 - the built-in features are all modal chromeless web pages at this point
 - settings UI uses custom sidebar navigation with dark mode support
 
-TODO
+TODO:
 - Need to look at whether could library-ize some of what Agregore implemented for non-HTTP protocol support.
 - Min browser might be interesting as a forkable base to work from and contribute to, if they're open to it. At least, should look more at the architecture.
 
-## Contribution
-
-- in proto stage
-- all dragons, no promises
-
-## Development
-
-```
-yarn install
-yarn debug
-```
-
-### Mobile
+## Mobile Vision
 
 - Quick access to Script output and manual runs, as widgets (or output from cloud runners?)
 - Peeks still totes useful here - on mobile is more like "quick dial" features
+- some of the features don't make sense as-is on mobile
+- but maybe quick access on mobile to slides/peeks would be nice
+- and seeing output of content scripts, or ability to re-run locally on demand
+- needs some sync facility (inevitable anyway)
 
-### Cloud
+## Cloud Vision
 
 - Going full crypto payments for distributed compute on this one.
 
-## Papercut / use-case log
+---
 
-Core high level actions
+## Use Cases & Papercuts
+
+### Core High Level Actions
 - open a web page on top/bottom/left/right
 - keep web pages persistent in the background
 - quickly open a web page modally, and close it
 
-Misc specific
+### Specific Use Cases
+
 - open bandcamp in a window, move over to 2nd display, accidently close it while moving around between other windows
 - recent books or recipes from newsletters i subscribe to (but probably didn't read)
 - extract a table from a page periodically, send it somewhere as csv or whatever (chained actions)
@@ -199,24 +134,26 @@ Misc specific
 - save a tweet, with URL / image / relevant text, but not whole page webrecorder style
 - "watch local event listings, rate against my music listening patterns and send me shows i might be interested in going to"
 
-Content scripts
+### Content Scripts
 - extract+log shazams
 - extract+log spotify playlist
 
-Calculators (variant of script + cmd?)
+### Calculators (variant of script + cmd?)
 - page -> table
 - page -> summary
 - page -> microsummaries
 - page -> dates
 - page -> events
 
-Workflow deconstructing a "why" task flavour of bookmarking
+### Workflow: Deconstructing a "why" Task Flavor of Bookmarking
 - save https://www.criterionchannel.com/hong-kong-in-new-york
 - extract the movies
 - get reference metadata for each (?!)
 - add to "to watch list", with pointer back to source url
 
-## Groups
+---
+
+## Groups Design
 
 - panorama/tabcandy-ish
 - all browser history
@@ -224,37 +161,41 @@ Workflow deconstructing a "why" task flavour of bookmarking
 - autoclustering on topic/date
 - escape from a new page enters default group?
 
-Groups + Cmds
+### Groups + Cmds
 - top/bottom inputs for filtering/grouping/etc
 - implemented is a cmd input?
 - cmds for opening/searching/finding/viewing/filtering/piping
 - cmds for moving pages into groups
 - groups -> {x} (eg export/pipe) could depend on the chaining/piping bit (see below)
 
-Architecture
+### Architecture
 - internally is tags?
 - static vs dynamic groups tho?
 
-Publishing
+### Publishing
 - publishing groups as internal/public feeds?
 - to pinboard?
 
-## History view/search
+---
+
+## History View/Search
 
 A lot of groups work depends on history being in place, and being accessable and annotate-able.
 
 ideally use chromium history
 
-storage+access
+### Storage+Access
 - check out Agregore history viewing approach
 - check out state of electron+webext
 - other way of accessing underlying chromium history?
 
-features
+### Features
 - awesomebar algo scoring
 - adaptive matching
 
-## Chaining / piping
+---
+
+## Chaining / Piping
 
 investigate: vague thought re chaining:
 - dynamic interstitial representations
@@ -263,30 +204,25 @@ investigate: vague thought re chaining:
 - or a table of data
 - previews of cmds?
 
-interfaces
+### Interfaces
 - horizontal vs vertical chains
 - back/forward navigation?
 - each step is a cmd+preview?
 - dynamic cmd+previews?
 
-import/export/undo/redo
+### Import/Export/Undo/Redo
 - record/replay?
 - save a chain as a compound action (cmd)?
 
-architecture
+### Architecture
 - look at web actions/intents/applets
 - xml pipeline language
 
-## Mobile
+---
 
-- some of the features don't make sense as-is on mobile
-- but maybe quick access on mobile to slides/peeks would be nice
-- and seeing output of content scripts, or ability to re-run locally on demand
-- needs some sync facility (inevitable anyway)
+## Feature Use Cases
 
-## Use-cases
-
-Peeks
+### Peeks
 - translate
 - calendar
 - ai chat
@@ -294,44 +230,45 @@ Peeks
 - everytimezone
 - tldraw
 
-Slides
+### Slides
 - music: Soundcloud, Hypem
 - stock prices
 - notepad
 - todo list
 
-Scripts
+### Scripts
 - weather change, eg upcoming weather
 - crypto prices
 
-Cmd - web
+### Cmd - Web
 - open url
 - web search
 - image search
 - conversions?
 - ddg !actions
 
-Cmd - system
+### Cmd - System
 - search browser history
 - set peeks/slides
 - open settings
 - restart app
 - llm prompts
 
-Future
+### Future
 - address something to switch between
 - pipe from/to?
 
-Publishing high level
+---
+
+## Publishing
+
+### High Level
 - author web content
 - pull in bits from the web
 - share preview for feedback
 - publish (or at least get output)
 
-Publishing examples
-- writing an event recap
-
-Publishing: event recap post
+### Example: Event Recap Post
 - make a new markdown doc
 - sections titled for each video title
 - each video's embed code in each section
@@ -340,14 +277,16 @@ Publishing: event recap post
 - share preview link
 - publish (somewhere?)
 
-Music
+### Music
 - commands
 - views
 - last.fm of my own, to POSSE out
 
-## Unfiled
+---
 
-markdown hot reload previewer w/ toc
+## Unfiled Ideas
+
+### Markdown Hot Reload Previewer w/ TOC
 - markdown support, with sidebar nav
 - reader mode
 - hot reload for file:// (other?)
@@ -355,36 +294,37 @@ markdown hot reload previewer w/ toc
 - once md and side-by-side, add side-by-side so the md is the nav, content is the preview
 - what's the cmd chain for this?
 
-content types + chaining
+### Content Types + Chaining
 - cmd: view as… table, feed, markdown, data points, named entities
 - chain: static archive, publish, save, share (os), mailto
 - cmd params, eg {url}, which can themselves autocomplete (eg history)
 
-multiprotocol
+### Multiprotocol
 - at
 - ipfs/ipns
 - pragmatic addressing+rendering for data (r/d/masl + mime handlers)
 
-broader patterns (chatting w/ luke)
+### Broader Patterns (chatting w/ luke)
 - why do we have to copy/paste?
 - devtools and ide are divorced
 
-chainframe/framechain
+### Chainframe/Framechain
 - (web intents/applets/actions) + (webxdc/miniapps/tiles/farcasterframes)
 
-Small examples of agency
-
+### Small Examples of Agency
 - users can move, resize, change things to their requirements
   - eg, browsers restrict min-height of a window, but i should be able make as short as i like
 
-## History
+---
+
+## Project History
 
 In working on Firefox and related things at Mozilla from 2006 - 2019, there were a few specific initiatives which best aligned with my needs as a user on the web:
 
-- The Awesomebar: infinite history + personalized local search index
-- Ubiquity: Natural language commands + chaining
-- Jetpack: The Mozilla Labs version - web-platfrom-centric extensibility
-- Panorama: née TabCandy, web pages as groups instead of tabs in windows
+- **The Awesomebar**: infinite history + personalized local search index
+- **Ubiquity**: Natural language commands + chaining
+- **Jetpack**: The Mozilla Labs version - web-platfrom-centric extensibility
+- **Panorama**: née TabCandy, web pages as groups instead of tabs in windows
 
 A few others which were in the right direction but didn't achieve their optimal form:
 
@@ -394,13 +334,10 @@ A few others which were in the right direction but didn't achieve their optimal 
 
 The first version of the Peek application has some bits of each of these, and the original Peek browser extension.
 
-### Peek browser extension
+### Peek Browser Extension
 
 Peek was a browser extension that let you quickly peek at your favorite web pages without breaking your flow - loading pages mapped to keyboard shortcuts into a modal window with no controls, closable via the `Escape` key.
 
 However, as browser extension APIs became increasingly limited, it was not possible to create a decent user experience and I abandoned it. You can access the extension in this repo [in the extension directory](/autonome/peek/extension/).
 
 The only way to create the ideal user experience for a web user agent that *Does What I Want* is to make it a browser-ish application, and that's what Peek is now.
-
-
-

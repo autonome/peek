@@ -40,10 +40,12 @@ let userDataPath: string | null = null;
 
 /**
  * Initialize the profiles database
+ * @param dataPath - Base userData directory
+ * @param filename - Database filename (default: 'profiles.db', dev: '.dev-profiles.db')
  */
-export function initProfilesDb(dataPath: string): Database.Database {
+export function initProfilesDb(dataPath: string, filename: string = 'profiles.db'): Database.Database {
   userDataPath = dataPath;
-  const profilesDbPath = path.join(dataPath, 'profiles.db');
+  const profilesDbPath = path.join(dataPath, filename);
 
   profilesDb = new Database(profilesDbPath);
   profilesDb.pragma('journal_mode = WAL');

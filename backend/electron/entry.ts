@@ -129,15 +129,21 @@ const isDevPackagedBuild = (): boolean => {
   return execPath.includes('/out/') || execPath.includes('\\out\\');
 };
 
-// Initialize profiles database and migrate existing profiles FIRST
-// This must happen before we determine the PROFILE to use
+// Determine environment context FIRST to scope profiles.db correctly
 const defaultUserDataPath = app.getPath('userData');
+const isDev = !app.isPackaged || isDevPackagedBuild();
 
+// Use separate profiles.db for dev vs production to prevent interference
+// Dev: ~/.config/Peek/.dev-profiles.db (hidden, prefixed)
+// Production: ~/.config/Peek/profiles.db (default)
+const profilesDbFile = isDev ? '.dev-profiles.db' : 'profiles.db';
+
+// Initialize profiles database with scoped filename
 try {
-  initProfilesDb(defaultUserDataPath);
+  initProfilesDb(defaultUserDataPath, profilesDbFile);
   migrateExistingProfiles();
   ensureDefaultProfile();
-  DEBUG && console.log('[profiles] Profiles database initialized');
+  DEBUG && console.log(`[profiles] Profiles database initialized: ${profilesDbFile}`);
 } catch (error) {
   console.error('[profiles] Failed to initialize profiles:', error);
   // Continue with fallback behavior
@@ -154,7 +160,7 @@ if (profileIsLegit(process.env.PROFILE)) {
   // Explicit env var takes precedence
   PROFILE = process.env.PROFILE;
   DEBUG && console.log('[profiles] Using PROFILE env var:', PROFILE);
-} else if (!app.isPackaged || isDevPackagedBuild()) {
+} else if (isDev) {
   // Development builds ALWAYS use 'dev' profile (never touch production profiles)
   PROFILE = 'dev';
   DEBUG && console.log('[profiles] Development build, forcing dev profile');

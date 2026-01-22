@@ -49,6 +49,19 @@ import {
   loadExtensionManifest,
 } from './extensions.js';
 
+import type { Profile } from './profiles.js';
+import {
+  listProfiles,
+  createProfile,
+  getProfile,
+  deleteProfile,
+  getActiveProfile,
+  setActiveProfile,
+  enableSync,
+  disableSync,
+  getSyncConfig as getProfileSyncConfig,
+} from './profiles.js';
+
 import {
   getExtensionPath,
   getRegisteredThemeIds,
@@ -2193,6 +2206,129 @@ export function registerBackupHandlers(): void {
 }
 
 /**
+ * Register profile-related IPC handlers
+ */
+export function registerProfileHandlers(): void {
+  // List all profiles
+  ipcMain.handle('profiles:list', async () => {
+    try {
+      const profiles = listProfiles();
+      return { success: true, data: profiles };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // Create a new profile
+  ipcMain.handle('profiles:create', async (_ev, data: { name: string }) => {
+    try {
+      const profile = createProfile(data.name);
+      return { success: true, data: profile };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // Get a specific profile by slug
+  ipcMain.handle('profiles:get', async (_ev, data: { slug: string }) => {
+    try {
+      const profile = getProfile(data.slug);
+      if (!profile) {
+        return { success: false, error: 'Profile not found' };
+      }
+      return { success: true, data: profile };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // Delete a profile
+  ipcMain.handle('profiles:delete', async (_ev, data: { id: string }) => {
+    try {
+      deleteProfile(data.id);
+      return { success: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // Get the currently active profile
+  ipcMain.handle('profiles:getCurrent', async () => {
+    try {
+      const profile = getActiveProfile();
+      return { success: true, data: profile };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // Switch to a different profile (causes app restart)
+  ipcMain.handle('profiles:switch', async (_ev, data: { slug: string }) => {
+    try {
+      const profile = getProfile(data.slug);
+      if (!profile) {
+        return { success: false, error: 'Profile not found' };
+      }
+
+      // Set as active profile
+      setActiveProfile(data.slug);
+
+      // Relaunch the app with the new profile
+      // The app will pick up the new active profile from profiles.db on restart
+      app.relaunch();
+      app.quit();
+
+      return { success: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // Enable sync for a profile
+  ipcMain.handle('profiles:enableSync', async (_ev, data: {
+    profileId: string;
+    apiKey: string;
+    serverProfileSlug: string;
+  }) => {
+    try {
+      enableSync(data.profileId, data.apiKey, data.serverProfileSlug);
+      return { success: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // Disable sync for a profile
+  ipcMain.handle('profiles:disableSync', async (_ev, data: { profileId: string }) => {
+    try {
+      disableSync(data.profileId);
+      return { success: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // Get sync configuration for a profile
+  ipcMain.handle('profiles:getSyncConfig', async (_ev, data: { profileId: string }) => {
+    try {
+      const syncConfig = getProfileSyncConfig(data.profileId);
+      return { success: true, data: syncConfig };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+}
+
+/**
  * Register all IPC handlers
  */
 export function registerAllHandlers(onQuit: () => void): void {
@@ -2202,5 +2338,6 @@ export function registerAllHandlers(onQuit: () => void): void {
   registerWindowHandlers();
   registerSyncHandlers();
   registerBackupHandlers();
+  registerProfileHandlers();
   registerMiscHandlers(onQuit);
 }

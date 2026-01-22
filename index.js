@@ -3,6 +3,7 @@ const { serve } = require("@hono/node-server");
 const fs = require("fs");
 const db = require("./db");
 const users = require("./users");
+const backup = require("./backup");
 
 const app = new Hono();
 
@@ -413,6 +414,22 @@ app.get("/items/:id", (c) => {
   return c.json({ item });
 });
 
+// === Backup endpoints ===
+
+// GET /backups - List backups for authenticated user
+app.get("/backups", (c) => {
+  const userId = c.get("userId");
+  const backups = backup.listBackups(userId);
+  return c.json({ backups });
+});
+
+// POST /backups - Trigger manual backup for authenticated user
+app.post("/backups", async (c) => {
+  const userId = c.get("userId");
+  const result = await backup.createBackup(userId);
+  return c.json(result);
+});
+
 const port = process.env.PORT || 3000;
 
 // Migrate legacy API_KEY env var to multi-user system
@@ -432,6 +449,12 @@ function migrateFromLegacyApiKey() {
 }
 
 migrateFromLegacyApiKey();
+
+// Run initial backup check on startup
+backup.checkAndRunDailyBackups();
+
+// Set up hourly backup check (runs if >24h since last backup)
+setInterval(() => backup.checkAndRunDailyBackups(), 60 * 60 * 1000);
 
 serve({ fetch: app.fetch, port }, (info) => {
   console.log(`Server running on http://localhost:${info.port}`);

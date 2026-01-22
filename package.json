@@ -9,7 +9,10 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
+    "dev:bg": "node index.js > server.log 2>&1 & echo $! > server.pid && echo 'Server started (PID: '$(cat server.pid)')'",
+    "dev:stop": "[ -f server.pid ] && kill $(cat server.pid) 2>/dev/null && rm server.pid && echo 'Server stopped' || echo 'No server running'",
     "test": "node --test test.js",
+    "test:backup": "node --test test-backup.js",
     "test:api": "node --test test-api.js",
     "test:api:local": "API_KEY=$PEEK_LOCAL_KEY BASE_URL=http://localhost:3000 node --test test-api.js",
     "test:api:prod": "API_KEY=$PEEK_PROD_KEY BASE_URL=$PEEK_PROD_URL node --test test-api.js",
@@ -21,6 +24,7 @@
   "type": "commonjs",
   "dependencies": {
     "@hono/node-server": "^1.19.6",
+    "archiver": "^7.0.1",
     "better-sqlite3": "^12.5.0",
     "hono": "^4.10.7"
   }

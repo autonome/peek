@@ -330,6 +330,13 @@ After running `npm run dev:ios`, test data is automatically seeded:
 - The "Build Rust Code" pre-build script in Xcode can hang indefinitely - pre-building avoids this
 - iOS simulator can't reach `localhost` - use Mac's IP address (dev:ios handles this automatically)
 
+**Critical Build Pipeline Issues:**
+- **Debug mode loads from devUrl, not bundled assets** - In debug builds, the iOS app loads from `http://localhost:1420` (vite dev server), NOT from bundled assets. Run vite (`npm run dev`) alongside Xcode for hot reload.
+- **Xcode rebuild alone doesn't recompile Tauri** - When `tauri.conf.json` changes, you MUST run `npm run build:ios` to rebuild the Rust code. Just rebuilding in Xcode uses stale `libapp.a`.
+- **Invalid tauri.conf.json causes silent failures** - If the config has invalid properties, Tauri build fails but Xcode may still "succeed" using old artifacts. Always check `npm run build:ios` output for errors like "Additional properties are not allowed".
+- **Multiple xcodeproj files exist** - With agent workspaces, there may be many copies at `~/misc/mpeek/*/backend/tauri-mobile/src-tauri/gen/apple/peek-save.xcodeproj`. Verify you're opening the correct one (check Xcode window title or File → Project Settings).
+- **disableInputAccessoryView not in Tauri 2.9.x** - The config option to hide iOS keyboard accessory bar is documented in the schema but not implemented in stable Tauri 2.9. Requires newer version or native Swift workaround.
+
 ## Server Backend (Webhook API)
 
 The server backend (`backend/server/`) is a remote HTTP API for syncing data from the mobile app. It's separate from the desktop backends - it doesn't implement the Peek API, it's a standalone Node.js server.

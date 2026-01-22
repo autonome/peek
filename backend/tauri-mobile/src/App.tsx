@@ -173,9 +173,6 @@ function App() {
     url?: string; tags?: string[]; content?: string;
   } | null>(null);
 
-  // URL validation state
-  const [editingUrlError, setEditingUrlError] = useState<string | null>(null);
-
   // UI state
   const [isDark, setIsDark] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -483,19 +480,6 @@ function App() {
     }
   };
 
-  // URL validation
-  const validateUrl = (url: string): string | null => {
-    if (!url.trim()) return "URL is required";
-    try {
-      const parsed = new URL(url);
-      if (!["http:", "https:"].includes(parsed.protocol)) return "URL must start with http:// or https://";
-      return null;
-    } catch { return "Invalid URL format"; }
-  };
-
-  const handleUrlBlur = () => setEditingUrlError(validateUrl(editingUrlValue));
-  const handleUrlChange = (value: string) => { setEditingUrlValue(value); if (editingUrlError) setEditingUrlError(null); };
-
   // Dirty checking helpers
   const hasUrlChanges = (): boolean => {
     if (!originalEditValues) return false;
@@ -517,7 +501,6 @@ function App() {
   const startEditing = async (item: SavedUrl) => {
     setEditingUrlId(item.id);
     setEditingUrlValue(item.url);
-    setEditingUrlError(null);
     setEditingTags(new Set(item.tags));
     setNewTagInput("");
     setOriginalEditValues({ url: item.url, tags: [...item.tags].sort() });
@@ -535,7 +518,6 @@ function App() {
   const cancelEditing = () => {
     setEditingUrlId(null);
     setEditingUrlValue("");
-    setEditingUrlError(null);
     setEditingTags(new Set());
     setEditingUrlTags([]);
     setNewTagInput("");

@@ -11,7 +11,7 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
-- [~][mobile] mobile ux - add viewing ui and iterate on add/edit ux fixes
+- [ ][mobile] mobile editing ux - improve add/edit flows, fix any rough edges in item creation and editing
 - [ ][desktop] now that data syncing from server and mobile, add a new extension for experimenting with visualizations of tags - start by porting over the tag viewing/filtering system from the mobile app, for a desktop view, so we can search, view and edit notes/urls/tagsets/images by tag button interfaces, see also the Groups & Tags UX section
 
 Later

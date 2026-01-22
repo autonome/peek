@@ -6,6 +6,14 @@ Project-specific rules and context for agents working on Peek.
 - Tangled: `git@tangled.sh:burrito.space/peek` (primary)
 - GitHub: `git@github.com:autonome/peek`
 
+**Railway (Server Deployment):**
+- Project: `amusing-courtesy`
+- Service: `peek-node`
+- URL: `https://peek-node.up.railway.app`
+- Link command: `cd backend/server && railway link -p amusing-courtesy`
+- Deploy: `cd backend/server && railway up -d`
+- Logs: `railway logs -n 50`
+
 ---
 
 ## Critical Rules

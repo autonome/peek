@@ -5,7 +5,7 @@ Peek supports multiple backend implementations that share the same renderer code
 ## Design Principles
 
 1. **Backend Abstraction**: The `app/` directory contains all renderer code and must work unchanged with any backend
-2. **Shared API Contract**: All backends expose the same Peek API (`window.app`) - see `docs/PEEK-API.md`
+2. **Shared API Contract**: All backends expose the same Peek API (`window.app`) - see `docs/api.md`
 3. **Shared Data**: Backends use the same SQLite schema and can share database files
 4. **Profile Isolation**: Data is separated by profile (dev, default, etc.)
 
@@ -72,7 +72,7 @@ All backends use the same schema (see `app/datastore/schema.js`):
 Database location: `{app_data}/{profile}/datastore.sqlite`
 
 ### 4. Peek API Injection
-Inject the `window.app` API before any page scripts run. See `docs/PEEK-API.md` for the complete API reference.
+Inject the `window.app` API before any page scripts run. See `docs/api.md` for the complete API reference.
 
 ## API Contract
 
@@ -185,7 +185,7 @@ See `backend/server/README.md` for full API documentation.
 2. Implement custom protocol handler for `peek://`
 3. Implement SQLite datastore with shared schema
 4. Implement window management commands
-5. Implement the Peek API (`window.app`) matching `docs/PEEK-API.md`
+5. Implement the Peek API (`window.app`) matching `docs/api.md`
 6. Inject the API before page scripts run
 
 The renderer code (`app/`) should work without modification.

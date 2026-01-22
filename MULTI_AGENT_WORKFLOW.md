@@ -433,9 +433,9 @@ cp ~/sync/Dev/agent-workflow/claude-permissions.json .claude/settings.local.json
 
 ### Development Resources
 
-- See `notes/development.md` for architecture, commands, and common pitfalls
-- See `docs/PEEK-API.md` for the Peek API reference
-- See `extensions/README.md` for extension development
+- See `DEVELOPMENT.md` for architecture, commands, and common pitfalls
+- See `docs/api.md` for the Peek API reference
+- See `docs/extensions.md` for extension development
 
 ---
 

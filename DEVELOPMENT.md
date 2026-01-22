@@ -1,70 +1,62 @@
-# Development Guide
+# Peek Development Guide
 
-## Commands
+## Project Overview
 
-Bare commands (`dev`, `start`, `debug`, `kill`, `restart`) default to Electron. Use `BACKEND=tauri` to switch:
+Peek is a web user agent application that provides alternative ways to interact with web pages through keyboard shortcuts, modal windows, and background scripts. It's designed as a concept preview exploring task-aligned interfaces for the web, moving beyond traditional tabbed browsers.
 
+**Multi-Backend Architecture**: Peek supports multiple backends (Electron, Tauri) that can coexist and sync data. The `app/` directory is **backend-agnostic** and must not contain backend-specific code. Backend-specific code lives in `backend/{electron,tauri}/`.
+
+## Requirements
+
+- **Node.js 24+** - Required for both desktop (Electron 40) and server
+- Install via `nvm install 24` or download from nodejs.org
+
+## Key Commands
+
+### Development
 ```bash
-yarn debug                # Electron (default)
-BACKEND=tauri yarn debug  # Tauri
-yarn debug:electron       # Explicit Electron
-yarn debug:tauri          # Explicit Tauri
+nvm use 24                # Ensure Node 24 is active
+yarn install              # Install dependencies
+yarn debug                # Run in development mode (with devtools)
+yarn start                # Start normally
+yarn package              # Package (output: out/mac-arm64/)
+yarn package:install      # Package and install to /Applications (macOS)
+yarn make                 # Build distributable packages
+yarn npm audit            # Check for security vulnerabilities
+
+# Tauri backend
+yarn tauri:dev            # Run Tauri in development
+yarn tauri:build          # Build Tauri for production
+yarn tauri:check          # Check Tauri compiles
+yarn tauri:test           # Run Tauri smoke tests (Rust)
+
+# Tauri Mobile (iOS/Android)
+yarn tauri:ios:dev        # Run on iOS simulator
+yarn tauri:ios:build      # Build for iOS
+yarn tauri:ios:xcode      # Open Xcode project
+yarn tauri:android:dev    # Run on Android emulator
+
+# Server (webhook API for mobile sync)
+yarn server:install       # Install server dependencies
+yarn server:start         # Run production server
+yarn server:dev           # Run with hot reload
+yarn server:test          # Run server tests
+yarn server:healthcheck   # Verify server starts
 ```
 
-All Electron commands automatically build TypeScript before running.
-
+### Testing
 ```bash
-# Install dependencies
-yarn install
-
-# Run in development mode (with devtools + hot reload)
-yarn debug
-
-# Start the application normally
-yarn start
-
-# Build TypeScript only (usually not needed - commands auto-build)
-yarn build
+yarn test                 # Run all tests (headless)
+yarn test:electron        # Run Electron tests only
+yarn test:visible         # Run with visible windows
+yarn test:grep "pattern"  # Run specific test by name
 ```
 
-## Hot Reload (Electron only)
-
-In dev mode (`yarn debug` or `DEBUG=1`), hot reload is enabled:
-- Watches `app/` and `extensions/` directories
-- Auto-reloads all windows when `.html`, `.js`, or `.css` files change
-- No restart needed for renderer-side changes
-
-Note: Changes to `backend/` TypeScript files still require rebuilding (`yarn build`) and restarting the app. Hot reload is not yet implemented for the Tauri backend.
-
-```bash
-# Typical dev workflow:
-yarn debug          # Start app with hot reload
-# Edit files in app/ or extensions/
-# Windows auto-reload on save
-```
-
-```bash
-# Package the application (output: out/mac-arm64/)
-yarn package
-
-# Package and install to /Applications (macOS)
-yarn package:install
-
-# Build distributable packages
-yarn make
-
-# Check for security vulnerabilities
-yarn npm audit
-
-# Test packaged build with dev profile
-PROFILE=dev out/mac-arm64/Peek.app/Contents/MacOS/Peek
-```
+**Testing Policy**: When fixing bugs or adding features, always add tests to cover the change. Tests live in `tests/desktop/smoke.spec.ts`.
 
 ## Architecture Overview
 
 ### Core Structure
-
-The application uses a multi-window Electron architecture:
 
 1. **Main Process** (`index.js`):
    - Manages app lifecycle, windows, shortcuts, IPC communication
@@ -74,160 +66,337 @@ The application uses a multi-window Electron architecture:
 
 2. **Renderer Process** (`app/`):
    - Core app logic loads from `peek://app/background.html`
-   - Feature modules: peeks, slides, scripts, cmd, groups
+   - Extension loader at `app/extensions/loader.js`
+   - Feature modules: scripts, cmd (registered in `app/features.js`)
+   - Built-in extensions: groups, peeks, slides (in `./extensions/`)
    - Settings UI at `peek://app/settings/settings.html`
-   - Datastore viewer at `peek://app/datastore/viewer.html`
 
 3. **Peek API** (`window.app`):
-   - Unified API exposed to all `peek://` pages
-   - Provides shortcuts, window management, pubsub, datastore, and theme APIs
-   - See `docs/PEEK-API.md` for complete reference
+   - `api.window.*` for window management
+   - `api.shortcuts.*` for hotkeys (local by default, `{ global: true }` for OS-level)
+   - `api.datastore.*` for data persistence
+   - `api.commands.*` for command palette integration
+   - `api.theme.*` for theme management
+   - `api.publish()`/`api.subscribe()` for cross-window messaging
+
+### Backend Structure
+```
+backend/
+├── electron/          # Electron desktop backend (current primary)
+│   ├── datastore.ts   # SQLite via better-sqlite3
+│   ├── ipc.ts         # IPC handlers
+│   └── protocol.ts    # peek:// protocol handler
+├── tauri/             # Tauri desktop backend (Rust)
+│   ├── src-tauri/
+│   │   ├── src/
+│   │   │   ├── lib.rs          # App setup
+│   │   │   ├── datastore.rs    # SQLite via rusqlite
+│   │   │   └── commands/       # IPC command handlers
+│   │   └── tests/smoke.rs      # Rust smoke tests
+│   └── preload.js              # Peek API implementation (Tauri)
+├── tauri-mobile/      # Tauri mobile app (iOS/Android)
+│   ├── src/           # React frontend
+│   └── src-tauri/     # Rust backend
+└── server/            # Webhook API server for mobile sync
+    ├── index.js       # Hono HTTP server
+    ├── db.js          # SQLite via better-sqlite3
+    └── users.js       # Multi-user API key auth
+```
+
+**Data Sync**: Both backends use the same SQLite database path (`~/.config/Peek/{profile}/datastore.sqlite`). Only one backend should run at a time (file lock).
 
 ### Custom Protocol
+- `peek://app/...` - Core application files (from `app/` directory)
+- `peek://ext/{shortname}/...` - Extension files
+- `peek://tauri/...` - Tauri backend files (only in Tauri)
 
-- Uses `peek://` scheme for internal pages
-- Cross-origin network access enabled for peek:// pages
-- Special APIs available: window control, global hotkeys, pubsub messaging
+### Extensions Architecture
 
-### Profile Management
+Extensions run in isolated BrowserWindow processes at `peek://ext/{id}/background.html`.
 
-Profile is determined automatically:
-- Packaged app (`/Applications/Peek.app`) uses `default` profile
-- Running from source (`yarn start`) uses `dev` profile
-- `PROFILE` env var overrides (e.g., `PROFILE=test yarn start`)
-
-Profile data stored in `{userData}/{PROFILE}/` directory.
-
-## Window API
-
-### Opening Windows
-
-```javascript
-import windows from './windows.js';
-
-// Modal window (closes on blur/ESC)
-windows.openModalWindow(url, options);
-
-// Regular window
-windows.createWindow(url, options);
+```
+extensions/
+├── example/              # Hello world example
+├── groups/
+├── peeks/
+└── slides/
+    ├── manifest.json           # Extension metadata
+    ├── settings-schema.json    # Settings UI schema (optional)
+    ├── background.html         # Entry point
+    └── background.js           # Main logic (ES module export)
 ```
 
-### Window Options
-
-| Option | Type | Description |
-|--------|------|-------------|
-| `width`, `height` | number | Window dimensions |
-| `x`, `y` | number | Window position |
-| `modal` | boolean | Frameless, closes on blur |
-| `key` | string | Unique ID for window reuse |
-| `keepLive` | boolean | Hide instead of close |
-| `escapeMode` | string | ESC behavior: `'close'`, `'navigate'`, `'auto'` |
-| `trackingSource` | string | Source for visit tracking |
-
-### Escape Handling
-
-Windows can control how ESC behaves using `escapeMode`:
-
-- **`'close'`** (default): ESC immediately closes/hides the window
-- **`'navigate'`**: Renderer handles ESC first; closes only when renderer signals root state
-- **`'auto'`**: Transient windows (opened via hotkey from another app) close immediately; active windows use navigate behavior
-
-#### Using escapeMode: 'navigate'
-
-1. Open window with `escapeMode: 'navigate'`:
+**Background script pattern:**
 ```javascript
-windows.createWindow(url, { escapeMode: 'navigate' });
-```
+const api = window.app;
 
-2. Register escape handler in renderer:
-```javascript
-api.escape.onEscape(() => {
-  if (canNavigateBack) {
-    navigateBack();
-    return { handled: true };  // ESC was handled internally
+const extension = {
+  id: 'example',
+  labels: { name: 'Example' },
+
+  init() {
+    api.shortcuts.register('Option+x', handler, { global: true });
+    api.commands.register({ name: 'my-cmd', description: '...', execute: fn });
+  },
+
+  uninit() {
+    api.shortcuts.unregister('Option+x', { global: true });
+    api.commands.unregister('my-cmd');
   }
-  return { handled: false };   // At root, let window close
-});
+};
+
+export default extension;
 ```
 
-See `notes/escape-navigation.md` for full design details.
+### Window Management
+- Windows identified by keys for lifecycle management (e.g., `peek:${address}`)
+- Modal windows use `type: 'panel'` to return focus to previous app on close
+- Parameters: `modal`, `keepLive`, `persistState`, `transparent`, `height`, `width`, `key`
+- "Escape IZUI" design - ESC key always returns to previous context
 
-## Dock / App Switcher Visibility (macOS)
+### Data Storage
 
-The dock icon visibility is dynamic based on window state and user preference:
+**Settings Storage (localStorage)**:
+- Profile-based data separation in `{userData}/{PROFILE}/` directory
+- Features use `openStore(id, defaults, clear)` utility from `app/utils.js`
 
-- **Windows visible**: Dock icon shown (regardless of preference)
-- **No windows visible**: Dock icon hidden (unless preference enabled)
+**Datastore (TinyBase)**:
+- In-memory TinyBase store for structured data
+- Runs in main process with IPC handlers for renderer access
+- Schema defined in `app/datastore/schema.js`
+- Tables: `addresses`, `visits`, `content`, `tags`, `blobs`, `scripts_data`, `feeds`
 
-The `showInDockAndSwitcher` preference controls whether to *always* show the dock icon, even when no windows are open. When disabled (default), the dock icon only appears while Peek windows are visible.
+**Profile Management**:
+- Packaged app uses `default` profile
+- Running from source (`yarn start`) uses `dev` profile
+- `PROFILE` env var overrides automatic detection
 
-This is implemented via:
-- `getVisibleWindowCount()` - counts non-background visible windows
-- `updateDockVisibility()` - shows/hides dock based on window count + pref
-- Called from: window-open, window-show, maybeHideApp, prefs change
+## Common Pitfalls
 
-## App Icon Generation
+1. Don't use relative paths in peek:// URLs - use absolute paths
+2. Remember to unregister shortcuts when features unload
+3. Windows opened by features should be tracked and closed on unload
+4. Modal windows require both `modal: true` and `type: 'panel'`
+5. Window keys must be unique - use pattern like `peek:${address}`
+6. Check if items are enabled (`item.enabled == true`) before registering shortcuts
+7. Datastore API returns `{ success, data }` - always check `result.success`
+8. Pubsub subscriptions are keyed by source - same source subscribing twice overwrites
+9. **Never put backend-specific code in `app/`**
+10. **Run `yarn install` after Electron upgrades** - Native modules (better-sqlite3) must be recompiled for the new Electron ABI. The postinstall script handles this automatically, but you must run `yarn install` to trigger it. System Node and Electron have different ABIs even at the same major version (e.g., Node 24 = ABI 137, Electron 40 = ABI 143).
 
-The macOS app icon is generated from a source PNG using ImageMagick. The process applies rounded corners and adds padding to match macOS icon guidelines.
+## Code Style
 
-### Icon files in `assets/`
+- ES6 modules throughout (type: "module" in package.json)
+- Async/await preferred over callbacks
+- Console logging for debugging (controlled by DEBUG env var)
+- No TypeScript in app/, pure JavaScript
+- Uses `nodemon` for hot reload during development
 
-- `appicon-source.png` - Original source image (1232x1232, no rounding)
-- `appicon-rounded.png` - Processed version with rounded corners and padding (1024x1024)
-- `appicon.icns` - Final macOS icon file used by electron-builder
+## Security Notes
 
-### Regenerating the icon
+- This is a concept preview, NOT production-ready
+- No formal security audit performed
+- Different security model than traditional browsers
+- Be cautious with cross-origin access and custom APIs
 
-Requires ImageMagick (`brew install imagemagick`).
+## Mobile Development (Tauri iOS/Android)
+
+Mobile development uses the separate `peek-save` app in `backend/tauri-mobile/`.
+
+**CRITICAL - Build with Xcode GUI for iOS:**
+- NEVER run `xcodebuild` commands from terminal for final builds
+- Use Xcode GUI (Product → Build, Product → Run) for reliable builds
+
+**CRITICAL - Do NOT run `xcodegen generate`:**
+- The Xcode project has custom settings that xcodegen overwrites
+
+### Quick Start (One Command)
+
+The easiest way to set up mobile development with sync testing:
 
 ```bash
-SRC="assets/appicon-source.png"
-ROUNDED="assets/appicon-rounded.png"
+cd backend/tauri-mobile
 
-SIZE=1232
-RADIUS=222  # ~18% of size for rounded corners
+# First time: build both debug and release Rust libraries
+npm run build                    # Build frontend
+cd src-tauri
+cargo build --target aarch64-apple-ios-sim      # Debug (simulator)
+cargo build --target aarch64-apple-ios --release # Release (device)
+cd ..
 
-# Step 1: Apply rounded corners to source
-magick "$SRC" \
-  \( +clone -alpha extract \
-     -draw 'fill black polygon 0,0 0,'"$RADIUS $RADIUS"',0 fill white circle '"$RADIUS,$RADIUS $RADIUS"',0' \
-     \( +clone -flip \) -compose Multiply -composite \
-     \( +clone -flop \) -compose Multiply -composite \
-  \) -alpha off -compose CopyOpacity -composite \
-  /tmp/rounded-temp.png
-
-# Step 2: Add padding (scale to 80% and center on 1024x1024 canvas)
-magick /tmp/rounded-temp.png \
-  -resize 824x824 \
-  -gravity center \
-  -background transparent \
-  -extent 1024x1024 \
-  "$ROUNDED"
-
-# Step 3: Generate iconset and convert to icns
-mkdir -p assets/AppIcon.iconset
-for size in 16 32 64 128 256 512 1024; do
-  magick "$ROUNDED" -resize ${size}x${size} PNG32:"assets/AppIcon.iconset/icon_${size}x${size}.png"
-done
-
-# Create @2x variants
-cp assets/AppIcon.iconset/icon_32x32.png assets/AppIcon.iconset/icon_16x16@2x.png
-cp assets/AppIcon.iconset/icon_64x64.png assets/AppIcon.iconset/icon_32x32@2x.png
-cp assets/AppIcon.iconset/icon_256x256.png assets/AppIcon.iconset/icon_128x128@2x.png
-cp assets/AppIcon.iconset/icon_512x512.png assets/AppIcon.iconset/icon_256x256@2x.png
-cp assets/AppIcon.iconset/icon_1024x1024.png assets/AppIcon.iconset/icon_512x512@2x.png
-rm assets/AppIcon.iconset/icon_64x64.png assets/AppIcon.iconset/icon_1024x1024.png
-
-iconutil -c icns assets/AppIcon.iconset -o assets/appicon.icns
-rm -rf assets/AppIcon.iconset /tmp/rounded-temp.png
+# Start everything (servers, configure iOS, seed test data, open Xcode)
+npm run dev:ios
 ```
 
-### Icon design notes
+`npm run dev:ios` does all of this automatically:
+1. Resets server data for a clean slate
+2. Starts backend server on a random port (10000-19999)
+3. Starts frontend dev server on port 1420
+4. Configures iOS simulator with server URL and API key
+5. Copies both debug and release Rust libraries
+6. Opens Xcode
+7. Seeds test data (3 items on server, 3 on iOS)
 
-- Rounded corners at ~18% radius matches common macOS app icon style
-- 80% content size with 10% padding on each side matches Apple HIG
-- Source image should be square, ideally 1024x1024 or larger
+### Available npm Scripts
 
-## Known Issues
+```bash
+# Development
+npm run dev:ios      # Full dev setup (servers + config + seed + Xcode)
+npm run xcode        # Just copy libraries and open Xcode
+npm run seed         # Seed test data (needs SERVER_URL and API_KEY env vars)
+npm run reset:server # Delete server data directory
 
-- **Tray icon in packaged builds**: Tray icon displays correctly in debug mode but not in packaged app builds. Works fine in dev.
+# Building
+npm run build        # Build frontend (tsc + vite)
+npm run build:ios    # Build frontend + debug Rust library
+npm run build:ios:release  # Build frontend + release Rust library
+
+# Testing
+npm run test         # Run integration tests
+npm run test:verbose # Run tests with verbose output
+```
+
+### iOS Build Process (Manual)
+
+If you need to build manually instead of using `npm run dev:ios`:
+
+```bash
+# 1. Build frontend
+cd backend/tauri-mobile && npm install && npm run build
+
+# 2. Build debug library (for simulator)
+cd src-tauri
+cargo tauri build --target aarch64-apple-ios-sim --debug
+mkdir -p gen/apple/Externals/arm64/Debug
+cp target/aarch64-apple-ios-sim/debug/deps/libpeek_save_lib.a gen/apple/Externals/arm64/Debug/libapp.a
+
+# 3. Build release library (for device)
+cargo tauri build --target aarch64-apple-ios
+mkdir -p gen/apple/Externals/arm64/Release
+cp target/aarch64-apple-ios/release/deps/libpeek_save_lib.a gen/apple/Externals/arm64/Release/libapp.a
+
+# 4. Create assets symlink (if missing)
+ln -s ../../../dist gen/apple/assets
+
+# 5. Open Xcode and build from GUI
+open gen/apple/peek-save.xcodeproj
+```
+
+### Testing Bidirectional Sync
+
+After running `npm run dev:ios`, test data is automatically seeded:
+
+**Server has 3 items:**
+- URL: https://github.com/from-server (tags: server, github)
+- URL: https://example.com/from-server-1 (tags: server, test)
+- Text: "This is a text note from the server" (tags: server, note)
+
+**iOS Simulator has 3 items:**
+- URL: https://mobile-only-1.example.com (tags: mobile, local)
+- URL: https://mobile-news.example.com (tags: local)
+- Text: "This text was created on mobile only" (tags: mobile)
+
+**To test:**
+1. Build and run in Xcode (Cmd+R)
+2. Go to Settings in the app
+3. Settings should already be configured (server URL and API key)
+4. Tap **Sync All** to pull and push
+5. After sync, both server and iOS should have 6 items
+
+**Gotchas:**
+- The `gen/apple/assets` symlink must exist or Xcode fails with "No such file or directory"
+- Debug scheme = simulator, Release scheme = device
+- If Rust code changes, rebuild the library and copy again
+- The "Build Rust Code" pre-build script in Xcode can hang indefinitely - pre-building avoids this
+- iOS simulator can't reach `localhost` - use Mac's IP address (dev:ios handles this automatically)
+
+## Server Backend (Webhook API)
+
+The server backend (`backend/server/`) is a remote HTTP API for syncing data from the mobile app. It's separate from the desktop backends - it doesn't implement the Peek API, it's a standalone Node.js server.
+
+### Server Commands
+```bash
+# From project root
+yarn server:install      # Install dependencies (first time)
+yarn server:start        # Run production server (port 3000)
+yarn server:dev          # Run with hot reload
+yarn server:test         # Run unit tests (92 tests)
+yarn server:healthcheck  # Verify server starts and responds
+
+# From backend/server/
+npm install
+npm start
+npm run dev
+npm test
+npm run test:api:local   # Test against local server (needs PEEK_LOCAL_KEY)
+npm run test:api:prod    # Test against production (needs PEEK_PROD_KEY, PEEK_PROD_URL)
+```
+
+### Server Architecture
+- **Hono** - Lightweight HTTP framework (like Express but faster)
+- **better-sqlite3** - SQLite database (same as Electron backend)
+- **Multi-user** - Each user gets isolated database in `./data/{userId}/`
+- **API key auth** - Bearer token authentication, keys hashed with SHA-256
+
+### Server API Endpoints
+All endpoints except `/` require `Authorization: Bearer <api_key>` header.
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | GET | Health check (public) |
+| `/webhook` | POST | Receive items from mobile (`{ urls, texts, tagsets }`) |
+| `/urls` | GET | List saved URLs |
+| `/urls/:id` | DELETE | Delete URL |
+| `/urls/:id/tags` | PATCH | Update URL tags |
+| `/texts` | GET/POST | List or create texts |
+| `/tagsets` | GET/POST | List or create tagsets |
+| `/images` | GET/POST | List or upload images |
+| `/images/:id` | GET/DELETE | Get or delete image |
+| `/items` | GET/POST | Unified endpoint (filter with `?type=`) |
+| `/tags` | GET | List tags by frecency |
+
+### Server Deployment (Railway)
+
+> **For the comprehensive deployment guide**, see the "Railway Deployment (Peek Server)" section in `CLAUDE.md`. This includes step-by-step workflow, user management, production testing, and troubleshooting.
+
+The server is configured for Railway deployment.
+
+**Initial Setup:**
+1. Connect Railway to `backend/server/` subdirectory
+2. Attach a persistent volume, set `DATA_DIR` env var to mount path
+3. Create users via the `users.js` module
+
+**Deploying Updates:**
+```bash
+# Link to project (one-time, from backend/server/)
+railway link -p <project-name> -s <service-name> -e production
+
+# Always run tests first
+npm test
+
+# Deploy
+railway up -d
+
+# Check logs
+railway logs -n 50
+
+# Health check
+curl https://peek-node.up.railway.app/
+```
+
+**Deployment Order (Server + Mobile):**
+1. **Server first** - stateless, has auto-migrations that run on first request
+2. **Mobile second** - works offline, adapts to server changes
+3. One-way sync only: mobile → server (no pull/download sync yet)
+
+**Migration Gotcha:**
+When adding database columns via migration, ensure indexes on those columns are created AFTER the column migration runs, not in the initial CREATE TABLE statement.
+
+### Server Database Schema
+Different from desktop datastore - optimized for mobile sync:
+- `items` - Unified table (type: url/text/tagset/image)
+- `tags` - Tag names with frecency scoring
+- `item_tags` - Many-to-many junction
+- `settings` - Key-value config
+
+Images stored on disk in `./data/{userId}/images/` with content-hash deduplication.

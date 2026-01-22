@@ -13,6 +13,7 @@ Be able to use the app on mobile and desktop with the safety of knowing there's 
 Today
 - [ ][mobile] mobile editing ux - improve add/edit flows, fix any rough edges in item creation and editing
 - [ ][desktop] now that data syncing from server and mobile, add a new extension for experimenting with visualizations of tags - start by porting over the tag viewing/filtering system from the mobile app, for a desktop view, so we can search, view and edit notes/urls/tagsets/images by tag button interfaces, see also the Groups & Tags UX section
+- [ ][all] add user profiles and profile switching
 
 Later
 - [ ][desktop] access to notes on filesystem, syncing them as markdown files in ~/sync/Notes/peek
@@ -48,8 +49,8 @@ Navigation
 
 data model and on-disk
 - [ ][desktop] profile at OS level, eg the electron+chromium profile (and tauri)
-- [ ][mobile] switches db
-- [ ][server] switches db
+- [ ][mobile] switches db file
+- [ ][server] switches db file
 - [ ] profiles across platform are connected by api key for now
   - [ ] each profile has key generated at creation time
   - [ ] get key from one to initialize sync with another
@@ -64,43 +65,6 @@ mobile/desktop
 - [ ] can delete profiles (prompt - no undo!)
   - [ ] profiles only deleted on device, does not sync
 - [ ] must always have at least one profile
-
-## Extension back-end
-
-- [ ] tbd
-
-## Chaining / Connecting
-
-Now that we have commands, we need to be able to chain them together for more complex "workbench-y" interactions. Chaining reqs inputs/outputs (eg activities/intents/applets), so that API unlocks the rest.
-
-Example flow:
-- open a web page
-- cmd: show lists -> shows list of lists detected in the page
-- arrow up/down and choose one -> shows preview of the selected list
-- cmd: csv -> shows preview of csv
-- cmd: save file -> prompts to download
-
-- [ ] Connector API: Chaining reqs inputs/outputs (eg activities/intents/applets)
-  - [ ] Determine if this should be a new API or reuses command registration
-  - [ ] Extension API to register as a connector handler for a set of mime/types
-  - [ ] Extension API to emit data to handlers for the specified mime type output (or maybe we allow multiple like the web clipboard API does)
-- [ ] Cmd support for chaining flow using "connectors"
-  - [ ] Add Connector Handler support, so data can move one-way from a command to another
-  - [ ] Filter first on mime type matches
-  - [ ] Policy for determing best matching command order (using frecency + adaptive matching)
-- [ ] Support previewing of the data in between steps
-  - [ ] Modular system for plugging renderers in for generating previews/editors of mime types
-  - [ ] Doesn't need to be an extension API yet, but we'll need a way for that later maybe
-  - [ ] Preview panel is visually connected to the cmd panel, which should stay visible or visually connected somehow
-- [ ] Cmd UI updates
-  - [ ] Cmd panel can show dropdown listing matching commands
-  - [ ] User can navigate list w/ arrow up/down, j/k and tab/shift-tab
-  - [ ] If cmd response has a previewAddress property, show a preview pane w/ that address
-
-examples
-- [ ] execute a command which executes a userScript against a loaded page, detects list/table-ish things (with previews), lets you select one, which it exports as a "list" out (CSV? JSON?)
-- [ ] links on page -> list -> button cloud -> kb activate (then shorten to "link cloud" cmd)
-- [ ] compound cmds (like "link cloud". uses chaining? like a chain package?)
 
 ## Modes/scopes
 
@@ -272,6 +236,43 @@ desktop
 
 - [ ] app+browser history swiss army knife for querying and generating url lists via chaining, saving for offline (->txt) etc, maybe using connectors
 
+
+## Chaining / Connecting
+
+Now that we have commands, we need to be able to chain them together for more complex "workbench-y" interactions. Chaining reqs inputs/outputs (eg activities/intents/applets), so that API unlocks the rest.
+
+Example flow:
+- open a web page
+- cmd: show lists -> shows list of lists detected in the page
+- arrow up/down and choose one -> shows preview of the selected list
+- cmd: csv -> shows preview of csv
+- cmd: save file -> prompts to download
+
+- [ ] Connector API: Chaining reqs inputs/outputs (eg activities/intents/applets)
+  - [ ] Determine if this should be a new API or reuses command registration
+  - [ ] Extension API to register as a connector handler for a set of mime/types
+  - [ ] Extension API to emit data to handlers for the specified mime type output (or maybe we allow multiple like the web clipboard API does)
+- [ ] Cmd support for chaining flow using "connectors"
+  - [ ] Add Connector Handler support, so data can move one-way from a command to another
+  - [ ] Filter first on mime type matches
+  - [ ] Policy for determing best matching command order (using frecency + adaptive matching)
+- [ ] Support previewing of the data in between steps
+  - [ ] Modular system for plugging renderers in for generating previews/editors of mime types
+  - [ ] Doesn't need to be an extension API yet, but we'll need a way for that later maybe
+  - [ ] Preview panel is visually connected to the cmd panel, which should stay visible or visually connected somehow
+- [ ] Cmd UI updates
+  - [ ] Cmd panel can show dropdown listing matching commands
+  - [ ] User can navigate list w/ arrow up/down, j/k and tab/shift-tab
+  - [ ] If cmd response has a previewAddress property, show a preview pane w/ that address
+
+examples
+- [ ] execute a command which executes a userScript against a loaded page, detects list/table-ish things (with previews), lets you select one, which it exports as a "list" out (CSV? JSON?)
+- [ ] links on page -> list -> button cloud -> kb activate (then shorten to "link cloud" cmd)
+- [ ] compound cmds (like "link cloud". uses chaining? like a chain package?)
+
+## Extension back-end
+
+- [ ] tbd
 
 ## Server Backend
 

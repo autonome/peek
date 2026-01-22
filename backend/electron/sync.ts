@@ -28,55 +28,76 @@ import {
   tagItem,
 } from './datastore.js';
 import { DEBUG } from './config.js';
+import {
+  getActiveProfile,
+  getSyncConfig as getProfileSyncConfig,
+  updateLastSyncTime,
+} from './profiles.js';
 
 // ==================== Settings Storage ====================
 
-const SYNC_SETTINGS_KEY = 'sync';
+// Note: Sync configuration is now stored per-profile in profiles.db
+// Legacy extension_settings storage is deprecated
 
 /**
- * Get sync configuration from settings
+ * Get sync configuration for the active profile
  */
 export function getSyncConfig(): SyncConfig {
-  const db = getDb();
-  const getKey = (key: string): string | null => {
-    const row = db.prepare(
-      'SELECT value FROM extension_settings WHERE extensionId = ? AND key = ?'
-    ).get(SYNC_SETTINGS_KEY, key) as { value: string } | undefined;
-    if (!row?.value) return null;
-    try {
-      return JSON.parse(row.value);
-    } catch {
-      return row.value;
-    }
-  };
+  try {
+    const activeProfile = getActiveProfile();
+    const profileSyncConfig = getProfileSyncConfig(activeProfile.id);
 
-  return {
-    serverUrl: getKey('serverUrl') || '',
-    apiKey: getKey('apiKey') || '',
-    lastSyncTime: parseInt(getKey('lastSyncTime') || '0', 10) || 0,
-    autoSync: getKey('autoSync') === 'true',
-  };
+    if (!profileSyncConfig) {
+      // Sync not configured for this profile
+      return {
+        serverUrl: '',
+        apiKey: '',
+        lastSyncTime: 0,
+        autoSync: false,
+      };
+    }
+
+    // Construct full sync config from profile data
+    // Note: serverUrl is not stored per-profile, using default for now
+    // In the future, we could make this configurable per-profile
+    const serverUrl = process.env.SYNC_SERVER_URL || 'https://peek-node.up.railway.app';
+
+    return {
+      serverUrl,
+      apiKey: profileSyncConfig.apiKey,
+      lastSyncTime: activeProfile.lastSyncAt || 0,
+      autoSync: false, // TODO: Add autoSync to profile schema
+    };
+  } catch (error) {
+    DEBUG && console.error('[sync] Failed to get sync config:', error);
+    return {
+      serverUrl: '',
+      apiKey: '',
+      lastSyncTime: 0,
+      autoSync: false,
+    };
+  }
 }
 
 /**
- * Save sync configuration to settings
+ * Save sync configuration to active profile
+ * Note: This is a compatibility wrapper. Use profile functions directly for new code.
  */
 export function setSyncConfig(config: Partial<SyncConfig>): void {
-  const db = getDb();
-  const timestamp = Date.now();
+  try {
+    const activeProfile = getActiveProfile();
 
-  const setKey = (key: string, value: string | number | boolean): void => {
-    const jsonValue = JSON.stringify(value);
-    db.prepare(`
-      INSERT OR REPLACE INTO extension_settings (id, extensionId, key, value, updatedAt)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(`${SYNC_SETTINGS_KEY}_${key}`, SYNC_SETTINGS_KEY, key, jsonValue, timestamp);
-  };
+    // Update lastSyncTime if provided
+    if (config.lastSyncTime !== undefined) {
+      updateLastSyncTime(activeProfile.id, config.lastSyncTime);
+    }
 
-  if (config.serverUrl !== undefined) setKey('serverUrl', config.serverUrl);
-  if (config.apiKey !== undefined) setKey('apiKey', config.apiKey);
-  if (config.lastSyncTime !== undefined) setKey('lastSyncTime', config.lastSyncTime);
-  if (config.autoSync !== undefined) setKey('autoSync', config.autoSync);
+    // Note: serverUrl and apiKey are now managed through profile sync config
+    // Use enableSync() from profiles.ts to set apiKey
+    // serverUrl is environment-based, not per-profile
+  } catch (error) {
+    DEBUG && console.error('[sync] Failed to set sync config:', error);
+  }
 }
 
 // ==================== Timestamp Conversion ====================
@@ -151,11 +172,20 @@ export async function pullFromServer(
 ): Promise<PullResult> {
   DEBUG && console.log('[sync] Pulling from server...', since ? `since ${toISOString(since)}` : 'full');
 
-  // Fetch items from server
+  // Get active profile to determine which server profile to sync with
+  const activeProfile = getActiveProfile();
+  const profileSyncConfig = getProfileSyncConfig(activeProfile.id);
+
+  if (!profileSyncConfig) {
+    throw new Error('Sync not configured for active profile');
+  }
+
+  // Fetch items from server with profile parameter
   let path = '/items';
   if (since && since > 0) {
     path = `/items/since/${toISOString(since)}`;
   }
+  path += `?profile=${encodeURIComponent(profileSyncConfig.serverProfileSlug)}`;
 
   const response = await serverFetch<{ items: ServerItem[] }>(serverUrl, apiKey, path);
   const serverItems = response.items;
@@ -327,6 +357,14 @@ async function pushSingleItem(
 ): Promise<void> {
   const db = getDb();
 
+  // Get active profile to determine which server profile to sync with
+  const activeProfile = getActiveProfile();
+  const profileSyncConfig = getProfileSyncConfig(activeProfile.id);
+
+  if (!profileSyncConfig) {
+    throw new Error('Sync not configured for active profile');
+  }
+
   // Get tags for this item
   const tags = getItemTags(item.id);
   const tagNames = tags.map((t: Tag) => t.name);
@@ -359,11 +397,12 @@ async function pushSingleItem(
     body.metadata = metadata;
   }
 
-  // POST to server
+  // POST to server with profile parameter
+  const path = `/items?profile=${encodeURIComponent(profileSyncConfig.serverProfileSlug)}`;
   const response = await serverFetch<{ id: string; created: boolean }>(
     serverUrl,
     apiKey,
-    '/items',
+    path,
     { method: 'POST', body }
   );
 
@@ -382,7 +421,7 @@ async function pushSingleItem(
  *
  * 1. Pull from server (including updates since last sync)
  * 2. Push local changes to server
- * 3. Update lastSyncTime
+ * 3. Update lastSyncTime in profile
  */
 export async function syncAll(serverUrl: string, apiKey: string): Promise<SyncResult> {
   const config = getSyncConfig();
@@ -404,8 +443,9 @@ export async function syncAll(serverUrl: string, apiKey: string): Promise<SyncRe
     const pushResult = await pushToServer(serverUrl, apiKey, config.lastSyncTime);
     pushed = pushResult.pushed;
 
-    // Update last sync time
-    setSyncConfig({ lastSyncTime: startTime });
+    // Update last sync time in active profile
+    const activeProfile = getActiveProfile();
+    updateLastSyncTime(activeProfile.id, startTime);
 
     DEBUG && console.log(`[sync] Sync complete: ${pulled} pulled, ${pushed} pushed, ${conflicts} conflicts`);
 

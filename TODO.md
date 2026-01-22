@@ -327,6 +327,7 @@ examples
 
 ## Mobile
 
+- [ ] add device ID tracking to item metadata (like desktop - stores `_sync.createdBy` and `_sync.modifiedBy` in metadata JSON)
 - [ ] fix big bottom bar showing again
 - [ ] show oembed, or at least page title
 - [ ] save images to server (look at how binaries are stored, and across profiles)

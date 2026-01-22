@@ -218,34 +218,42 @@ const loadTags = async () => {
     state.tags = result.data;
     debug && console.log('Loaded tags:', state.tags.length);
 
-    // Fetch address count for each tag
+    // Fetch item count for each tag
     for (const tag of state.tags) {
-      const addressResult = await api.datastore.getAddressesByTag(tag.id);
-      tag.addressCount = addressResult.success ? addressResult.data.length : 0;
+      const itemsResult = await api.datastore.getItemsByTag(tag.id);
+      tag.addressCount = itemsResult.success ? itemsResult.data.length : 0;
     }
   } else {
     console.error('Failed to load tags:', result.error);
     state.tags = [];
   }
 
-  // Get count of untagged addresses
-  const untaggedResult = await api.datastore.getUntaggedAddresses();
-  if (untaggedResult.success) {
-    state.untaggedCount = untaggedResult.data.length;
-    debug && console.log('Untagged addresses:', state.untaggedCount);
+  // Get count of untagged items
+  // Query all items and filter out those with tags
+  const allItemsResult = await api.datastore.queryItems({});
+  if (allItemsResult.success) {
+    const untaggedItems = [];
+    for (const item of allItemsResult.data) {
+      const tagsResult = await api.datastore.getItemTags(item.id);
+      if (tagsResult.success && tagsResult.data.length === 0) {
+        untaggedItems.push(item);
+      }
+    }
+    state.untaggedCount = untaggedItems.length;
+    debug && console.log('Untagged items:', state.untaggedCount);
   } else {
     state.untaggedCount = 0;
   }
 };
 
 /**
- * Load addresses for a specific tag
+ * Load items for a specific tag
  */
 const loadAddressesForTag = async (tagId) => {
-  const result = await api.datastore.getAddressesByTag(tagId);
+  const result = await api.datastore.getItemsByTag(tagId);
   if (result.success) {
     state.addresses = result.data;
-    debug && console.log('Loaded addresses for tag:', state.addresses.length);
+    debug && console.log('Loaded items for tag:', state.addresses.length);
   } else {
     console.error('Failed to load addresses:', result.error);
     state.addresses = [];
@@ -341,11 +349,18 @@ const showAddresses = async (tag) => {
   state.currentTag = tag;
   state.searchQuery = '';
 
-  // Load addresses - handle special untagged group
+  // Load items - handle special untagged group
   if (tag.isSpecial && tag.id === '__untagged__') {
-    const result = await api.datastore.getUntaggedAddresses();
-    if (result.success) {
-      state.addresses = result.data;
+    const allItemsResult = await api.datastore.queryItems({});
+    if (allItemsResult.success) {
+      const untaggedItems = [];
+      for (const item of allItemsResult.data) {
+        const tagsResult = await api.datastore.getItemTags(item.id);
+        if (tagsResult.success && tagsResult.data.length === 0) {
+          untaggedItems.push(item);
+        }
+      }
+      state.addresses = untaggedItems;
     } else {
       state.addresses = [];
     }

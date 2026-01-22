@@ -60,6 +60,7 @@ import {
   enableSync,
   disableSync,
   getSyncConfig as getProfileSyncConfig,
+  updateLastSyncTime,
 } from './profiles.js';
 
 import {
@@ -2096,7 +2097,13 @@ export function registerSyncHandlers(): void {
       }
 
       const since = data.since !== undefined ? data.since : config.lastSyncTime;
+      const syncTime = Date.now();
       const result = await pullFromServer(config.serverUrl, config.apiKey, since);
+
+      // Update lastSyncTime after successful pull
+      const activeProfile = getActiveProfile();
+      updateLastSyncTime(activeProfile.id, syncTime);
+
       return { success: true, data: result };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -2113,7 +2120,13 @@ export function registerSyncHandlers(): void {
       }
 
       const since = data.since !== undefined ? data.since : config.lastSyncTime;
+      const syncTime = Date.now();
       const result = await pushToServer(config.serverUrl, config.apiKey, since);
+
+      // Update lastSyncTime after successful push
+      const activeProfile = getActiveProfile();
+      updateLastSyncTime(activeProfile.id, syncTime);
+
       return { success: true, data: result };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

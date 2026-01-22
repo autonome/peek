@@ -32,6 +32,7 @@ import {
   getActiveProfile,
   getSyncConfig as getProfileSyncConfig,
   updateLastSyncTime,
+  enableSync,
 } from './profiles.js';
 
 // ==================== Settings Storage ====================
@@ -50,7 +51,7 @@ export function getSyncConfig(): SyncConfig {
     if (!profileSyncConfig) {
       // Sync not configured for this profile
       return {
-        serverUrl: '',
+        serverUrl: getServerUrl(),
         apiKey: '',
         lastSyncTime: 0,
         autoSync: false,
@@ -58,12 +59,8 @@ export function getSyncConfig(): SyncConfig {
     }
 
     // Construct full sync config from profile data
-    // Note: serverUrl is not stored per-profile, using default for now
-    // In the future, we could make this configurable per-profile
-    const serverUrl = process.env.SYNC_SERVER_URL || 'https://peek-node.up.railway.app';
-
     return {
-      serverUrl,
+      serverUrl: getServerUrl(),
       apiKey: profileSyncConfig.apiKey,
       lastSyncTime: activeProfile.lastSyncAt || 0,
       autoSync: false, // TODO: Add autoSync to profile schema
@@ -71,7 +68,7 @@ export function getSyncConfig(): SyncConfig {
   } catch (error) {
     DEBUG && console.error('[sync] Failed to get sync config:', error);
     return {
-      serverUrl: '',
+      serverUrl: getServerUrl(),
       apiKey: '',
       lastSyncTime: 0,
       autoSync: false,
@@ -80,21 +77,82 @@ export function getSyncConfig(): SyncConfig {
 }
 
 /**
+ * Get server URL from settings or environment
+ * Priority: 1. User-configured (extension_settings), 2. Env var, 3. Default
+ */
+function getServerUrl(): string {
+  const db = getDb();
+
+  try {
+    // Try to get from extension_settings
+    const row = db.prepare(`
+      SELECT value FROM extension_settings
+      WHERE extensionId = 'sync' AND key = 'serverUrl'
+    `).get() as { value: string } | undefined;
+
+    if (row && row.value) {
+      // Values in extension_settings are JSON-stringified
+      try {
+        return JSON.parse(row.value);
+      } catch {
+        // If parse fails, return as-is (shouldn't happen)
+        return row.value;
+      }
+    }
+  } catch (error) {
+    // If query fails, fall through to defaults
+  }
+
+  // Fall back to env var or default
+  return process.env.SYNC_SERVER_URL || 'https://peek-node.up.railway.app';
+}
+
+/**
+ * Save server URL to settings
+ */
+function setServerUrl(url: string): void {
+  const db = getDb();
+
+  // Values in extension_settings must be JSON-stringified
+  const jsonValue = JSON.stringify(url);
+
+  db.prepare(`
+    INSERT OR REPLACE INTO extension_settings (id, extensionId, key, value, updatedAt)
+    VALUES (?, 'sync', 'serverUrl', ?, ?)
+  `).run(`sync-serverUrl`, jsonValue, Date.now());
+}
+
+/**
  * Save sync configuration to active profile
- * Note: This is a compatibility wrapper. Use profile functions directly for new code.
+ * Note: This is a compatibility wrapper for the Sync UI.
+ * Saves serverUrl (global), apiKey, and serverProfileSlug (per-profile).
  */
 export function setSyncConfig(config: Partial<SyncConfig>): void {
   try {
     const activeProfile = getActiveProfile();
 
+    // Update serverUrl if provided (stored globally in extension_settings)
+    if (config.serverUrl !== undefined && config.serverUrl !== '') {
+      setServerUrl(config.serverUrl);
+      DEBUG && console.log(`[sync] Updated server URL: ${config.serverUrl}`);
+    }
+
+    // Update apiKey if provided
+    // For now, assume serverProfileSlug is "default" when set from Sync UI
+    // (Users can customize via Profiles UI for advanced per-profile mapping)
+    if (config.apiKey !== undefined && config.apiKey !== '') {
+      const currentConfig = getProfileSyncConfig(activeProfile.id);
+      const serverProfileSlug = currentConfig?.serverProfileSlug || 'default';
+
+      // Enable sync with the provided apiKey
+      enableSync(activeProfile.id, config.apiKey, serverProfileSlug);
+      DEBUG && console.log(`[sync] Updated sync config for profile ${activeProfile.slug}`);
+    }
+
     // Update lastSyncTime if provided
     if (config.lastSyncTime !== undefined) {
       updateLastSyncTime(activeProfile.id, config.lastSyncTime);
     }
-
-    // Note: serverUrl and apiKey are now managed through profile sync config
-    // Use enableSync() from profiles.ts to set apiKey
-    // serverUrl is environment-based, not per-profile
   } catch (error) {
     DEBUG && console.error('[sync] Failed to set sync config:', error);
   }
@@ -187,6 +245,8 @@ export async function pullFromServer(
   }
   path += `?profile=${encodeURIComponent(profileSyncConfig.serverProfileSlug)}`;
 
+  DEBUG && console.log(`[sync] Fetching from: ${serverUrl}${path}`);
+
   const response = await serverFetch<{ items: ServerItem[] }>(serverUrl, apiKey, path);
   const serverItems = response.items;
 
@@ -194,14 +254,16 @@ export async function pullFromServer(
 
   let pulled = 0;
   let conflicts = 0;
+  let skipped = 0;
 
   for (const serverItem of serverItems) {
     const result = mergeServerItem(serverItem);
     if (result === 'pulled') pulled++;
     if (result === 'conflict') conflicts++;
+    if (result === 'skipped') skipped++;
   }
 
-  DEBUG && console.log(`[sync] Pull complete: ${pulled} pulled, ${conflicts} conflicts`);
+  DEBUG && console.log(`[sync] Pull complete: ${pulled} pulled, ${conflicts} conflicts, ${skipped} skipped`);
 
   return { pulled, conflicts };
 }
@@ -269,6 +331,7 @@ function mergeServerItem(serverItem: ServerItem): 'pulled' | 'conflict' | 'skipp
   }
 
   // Same timestamp - skip
+  DEBUG && console.log(`[sync] Skipping item (same timestamp): ${serverItem.id}`);
   return 'skipped';
 }
 

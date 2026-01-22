@@ -28,6 +28,7 @@ import type {
 } from '../types/index.js';
 import { tableNames } from '../types/index.js';
 import { DEBUG } from './config.js';
+import { addDeviceMetadata } from './device.js';
 
 // SQL Schema
 const createTableStatements = `
@@ -969,6 +970,25 @@ export function addItem(type: ItemType, options: ItemOptions = {}): { id: string
   const itemId = generateId('item');
   const timestamp = now();
 
+  // Parse existing metadata and add device tracking
+  let metadata: Record<string, unknown> = {};
+  if (options.metadata) {
+    try {
+      metadata = typeof options.metadata === 'string'
+        ? JSON.parse(options.metadata)
+        : options.metadata;
+    } catch {
+      // Invalid JSON, start fresh
+    }
+  }
+
+  // Add device metadata (only if not from sync - sync items preserve original metadata)
+  if (!options.syncSource) {
+    metadata = addDeviceMetadata(metadata, true);
+  }
+
+  const metadataJson = JSON.stringify(metadata);
+
   getDb().prepare(`
     INSERT INTO items (id, type, content, mimeType, metadata, syncId, syncSource, createdAt, updatedAt, deletedAt, starred, archived)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
@@ -977,7 +997,7 @@ export function addItem(type: ItemType, options: ItemOptions = {}): { id: string
     type,
     options.content ?? null,
     options.mimeType || '',
-    options.metadata || '{}',
+    metadataJson,
     options.syncId || '',
     options.syncSource || '',
     timestamp,
@@ -1014,8 +1034,43 @@ export function updateItem(itemId: string, options: ItemOptions): boolean {
     values.push(options.mimeType);
   }
   if (options.metadata !== undefined) {
+    // Get existing item to merge metadata
+    const existingItem = getItem(itemId);
+    let metadata: Record<string, unknown> = {};
+
+    // Parse existing metadata
+    if (existingItem && existingItem.metadata) {
+      try {
+        metadata = typeof existingItem.metadata === 'string'
+          ? JSON.parse(existingItem.metadata)
+          : existingItem.metadata;
+      } catch {
+        // Invalid JSON, start fresh
+      }
+    }
+
+    // Parse new metadata
+    let newMetadata: Record<string, unknown> = {};
+    if (options.metadata) {
+      try {
+        newMetadata = typeof options.metadata === 'string'
+          ? JSON.parse(options.metadata)
+          : options.metadata;
+      } catch {
+        // Invalid JSON, use empty object
+      }
+    }
+
+    // Merge: new metadata overwrites existing, except _sync which is merged
+    metadata = { ...metadata, ...newMetadata };
+
+    // Add device metadata for modification (only if not from sync)
+    if (!options.syncSource) {
+      metadata = addDeviceMetadata(metadata, false);
+    }
+
     updates.push('metadata = ?');
-    values.push(options.metadata);
+    values.push(JSON.stringify(metadata));
   }
   if (options.syncId !== undefined) {
     updates.push('syncId = ?');

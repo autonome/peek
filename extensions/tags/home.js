@@ -58,19 +58,19 @@ const init = async () => {
  * Load all data from datastore
  */
 const loadData = async () => {
-  // Load all addresses
-  const addressResult = await api.datastore.queryAddresses({});
-  if (addressResult.success) {
-    state.items = addressResult.data;
-    debug && console.log('[tags] Loaded addresses:', state.items.length);
+  // Load all items (unified: addresses, texts, tagsets, images)
+  const itemsResult = await api.datastore.queryItems({});
+  if (itemsResult.success) {
+    state.items = itemsResult.data;
+    debug && console.log('[tags] Loaded items:', state.items.length);
   } else {
-    console.error('[tags] Failed to load addresses:', addressResult.error);
+    console.error('[tags] Failed to load items:', itemsResult.error);
     state.items = [];
   }
 
-  // Load tags for each address
+  // Load tags for each item
   for (const item of state.items) {
-    const tagsResult = await api.datastore.getAddressTags(item.id);
+    const tagsResult = await api.datastore.getItemTags(item.id);
     if (tagsResult.success) {
       state.itemTags.set(item.id, tagsResult.data);
     }
@@ -299,13 +299,15 @@ const activateSelected = () => {
  * Update filter button counts
  */
 const updateFilterCounts = () => {
-  // For now, all items are pages (addresses)
-  const pageCount = state.items.length;
+  const pageCount = state.items.filter(item => !item.type || item.type === 'url' || item.uri).length;
+  const textCount = state.items.filter(item => item.type === 'text').length;
+  const tagsetCount = state.items.filter(item => item.type === 'tagset').length;
+  const imageCount = state.items.filter(item => item.type === 'image').length;
 
   document.querySelector('[data-count="page"]').textContent = pageCount;
-  document.querySelector('[data-count="text"]').textContent = '0';
-  document.querySelector('[data-count="tagset"]').textContent = '0';
-  document.querySelector('[data-count="image"]').textContent = '0';
+  document.querySelector('[data-count="text"]').textContent = textCount;
+  document.querySelector('[data-count="tagset"]').textContent = tagsetCount;
+  document.querySelector('[data-count="image"]').textContent = imageCount;
 };
 
 /**
@@ -314,9 +316,15 @@ const updateFilterCounts = () => {
 const getFilteredItems = () => {
   let items = [...state.items];
 
-  // Filter by type (currently only pages)
-  if (state.activeFilter !== 'all' && state.activeFilter !== 'page') {
-    return []; // No other item types yet
+  // Filter by type
+  if (state.activeFilter !== 'all') {
+    items = items.filter(item => {
+      const itemType = item.type || (item.uri ? 'url' : null);
+      if (state.activeFilter === 'page') {
+        return itemType === 'url' || !itemType;
+      }
+      return itemType === state.activeFilter;
+    });
   }
 
   // Filter by active tag
@@ -331,11 +339,20 @@ const getFilteredItems = () => {
   if (state.searchQuery) {
     const q = state.searchQuery.toLowerCase();
     items = items.filter(item => {
-      const titleMatch = (item.title || '').toLowerCase().includes(q);
-      const urlMatch = item.uri.toLowerCase().includes(q);
       const tags = state.itemTags.get(item.id) || [];
       const tagMatch = tags.some(t => t.name.toLowerCase().includes(q));
-      return titleMatch || urlMatch || tagMatch;
+
+      // Handle both old address schema and new item schema
+      if (item.uri) {
+        // Old address schema
+        const titleMatch = (item.title || '').toLowerCase().includes(q);
+        const urlMatch = item.uri.toLowerCase().includes(q);
+        return titleMatch || urlMatch || tagMatch;
+      } else {
+        // New item schema
+        const contentMatch = (item.content || '').toLowerCase().includes(q);
+        return contentMatch || tagMatch;
+      }
     });
   }
 
@@ -482,14 +499,44 @@ const createItemCard = (item) => {
 
   const tags = state.itemTags.get(item.id) || [];
 
-  const faviconUrl = item.favicon || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🌐</text></svg>';
+  // Handle both old address schema and new item schema
+  const isAddress = !!item.uri;
+  const itemType = item.type || 'url';
+
+  let title, subtitle, faviconUrl;
+
+  if (isAddress) {
+    // Old address schema
+    title = item.title || item.uri;
+    subtitle = item.uri;
+    faviconUrl = item.favicon || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🌐</text></svg>';
+  } else {
+    // New item schema
+    if (itemType === 'url') {
+      title = item.content;
+      subtitle = item.content;
+      faviconUrl = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🌐</text></svg>';
+    } else if (itemType === 'text') {
+      title = item.content.substring(0, 100) + (item.content.length > 100 ? '...' : '');
+      subtitle = 'Text';
+      faviconUrl = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">📝</text></svg>';
+    } else if (itemType === 'tagset') {
+      title = 'Tag Set';
+      subtitle = tags.length > 0 ? tags.map(t => t.name).join(', ') : 'Empty tagset';
+      faviconUrl = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🏷️</text></svg>';
+    } else if (itemType === 'image') {
+      title = item.content || 'Image';
+      subtitle = 'Image';
+      faviconUrl = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🖼️</text></svg>';
+    }
+  }
 
   card.innerHTML = `
     <div class="card-header">
       <img class="card-favicon" src="${escapeHtml(faviconUrl)}" alt="" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌐</text></svg>'">
       <div class="card-content">
-        <div class="card-title">${escapeHtml(item.title || item.uri)}</div>
-        <div class="card-url">${escapeHtml(item.uri)}</div>
+        <div class="card-title">${escapeHtml(title)}</div>
+        <div class="card-url">${escapeHtml(subtitle)}</div>
       </div>
     </div>
     <div class="card-tags">
@@ -527,11 +574,42 @@ const openEditModal = (item) => {
   const modal = document.querySelector('.modal');
   const tags = state.itemTags.get(item.id) || [];
 
+  // Handle both old address schema and new item schema
+  const isAddress = !!item.uri;
+  const itemType = item.type || 'url';
+
+  let title, subtitle, faviconUrl;
+
+  if (isAddress) {
+    // Old address schema
+    title = item.title || item.uri;
+    subtitle = item.uri;
+    faviconUrl = item.favicon || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🌐</text></svg>';
+  } else {
+    // New item schema
+    if (itemType === 'url') {
+      title = item.content;
+      subtitle = item.content;
+      faviconUrl = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🌐</text></svg>';
+    } else if (itemType === 'text') {
+      title = item.content.substring(0, 100) + (item.content.length > 100 ? '...' : '');
+      subtitle = 'Text';
+      faviconUrl = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">📝</text></svg>';
+    } else if (itemType === 'tagset') {
+      title = 'Tag Set';
+      subtitle = tags.length > 0 ? tags.map(t => t.name).join(', ') : 'Empty tagset';
+      faviconUrl = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🏷️</text></svg>';
+    } else if (itemType === 'image') {
+      title = item.content || 'Image';
+      subtitle = 'Image';
+      faviconUrl = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🖼️</text></svg>';
+    }
+  }
+
   // Set item info
-  const faviconUrl = item.favicon || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🌐</text></svg>';
   modal.querySelector('.modal-favicon').src = faviconUrl;
-  modal.querySelector('.modal-item-title').textContent = item.title || item.uri;
-  modal.querySelector('.modal-item-url').textContent = item.uri;
+  modal.querySelector('.modal-item-title').textContent = title;
+  modal.querySelector('.modal-item-url').textContent = subtitle;
 
   // Render current tags
   renderCurrentTags(tags);
@@ -616,7 +694,7 @@ const renderAvailableTags = (currentTags) => {
 const addTag = async (tag) => {
   if (!state.editingItem) return;
 
-  const result = await api.datastore.tagAddress(state.editingItem.id, tag.id);
+  const result = await api.datastore.tagItem(state.editingItem.id, tag.id);
   if (result.success) {
     // Update local state
     const tags = state.itemTags.get(state.editingItem.id) || [];
@@ -642,7 +720,7 @@ const addTag = async (tag) => {
 const removeTag = async (tag) => {
   if (!state.editingItem) return;
 
-  const result = await api.datastore.untagAddress(state.editingItem.id, tag.id);
+  const result = await api.datastore.untagItem(state.editingItem.id, tag.id);
   if (result.success) {
     // Update local state
     let tags = state.itemTags.get(state.editingItem.id) || [];

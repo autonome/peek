@@ -19,7 +19,6 @@
   line-height: 1.5;
   font-weight: 400;
   color: #0f0f0f;
-  background-color: #f6f6f6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -37,23 +36,20 @@ input, textarea {
 }
 
 html, body {
-  overflow: hidden;
-  height: 100%;
-  height: 100dvh; /* Dynamic viewport height - accounts for iOS chrome */
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  background-color: #f6f6f6;
 }
 
 #root {
-  height: 100%;
-  height: 100dvh;
-  overflow: hidden;
+  height: 100vh;
 }
 
 .app {
-  height: 100%;
-  height: 100dvh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
 /* Main content area - scrollable */
@@ -62,15 +58,14 @@ main.saved-view {
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: contain;
-  padding: 0.5rem;
-  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
+  padding: 0.75rem;
+  background-color: #f6f6f6;
 }
 
 header {
   background: #ffffff;
-  padding: 0.75rem 1rem;
-  padding-top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
+  padding: 0.25rem 1rem;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 0.4rem);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   position: sticky;
   top: 0;
@@ -412,7 +407,7 @@ a.card-title {
 
 /* Legacy styles for edit mode - keep for now */
 .saved-url-item {
-  padding: 1rem;
+  padding: 1.15rem;
   background: white;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -431,8 +426,8 @@ a.card-title {
 .saved-url-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-top: 0.75rem;
+  gap: 0.6rem;
+  margin-top: 0.85rem;
 }
 
 .saved-url-tag {
@@ -791,6 +786,10 @@ body.dark .save-button {
 
 body.dark .save-button:active {
   background: #0066cc;
+}
+
+body.dark main.saved-view {
+  background-color: #1c1c1e;
 }
 
 body.dark .saved-url-item {
@@ -1550,7 +1549,7 @@ body.dark .item-type-indicator {
 }
 
 .saved-text-item {
-  padding: 1rem;
+  padding: 1.15rem;
   background: white;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -1591,8 +1590,8 @@ body.dark .item-type-indicator {
 .saved-text-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-top: 0.75rem;
+  gap: 0.6rem;
+  margin-top: 0.85rem;
 }
 
 .saved-text-tag {
@@ -1744,7 +1743,7 @@ body.dark .saved-text-tag {
 }
 
 .saved-tagset-item {
-  padding: 1rem;
+  padding: 1.15rem;
   background: white;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -1831,7 +1830,7 @@ body.dark .empty-state {
 
 /* Image items */
 .saved-image-item {
-  padding: 1rem;
+  padding: 1.15rem;
   background: white;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -1907,8 +1906,8 @@ body.dark .empty-state {
 .saved-image-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-top: 0.75rem;
+  gap: 0.6rem;
+  margin-top: 0.85rem;
 }
 
 .saved-image-tag {
@@ -2012,7 +2011,7 @@ body.dark .edit-overlay {
   background: white;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  margin-bottom: 1rem;
+  margin-bottom: 0.65rem;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -2032,7 +2031,7 @@ body.dark .edit-overlay {
 /* Collapsed state: input element */
 .expandable-card-input {
   flex: 1;
-  padding: 0.75rem 1rem;
+  padding: 0.85rem 1.15rem;
   border: none;
   border-radius: 12px;
   font-size: 16px;
@@ -2048,7 +2047,7 @@ body.dark .edit-overlay {
 /* Expanded state: textarea element */
 textarea.expandable-card-input.expanded-input {
   width: 100%;
-  padding: 0.75rem 1rem;
+  padding: 0.85rem 1.15rem;
   border: none;
   border-bottom: 1px solid #e0e0e0;
   border-radius: 12px 12px 0 0;

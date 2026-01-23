@@ -72,10 +72,7 @@ See: `docs/profiles.md`, `SERVER-MIGRATION-SAFETY-IMPROVEMENTS.md`
 - [ ] Test deleting a profile (verify cannot delete default/active)
 
 ### Server Safety Improvements (Priority)
-- [ ] Add pre-migration backup to server migration (HIGH PRIORITY)
-  - Current migration uses fs.renameSync() without backup
-  - Risk of data loss if migration fails
-  - See SERVER-MIGRATION-SAFETY-IMPROVEMENTS.md for full plan
+- [x] Add pre-migration backup to server migration
 - [ ] Add migration dry-run mode
 - [ ] Add database integrity verification
 - [ ] Add automatic backup cleanup after grace period
@@ -341,7 +338,7 @@ examples
 ## Mobile
 
 - [ ] add device ID tracking to item metadata (like desktop - stores `_sync.createdBy` and `_sync.modifiedBy` in metadata JSON)
-- [ ] fix big bottom bar showing again
+- [x] fix big bottom bar showing again (simplified viewport and safe-area handling)
 - [ ] show oembed, or at least page title
 - [ ] save images to server (look at how binaries are stored, and across profiles)
 

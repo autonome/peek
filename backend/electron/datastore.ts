@@ -255,7 +255,9 @@ const createTableStatements = `
     updatedAt INTEGER NOT NULL,
     deletedAt INTEGER DEFAULT 0,
     starred INTEGER DEFAULT 0,
-    archived INTEGER DEFAULT 0
+    archived INTEGER DEFAULT 0,
+    visitCount INTEGER DEFAULT 0,
+    lastVisitAt INTEGER DEFAULT 0
   );
   CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
   CREATE INDEX IF NOT EXISTS idx_items_syncId ON items(syncId);
@@ -289,6 +291,7 @@ export function initDatabase(dbPath: string): Database.Database {
   migrateTinyBaseData();
   migrateSyncColumns();
   migrateItemTypes();
+  migrateItemVisitColumns();
 
   DEBUG && console.log('main', 'database initialized successfully');
   return db;
@@ -605,6 +608,34 @@ function migrateItemTypes(): void {
   }
 }
 
+/**
+ * Add visit tracking columns to items table for existing databases
+ */
+function migrateItemVisitColumns(): void {
+  if (!db) return;
+
+  const columns = db.prepare(`PRAGMA table_info(items)`).all() as { name: string }[];
+  const hasVisitCount = columns.some(col => col.name === 'visitCount');
+
+  if (!hasVisitCount) {
+    DEBUG && console.log('main', 'Adding visit columns to items table');
+    try {
+      db.exec(`ALTER TABLE items ADD COLUMN visitCount INTEGER DEFAULT 0`);
+      db.exec(`ALTER TABLE items ADD COLUMN lastVisitAt INTEGER DEFAULT 0`);
+    } catch (error) {
+      DEBUG && console.log('main', `Visit columns migration for items:`, (error as Error).message);
+    }
+  }
+
+  // Always ensure indexes exist (handles both new and migrated tables)
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_items_lastVisitAt ON items(lastVisitAt)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_items_visitCount ON items(visitCount)`);
+  } catch (error) {
+    DEBUG && console.log('main', `Visit indexes for items:`, (error as Error).message);
+  }
+}
+
 // ==================== Address Operations ====================
 
 export function addAddress(uri: string, options: AddressOptions = {}): { id: string } {
@@ -719,6 +750,15 @@ export function addVisit(addressId: string, options: VisitOptions = {}): { id: s
     UPDATE addresses SET lastVisitAt = ?, visitCount = visitCount + 1, updatedAt = ?
     WHERE id = ?
   `).run(timestamp, timestamp, addressId);
+
+  // Also update any items with matching URL content
+  const address = getAddress(addressId);
+  if (address && address.uri) {
+    getDb().prepare(`
+      UPDATE items SET lastVisitAt = ?, visitCount = visitCount + 1, updatedAt = ?
+      WHERE type = 'url' AND content = ? AND deletedAt = 0
+    `).run(timestamp, timestamp, address.uri);
+  }
 
   return { id: visitId };
 }

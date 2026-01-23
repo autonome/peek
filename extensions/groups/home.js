@@ -218,42 +218,49 @@ const loadTags = async () => {
     state.tags = result.data;
     debug && console.log('Loaded tags:', state.tags.length);
 
-    // Fetch item count for each tag
+    // Fetch URL item count for each tag (only URLs for now)
     for (const tag of state.tags) {
       const itemsResult = await api.datastore.getItemsByTag(tag.id);
-      tag.addressCount = itemsResult.success ? itemsResult.data.length : 0;
+      if (itemsResult.success) {
+        tag.addressCount = itemsResult.data.filter(item => item.type === 'url').length;
+      } else {
+        tag.addressCount = 0;
+      }
     }
   } else {
     console.error('Failed to load tags:', result.error);
     state.tags = [];
   }
 
-  // Get count of untagged items
+  // Get count of untagged URL items (only URLs for now)
   // Query all items and filter out those with tags
   const allItemsResult = await api.datastore.queryItems({});
   if (allItemsResult.success) {
     const untaggedItems = [];
     for (const item of allItemsResult.data) {
+      // Only include URL items
+      if (item.type !== 'url') continue;
       const tagsResult = await api.datastore.getItemTags(item.id);
       if (tagsResult.success && tagsResult.data.length === 0) {
         untaggedItems.push(item);
       }
     }
     state.untaggedCount = untaggedItems.length;
-    debug && console.log('Untagged items:', state.untaggedCount);
+    debug && console.log('Untagged URL items:', state.untaggedCount);
   } else {
     state.untaggedCount = 0;
   }
 };
 
 /**
- * Load items for a specific tag
+ * Load URL items for a specific tag (only URLs for now)
  */
 const loadAddressesForTag = async (tagId) => {
   const result = await api.datastore.getItemsByTag(tagId);
   if (result.success) {
-    state.addresses = result.data;
-    debug && console.log('Loaded items for tag:', state.addresses.length);
+    // Only include URL items
+    state.addresses = result.data.filter(item => item.type === 'url');
+    debug && console.log('Loaded URL items for tag:', state.addresses.length);
   } else {
     console.error('Failed to load addresses:', result.error);
     state.addresses = [];
@@ -271,14 +278,16 @@ const filterGroups = (groups) => {
 
 /**
  * Filter addresses by search query (title or URL)
+ * Handles both Address (uri) and Item (content) objects
  */
 const filterAddresses = (addresses) => {
   if (!state.searchQuery) return addresses;
   const q = state.searchQuery.toLowerCase();
-  return addresses.filter(addr =>
-    (addr.title || '').toLowerCase().includes(q) ||
-    addr.uri.toLowerCase().includes(q)
-  );
+  return addresses.filter(addr => {
+    const url = addr.uri || addr.content || '';
+    return (addr.title || '').toLowerCase().includes(q) ||
+      url.toLowerCase().includes(q);
+  });
 };
 
 /**
@@ -349,12 +358,14 @@ const showAddresses = async (tag) => {
   state.currentTag = tag;
   state.searchQuery = '';
 
-  // Load items - handle special untagged group
+  // Load URL items - handle special untagged group (only URLs for now)
   if (tag.isSpecial && tag.id === '__untagged__') {
     const allItemsResult = await api.datastore.queryItems({});
     if (allItemsResult.success) {
       const untaggedItems = [];
       for (const item of allItemsResult.data) {
+        // Only include URL items
+        if (item.type !== 'url') continue;
         const tagsResult = await api.datastore.getItemTags(item.id);
         if (tagsResult.success && tagsResult.data.length === 0) {
           untaggedItems.push(item);
@@ -445,11 +456,27 @@ const createGroupCard = (tag) => {
 
 /**
  * Create a card element for an address
+ * Handles both Address (uri) and Item (content) objects
  */
 const createAddressCard = (address) => {
   const card = document.createElement('div');
   card.className = 'card address-card';
   card.dataset.addressId = address.id;
+
+  // Get URL from either uri (Address) or content (Item)
+  const addressUrl = address.uri || address.content;
+
+  // Get title - Items store title in metadata, Addresses have it directly
+  let displayTitle = address.title;
+  if (!displayTitle && address.metadata) {
+    try {
+      const meta = typeof address.metadata === 'string' ? JSON.parse(address.metadata) : address.metadata;
+      displayTitle = meta.title;
+    } catch (e) {
+      // Ignore parse errors
+    }
+  }
+  displayTitle = displayTitle || addressUrl;
 
   const favicon = document.createElement('img');
   favicon.className = 'card-favicon';
@@ -463,11 +490,11 @@ const createAddressCard = (address) => {
 
   const title = document.createElement('h2');
   title.className = 'card-title';
-  title.textContent = address.title || address.uri;
+  title.textContent = displayTitle;
 
   const url = document.createElement('div');
   url.className = 'card-url';
-  url.textContent = address.uri;
+  url.textContent = addressUrl;
 
   const meta = document.createElement('div');
   meta.className = 'card-meta';
@@ -483,8 +510,8 @@ const createAddressCard = (address) => {
 
   // Click to open address
   card.addEventListener('click', async () => {
-    debug && console.log('Opening address:', address.uri);
-    const result = await api.window.open(address.uri, {
+    debug && console.log('Opening address:', addressUrl);
+    const result = await api.window.open(addressUrl, {
       width: 800,
       height: 600
     });

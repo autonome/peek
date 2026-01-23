@@ -75,6 +75,7 @@
     "test:sync:e2e:prod": "node backend/tests/sync-e2e-prod.test.js",
     "test:sync:e2e:prod:verbose": "VERBOSE=1 node backend/tests/sync-e2e-prod.test.js",
     "test:sync:verify-logs": "node backend/tests/verify-railway-logs.js",
+    "test:sync:desktop": "./scripts/test-sync-desktop.sh",
     "test:mobile": "cd backend/tauri-mobile && npm test",
     "//-- Packaged Electron --//": "",
     "kill:packaged": "pkill -f 'out/mac-arm64/Peek.app' || true",

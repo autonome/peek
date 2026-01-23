@@ -102,6 +102,8 @@ export interface Item {
   deletedAt: number;
   starred: number;
   archived: number;
+  visitCount: number;
+  lastVisitAt: number;
 }
 
 export interface ItemTag {

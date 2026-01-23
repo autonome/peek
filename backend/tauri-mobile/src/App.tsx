@@ -138,7 +138,13 @@ function App() {
     if (addInputExpanded && addTextareaRef.current) {
       // Small delay to let React render the textarea first
       setTimeout(() => {
-        addTextareaRef.current?.focus({ preventScroll: true });
+        const textarea = addTextareaRef.current;
+        if (textarea) {
+          textarea.focus({ preventScroll: true });
+          // Move cursor to end of text
+          const length = textarea.value.length;
+          textarea.setSelectionRange(length, length);
+        }
       }, 10);
     }
   }, [addInputExpanded]);
@@ -2457,8 +2463,8 @@ function App() {
 
               {/* Action buttons - always visible at bottom */}
               <div className="expandable-card-buttons">
-                <button className="cancel-btn" onClick={resetAddInput}>
-                  Cancel
+                <button className="cancel-btn" onClick={() => setAddInputExpanded(false)}>
+                  Close
                 </button>
                 <button
                   className="save-btn"

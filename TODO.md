@@ -11,7 +11,7 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
-- [ ][release] build and deploy release versions of desktop, ios, and server
+- [~][release] build and deploy release versions of desktop, ios, and server
 - [ ][workflow] agents need policy to never read outside workspace; spawned explore agents don't inherit policies
 - [ ][security] remove production server endpoint from source - should only be in .env files or user-entered
 

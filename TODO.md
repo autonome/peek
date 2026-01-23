@@ -12,8 +12,6 @@ Be able to use the app on mobile and desktop with the safety of knowing there's 
 
 Today
 - [ ][mobile] mobile editing ux - improve add/edit flows, fix any rough edges in item creation and editing
-- [ ][desktop] now that data syncing from server and mobile, add a new extension for experimenting with visualizations of tags - start by porting over the tag viewing/filtering system from the mobile app, for a desktop view, so we can search, view and edit notes/urls/tagsets/images by tag button interfaces, see also the Groups & Tags UX section
-- [x][desktop+server] add user profiles and profile switching (desktop done, server done, mobile seamlessly uses default profile)
 - [ ][desktop] fix sync status in settings UI - always shows "never synced" even after successful sync
 - [ ][desktop] fix groups extension - shows synced items for a tag but with no URL, just cards saying "0 visits" and "Last: never"
 
@@ -464,6 +462,8 @@ Newly done items go here, grouped under third-level headings by week of year.
 
 ### 2026-W04
 
+- [x][desktop] add tags extension for tag visualization and management
+- [x][desktop+server] add user profiles and profile switching
 - [x][server] add daily snapshot backups on server, test locally, deploy, test and confirm working on railway
 - [x] update main README
 - [x][desktop] update release build and drive it

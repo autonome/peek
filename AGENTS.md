@@ -18,7 +18,7 @@ Project-specific rules and context for agents working on Peek.
 
 ## Critical Rules
 
-1. **NEVER modify `./app` without approval** - Backend-agnostic, must work with Electron and Tauri unchanged.
+1. **Respect the frontend/backend boundary** - `./app` is backend-agnostic (works with Electron AND Tauri). Never modify it for backend fixes. Ask coordinator if you think it needs changes.
 
 2. **Only use `yarn kill` for dev processes** - Never `pkill -f "Peek"` or similar (kills production app).
 

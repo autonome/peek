@@ -12,7 +12,7 @@ Be able to use the app on mobile and desktop with the safety of knowing there's 
 
 Today
 - [~][desktop] fix sync status in settings UI - always shows "never synced" even after successful sync
-- [ ][desktop] fix groups extension - shows synced items for a tag but with no URL, just cards saying "0 visits" and "Last: never"
+- [~][desktop] fix groups extension - shows synced items for a tag but with no URL, just cards saying "0 visits" and "Last: never"
 - [ ][workflow] fix TODO archival - coordinator or agents not marking items done and moving to Done section
 - [ ][workflow] agents skipping rules check; jj-only not emphasized as critical; ./app rule should be about respecting front-end/back-end architecture boundary
 

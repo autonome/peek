@@ -15,6 +15,7 @@ Today
 - [~][desktop] fix groups extension - shows synced items for a tag but with no URL, just cards saying "0 visits" and "Last: never"
 - [ ][workflow] fix TODO archival - coordinator or agents not marking items done and moving to Done section
 - [ ][workflow] agents skipping rules check; jj-only not emphasized as critical; ./app rule should be about respecting front-end/back-end architecture boundary
+- [ ][workflow] agents need policy to never read outside workspace; spawned explore agents don't inherit policies
 
 Later
 - [ ][desktop] access to notes on filesystem, syncing them as markdown files in ~/sync/Notes/peek

@@ -11,10 +11,8 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
-- [~][desktop] fix groups extension - shows synced items for a tag but with no URL, just cards saying "0 visits" and "Last: never"
-- [~][workflow] fix TODO archival - coordinator or agents not marking items done and moving to Done section
-- [~][workflow] agents skipping rules check; jj-only not emphasized as critical; ./app rule should be about respecting front-end/back-end architecture boundary
-- [~][workflow] agents need policy to never read outside workspace; spawned explore agents don't inherit policies
+- [ ][release] build and deploy release versions of desktop, ios, and server
+- [ ][workflow] agents need policy to never read outside workspace; spawned explore agents don't inherit policies
 - [ ][security] remove production server endpoint from source - should only be in .env files or user-entered
 
 Later
@@ -129,37 +127,32 @@ notes
 
 ## Desktop windows
 
-Window controls
-- [ ] titlebar investigation and controls: why do some window.open links show titlebars?
+Title bar and controls
+- [ ] add universal titlebar hide/show pref (default hide)
+- [ ] add pref to settings ui
 - [ ] show titlebar on hover at top edge
-- [ ] add universal hide/show pref (default hide)
-- [ ] add pref to settings
-- [ ] command flip default
-- [ ] command to flip current
+- [ ] why do some links in web pages open windows that show titlebars even when default is to hide?
 
-Window persistence
-- [ ] window position persistence where it makes sense (settings, groups, cmd) and make configurable?
-- [ ] window size persistence where it makes sense (slides, peeks) and make configurable?
+Size and position
+- [ ] windows are movable by default
+- [ ] windows are resizable by default
+- [ ] window.open api param for whether a window is draggable or not
+- [ ] window.open api param for whether a window is resizable or not
 
-Window size/move
-- [ ] window are resizable
+Persistence
+- [ ] pref to persist keyed/url window position+size across app restarts
+
+Pin control in titlebar
 - [ ] pin window on top (app)
 - [ ] pin window on top (os)
-- [ ] window.open api param for draggable
-- [ ] window.open api param for resize
 - [ ] cmds for all of this
 
-Window interaction/integration
-- [ ] configurable escape behavior per-window
+Interaction/integration
+- [ ] configurable escape behavior per-window, as a window.open api option
 
-Window animations
-- [ ] add window open animation (to/from coords, time) to openWindow
-- [ ] update slides impl to use animation again
-
-Window layout (depends on ui components)
-- [ ] tile/untile, eg the Explode extension
-- [ ] explode: windows using groups ui with transparent background and vi directionals, enter opens
-
+Animations
+- [ ] add animation (to/from coords, time) option to window.open api
+- [ ] update slides impl to use animation (see ./animation.js, can remove when done)
 
 ## UI Componentry
 
@@ -176,7 +169,9 @@ popup carousel system
 - [ ] port cmd previews to vertical carousel popups
 
 window templates
-- [ ] eg page overlay
+- [ ] eg page info hud overlay
+- [ ] explode: windows using groups ui with transparent background and vi directionals, enter opens
+- [ ] tile/untile, eg the Explode extension
 
 button groups
 - [ ] add/remove/both modes
@@ -316,6 +311,22 @@ examples
 - [ ] execute a command which executes a userScript against a loaded page, detects list/table-ish things (with previews), lets you select one, which it exports as a "list" out (CSV? JSON?)
 - [ ] links on page -> list -> button cloud -> kb activate (then shorten to "link cloud" cmd)
 - [ ] compound cmds (like "link cloud". uses chaining? like a chain package?)
+
+## Favicon/screenshot cache
+
+- [ ] store screenshots and favicons for any page loaded through window system
+- [ ] save on disk in profile
+- [ ] investigate how media caches store/address for url-based high performance lookup
+- [ ] store location of files as url metadata
+- [ ] integrate lookups in groups, url cards, page info, etc
+
+- [ ] per-profile favicon cache dir
+- [ ] take and save favicon of any address loaded through window system
+- [ ] store in profile favicon cache, and save location as metadata record on the address
+
+- [ ] per-profile screenshot cache dir
+- [ ] take and save screenshot of loaded windows for any new address
+- [ ] store in profile screenshot cache, and save that as metadata record on the address
 
 ## Extension back-end
 
@@ -464,6 +475,9 @@ Newly done items go here, grouped under third-level headings by week of year.
 
 ### 2026-W04
 
+- [x][desktop] fix groups extension - add visit tracking, filter for URLs only
+- [x][workflow] fix TODO archival - updated agent templates with clearer instructions
+- [x][workflow] clarify ./app rule - now about respecting front-end/back-end architecture boundary
 - [x][desktop] fix sync status in settings UI - use correct field name for display
 - [x][mobile] mobile editing ux - toasts, validation, draft persistence, spacing, bottom bar fix
 - [x][desktop] add tags extension for tag visualization and management

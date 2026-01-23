@@ -417,7 +417,7 @@ railway up -d
 railway logs -n 50
 
 # Health check
-curl https://peek-node.up.railway.app/
+curl $PEEK_PROD_URL/
 ```
 
 **Deployment Order (Server + Mobile):**

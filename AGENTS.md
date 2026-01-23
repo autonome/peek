@@ -9,7 +9,7 @@ Project-specific rules and context for agents working on Peek.
 **Railway (Server Deployment):**
 - Project: `amusing-courtesy`
 - Service: `peek-node`
-- URL: `https://peek-node.up.railway.app`
+- URL: (set in .env as PEEK_PROD_URL)
 - Link command: `cd backend/server && railway link -p amusing-courtesy`
 - Deploy: `cd backend/server && railway up -d`
 - Logs: `railway logs -n 50`

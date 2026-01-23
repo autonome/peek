@@ -13,7 +13,6 @@ Be able to use the app on mobile and desktop with the safety of knowing there's 
 Today
 - [~][release] build and deploy release versions of desktop, ios, and server
 - [ ][workflow] agents need policy to never read outside workspace; spawned explore agents don't inherit policies
-- [ ][security] remove production server endpoint from source - should only be in .env files or user-entered
 
 Later
 - [ ][desktop] access to notes on filesystem, syncing them as markdown files in ~/sync/Notes/peek
@@ -472,6 +471,7 @@ Newly done items go here, grouped under third-level headings by week of year.
 
 ### 2026-W04
 
+- [x][security] remove production server endpoint from source - should only be in .env files or user-entered
 - [x][desktop] fix groups extension - add visit tracking, filter for URLs only
 - [x][workflow] fix TODO archival - updated agent templates with clearer instructions
 - [x][workflow] clarify ./app rule - now about respecting front-end/back-end architecture boundary

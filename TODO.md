@@ -11,6 +11,7 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
+- [ ][mobile] shares to Peek app on iOS are not saving to datastore - investigate
 - [~][mobile] bottom buttons (save, delete, etc) can be hidden behind iOS keyboard
 - [~][release] build and deploy release versions of desktop, ios, and server
 
@@ -107,20 +108,6 @@ See: `docs/profiles.md`, `SERVER-MIGRATION-SAFETY-IMPROVEMENTS.md`
 - Keep UI simple - dropdown in settings
 - Default to "default" profile if not configured
 
-## Modes/scopes
-
-notes
-- Pages have a specific mode, with specific hotkeys, etc.
-- Commands like "theme dark here" operate on the "target window".
-- Target window is usually what the user was looking at before opening cmd.
-- Currently this works but there's no visual indication.
-
-- [ ] How to do page "mode" (for example) with conditional context/hotkeys/actions
-- [ ] Should commands declare `scope: 'window' | 'page' | 'global'` in registration?
-- [ ] How does cmd indicate scope/target?
-   - [ ] eg "Target: [window title]" header when window-scoped command is selected?
-
-
 ## Desktop windows
 
 Title bar and controls
@@ -183,6 +170,20 @@ button groups
 
 tags
 - [ ] tag input field
+
+## Modes/scopes
+
+notes
+- Pages have a specific mode, with specific hotkeys, etc.
+- Commands like "theme dark here" operate on the "target window".
+- Target window is usually what the user was looking at before opening cmd.
+- Currently this works but there's no visual indication.
+
+- [ ] How to do page "mode" (for example) with conditional context/hotkeys/actions
+- [ ] Should commands declare `scope: 'window' | 'page' | 'global'` in registration?
+- [ ] How does cmd indicate scope/target?
+   - [ ] eg "Target: [window title]" header when window-scoped command is selected?
+
 
 ## Web page experience
 

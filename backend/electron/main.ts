@@ -16,7 +16,7 @@ import { initTray } from './tray.js';
 import { registerLocalShortcut, unregisterLocalShortcut, handleLocalShortcut, registerGlobalShortcut, unregisterGlobalShortcut, unregisterShortcutsForAddress } from './shortcuts.js';
 import { scopes, publish, subscribe, setExtensionBroadcaster, getSystemAddress } from './pubsub.js';
 import { APP_DEF_WIDTH, APP_DEF_HEIGHT, WEB_CORE_ADDRESS, getPreloadPath, isTestProfile, isDevProfile, isHeadless, getProfile, DEBUG } from './config.js';
-import { addEscHandler, winDevtoolsConfig, closeOrHideWindow, getSystemThemeBackgroundColor } from './windows.js';
+import { addEscHandler, winDevtoolsConfig, closeOrHideWindow, getSystemThemeBackgroundColor, getPrefs } from './windows.js';
 
 // Configuration
 export interface AppConfig {
@@ -840,8 +840,18 @@ export function createBackgroundWindow(): BrowserWindow {
       }
     }
 
+    // Determine frame setting based on explicit option or preference
+    let frameDefault = false; // Default to frameless if pref not available
+    if (featuresMap.frame === undefined) {
+      const prefs = getPrefs();
+      // hideTitleBar: true means frame: false (no titlebar)
+      // hideTitleBar: false means frame: true (show titlebar)
+      frameDefault = prefs.hideTitleBar === false;
+    }
+
     // Prepare browser window options
     const winOptions: Electron.BrowserWindowConstructorOptions = {
+      frame: frameDefault, // Default based on hideTitleBar pref
       ...(featuresMap as Electron.BrowserWindowConstructorOptions),
       width: parseInt(String(featuresMap.width)) || APP_DEF_WIDTH,
       height: parseInt(String(featuresMap.height)) || APP_DEF_HEIGHT,

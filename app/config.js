@@ -54,6 +54,16 @@ const prefsSchema = {
       "type": "string",
       "default": ""
     },
+    "hideTitleBar": {
+      "description": "Hide window title bars by default (frameless windows)",
+      "type": "boolean",
+      "default": true
+    },
+    "persistWindowState": {
+      "description": "Remember window position and size for keyed windows across app restarts",
+      "type": "boolean",
+      "default": false
+    },
   },
   "required": [ "shortcutKey", "startupFeature", "enableTrayIcon", "showInDockAndSwitcher", "quitShortcut" ]
 };
@@ -123,7 +133,9 @@ const defaults = {
     startupFeature: 'peek://app/settings/settings.html',
     showTrayIcon: true,
     showInDockAndSwitcher: true,
-    backupDir: ''
+    backupDir: '',
+    hideTitleBar: true,
+    persistWindowState: false
   },
   items: [
     { id: 'cee1225d-40ac-41e5-a34c-e2edba69d599',

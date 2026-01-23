@@ -25,7 +25,7 @@ import * as sync from '../../dist/backend/electron/sync.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Configuration from environment
-const PROD_URL = process.env.PEEK_PROD_URL;
+const PROD_URL = process.env.PEEK_PROD_URL || 'https://peek-node.up.railway.app';
 const PROD_KEY = process.env.PEEK_PROD_KEY;
 
 // Test marker for this run - used for identification and cleanup
@@ -436,13 +436,10 @@ async function runTests() {
   console.log('');
 
   // Check for required env vars
-  if (!PROD_URL || !PROD_KEY) {
-    console.error('ERROR: Required environment variables missing');
-    if (!PROD_URL) console.error('  - PEEK_PROD_URL not set');
-    if (!PROD_KEY) console.error('  - PEEK_PROD_KEY not set');
+  if (!PROD_KEY) {
+    console.error('ERROR: PEEK_PROD_KEY environment variable is required');
     console.error('');
-    console.error('Set them with:');
-    console.error('  export PEEK_PROD_URL=https://your-server.railway.app');
+    console.error('Set it with:');
     console.error('  export PEEK_PROD_KEY=your-api-key');
     console.error('');
     process.exit(1);

@@ -42,6 +42,13 @@ export function setPrefsGetter(getter: () => Record<string, unknown>): void {
 }
 
 /**
+ * Get current preferences
+ */
+export function getPrefs(): Record<string, unknown> {
+  return _getPrefs();
+}
+
+/**
  * Modify window state (close, hide, show)
  */
 export function modWindow(bw: BrowserWindow, params: { action: string }): void {

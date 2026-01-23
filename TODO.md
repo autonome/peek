@@ -13,6 +13,7 @@ Be able to use the app on mobile and desktop with the safety of knowing there's 
 Today
 - [~][release] build and deploy release versions of desktop, ios, and server
 - [ ][workflow] agents need policy to never read outside workspace; spawned explore agents don't inherit policies
+- [ ][security] remove production server endpoint from source - should only be in .env files or user-entered
 
 Later
 - [ ][desktop] access to notes on filesystem, syncing them as markdown files in ~/sync/Notes/peek
@@ -124,31 +125,31 @@ notes
 ## Desktop windows
 
 Title bar and controls
-- [ ] add universal titlebar hide/show pref (default hide)
-- [ ] add pref to settings ui
+- [x] add universal titlebar hide/show pref (default hide)
+- [x] add pref to settings ui
 - [ ] show titlebar on hover at top edge
-- [ ] why do some links in web pages open windows that show titlebars even when default is to hide?
+- [x] why do some links in web pages open windows that show titlebars even when default is to hide?
 
 Size and position
-- [ ] windows are movable by default
-- [ ] windows are resizable by default
-- [ ] window.open api param for whether a window is draggable or not
-- [ ] window.open api param for whether a window is resizable or not
+- [x] windows are movable by default
+- [x] windows are resizable by default
+- [x] window.open api param for whether a window is draggable or not
+- [x] window.open api param for whether a window is resizable or not
 
 Persistence
-- [ ] pref to persist keyed/url window position+size across app restarts
+- [x] pref to persist keyed/url window position+size across app restarts
 
 Pin control in titlebar
-- [ ] pin window on top (app)
-- [ ] pin window on top (os)
-- [ ] cmds for all of this
+- [x] pin window on top (app)
+- [x] pin window on top (os)
+- [x] cmds for all of this
 
 Interaction/integration
-- [ ] configurable escape behavior per-window, as a window.open api option
+- [x] configurable escape behavior per-window, as a window.open api option
 
 Animations
-- [ ] add animation (to/from coords, time) option to window.open api
-- [ ] update slides impl to use animation (see ./animation.js, can remove when done)
+- [x] add animation (to/from coords, time) option to window.open api
+- [x] update slides impl to use animation (see ./animation.js, can remove when done)
 
 ## UI Componentry
 
@@ -471,7 +472,6 @@ Newly done items go here, grouped under third-level headings by week of year.
 
 ### 2026-W04
 
-- [x][security] remove production server endpoint from source - should only be in .env files or user-entered
 - [x][desktop] fix groups extension - add visit tracking, filter for URLs only
 - [x][workflow] fix TODO archival - updated agent templates with clearer instructions
 - [x][workflow] clarify ./app rule - now about respecting front-end/back-end architecture boundary

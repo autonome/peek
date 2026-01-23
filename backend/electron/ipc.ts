@@ -104,6 +104,7 @@ import {
   closeWindow,
   modWindow,
   getSystemThemeBackgroundColor,
+  getPrefs,
 } from './windows.js';
 
 import {
@@ -1407,10 +1408,19 @@ export function registerWindowHandlers(): void {
       }
     }
 
+    // Determine frame setting based on explicit option or preference
+    // If frame is explicitly set in options, use that; otherwise use hideTitleBar pref
+    let frameDefault = false; // Default to frameless if pref not available
+    if (options.frame === undefined) {
+      const prefs = getPrefs();
+      // hideTitleBar: true means frame: false (no titlebar)
+      // hideTitleBar: false means frame: true (show titlebar)
+      frameDefault = prefs.hideTitleBar === false;
+    }
+
     // Prepare browser window options
-    // Default to frameless windows unless explicitly requested
     const winOptions: Electron.BrowserWindowConstructorOptions = {
-      frame: false, // Default to no titlebar
+      frame: frameDefault, // Default based on hideTitleBar pref
       ...options,
       width: parseInt(options.width) || APP_DEF_WIDTH,
       height: parseInt(options.height) || APP_DEF_HEIGHT,
@@ -1423,7 +1433,29 @@ export function registerWindowHandlers(): void {
       }
     };
 
-    // Make sure position parameters are correctly handled
+    // Load saved window state if persistState is enabled and window has a key
+    let savedState: { x?: number; y?: number; width?: number; height?: number } | null = null;
+    if (options.key && (options.persistState === true || getPrefs().persistWindowState)) {
+      try {
+        const rowId = `window_state:${options.key}`;
+        const row = getRow('extension_settings', rowId);
+        if (row && row.value) {
+          savedState = JSON.parse(row.value as string);
+          DEBUG && console.log('Loaded saved window state for key:', options.key, savedState);
+        }
+      } catch (e) {
+        DEBUG && console.log('Failed to load window state:', e);
+      }
+    }
+
+    // Apply saved state or explicit position parameters
+    if (savedState) {
+      if (savedState.x !== undefined) winOptions.x = savedState.x;
+      if (savedState.y !== undefined) winOptions.y = savedState.y;
+      if (savedState.width !== undefined) winOptions.width = savedState.width;
+      if (savedState.height !== undefined) winOptions.height = savedState.height;
+    }
+    // Explicit options override saved state
     if (options.x !== undefined) {
       winOptions.x = parseInt(options.x);
     }
@@ -1485,6 +1517,37 @@ export function registerWindowHandlers(): void {
       trackContentWindowFocus(win);
       if (!options.modal) {
         trackVisibleWindowFocus(win);
+      }
+
+      // Set up window state persistence if enabled
+      const shouldPersist = options.key && (options.persistState === true || getPrefs().persistWindowState);
+      if (shouldPersist) {
+        // Debounce timer for saving state
+        let saveTimer: NodeJS.Timeout | null = null;
+        const saveState = () => {
+          if (saveTimer) clearTimeout(saveTimer);
+          saveTimer = setTimeout(() => {
+            if (win.isDestroyed()) return;
+            const bounds = win.getBounds();
+            const rowId = `window_state:${options.key}`;
+            const data = {
+              extensionId: 'window_state',
+              key: options.key,
+              value: JSON.stringify({
+                x: bounds.x,
+                y: bounds.y,
+                width: bounds.width,
+                height: bounds.height
+              }),
+              updatedAt: Date.now()
+            };
+            setRow('extension_settings', rowId, data);
+            DEBUG && console.log('Saved window state for key:', options.key, bounds);
+          }, 500); // Debounce 500ms
+        };
+
+        win.on('move', saveState);
+        win.on('resize', saveState);
       }
 
       // Set up DevTools if requested
@@ -1766,6 +1829,144 @@ export function registerWindowHandlers(): void {
     }
   });
 
+  // Set window always-on-top with level support
+  // Levels (macOS): 'normal', 'floating', 'torn-off-menu', 'modal-panel', 'main-menu', 'status', 'pop-up-menu', 'screen-saver'
+  // For cross-platform, use 'floating' for app-level and 'screen-saver' for OS-level
+  ipcMain.handle('window-set-always-on-top', async (ev, msg) => {
+    DEBUG && console.log('window-set-always-on-top', msg);
+
+    try {
+      // If no ID provided, use the sender's window
+      let win: BrowserWindow | null = null;
+      if (msg?.id) {
+        win = BrowserWindow.fromId(msg.id);
+      } else {
+        win = BrowserWindow.fromWebContents(ev.sender);
+      }
+
+      if (!win) {
+        return { success: false, error: 'Window not found' };
+      }
+
+      const value = msg.value !== false; // Default to true
+      const level = msg.level || 'normal'; // 'normal', 'floating', 'screen-saver', etc.
+
+      // setAlwaysOnTop(flag, level, relativeLevel)
+      // relativeLevel is only used on macOS
+      if (process.platform === 'darwin') {
+        win.setAlwaysOnTop(value, level as any);
+      } else {
+        // On Windows/Linux, level is ignored but always-on-top still works
+        win.setAlwaysOnTop(value);
+      }
+
+      return { success: true, alwaysOnTop: value, level };
+    } catch (error) {
+      console.error('Failed to set always-on-top:', error);
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // Get window always-on-top state
+  ipcMain.handle('window-is-always-on-top', async (ev, msg) => {
+    DEBUG && console.log('window-is-always-on-top', msg);
+
+    try {
+      let win: BrowserWindow | null = null;
+      if (msg?.id) {
+        win = BrowserWindow.fromId(msg.id);
+      } else {
+        win = BrowserWindow.fromWebContents(ev.sender);
+      }
+
+      if (!win) {
+        return { success: false, error: 'Window not found' };
+      }
+
+      return { success: true, alwaysOnTop: win.isAlwaysOnTop() };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // Animate window bounds (position and/or size)
+  // Animates from current bounds (or specified 'from') to target bounds over duration
+  ipcMain.handle('window-animate', async (ev, msg) => {
+    DEBUG && console.log('window-animate', msg);
+
+    try {
+      let win: BrowserWindow | null = null;
+      if (msg?.id) {
+        win = BrowserWindow.fromId(msg.id);
+      } else {
+        win = BrowserWindow.fromWebContents(ev.sender);
+      }
+
+      if (!win) {
+        return { success: false, error: 'Window not found' };
+      }
+
+      const currentBounds = win.getBounds();
+      const from = msg.from || currentBounds;
+      const to = msg.to;
+      const duration = msg.duration || 150; // ms
+
+      if (!to) {
+        return { success: false, error: 'Target bounds (to) are required' };
+      }
+
+      // Calculate animation parameters
+      const startX = from.x ?? currentBounds.x;
+      const startY = from.y ?? currentBounds.y;
+      const startW = from.width ?? currentBounds.width;
+      const startH = from.height ?? currentBounds.height;
+
+      const endX = to.x ?? startX;
+      const endY = to.y ?? startY;
+      const endW = to.width ?? startW;
+      const endH = to.height ?? startH;
+
+      // Animation timing
+      const timerInterval = 10; // ms
+      const numTicks = Math.max(1, Math.floor(duration / timerInterval));
+      let tick = 0;
+
+      return new Promise((resolve) => {
+        const timer = setInterval(() => {
+          tick++;
+
+          if (tick >= numTicks || win!.isDestroyed()) {
+            clearInterval(timer);
+            // Set final bounds
+            if (!win!.isDestroyed()) {
+              win!.setBounds({ x: endX, y: endY, width: endW, height: endH });
+            }
+            resolve({ success: true });
+            return;
+          }
+
+          // Calculate progress (0 to 1)
+          const progress = tick / numTicks;
+          // Use easeOutQuad for smooth deceleration
+          const eased = 1 - (1 - progress) * (1 - progress);
+
+          const x = Math.round(startX + (endX - startX) * eased);
+          const y = Math.round(startY + (endY - startY) * eased);
+          const w = Math.round(startW + (endW - startW) * eased);
+          const h = Math.round(startH + (endH - startH) * eased);
+
+          win!.setBounds({ x, y, width: w, height: h });
+        }, timerInterval);
+      });
+    } catch (error) {
+      console.error('Failed to animate window:', error);
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
   ipcMain.handle('window-exists', async (_ev, msg) => {
     DEBUG && console.log('window-exists', msg);
 
@@ -1864,6 +2065,87 @@ export function registerMiscHandlers(onQuit: () => void): void {
       }
       const [x, y] = win.getPosition();
       return { success: true, x, y };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // Check if window is draggable (default: true)
+  ipcMain.handle('window-is-draggable', (ev) => {
+    try {
+      const win = BrowserWindow.fromWebContents(ev.sender);
+      if (!win) {
+        return { success: false, error: 'Window not found' };
+      }
+      const winInfo = getWindowInfo(win.id);
+      // Default to draggable if not specified
+      const draggable = winInfo?.params?.draggable !== false;
+      return { success: true, draggable };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // Save window state (position and size) for persistence
+  // Stored in extension_settings table with namespace 'window_state'
+  ipcMain.handle('window-state-save', async (_ev, msg) => {
+    DEBUG && console.log('window-state-save', msg);
+
+    try {
+      const { key, x, y, width, height } = msg;
+      if (!key) {
+        return { success: false, error: 'Window key is required' };
+      }
+
+      // Check if persistence is enabled
+      const prefs = getPrefs();
+      if (!prefs.persistWindowState) {
+        return { success: false, error: 'Window state persistence is disabled' };
+      }
+
+      const rowId = `window_state:${key}`;
+      const data = {
+        extensionId: 'window_state',
+        key,
+        value: JSON.stringify({ x, y, width, height }),
+        updatedAt: Date.now()
+      };
+
+      setRow('extension_settings', rowId, data);
+      return { success: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // Load window state for a given key
+  ipcMain.handle('window-state-load', async (_ev, msg) => {
+    DEBUG && console.log('window-state-load', msg);
+
+    try {
+      const { key } = msg;
+      if (!key) {
+        return { success: false, error: 'Window key is required' };
+      }
+
+      // Check if persistence is enabled
+      const prefs = getPrefs();
+      if (!prefs.persistWindowState) {
+        return { success: false, data: null };
+      }
+
+      const rowId = `window_state:${key}`;
+      const row = getRow('extension_settings', rowId);
+
+      if (!row || !row.value) {
+        return { success: true, data: null };
+      }
+
+      const state = JSON.parse(row.value as string);
+      return { success: true, data: state };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return { success: false, error: message };

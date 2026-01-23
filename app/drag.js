@@ -56,6 +56,10 @@ const onMouseDown = async (e) => {
 
   holdTimer = setTimeout(async () => {
     try {
+      // Check if window is draggable (API option can disable this)
+      const draggableResult = await window.app.invoke('window-is-draggable');
+      if (!draggableResult?.draggable) return;
+
       // Get window ID and position
       windowId = await window.app.invoke('get-window-id');
       if (!windowId) return;

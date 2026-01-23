@@ -124,6 +124,25 @@ const executeItem = (item) => {
   }
 
   function openNewSlide() {
+    // Calculate off-screen starting position for animation
+    let startX = x, startY = y;
+    const animationDuration = 150; // ms
+
+    switch(item.screenEdge) {
+      case 'Up':
+        startY = -height; // Start above screen
+        break;
+      case 'Down':
+        startY = screen.height; // Start below screen
+        break;
+      case 'Left':
+        startX = -width; // Start left of screen
+        break;
+      case 'Right':
+        startX = screen.width; // Start right of screen
+        break;
+    }
+
     const params = {
       address: item.address,
       height,
@@ -138,8 +157,9 @@ const executeItem = (item) => {
       keepLive: item.keepLive || false,
       persistState: item.persistState || false,
 
-      x,
-      y,
+      // Start at off-screen position for animation
+      x: startX,
+      y: startY,
 
       // tracking
       trackingSource: 'slide',
@@ -147,10 +167,24 @@ const executeItem = (item) => {
       title: item.title || ''
     };
 
-    api.window.open(item.address, params).then(result => {
+    api.window.open(item.address, params).then(async result => {
       if (result.success) {
         console.log('[ext:slides] Successfully opened slide with ID:', result.id);
         slideWindows.set(key, result.id);
+
+        // Animate to final position
+        if (startX !== x || startY !== y) {
+          try {
+            await api.invoke('window-animate', {
+              id: result.id,
+              to: { x, y, width, height },
+              duration: animationDuration
+            });
+            console.log('[ext:slides] Animation complete');
+          } catch (err) {
+            console.error('[ext:slides] Animation failed:', err);
+          }
+        }
       } else {
         console.error('[ext:slides] Failed to open slide:', result.error);
       }

@@ -24,18 +24,12 @@ if (isLocal) {
   BASE_URL = "http://localhost:3000";
   API_KEY = process.env.PEEK_LOCAL_KEY;
 } else if (isProd) {
-  BASE_URL = process.env.PEEK_PROD_URL;
+  BASE_URL = process.env.PEEK_PROD_URL || "https://peek-node.up.railway.app";
   API_KEY = process.env.PEEK_PROD_KEY;
 } else {
   // Fallback to legacy env vars for backwards compatibility
   BASE_URL = process.env.BASE_URL || "http://localhost:3000";
   API_KEY = process.env.API_KEY;
-}
-
-if (isProd && !BASE_URL) {
-  console.error("ERROR: PEEK_PROD_URL not set for production tests");
-  console.error("Set PEEK_PROD_URL in .env or environment");
-  process.exit(1);
 }
 
 if (!API_KEY) {

@@ -8,6 +8,7 @@ import modalCommand from './modal.js';
 import noteModule from './note.js';
 import historyModule from './history.js';
 import tagModule from './tag.js';
+import pinModule from './pin.js';
 
 console.log('tagModule.commands:', tagModule.commands?.map(c => c.name));
 
@@ -31,7 +32,8 @@ const activeCommands = [
   modalCommand,
   ...noteModule.commands,
   ...historyModule.commands,
-  ...tagModule.commands
+  ...tagModule.commands,
+  ...pinModule.commands
 ];
 
 console.log('activeCommands:', activeCommands.map(c => c.name));

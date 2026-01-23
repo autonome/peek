@@ -61,7 +61,9 @@ const result = await window.app.window.open('peek://app/settings/settings.html',
   alwaysOnTop: false,        // Stay on top
   visible: true,             // Initially visible
   resizable: true,           // Allow resize
-  keepLive: false            // Keep window alive when closed
+  draggable: true,           // Allow click-and-hold drag (default: true)
+  keepLive: false,           // Keep window alive when closed
+  escapeMode: 'close'        // ESC key behavior: 'close', 'navigate', or 'auto'
 });
 // Returns: { success: true, id: 'window_label' }
 ```
@@ -119,6 +121,60 @@ Check if a window exists.
 ```javascript
 const result = await window.app.window.exists('settings');
 // Returns: { success: true, data: true }
+```
+
+### `window.app.invoke('window-animate', options)`
+
+Animate a window's position and/or size.
+
+```javascript
+// Animate to new position
+await window.app.invoke('window-animate', {
+  id: windowId,                    // Window ID (optional, defaults to current)
+  to: { x: 100, y: 100 },          // Target bounds (required)
+  duration: 150                    // Animation duration in ms (default: 150)
+});
+
+// Animate from specific position
+await window.app.invoke('window-animate', {
+  id: windowId,
+  from: { x: 0, y: -600 },         // Starting bounds (optional, defaults to current)
+  to: { x: 0, y: 0, width: 800, height: 600 },
+  duration: 200
+});
+// Uses easeOutQuad easing for smooth deceleration
+```
+
+### `window.app.invoke('window-set-always-on-top', options)`
+
+Pin a window to stay on top of other windows.
+
+```javascript
+// Pin with normal level
+await window.app.invoke('window-set-always-on-top', {
+  id: windowId,
+  value: true
+});
+
+// Pin above other app windows (macOS)
+await window.app.invoke('window-set-always-on-top', {
+  id: windowId,
+  value: true,
+  level: 'floating'
+});
+
+// Pin above all windows (macOS)
+await window.app.invoke('window-set-always-on-top', {
+  id: windowId,
+  value: true,
+  level: 'screen-saver'
+});
+
+// Unpin
+await window.app.invoke('window-set-always-on-top', {
+  id: windowId,
+  value: false
+});
 ```
 
 ---

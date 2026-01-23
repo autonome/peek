@@ -103,8 +103,8 @@ function getServerUrl(): string {
     // If query fails, fall through to defaults
   }
 
-  // Fall back to env var (empty string disables sync)
-  return process.env.SYNC_SERVER_URL || '';
+  // Fall back to env var or default
+  return process.env.SYNC_SERVER_URL || 'https://peek-node.up.railway.app';
 }
 
 /**

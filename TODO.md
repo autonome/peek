@@ -15,6 +15,7 @@ Today
 - [ ][desktop] now that data syncing from server and mobile, add a new extension for experimenting with visualizations of tags - start by porting over the tag viewing/filtering system from the mobile app, for a desktop view, so we can search, view and edit notes/urls/tagsets/images by tag button interfaces, see also the Groups & Tags UX section
 - [x][desktop+server] add user profiles and profile switching (desktop done, server done, mobile seamlessly uses default profile)
 - [ ][desktop] fix sync status in settings UI - always shows "never synced" even after successful sync
+- [ ][desktop] fix groups extension - shows synced items for a tag but with no URL, just cards saying "0 visits" and "Last: never"
 
 Later
 - [ ][desktop] access to notes on filesystem, syncing them as markdown files in ~/sync/Notes/peek

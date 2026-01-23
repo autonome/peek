@@ -11,9 +11,8 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
+- [~][mobile] bottom buttons (save, delete, etc) can be hidden behind iOS keyboard
 - [~][release] build and deploy release versions of desktop, ios, and server
-- [ ][workflow] agents need policy to never read outside workspace; spawned explore agents don't inherit policies
-- [ ][security] remove production server endpoint from source - should only be in .env files or user-entered
 
 Later
 - [ ][desktop] access to notes on filesystem, syncing them as markdown files in ~/sync/Notes/peek
@@ -152,6 +151,14 @@ Animations
 - [x] update slides impl to use animation (see ./animation.js, can remove when done)
 
 ## UI Componentry
+
+Right now we're replicating/forking html and js across extensions.
+This is messy, error prone, poor DRY practice.
+It also makes it so we can't generatively and rapidly build out UIs without whole new piles of html/js/css.
+We want a flexible and reusable system provided at the ./app layer which extensions can include and inject data/styling into.
+Ideally this is some loosely coupled system with deterministic management.
+Not just importing and writing js components w/ css, React-style.
+This is more like a templating system injecting schema, a card (html fragment?), and data.
 
 reactive schema+card+data system
 - [ ] cards + json schema + data?
@@ -472,6 +479,11 @@ Newly done items go here, grouped under third-level headings by week of year.
 
 ### 2026-W04
 
+- [x][desktop] Desktop Windows - title bar, persistence, pin controls, animations
+- [x][security] remove production server endpoint from source - require env config
+- [x][workflow] agent workspace isolation - rules to stay in workspace, no parent repo access
+- [x][workflow] fix divergent commits - mmerge uses jj new+restore pattern
+- [x][workflow] Railway deploy scripts - npm/yarn scripts with --service flag
 - [x][desktop] fix groups extension - add visit tracking, filter for URLs only
 - [x][workflow] fix TODO archival - updated agent templates with clearer instructions
 - [x][workflow] clarify ./app rule - now about respecting front-end/back-end architecture boundary

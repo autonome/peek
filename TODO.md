@@ -11,7 +11,7 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
-- [ ][desktop] fix sync status in settings UI - always shows "never synced" even after successful sync
+- [~][desktop] fix sync status in settings UI - always shows "never synced" even after successful sync
 - [ ][desktop] fix groups extension - shows synced items for a tag but with no URL, just cards saying "0 visits" and "Last: never"
 - [ ][workflow] fix TODO archival - coordinator or agents not marking items done and moving to Done section
 

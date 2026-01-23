@@ -15,6 +15,7 @@ Today
 - [~][workflow] fix TODO archival - coordinator or agents not marking items done and moving to Done section
 - [~][workflow] agents skipping rules check; jj-only not emphasized as critical; ./app rule should be about respecting front-end/back-end architecture boundary
 - [~][workflow] agents need policy to never read outside workspace; spawned explore agents don't inherit policies
+- [ ][security] remove production server endpoint from source - should only be in .env files or user-entered
 
 Later
 - [ ][desktop] access to notes on filesystem, syncing them as markdown files in ~/sync/Notes/peek

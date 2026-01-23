@@ -447,6 +447,42 @@ fn get_connection() -> Result<Connection, String> {
     Ok(conn)
 }
 
+#[tauri::command]
+fn debug_list_container_files() -> Result<Vec<String>, String> {
+    unsafe {
+        let c_str = get_app_group_container_path();
+        if c_str.is_null() {
+            return Err("Failed to get App Group container path".to_string());
+        }
+        let path_str = CStr::from_ptr(c_str).to_string_lossy().to_string();
+        libc::free(c_str as *mut libc::c_void);
+
+        let container_path = PathBuf::from(&path_str);
+        let mut files = Vec::new();
+
+        files.push(format!("Container: {}", path_str));
+
+        fn list_recursive(dir: &PathBuf, prefix: &str, files: &mut Vec<String>) {
+            if let Ok(entries) = std::fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    if path.is_dir() {
+                        files.push(format!("{}{}/", prefix, name));
+                        list_recursive(&path, &format!("{}  ", prefix), files);
+                    } else {
+                        let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+                        files.push(format!("{}{} ({} bytes)", prefix, name, size));
+                    }
+                }
+            }
+        }
+
+        list_recursive(&container_path, "  ", &mut files);
+        Ok(files)
+    }
+}
+
 // Parse hashtags from text content
 fn parse_hashtags(content: &str) -> Vec<String> {
     let re = Regex::new(r"#(\w+)").unwrap();
@@ -2800,7 +2836,9 @@ pub fn run() {
             sync_all,
             get_sync_status,
             // Legacy/deprecated
-            get_shared_url
+            get_shared_url,
+            // Debug
+            debug_list_container_files
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

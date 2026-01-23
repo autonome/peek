@@ -81,6 +81,32 @@ interface UnifiedItem {
   height?: number;
 }
 
+// Custom hook to detect iOS keyboard height via Visual Viewport API
+const useKeyboardHeight = () => {
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+
+    const handleResize = () => {
+      // Calculate keyboard height from visual viewport
+      const newHeight = Math.max(0, window.innerHeight - viewport.height);
+      setKeyboardHeight(newHeight);
+    };
+
+    viewport.addEventListener('resize', handleResize);
+    viewport.addEventListener('scroll', handleResize);
+
+    return () => {
+      viewport.removeEventListener('resize', handleResize);
+      viewport.removeEventListener('scroll', handleResize);
+    };
+  }, []);
+
+  return keyboardHeight;
+};
+
 function App() {
   // Filter state: "all" shows everything, or a single type
   const [activeFilter, setActiveFilter] = useState<ItemType | "all">("all");
@@ -191,6 +217,9 @@ function App() {
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
+
+  // Keyboard height for iOS keyboard avoidance
+  const keyboardHeight = useKeyboardHeight();
 
   // Pull-to-refresh state
   const pullStartY = useRef<number | null>(null);
@@ -1288,7 +1317,7 @@ function App() {
       const unusedTags = editingUrlTags.filter((tag) => !editingTags.has(tag.name));
 
       return (
-        <div className="edit-overlay" onClick={(e) => e.target === e.currentTarget && requestCancelEditing()}>
+        <div className="edit-overlay" style={{ paddingBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : undefined }} onClick={(e) => e.target === e.currentTarget && requestCancelEditing()}>
           <div className="expandable-card expanded">
             <div className="expandable-card-input-row">
               <input
@@ -1373,7 +1402,7 @@ function App() {
       const unusedTags = allTags.filter((tag) => !editingTextTags.has(tag.name));
 
       return (
-        <div className="edit-overlay" onClick={(e) => e.target === e.currentTarget && requestCancelEditingText()}>
+        <div className="edit-overlay" style={{ paddingBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : undefined }} onClick={(e) => e.target === e.currentTarget && requestCancelEditingText()}>
           <div className="expandable-card expanded">
             <div className="expandable-card-input-row">
               <textarea
@@ -1465,7 +1494,7 @@ function App() {
       const unusedTags = allTags.filter((tag) => !editingTagsetTags.has(tag.name));
 
       return (
-        <div className="edit-overlay" onClick={(e) => e.target === e.currentTarget && requestCancelEditingTagset()}>
+        <div className="edit-overlay" style={{ paddingBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : undefined }} onClick={(e) => e.target === e.currentTarget && requestCancelEditingTagset()}>
           <div className="expandable-card expanded">
             <div className="expandable-card-scroll" style={{ paddingTop: '0.75rem' }}>
               {editingTagsetTags.size > 0 && (
@@ -1547,7 +1576,7 @@ function App() {
       const title = metadata?.title as string | undefined;
 
       return (
-        <div className="edit-overlay" onClick={(e) => e.target === e.currentTarget && requestCancelEditingImage()}>
+        <div className="edit-overlay" style={{ paddingBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : undefined }} onClick={(e) => e.target === e.currentTarget && requestCancelEditingImage()}>
           <div className="expandable-card expanded">
             <div className="expandable-card-scroll" style={{ paddingTop: '0.75rem' }}>
               <div className="expandable-card-section image-preview-section">
@@ -2166,6 +2195,23 @@ function App() {
                 {syncMessage}
               </div>
             )}
+          </div>
+
+          <div className="settings-section">
+            <h2>Debug</h2>
+            <button
+              className="sync-btn secondary"
+              onClick={async () => {
+                try {
+                  const files = await invoke<string[]>("debug_list_container_files");
+                  alert(files.join("\n"));
+                } catch (e) {
+                  alert("Error: " + e);
+                }
+              }}
+            >
+              List Container Files
+            </button>
           </div>
         </main>
       </div>

@@ -11,7 +11,6 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
-- [~][desktop] fix sync status in settings UI - always shows "never synced" even after successful sync
 - [~][desktop] fix groups extension - shows synced items for a tag but with no URL, just cards saying "0 visits" and "Last: never"
 - [~][workflow] fix TODO archival - coordinator or agents not marking items done and moving to Done section
 - [~][workflow] agents skipping rules check; jj-only not emphasized as critical; ./app rule should be about respecting front-end/back-end architecture boundary
@@ -464,6 +463,7 @@ Newly done items go here, grouped under third-level headings by week of year.
 
 ### 2026-W04
 
+- [x][desktop] fix sync status in settings UI - use correct field name for display
 - [x][mobile] mobile editing ux - toasts, validation, draft persistence, spacing, bottom bar fix
 - [x][desktop] add tags extension for tag visualization and management
 - [x][desktop+server] add user profiles and profile switching

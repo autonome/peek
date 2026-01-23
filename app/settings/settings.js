@@ -734,8 +734,8 @@ const renderSyncSettings = async () => {
     statusLine.textContent = `Status: ${isConfigured ? 'Configured' : 'Not configured'}`;
     statusLine.style.color = isConfigured ? 'var(--text-primary)' : 'var(--text-tertiary)';
 
-    if (status.lastSync && status.lastSync > 0) {
-      const lastSyncDate = new Date(status.lastSync);
+    if (status.lastSyncTime && status.lastSyncTime > 0) {
+      const lastSyncDate = new Date(status.lastSyncTime);
       lastSyncLine.textContent = `Last sync: ${lastSyncDate.toLocaleString()}`;
     } else {
       lastSyncLine.textContent = 'Last sync: Never';

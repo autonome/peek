@@ -11,7 +11,6 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
-- [ ][mobile] mobile editing ux - improve add/edit flows, fix any rough edges in item creation and editing
 - [ ][desktop] fix sync status in settings UI - always shows "never synced" even after successful sync
 - [ ][desktop] fix groups extension - shows synced items for a tag but with no URL, just cards saying "0 visits" and "Last: never"
 
@@ -462,6 +461,7 @@ Newly done items go here, grouped under third-level headings by week of year.
 
 ### 2026-W04
 
+- [x][mobile] mobile editing ux - toasts, validation, draft persistence, spacing, bottom bar fix
 - [x][desktop] add tags extension for tag visualization and management
 - [x][desktop+server] add user profiles and profile switching
 - [x][server] add daily snapshot backups on server, test locally, deploy, test and confirm working on railway

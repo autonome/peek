@@ -244,6 +244,59 @@ function updateProfileLastUsed(userId, slug) {
 }
 
 /**
+ * Get a profile by its UUID.
+ * @param {string} userId - The user ID
+ * @param {string} profileId - Profile UUID
+ * @returns {object|null} Profile object or null if not found
+ */
+function getProfileById(userId, profileId) {
+  const db = getSystemDb();
+  return db.prepare(`
+    SELECT id, user_id, slug, name, created_at, last_used_at
+    FROM profiles
+    WHERE user_id = ? AND id = ?
+  `).get(userId, profileId);
+}
+
+/**
+ * Resolve a profile identifier to a folder slug.
+ * Handles both UUIDs (new clients) and slugs (backwards compatibility).
+ *
+ * Priority:
+ * 1. If profileIdentifier is a UUID and found in profiles table → use its slug
+ * 2. If fallbackSlug provided → use it (client knows expected folder)
+ * 3. Use profileIdentifier as-is (backwards compatible or new profile)
+ *
+ * @param {string} userId - The user ID
+ * @param {string} profileIdentifier - Either a UUID or a slug
+ * @param {string|null} fallbackSlug - Optional fallback slug from client
+ * @returns {string} The slug to use for folder paths
+ */
+function resolveProfileSlug(userId, profileIdentifier, fallbackSlug = null) {
+  // If it looks like a UUID (36 chars with dashes), try to look it up
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  if (uuidPattern.test(profileIdentifier)) {
+    // Look up by UUID
+    const profile = getProfileById(userId, profileIdentifier);
+    if (profile) {
+      return profile.slug;
+    }
+
+    // UUID not found - use fallback slug if provided
+    if (fallbackSlug) {
+      console.log(`[profiles] UUID ${profileIdentifier} not found, using fallback slug: ${fallbackSlug}`);
+      return fallbackSlug;
+    }
+
+    // No fallback - use UUID as-is (truly new profile)
+  }
+
+  // Not a UUID or not found - use as-is (backwards compatible)
+  return profileIdentifier;
+}
+
+/**
  * Delete a profile by profile ID.
  * @param {string} userId - The user ID (for verification)
  * @param {string} profileId - The profile ID to delete
@@ -279,6 +332,8 @@ module.exports = {
   createProfile,
   listProfiles,
   getProfile,
+  getProfileById,
+  resolveProfileSlug,
   updateProfileLastUsed,
   deleteProfile,
   // Exposed for testing

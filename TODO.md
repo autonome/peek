@@ -11,9 +11,11 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
-- [ ][mobile] shares to Peek app on iOS are not saving to datastore - investigate
-- [~][mobile] bottom buttons (save, delete, etc) can be hidden behind iOS keyboard
-- [~][release] build and deploy release versions of desktop, ios, and server
+- [ ][mobile] filtering search of tags in tag input box
+- [ ][mobile] shares to Peek app on iOS are not saving to datastore , no available t
+- [ ][mobile] text editor is too small and the resize work we did isn't working
+- [ ][mobile] bottom buttons (save, delete, etc) can be hidden behind iOS keyboard
+- [ ][desktop] extension rework in side nav
 
 Later
 - [ ][desktop] access to notes on filesystem, syncing them as markdown files in ~/sync/Notes/peek

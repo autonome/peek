@@ -66,6 +66,18 @@ interface SyncStatus {
   pending_count: number;
 }
 
+interface ProfileEntry {
+  slug: string;
+  name: string;
+}
+
+interface ProfileInfo {
+  current_profile: string;
+  default_profile: string;
+  is_production_build: boolean;
+  profiles: ProfileEntry[];
+}
+
 // Unified item for combined list
 interface UnifiedItem {
   id: string;
@@ -212,11 +224,15 @@ function App() {
   const [webhookUrlInput, setWebhookUrlInput] = useState("");
   const [webhookApiKey, setWebhookApiKey] = useState("");
   const [webhookApiKeyInput, setWebhookApiKeyInput] = useState("");
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
+  const [profileInfo, setProfileInfo] = useState<ProfileInfo | null>(null);
+  const [profileInput, setProfileInput] = useState("");
+  const [showRestartPrompt, setShowRestartPrompt] = useState(false);
 
   // Keyboard height for iOS keyboard avoidance
   const keyboardHeight = useKeyboardHeight();
@@ -286,8 +302,10 @@ function App() {
     loadData();
     loadWebhookUrl();
     loadWebhookApiKey();
+    loadAutoSync();
     loadLastSync();
     loadSyncStatus();
+    loadProfileInfo();
     tryAutoSync();
 
     // Reload when app comes back to foreground (to pick up items from share extension)
@@ -344,6 +362,24 @@ function App() {
     }
   };
 
+  const loadAutoSync = async () => {
+    try {
+      const enabled = await invoke<boolean>("get_auto_sync");
+      setAutoSyncEnabled(enabled);
+    } catch (error) {
+      console.error("Failed to load auto-sync setting:", error);
+    }
+  };
+
+  const toggleAutoSync = async (enabled: boolean) => {
+    try {
+      await invoke("set_auto_sync", { enabled });
+      setAutoSyncEnabled(enabled);
+    } catch (error) {
+      console.error("Failed to set auto-sync:", error);
+    }
+  };
+
   const loadLastSync = async () => {
     try {
       const sync = await invoke<string | null>("get_last_sync");
@@ -362,6 +398,41 @@ function App() {
       }
     } catch (error) {
       console.error("Failed to load sync status:", error);
+    }
+  };
+
+  const loadProfileInfo = async () => {
+    try {
+      const info = await invoke<ProfileInfo>("get_profile_info");
+      setProfileInfo(info);
+      setProfileInput(info.current_profile);
+    } catch (error) {
+      console.error("Failed to load profile info:", error);
+    }
+  };
+
+  const setProfile = async (profileSlug: string) => {
+    console.log(`[Profile] setProfile called with: ${profileSlug}`);
+    try {
+      console.log(`[Profile] Invoking set_profile command...`);
+      const info = await invoke<ProfileInfo>("set_profile", { profileSlug });
+      console.log(`[Profile] set_profile returned:`, info);
+      setProfileInfo(info);
+      setProfileInput(info.current_profile);
+      // Show restart prompt for full database isolation
+      setShowRestartPrompt(true);
+    } catch (error) {
+      console.error("[Profile] Failed to set profile:", error);
+      setSyncMessage(`Failed: ${error}`);
+      setTimeout(() => setSyncMessage(null), 3000);
+    }
+  };
+
+  const quitApp = async () => {
+    try {
+      await invoke("quit_app");
+    } catch (error) {
+      console.error("Failed to quit:", error);
     }
   };
 
@@ -2100,10 +2171,14 @@ function App() {
         </header>
 
         <main className="settings-view">
+          {/* Server Sync Section */}
           <div className="settings-section">
             <h2>Server Sync</h2>
             <p className="settings-description">
               Sync your saved items with the server. Pull to get items from other devices, push to send local items, or sync all to do both.
+            </p>
+            <p className="settings-description" style={{ fontSize: "0.85rem", opacity: 0.8 }}>
+              Items sync to your account's "{profileInfo?.current_profile}" profile on the server.
             </p>
 
             <div className="webhook-input">
@@ -2153,6 +2228,15 @@ function App() {
               Save Settings
             </button>
 
+            <label className="auto-sync-toggle">
+              <input
+                type="checkbox"
+                checked={autoSyncEnabled}
+                onChange={(e) => toggleAutoSync(e.target.checked)}
+              />
+              <span>Auto-sync when items are added or modified</span>
+            </label>
+
             {lastSync && (
               <p className="last-sync-info">
                 Last synced: {new Date(lastSync).toLocaleString()}
@@ -2197,23 +2281,187 @@ function App() {
             )}
           </div>
 
+          {/* Profile Section */}
+          <div className="settings-section">
+            <h2>Profiles</h2>
+            {profileInfo && (
+              <>
+                <p className="settings-description">
+                  {profileInfo.is_production_build
+                    ? "App Store/TestFlight build"
+                    : "Development build"}.
+                  Each profile has separate local data and sync destination.
+                </p>
+
+                {profileInfo.current_profile !== "default" && (
+                  <div className="profile-warning-banner">
+                    Using "{profileInfo.current_profile}" profile - data is isolated from default
+                  </div>
+                )}
+
+                {/* Profile List */}
+                <div className="profile-list">
+                  {profileInfo.profiles.map((profile) => {
+                    const isCurrent = profile.slug === profileInfo.current_profile;
+                    const isBuiltin = profile.slug === "default" || profile.slug === "dev";
+                    const canDelete = !isCurrent && !isBuiltin;
+
+                    return (
+                      <div key={profile.slug} className={`profile-item ${isCurrent ? "active" : ""}`}>
+                        <label className="profile-radio-label">
+                          <input
+                            type="radio"
+                            name="profile"
+                            checked={isCurrent}
+                            onChange={() => {
+                              console.log(`[Profile] Radio clicked: ${profile.slug}, isCurrent: ${isCurrent}`);
+                              if (!isCurrent) {
+                                console.log(`[Profile] Switching to: ${profile.slug}`);
+                                setProfile(profile.slug);
+                              }
+                            }}
+                          />
+                          <span className="profile-name">{profile.name}</span>
+                          {isBuiltin && <span className="profile-badge builtin">built-in</span>}
+                          {isCurrent && <span className="profile-badge current">active</span>}
+                        </label>
+                        {canDelete && (
+                          <button
+                            className="profile-delete-btn"
+                            onClick={async () => {
+                              if (confirm(`Delete profile "${profile.name}"?\n\nThe database file will be preserved.`)) {
+                                try {
+                                  const info = await invoke<ProfileInfo>("delete_profile", { profileSlug: profile.slug });
+                                  setProfileInfo(info);
+                                } catch (err) {
+                                  alert(`Failed to delete: ${err}`);
+                                }
+                              }
+                            }}
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Add Profile */}
+                <div className="profile-add-section">
+                  <div className="profile-input-row">
+                    <input
+                      type="text"
+                      value={profileInput}
+                      onChange={(e) => setProfileInput(e.target.value)}
+                      placeholder="New profile name"
+                    />
+                    <button
+                      className="sync-btn secondary"
+                      onClick={async () => {
+                        if (profileInput.trim()) {
+                          try {
+                            const info = await invoke<ProfileInfo>("create_profile", { name: profileInput.trim() });
+                            setProfileInfo(info);
+                            setProfileInput("");
+                          } catch (err) {
+                            alert(`Failed to create: ${err}`);
+                          }
+                        }
+                      }}
+                      disabled={!profileInput.trim()}
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
+
+                {/* Reset to default */}
+                {profileInfo.current_profile !== profileInfo.default_profile && (
+                  <button
+                    className="profile-btn reset"
+                    onClick={() => setProfile(profileInfo.default_profile)}
+                    style={{ marginTop: "12px" }}
+                  >
+                    Reset to {profileInfo.default_profile} (auto-detected)
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Debug Section */}
           <div className="settings-section">
             <h2>Debug</h2>
-            <button
-              className="sync-btn secondary"
-              onClick={async () => {
-                try {
-                  const files = await invoke<string[]>("debug_list_container_files");
-                  alert(files.join("\n"));
-                } catch (e) {
-                  alert("Error: " + e);
-                }
-              }}
-            >
-              List Container Files
-            </button>
+            <div className="sync-btn-row" style={{ flexDirection: 'column', gap: '0.5rem' }}>
+              <button
+                className="sync-btn secondary"
+                onClick={async () => {
+                  try {
+                    const files = await invoke<string[]>("debug_list_container_files");
+                    setSyncMessage("FILES: " + files.join(" | "));
+                  } catch (e) {
+                    setSyncMessage("ERROR: " + String(e));
+                  }
+                }}
+              >
+                List Container Files
+              </button>
+              <button
+                className="sync-btn secondary"
+                onClick={async () => {
+                  try {
+                    const info = await invoke<string>("debug_query_database");
+                    setSyncMessage(info);
+                  } catch (e) {
+                    setSyncMessage("DB ERROR: " + String(e));
+                  }
+                }}
+              >
+                Query Database
+              </button>
+              <button
+                className="sync-btn secondary"
+                onClick={async () => {
+                  try {
+                    setSyncMessage("Exporting...");
+                    const base64 = await invoke<string>("debug_export_database");
+                    setSyncMessage("DB_START>>>" + base64.substring(0, 500) + "...(" + base64.length + " total chars). Use AirDrop or copy manually.");
+                    console.log("FULL_DB_BASE64:", base64);
+                  } catch (e) {
+                    setSyncMessage("EXPORT ERROR: " + String(e));
+                  }
+                }}
+              >
+                Export Database
+              </button>
+            </div>
           </div>
+
         </main>
+
+        {/* Restart prompt modal */}
+        {showRestartPrompt && (
+          <div className="modal-overlay">
+            <div className="modal-content">
+              <h3>Profile Changed</h3>
+              <p>
+                Switched to <strong>{profileInfo?.current_profile}</strong> profile.
+              </p>
+              <p>
+                Please restart the app to ensure complete data isolation.
+              </p>
+              <div className="modal-buttons">
+                <button className="modal-btn secondary" onClick={() => setShowRestartPrompt(false)}>
+                  Later
+                </button>
+                <button className="modal-btn primary" onClick={quitApp}>
+                  Quit Now
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -2401,6 +2649,13 @@ function App() {
         </button>
       </header>
 
+      {/* Profile warning banner when not on default profile */}
+      {profileInfo && profileInfo.current_profile !== "default" && (
+        <div className="profile-banner">
+          Profile: {profileInfo.current_profile}
+        </div>
+      )}
+
       {viewModeActive ? (
         renderViewMode()
       ) : (
@@ -2555,6 +2810,29 @@ function App() {
       {toast && (
         <div className={`toast toast-${toast.type}`}>
           {toast.message}
+        </div>
+      )}
+
+      {/* Restart prompt modal */}
+      {showRestartPrompt && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h3>Profile Changed</h3>
+            <p>
+              Switched to <strong>{profileInfo?.current_profile}</strong> profile.
+            </p>
+            <p>
+              Please restart the app to ensure complete data isolation.
+            </p>
+            <div className="modal-buttons">
+              <button className="modal-btn secondary" onClick={() => setShowRestartPrompt(false)}>
+                Later
+              </button>
+              <button className="modal-btn primary" onClick={quitApp}>
+                Quit Now
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

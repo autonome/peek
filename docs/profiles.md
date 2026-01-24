@@ -458,13 +458,175 @@ Implementation was completed in 11 atomic commits:
 2. **No prompt for already-selected profile** - Radio button behavior (change event only fires on actual change)
 3. **API keys stored in plaintext** - In local SQLite file (consider encryption for future)
 
+## Mobile Profile Support (iOS)
+
+Mobile profiles provide dev/production isolation for iOS builds.
+
+### How It Works
+
+**Auto-Detection via App Store Receipt:**
+
+```
+App Store / TestFlight build → has receipt → "default" profile
+Xcode install (dev/test)    → no receipt  → "dev" profile
+```
+
+**Local Data Isolation:**
+
+Each profile uses a separate database file:
+```
+App Group Container/
+├── peek-default.db    # TestFlight/App Store data
+├── peek-dev.db        # Xcode dev builds
+└── peek-test.db       # If user switches to "test" profile
+```
+
+**Sync Isolation:**
+
+All sync URLs include `?profile={slug}`:
+```
+GET  /items?profile=dev
+POST /items?profile=dev
+```
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    iOS App                               │
+├─────────────────────────────────────────────────────────┤
+│  Build Detection (is_app_store_build)                   │
+│  ├── Has receipt? → "default" profile                   │
+│  └── No receipt?  → "dev" profile                       │
+├─────────────────────────────────────────────────────────┤
+│  Local Storage                 │  Server Sync           │
+│  ─────────────────────────────┼────────────────────────│
+│  peek-{profile}.db            │  ?profile={profile}    │
+│  (auto-detect only)           │  (can override)        │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Key Design Decisions
+
+**1. Local DB uses auto-detected profile only**
+
+The database filename is determined by build type, not user settings:
+- Prevents accidentally using wrong database
+- Xcode builds ALWAYS use `peek-dev.db`
+- TestFlight/App Store ALWAYS use `peek-default.db`
+
+**2. Sync profile can be overridden**
+
+User can change sync profile in Settings for testing scenarios:
+- Default: auto-detected (matches local DB)
+- Override: any profile name (for advanced testing)
+
+**3. Same bundle ID, different data**
+
+Both dev and production use `com.dietrich.peek-mobile`:
+- Installing one replaces the other
+- App Group container persists between installs
+- Each install type uses its own database file
+
+### Settings UI
+
+The Settings screen shows:
+- Current profile (auto-detected or overridden)
+- Build type indicator (production/development)
+- Quick switch buttons: default, dev, test
+- "Reset to auto" button if overridden
+- Visual warning banner when not on "default"
+
+### Trade-offs and Alternatives Considered
+
+**Current Implementation: Per-Profile Database Files**
+
+```
+Pros:
+✓ Full local data isolation
+✓ Simple implementation
+✓ No bundle ID changes needed
+✓ Works with single App Group
+
+Cons:
+✗ Can't run dev and prod simultaneously (same bundle ID)
+✗ Switching installs replaces the app
+```
+
+**Alternative 1: Different Bundle IDs**
+
+```
+com.dietrich.peek-mobile       # Production
+com.dietrich.peek-mobile-dev   # Development
+
+Pros:
+✓ True coexistence (both installed at once)
+✓ Complete isolation (separate App Groups)
+✓ Different app icons possible
+
+Cons:
+✗ Requires separate provisioning profiles
+✗ Two apps in App Store Connect
+✗ More build configuration complexity
+✗ Share extension would need separate handling
+```
+
+**Alternative 2: Shared Database, Sync-Only Isolation**
+
+```
+Single peek.db for all builds
+Only sync URLs include ?profile=
+
+Pros:
+✓ Simplest implementation
+✓ Shared local data (could be useful)
+
+Cons:
+✗ Test data pollutes production view
+✗ Easy to accidentally sync test data to prod server
+✗ No local isolation (the problem we had)
+```
+
+**Alternative 3: User-Selectable Local Profile**
+
+```
+Settings allows changing local DB profile
+peek-{user-selected}.db
+
+Pros:
+✓ Maximum flexibility
+✓ User can create arbitrary profiles
+
+Cons:
+✗ Easy to accidentally use wrong profile
+✗ Complex state management
+✗ Profile mismatch between local/sync possible
+```
+
+### Files
+
+**Implementation:**
+- `src-tauri/AppGroupBridge.m` - `is_app_store_build()` receipt detection
+- `src-tauri/src/lib.rs`:
+  - `get_default_profile()` - auto-detect based on build type
+  - `get_db_path()` - profile-specific database filename
+  - `get_current_profile_slug()` - sync profile (with override support)
+  - `append_profile_to_url()` - adds ?profile= to sync URLs
+  - `get_profile_info` / `set_profile` - Tauri commands
+- `src/App.tsx` - Profile section in Settings UI
+- `src/App.css` - Profile banner and selector styles
+
+**Build Scripts:**
+- `npm run rebuild:ios` - Clean rebuild for simulator
+- `npm run rebuild:ios:release` - Clean rebuild for device
+
 ## Future Enhancements
 
 - Profile import/export functionality
 - Profile templates (pre-configured profiles)
 - Profile-level theme settings
 - Profile backup/restore
-- Mobile profile support (Tauri)
+- ~~Mobile profile support (Tauri)~~ ✓ Implemented
 - Profile encryption at rest
 - Profile-specific extension configurations
 - Profile migration between machines

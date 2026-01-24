@@ -4,8 +4,11 @@ use serde::{Deserialize, Serialize};
 use std::ffi::CStr;
 use std::os::raw::c_char;
 use std::path::PathBuf;
+use std::fs;
+use std::sync::RwLock;
 use reqwest;
 use regex::Regex;
+use tauri::Manager;
 
 // Legacy model for backward compatibility (webhook, etc.)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -130,9 +133,45 @@ struct SyncStatus {
 extern "C" {
     fn get_app_group_container_path() -> *const c_char;
     fn get_system_is_dark_mode() -> i32;
+    fn is_app_store_build() -> i32;
 }
 
-fn get_db_path() -> Option<PathBuf> {
+/// Check if this is an App Store/TestFlight build (has receipt) vs Xcode install
+fn is_production_build() -> bool {
+    unsafe { is_app_store_build() == 1 }
+}
+
+/// Get the default profile based on build type
+fn get_default_profile() -> String {
+    if is_production_build() {
+        "default".to_string()
+    } else {
+        "dev".to_string()
+    }
+}
+
+// ============================================================================
+// Profile Management System
+// ============================================================================
+
+/// Profile configuration stored in profiles.json
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ProfileConfig {
+    current: String,
+    profiles: Vec<ProfileEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ProfileEntry {
+    slug: String,
+    name: String,
+}
+
+/// Cached profile config to avoid repeated file reads
+static PROFILE_CONFIG: RwLock<Option<ProfileConfig>> = RwLock::new(None);
+
+/// Get the App Group container path
+fn get_container_path() -> Option<PathBuf> {
     unsafe {
         let c_str = get_app_group_container_path();
         if c_str.is_null() {
@@ -141,8 +180,158 @@ fn get_db_path() -> Option<PathBuf> {
         }
         let path_str = CStr::from_ptr(c_str).to_string_lossy().to_string();
         libc::free(c_str as *mut libc::c_void);
-        Some(PathBuf::from(path_str).join("peek.db"))
+        Some(PathBuf::from(path_str))
     }
+}
+
+/// Get the path to profiles.json
+fn get_profiles_config_path() -> Option<PathBuf> {
+    get_container_path().map(|p| p.join("profiles.json"))
+}
+
+/// Load profile config from file, creating default if needed
+fn load_profile_config() -> ProfileConfig {
+    // Check cache first
+    if let Ok(guard) = PROFILE_CONFIG.read() {
+        if let Some(ref config) = *guard {
+            return config.clone();
+        }
+    }
+
+    let config = load_profile_config_from_file();
+
+    // Cache the loaded config
+    if let Ok(mut guard) = PROFILE_CONFIG.write() {
+        *guard = Some(config.clone());
+    }
+
+    config
+}
+
+/// Load profile config directly from file (bypasses cache)
+fn load_profile_config_from_file() -> ProfileConfig {
+    let config_path = match get_profiles_config_path() {
+        Some(p) => p,
+        None => {
+            return create_default_profile_config();
+        }
+    };
+
+    if config_path.exists() {
+        match fs::read_to_string(&config_path) {
+            Ok(contents) => {
+                match serde_json::from_str::<ProfileConfig>(&contents) {
+                    Ok(config) => {
+                        println!("[Rust] Loaded profile config: current={}", config.current);
+                        return config;
+                    }
+                    Err(e) => {
+                        println!("[Rust] Failed to parse profiles.json: {}", e);
+                    }
+                }
+            }
+            Err(e) => {
+                println!("[Rust] Failed to read profiles.json: {}", e);
+            }
+        }
+    }
+
+    // Create default config
+    let config = create_default_profile_config();
+    save_profile_config(&config);
+    config
+}
+
+/// Create default profile config based on build type
+fn create_default_profile_config() -> ProfileConfig {
+    let default_profile = get_default_profile();
+    println!("[Rust] Creating default profile config with profile: {}", default_profile);
+
+    ProfileConfig {
+        current: default_profile.clone(),
+        profiles: vec![
+            ProfileEntry {
+                slug: "default".to_string(),
+                name: "Default".to_string(),
+            },
+            ProfileEntry {
+                slug: "dev".to_string(),
+                name: "Development".to_string(),
+            },
+        ],
+    }
+}
+
+/// Save profile config to file
+fn save_profile_config(config: &ProfileConfig) -> bool {
+    let config_path = match get_profiles_config_path() {
+        Some(p) => p,
+        None => return false,
+    };
+
+    match serde_json::to_string_pretty(config) {
+        Ok(json) => {
+            match fs::write(&config_path, json) {
+                Ok(_) => {
+                    println!("[Rust] Saved profile config");
+                    // Update cache
+                    if let Ok(mut guard) = PROFILE_CONFIG.write() {
+                        *guard = Some(config.clone());
+                    }
+                    true
+                }
+                Err(e) => {
+                    println!("[Rust] Failed to write profiles.json: {}", e);
+                    false
+                }
+            }
+        }
+        Err(e) => {
+            println!("[Rust] Failed to serialize profile config: {}", e);
+            false
+        }
+    }
+}
+
+/// Get the current profile slug (from profiles.json)
+fn get_current_profile_slug() -> Result<String, String> {
+    Ok(load_profile_config().current)
+}
+
+/// Append profile parameter to a URL
+fn append_profile_to_url(url: &str) -> Result<String, String> {
+    let profile = get_current_profile_slug()?;
+    let separator = if url.contains('?') { "&" } else { "?" };
+    Ok(format!("{}{}profile={}", url, separator, profile))
+}
+
+fn get_db_path() -> Option<PathBuf> {
+    let container_path = get_container_path()?;
+
+    // Use profile from config file for database selection
+    // This allows user to switch profiles and see different data
+    let config = load_profile_config();
+    let profile = &config.current;
+    let db_name = format!("peek-{}.db", profile);
+    let new_db_path = container_path.join(&db_name);
+
+    // Migration: rename old peek.db to the DEFAULT profile's database
+    // This runs once when upgrading from old single-database version
+    // TODO: Remove this transitional code after all users have migrated
+    let old_db_path = container_path.join("peek.db");
+    let default_profile = get_default_profile();
+    let default_db_path = container_path.join(format!("peek-{}.db", default_profile));
+    if old_db_path.exists() && !default_db_path.exists() {
+        println!("[Rust] Migrating {} to {}", old_db_path.display(), default_db_path.display());
+        if let Err(e) = fs::rename(&old_db_path, &default_db_path) {
+            println!("[Rust] Migration failed: {}. Will use new empty database.", e);
+        } else {
+            println!("[Rust] Migration successful");
+        }
+    }
+
+    println!("[Rust] Using database: {} (profile: {})", db_name, profile);
+    Some(new_db_path)
 }
 
 use std::sync::Once;
@@ -447,42 +636,6 @@ fn get_connection() -> Result<Connection, String> {
     Ok(conn)
 }
 
-#[tauri::command]
-fn debug_list_container_files() -> Result<Vec<String>, String> {
-    unsafe {
-        let c_str = get_app_group_container_path();
-        if c_str.is_null() {
-            return Err("Failed to get App Group container path".to_string());
-        }
-        let path_str = CStr::from_ptr(c_str).to_string_lossy().to_string();
-        libc::free(c_str as *mut libc::c_void);
-
-        let container_path = PathBuf::from(&path_str);
-        let mut files = Vec::new();
-
-        files.push(format!("Container: {}", path_str));
-
-        fn list_recursive(dir: &PathBuf, prefix: &str, files: &mut Vec<String>) {
-            if let Ok(entries) = std::fs::read_dir(dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    let name = entry.file_name().to_string_lossy().to_string();
-                    if path.is_dir() {
-                        files.push(format!("{}{}/", prefix, name));
-                        list_recursive(&path, &format!("{}  ", prefix), files);
-                    } else {
-                        let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-                        files.push(format!("{}{} ({} bytes)", prefix, name, size));
-                    }
-                }
-            }
-        }
-
-        list_recursive(&container_path, "  ", &mut files);
-        Ok(files)
-    }
-}
-
 // Parse hashtags from text content
 fn parse_hashtags(content: &str) -> Vec<String> {
     let re = Regex::new(r"#(\w+)").unwrap();
@@ -532,8 +685,16 @@ fn get_webhook_config() -> (Option<String>, Option<String>) {
 async fn push_url_to_webhook(saved_url: SavedUrl) {
     let (webhook_url, api_key) = get_webhook_config();
 
-    if let Some(url) = webhook_url {
-        if !url.is_empty() {
+    if let Some(base_url) = webhook_url {
+        if !base_url.is_empty() {
+            // Append profile to webhook URL
+            let url = match append_profile_to_url(&base_url) {
+                Ok(u) => u,
+                Err(e) => {
+                    println!("[Rust] Failed to append profile to URL: {}", e);
+                    return;
+                }
+            };
             println!("[Rust] Pushing URL to webhook: {}", saved_url.url);
             let client = reqwest::Client::new();
             let payload = WebhookPayload {
@@ -570,8 +731,16 @@ async fn push_url_to_webhook(saved_url: SavedUrl) {
 async fn push_text_to_webhook(saved_text: SavedText) {
     let (webhook_url, api_key) = get_webhook_config();
 
-    if let Some(url) = webhook_url {
-        if !url.is_empty() {
+    if let Some(base_url) = webhook_url {
+        if !base_url.is_empty() {
+            // Append profile to webhook URL
+            let url = match append_profile_to_url(&base_url) {
+                Ok(u) => u,
+                Err(e) => {
+                    println!("[Rust] Failed to append profile to URL: {}", e);
+                    return;
+                }
+            };
             println!("[Rust] Pushing text to webhook");
             let client = reqwest::Client::new();
             let payload = WebhookPayload {
@@ -608,8 +777,16 @@ async fn push_text_to_webhook(saved_text: SavedText) {
 async fn push_tagset_to_webhook(saved_tagset: SavedTagset) {
     let (webhook_url, api_key) = get_webhook_config();
 
-    if let Some(url) = webhook_url {
-        if !url.is_empty() {
+    if let Some(base_url) = webhook_url {
+        if !base_url.is_empty() {
+            // Append profile to webhook URL
+            let url = match append_profile_to_url(&base_url) {
+                Ok(u) => u,
+                Err(e) => {
+                    println!("[Rust] Failed to append profile to URL: {}", e);
+                    return;
+                }
+            };
             println!("[Rust] Pushing tagset to webhook");
             let client = reqwest::Client::new();
             let payload = WebhookPayload {
@@ -647,6 +824,175 @@ async fn push_tagset_to_webhook(saved_tagset: SavedTagset) {
 fn get_shared_url() -> Result<Option<String>, String> {
     // Deprecated - kept for compatibility
     Ok(None)
+}
+
+#[tauri::command]
+fn debug_list_container_files() -> Result<Vec<String>, String> {
+    unsafe {
+        let c_str = get_app_group_container_path();
+        if c_str.is_null() {
+            return Err("Failed to get App Group container path".to_string());
+        }
+        let path_str = CStr::from_ptr(c_str).to_string_lossy().to_string();
+        libc::free(c_str as *mut libc::c_void);
+
+        let container_path = PathBuf::from(&path_str);
+
+        let mut files = Vec::new();
+        files.push(format!("Container: {}", path_str));
+
+        // List all files including hidden ones
+        if let Ok(entries) = std::fs::read_dir(&container_path) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let metadata = std::fs::metadata(&path);
+                let size = metadata.map(|m| m.len()).unwrap_or(0);
+                let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                files.push(format!("{} ({} bytes)", name, size));
+            }
+        }
+
+        // Also check for WAL and SHM files
+        let wal_path = container_path.join("peek.db-wal");
+        let shm_path = container_path.join("peek.db-shm");
+        if wal_path.exists() {
+            let size = std::fs::metadata(&wal_path).map(|m| m.len()).unwrap_or(0);
+            files.push(format!("peek.db-wal ({} bytes)", size));
+        }
+        if shm_path.exists() {
+            let size = std::fs::metadata(&shm_path).map(|m| m.len()).unwrap_or(0);
+            files.push(format!("peek.db-shm ({} bytes)", size));
+        }
+
+        // Check Library folder for other databases
+        let lib_path = container_path.join("Library");
+        if lib_path.exists() {
+            files.push("--- Library folder: ---".to_string());
+            if let Ok(entries) = std::fs::read_dir(&lib_path) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    let metadata = std::fs::metadata(&path);
+                    let size = metadata.map(|m| m.len()).unwrap_or(0);
+                    let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                    files.push(format!("  {} ({} bytes)", name, size));
+                }
+            }
+        }
+
+        Ok(files)
+    }
+}
+
+#[tauri::command]
+fn debug_query_database() -> Result<String, String> {
+    let db_path = get_db_path().ok_or("Failed to get database path")?;
+    let conn = Connection::open(&db_path).map_err(|e| format!("Failed to open database: {}", e))?;
+
+    let mut info = Vec::new();
+    info.push(format!("DB: {:?}", db_path));
+
+    // List all tables
+    let tables: Vec<String> = conn
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+        .map_err(|e| e.to_string())?
+        .query_map([], |row| row.get(0))
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+    info.push(format!("Tables: {:?}", tables));
+
+    // Count items in each relevant table (including old schema)
+    for table in &["items", "urls", "texts", "tagsets", "tags", "addresses", "visits", "content"] {
+        let count: Result<i64, _> = conn.query_row(
+            &format!("SELECT COUNT(*) FROM {}", table),
+            [],
+            |row| row.get(0),
+        );
+        match count {
+            Ok(c) => info.push(format!("{}: {} rows", table, c)),
+            Err(_) => info.push(format!("{}: (not found)", table)),
+        }
+    }
+
+    // Check for deleted items
+    let deleted_count: Result<i64, _> = conn.query_row(
+        "SELECT COUNT(*) FROM items WHERE deleted = 1",
+        [],
+        |row| row.get(0),
+    );
+    match deleted_count {
+        Ok(c) => info.push(format!("deleted: {}", c)),
+        Err(_) => {}
+    }
+
+    // Check distinct device_ids
+    let device_ids: Result<Vec<String>, _> = conn
+        .prepare("SELECT DISTINCT device_id FROM items WHERE device_id IS NOT NULL")
+        .and_then(|mut stmt| {
+            stmt.query_map([], |row| row.get(0))
+                .map(|rows| rows.filter_map(|r| r.ok()).collect())
+        });
+    match device_ids {
+        Ok(ids) => info.push(format!("device_ids: {:?}", ids)),
+        Err(_) => info.push("device_id: (no column)".to_string()),
+    }
+
+    // Get current device_id from settings
+    let current_device: Result<String, _> = conn.query_row(
+        "SELECT value FROM settings WHERE key = 'device_id'",
+        [],
+        |row| row.get(0),
+    );
+    match current_device {
+        Ok(id) => info.push(format!("current device: {}", id)),
+        Err(_) => info.push("current device: (not set)".to_string()),
+    }
+
+    // Sample first few items if any exist
+    let sample: Result<Vec<String>, _> = conn
+        .prepare("SELECT id, type, content, device_id FROM items LIMIT 3")
+        .and_then(|mut stmt| {
+            stmt.query_map([], |row| {
+                let id: String = row.get(0)?;
+                let item_type: String = row.get(1)?;
+                let content: String = row.get::<_, String>(2).unwrap_or_default();
+                let device: String = row.get::<_, String>(3).unwrap_or_default();
+                Ok(format!("{}:{}:{:.20}...(dev:{})", id, item_type, content, device))
+            })
+            .map(|rows| rows.filter_map(|r| r.ok()).collect())
+        });
+    match sample {
+        Ok(items) if !items.is_empty() => info.push(format!("sample: {:?}", items)),
+        _ => {}
+    }
+
+    Ok(info.join(" | "))
+}
+
+#[tauri::command]
+fn debug_export_database(app: tauri::AppHandle) -> Result<String, String> {
+    let db_path = get_db_path().ok_or("Failed to get database path")?;
+    let data = std::fs::read(&db_path).map_err(|e| format!("Failed to read database: {}", e))?;
+
+    // Get app's data directory (accessible via Download Container)
+    let app_data = app.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+    std::fs::create_dir_all(&app_data)
+        .map_err(|e| format!("Failed to create app data dir: {}", e))?;
+
+    // Copy raw database
+    let export_db = app_data.join("peek-export.db");
+    std::fs::write(&export_db, &data)
+        .map_err(|e| format!("Failed to write database: {}", e))?;
+
+    // Also create base64 version
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    let encoded = STANDARD.encode(&data);
+    let export_b64 = app_data.join("peek-export.b64");
+    std::fs::write(&export_b64, &encoded)
+        .map_err(|e| format!("Failed to write base64: {}", e))?;
+
+    Ok(format!("Exported {} bytes to app data dir", data.len()))
 }
 
 #[tauri::command]
@@ -751,16 +1097,9 @@ async fn save_url(url: String, tags: Vec<String>, metadata: Option<serde_json::V
 
     println!("[Rust] Page saved successfully");
 
-    // Push to webhook (fire and forget - don't block on it)
-    let saved_url = SavedUrl {
-        id: item_id,
-        url,
-        tags,
-        saved_at: now,
-        metadata,
-    };
+    // Trigger auto-sync if enabled (fire and forget)
     tauri::async_runtime::spawn(async move {
-        push_url_to_webhook(saved_url).await;
+        trigger_auto_sync_if_enabled().await;
     });
 
     Ok(())
@@ -1278,16 +1617,9 @@ async fn save_text(content: String, tags: Option<Vec<String>>, metadata: Option<
 
     println!("[Rust] Text saved successfully");
 
-    // Push to webhook (fire and forget)
-    let saved_text = SavedText {
-        id,
-        content,
-        tags: all_tags,
-        saved_at: now,
-        metadata,
-    };
+    // Trigger auto-sync if enabled (fire and forget)
     tauri::async_runtime::spawn(async move {
-        push_text_to_webhook(saved_text).await;
+        trigger_auto_sync_if_enabled().await;
     });
 
     Ok(())
@@ -1362,15 +1694,9 @@ async fn save_tagset(tags: Vec<String>, metadata: Option<serde_json::Value>) -> 
 
     println!("[Rust] Tagset saved successfully");
 
-    // Push to webhook (fire and forget)
-    let saved_tagset = SavedTagset {
-        id,
-        tags,
-        saved_at: now,
-        metadata,
-    };
+    // Trigger auto-sync if enabled (fire and forget)
     tauri::async_runtime::spawn(async move {
-        push_tagset_to_webhook(saved_tagset).await;
+        trigger_auto_sync_if_enabled().await;
     });
 
     Ok(())
@@ -1808,6 +2134,12 @@ async fn save_image(
     }
 
     println!("[Rust] Image saved successfully with id: {}", item_id);
+
+    // Trigger auto-sync if enabled (fire and forget)
+    tauri::async_runtime::spawn(async move {
+        trigger_auto_sync_if_enabled().await;
+    });
+
     Ok(item_id)
 }
 
@@ -2021,6 +2353,12 @@ fn is_dark_mode() -> bool {
 }
 
 #[tauri::command]
+fn quit_app() {
+    println!("[Rust] Quitting app for profile switch");
+    std::process::exit(0);
+}
+
+#[tauri::command]
 async fn get_webhook_url() -> Result<Option<String>, String> {
     let conn = get_connection()?;
 
@@ -2091,12 +2429,89 @@ async fn set_webhook_url(url: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn get_auto_sync() -> Result<bool, String> {
+    let conn = get_connection()?;
+    let enabled: Option<String> = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'auto_sync'",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
+
+    Ok(enabled.map(|v| v == "1" || v == "true").unwrap_or(false))
+}
+
+#[tauri::command]
+fn set_auto_sync(enabled: bool) -> Result<(), String> {
+    let conn = get_connection()?;
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('auto_sync', ?)",
+        params![if enabled { "1" } else { "0" }],
+    )
+    .map_err(|e| format!("Failed to save auto-sync setting: {}", e))?;
+
+    println!("[Rust] Auto-sync set to: {}", enabled);
+    Ok(())
+}
+
+/// Check if auto-sync is enabled
+fn is_auto_sync_enabled() -> bool {
+    if let Ok(conn) = get_connection() {
+        let enabled: Option<String> = conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'auto_sync'",
+                [],
+                |row| row.get(0),
+            )
+            .ok();
+        enabled.map(|v| v == "1" || v == "true").unwrap_or(false)
+    } else {
+        false
+    }
+}
+
+/// Trigger sync if auto-sync is enabled and webhook is configured
+async fn trigger_auto_sync_if_enabled() {
+    if !is_auto_sync_enabled() {
+        return;
+    }
+
+    // Check if webhook is configured
+    let webhook_configured = if let Ok(conn) = get_connection() {
+        conn.query_row::<String, _, _>(
+            "SELECT value FROM settings WHERE key = 'webhook_url'",
+            [],
+            |row| row.get(0),
+        ).ok().map(|v| !v.is_empty()).unwrap_or(false)
+    } else {
+        false
+    };
+
+    if !webhook_configured {
+        println!("[Rust] Auto-sync: skipping, no webhook configured");
+        return;
+    }
+
+    println!("[Rust] Auto-sync: triggering sync after save");
+    // Use sync_all for bidirectional sync
+    match sync_all_internal().await {
+        Ok(result) => {
+            println!("[Rust] Auto-sync completed: pulled={}, pushed={}", result.pulled, result.pushed);
+        }
+        Err(e) => {
+            println!("[Rust] Auto-sync failed: {}", e);
+        }
+    }
+}
+
+#[tauri::command]
 async fn sync_to_webhook() -> Result<SyncResult, String> {
     println!("[Rust] sync_to_webhook called");
 
     // Get webhook URL and API key
     let conn = get_connection()?;
-    let webhook_url: String = conn
+    let base_webhook_url: String = conn
         .query_row(
             "SELECT value FROM settings WHERE key = 'webhook_url'",
             [],
@@ -2104,9 +2519,12 @@ async fn sync_to_webhook() -> Result<SyncResult, String> {
         )
         .map_err(|_| "No webhook URL configured".to_string())?;
 
-    if webhook_url.is_empty() {
+    if base_webhook_url.is_empty() {
         return Err("No webhook URL configured".to_string());
     }
+
+    // Append profile to webhook URL
+    let webhook_url = append_profile_to_url(&base_webhook_url)?;
 
     let api_key: Option<String> = conn
         .query_row(
@@ -2185,6 +2603,140 @@ fn get_last_sync() -> Result<Option<String>, String> {
         )
         .ok();
     Ok(last_sync)
+}
+
+/// Profile info returned to the UI
+#[derive(Debug, Serialize, Deserialize)]
+struct ProfileInfo {
+    current_profile: String,
+    default_profile: String,
+    is_production_build: bool,
+    profiles: Vec<ProfileEntry>,
+}
+
+/// Get current profile information including all available profiles
+#[tauri::command]
+fn get_profile_info() -> Result<ProfileInfo, String> {
+    let config = load_profile_config();
+
+    Ok(ProfileInfo {
+        current_profile: config.current.clone(),
+        default_profile: get_default_profile(),
+        is_production_build: is_production_build(),
+        profiles: config.profiles,
+    })
+}
+
+/// Switch to a different profile
+/// This changes both local database and sync target
+/// Returns updated profile info
+#[tauri::command]
+fn set_profile(profile_slug: String) -> Result<ProfileInfo, String> {
+    let mut config = load_profile_config();
+
+    // Verify profile exists
+    if !config.profiles.iter().any(|p| p.slug == profile_slug) {
+        return Err(format!("Profile '{}' does not exist", profile_slug));
+    }
+
+    // Update current profile
+    config.current = profile_slug.clone();
+    if !save_profile_config(&config) {
+        return Err("Failed to save profile config".to_string());
+    }
+
+    println!("[Rust] Switched to profile: {}", profile_slug);
+
+    // Clear the database connection cache so next access uses new profile's DB
+    // Note: This requires the app to re-initialize database on next access
+    clear_db_cache();
+
+    get_profile_info()
+}
+
+/// Create a new profile
+#[tauri::command]
+fn create_profile(name: String) -> Result<ProfileInfo, String> {
+    let mut config = load_profile_config();
+
+    // Generate slug from name
+    let slug = name.to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+
+    if slug.is_empty() {
+        return Err("Invalid profile name".to_string());
+    }
+
+    // Check for duplicate
+    if config.profiles.iter().any(|p| p.slug == slug) {
+        return Err(format!("Profile '{}' already exists", slug));
+    }
+
+    // Add new profile
+    config.profiles.push(ProfileEntry {
+        slug: slug.clone(),
+        name: name.clone(),
+    });
+
+    if !save_profile_config(&config) {
+        return Err("Failed to save profile config".to_string());
+    }
+
+    println!("[Rust] Created profile: {} ({})", name, slug);
+    get_profile_info()
+}
+
+/// Delete a profile (cannot delete current or default profiles)
+#[tauri::command]
+fn delete_profile(profile_slug: String) -> Result<ProfileInfo, String> {
+    let mut config = load_profile_config();
+    let default = get_default_profile();
+
+    // Cannot delete current profile
+    if config.current == profile_slug {
+        return Err("Cannot delete the current profile. Switch to another profile first.".to_string());
+    }
+
+    // Cannot delete default profile
+    if profile_slug == default || profile_slug == "default" || profile_slug == "dev" {
+        return Err("Cannot delete built-in profiles".to_string());
+    }
+
+    // Remove profile
+    let original_len = config.profiles.len();
+    config.profiles.retain(|p| p.slug != profile_slug);
+
+    if config.profiles.len() == original_len {
+        return Err(format!("Profile '{}' not found", profile_slug));
+    }
+
+    if !save_profile_config(&config) {
+        return Err("Failed to save profile config".to_string());
+    }
+
+    // Note: We don't delete the database file - user can manually remove it
+    println!("[Rust] Deleted profile: {}", profile_slug);
+    get_profile_info()
+}
+
+/// Reset to auto-detected default profile
+#[tauri::command]
+fn reset_profile_to_default() -> Result<ProfileInfo, String> {
+    let default = get_default_profile();
+    set_profile(default)
+}
+
+/// Clear database cache to force re-initialization on profile switch
+fn clear_db_cache() {
+    // The DB_INIT Once guard can't be reset, but we can work around this
+    // by tracking the current profile in a separate variable
+    // For now, profile switch will require app restart for full isolation
+    // This matches desktop behavior where profile switch restarts the app
+    println!("[Rust] Note: Full profile switch requires app restart for complete database isolation");
 }
 
 #[tauri::command]
@@ -2502,14 +3054,15 @@ async fn pull_from_server() -> Result<BidirectionalSyncResult, String> {
 
     drop(conn); // Close connection before async call
 
-    // Build request URL
-    let items_url = if let Some(ref sync_time) = last_sync {
+    // Build request URL with profile parameter
+    let base_url = if let Some(ref sync_time) = last_sync {
         // Incremental sync - get items since last sync
         format!("{}/items/since/{}", server_url.trim_end_matches('/'), sync_time)
     } else {
         // Full sync - get all items
         format!("{}/items", server_url.trim_end_matches('/'))
     };
+    let items_url = append_profile_to_url(&base_url)?;
 
     println!("[Rust] Pulling from: {}", items_url);
 
@@ -2615,7 +3168,8 @@ async fn push_to_server() -> Result<BidirectionalSyncResult, String> {
     }
 
     let client = reqwest::Client::new();
-    let post_url = format!("{}/items", server_url.trim_end_matches('/'));
+    let base_post_url = format!("{}/items", server_url.trim_end_matches('/'));
+    let post_url = append_profile_to_url(&base_post_url)?;
     let mut pushed = 0;
     let mut failed = 0;
 
@@ -2703,9 +3257,8 @@ async fn push_to_server() -> Result<BidirectionalSyncResult, String> {
 
 /// Full bidirectional sync: pull then push
 #[tauri::command]
-async fn sync_all() -> Result<BidirectionalSyncResult, String> {
-    println!("[Rust] sync_all called");
-
+/// Internal sync_all implementation (called by both command and auto-sync)
+async fn sync_all_internal() -> Result<BidirectionalSyncResult, String> {
     // Pull first
     let pull_result = pull_from_server().await?;
 
@@ -2733,6 +3286,12 @@ async fn sync_all() -> Result<BidirectionalSyncResult, String> {
         conflicts: total_conflicts,
         message: format!("Synced: {} pulled, {} pushed", total_pulled, total_pushed),
     })
+}
+
+#[tauri::command]
+async fn sync_all() -> Result<BidirectionalSyncResult, String> {
+    println!("[Rust] sync_all called");
+    sync_all_internal().await
 }
 
 /// Get current sync status
@@ -2827,9 +3386,18 @@ pub fn run() {
             set_webhook_url,
             get_webhook_api_key,
             set_webhook_api_key,
+            get_auto_sync,
+            set_auto_sync,
             sync_to_webhook,
             get_last_sync,
             auto_sync_if_needed,
+            // Profile management
+            get_profile_info,
+            set_profile,
+            create_profile,
+            delete_profile,
+            reset_profile_to_default,
+            quit_app,
             // Bidirectional sync
             pull_from_server,
             push_to_server,
@@ -2838,7 +3406,9 @@ pub fn run() {
             // Legacy/deprecated
             get_shared_url,
             // Debug
-            debug_list_container_files
+            debug_list_container_files,
+            debug_query_database,
+            debug_export_database
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

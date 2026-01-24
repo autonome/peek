@@ -42,6 +42,20 @@ int get_system_is_dark_mode() {
     return 0;
 }
 
+// Returns 1 if this is an App Store or TestFlight build, 0 if Xcode install
+// App Store/TestFlight builds have a receipt file, Xcode installs don't
+int is_app_store_build() {
+    NSURL *receiptURL = [[NSBundle mainBundle] appStoreReceiptURL];
+    if (receiptURL == nil) {
+        NSLog(@"[AppGroupBridge] No receipt URL - Xcode build");
+        return 0;
+    }
+
+    BOOL exists = [[NSFileManager defaultManager] fileExistsAtPath:receiptURL.path];
+    NSLog(@"[AppGroupBridge] Receipt exists: %d at %@", exists, receiptURL.path);
+    return exists ? 1 : 0;
+}
+
 // Returns the path to the App Group container directory
 // This is where the SQLite database will be stored
 const char* get_app_group_container_path() {

@@ -18,6 +18,11 @@
     "build:release:full": "./build-release.sh --force",
     "seed": "./seed-test-data.sh",
     "reset:server": "rm -rf ../server/data && echo 'Server data reset'",
+    "clean:rust": "cd src-tauri && rm -rf target/aarch64-apple-ios-sim/debug/build/peek-save-* target/aarch64-apple-ios/release/build/peek-save-* 2>/dev/null; touch build.rs; echo 'Rust bridge cache cleaned'",
+    "clean:ios": "cd src-tauri && rm -rf target/aarch64-apple-ios-sim/debug/build/peek-save-* 2>/dev/null; touch build.rs; echo 'iOS simulator cache cleaned'",
+    "clean:ios:release": "cd src-tauri && rm -rf target/aarch64-apple-ios/release/build/peek-save-* 2>/dev/null; touch build.rs; echo 'iOS release cache cleaned'",
+    "rebuild:ios": "npm run clean:ios && npm run build:ios",
+    "rebuild:ios:release": "npm run clean:ios:release && npm run build:ios:release",
     "test": "node tests/integration.test.js",
     "test:verbose": "VERBOSE=1 node tests/integration.test.js"
   },

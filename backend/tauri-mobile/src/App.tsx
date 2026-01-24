@@ -67,15 +67,23 @@ interface SyncStatus {
 }
 
 interface ProfileEntry {
-  slug: string;
+  id: string;
   name: string;
+  createdAt: string;
+  lastUsedAt: string;
+}
+
+interface SyncSettings {
+  server_url: string;
+  api_key: string;
+  auto_sync: boolean;
 }
 
 interface ProfileInfo {
-  current_profile: string;
-  default_profile: string;
-  is_production_build: boolean;
+  currentProfileId: string;
+  isProductionBuild: boolean;
   profiles: ProfileEntry[];
+  sync: SyncSettings;
 }
 
 // Unified item for combined list
@@ -405,20 +413,20 @@ function App() {
     try {
       const info = await invoke<ProfileInfo>("get_profile_info");
       setProfileInfo(info);
-      setProfileInput(info.current_profile);
+      setProfileInput("");
     } catch (error) {
       console.error("Failed to load profile info:", error);
     }
   };
 
-  const setProfile = async (profileSlug: string) => {
-    console.log(`[Profile] setProfile called with: ${profileSlug}`);
+  const setProfile = async (profileId: string) => {
+    console.log(`[Profile] setProfile called with: ${profileId}`);
     try {
       console.log(`[Profile] Invoking set_profile command...`);
-      const info = await invoke<ProfileInfo>("set_profile", { profileSlug });
+      const info = await invoke<ProfileInfo>("set_profile", { profileId });
       console.log(`[Profile] set_profile returned:`, info);
       setProfileInfo(info);
-      setProfileInput(info.current_profile);
+      setProfileInput("");
       // Show restart prompt for full database isolation
       setShowRestartPrompt(true);
     } catch (error) {
@@ -2178,7 +2186,7 @@ function App() {
               Sync your saved items with the server. Pull to get items from other devices, push to send local items, or sync all to do both.
             </p>
             <p className="settings-description" style={{ fontSize: "0.85rem", opacity: 0.8 }}>
-              Items sync to your account's "{profileInfo?.current_profile}" profile on the server.
+              Items sync to your account's current profile on the server.
             </p>
 
             <div className="webhook-input">
@@ -2287,105 +2295,103 @@ function App() {
             {profileInfo && (
               <>
                 <p className="settings-description">
-                  {profileInfo.is_production_build
+                  {profileInfo.isProductionBuild
                     ? "App Store/TestFlight build"
                     : "Development build"}.
                   Each profile has separate local data and sync destination.
                 </p>
 
-                {profileInfo.current_profile !== "default" && (
-                  <div className="profile-warning-banner">
-                    Using "{profileInfo.current_profile}" profile - data is isolated from default
-                  </div>
-                )}
+                {(() => {
+                  const currentProfile = profileInfo.profiles.find(p => p.id === profileInfo.currentProfileId);
+                  const defaultProfile = profileInfo.profiles[0];
+                  const isDefaultProfile = currentProfile?.id === defaultProfile?.id;
 
-                {/* Profile List */}
-                <div className="profile-list">
-                  {profileInfo.profiles.map((profile) => {
-                    const isCurrent = profile.slug === profileInfo.current_profile;
-                    const isBuiltin = profile.slug === "default" || profile.slug === "dev";
-                    const canDelete = !isCurrent && !isBuiltin;
+                  return (
+                    <>
+                      {!isDefaultProfile && currentProfile && (
+                        <div className="profile-warning-banner">
+                          Using "{currentProfile.name}" profile - data is isolated from default
+                        </div>
+                      )}
 
-                    return (
-                      <div key={profile.slug} className={`profile-item ${isCurrent ? "active" : ""}`}>
-                        <label className="profile-radio-label">
+                      {/* Profile List */}
+                      <div className="profile-list">
+                        {profileInfo.profiles.map((profile) => {
+                          const isCurrent = profile.id === profileInfo.currentProfileId;
+                          // Can delete if not current and more than one profile exists
+                          const canDelete = !isCurrent && profileInfo.profiles.length > 1;
+
+                          return (
+                            <div key={profile.id} className={`profile-item ${isCurrent ? "active" : ""}`}>
+                              <label className="profile-radio-label">
+                                <input
+                                  type="radio"
+                                  name="profile"
+                                  checked={isCurrent}
+                                  onChange={() => {
+                                    console.log(`[Profile] Radio clicked: ${profile.id}, isCurrent: ${isCurrent}`);
+                                    if (!isCurrent) {
+                                      console.log(`[Profile] Switching to: ${profile.id}`);
+                                      setProfile(profile.id);
+                                    }
+                                  }}
+                                />
+                                <span className="profile-name">{profile.name}</span>
+                                {isCurrent && <span className="profile-badge current">active</span>}
+                              </label>
+                              {canDelete && (
+                                <button
+                                  className="profile-delete-btn"
+                                  onClick={async () => {
+                                    if (confirm(`Delete profile "${profile.name}"?\n\nThe database file will be preserved.`)) {
+                                      try {
+                                        const info = await invoke<ProfileInfo>("delete_profile", { profileId: profile.id });
+                                        setProfileInfo(info);
+                                      } catch (err) {
+                                        alert(`Failed to delete: ${err}`);
+                                      }
+                                    }
+                                  }}
+                                >
+                                  Delete
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Add Profile */}
+                      <div className="profile-add-section">
+                        <div className="profile-input-row">
                           <input
-                            type="radio"
-                            name="profile"
-                            checked={isCurrent}
-                            onChange={() => {
-                              console.log(`[Profile] Radio clicked: ${profile.slug}, isCurrent: ${isCurrent}`);
-                              if (!isCurrent) {
-                                console.log(`[Profile] Switching to: ${profile.slug}`);
-                                setProfile(profile.slug);
-                              }
-                            }}
+                            type="text"
+                            value={profileInput}
+                            onChange={(e) => setProfileInput(e.target.value)}
+                            placeholder="New profile name"
                           />
-                          <span className="profile-name">{profile.name}</span>
-                          {isBuiltin && <span className="profile-badge builtin">built-in</span>}
-                          {isCurrent && <span className="profile-badge current">active</span>}
-                        </label>
-                        {canDelete && (
                           <button
-                            className="profile-delete-btn"
+                            className="sync-btn secondary"
                             onClick={async () => {
-                              if (confirm(`Delete profile "${profile.name}"?\n\nThe database file will be preserved.`)) {
+                              if (profileInput.trim()) {
                                 try {
-                                  const info = await invoke<ProfileInfo>("delete_profile", { profileSlug: profile.slug });
+                                  const info = await invoke<ProfileInfo>("create_profile", { name: profileInput.trim() });
                                   setProfileInfo(info);
+                                  setProfileInput("");
                                 } catch (err) {
-                                  alert(`Failed to delete: ${err}`);
+                                  alert(`Failed to create: ${err}`);
                                 }
                               }
                             }}
+                            disabled={!profileInput.trim()}
                           >
-                            Delete
+                            Add
                           </button>
-                        )}
+                        </div>
                       </div>
-                    );
-                  })}
-                </div>
-
-                {/* Add Profile */}
-                <div className="profile-add-section">
-                  <div className="profile-input-row">
-                    <input
-                      type="text"
-                      value={profileInput}
-                      onChange={(e) => setProfileInput(e.target.value)}
-                      placeholder="New profile name"
-                    />
-                    <button
-                      className="sync-btn secondary"
-                      onClick={async () => {
-                        if (profileInput.trim()) {
-                          try {
-                            const info = await invoke<ProfileInfo>("create_profile", { name: profileInput.trim() });
-                            setProfileInfo(info);
-                            setProfileInput("");
-                          } catch (err) {
-                            alert(`Failed to create: ${err}`);
-                          }
-                        }
-                      }}
-                      disabled={!profileInput.trim()}
-                    >
-                      Add
-                    </button>
-                  </div>
-                </div>
-
-                {/* Reset to default */}
-                {profileInfo.current_profile !== profileInfo.default_profile && (
-                  <button
-                    className="profile-btn reset"
-                    onClick={() => setProfile(profileInfo.default_profile)}
-                    style={{ marginTop: "12px" }}
-                  >
-                    Reset to {profileInfo.default_profile} (auto-detected)
-                  </button>
-                )}
+                    </>
+                  );
+                })()}
               </>
             )}
           </div>
@@ -2406,6 +2412,32 @@ function App() {
                 }}
               >
                 List Container Files
+              </button>
+              <button
+                className="sync-btn secondary"
+                onClick={async () => {
+                  try {
+                    const info = await invoke<string>("debug_profiles_json");
+                    setSyncMessage(info);
+                  } catch (e) {
+                    setSyncMessage("PROFILES ERROR: " + String(e));
+                  }
+                }}
+              >
+                Show profiles.json
+              </button>
+              <button
+                className="sync-btn secondary"
+                onClick={async () => {
+                  try {
+                    const info = await invoke<string>("debug_settings_table");
+                    setSyncMessage(info);
+                  } catch (e) {
+                    setSyncMessage("SETTINGS ERROR: " + String(e));
+                  }
+                }}
+              >
+                Show Settings Table
               </button>
               <button
                 className="sync-btn secondary"
@@ -2435,6 +2467,28 @@ function App() {
               >
                 Export Database
               </button>
+              {profileInfo && profileInfo.profiles.length >= 2 && (
+                <button
+                  className="sync-btn secondary"
+                  style={{ backgroundColor: '#c44' }}
+                  onClick={async () => {
+                    const p1 = profileInfo.profiles[0];
+                    const p2 = profileInfo.profiles[1];
+                    try {
+                      setSyncMessage("Swapping...");
+                      const result = await invoke<string>("swap_profile_databases", {
+                        profileIdA: p1.id,
+                        profileIdB: p2.id
+                      });
+                      setSyncMessage(result);
+                    } catch (e) {
+                      setSyncMessage("SWAP ERROR: " + String(e));
+                    }
+                  }}
+                >
+                  Swap Default ↔ Dev Databases
+                </button>
+              )}
             </div>
           </div>
 
@@ -2446,7 +2500,7 @@ function App() {
             <div className="modal-content">
               <h3>Profile Changed</h3>
               <p>
-                Switched to <strong>{profileInfo?.current_profile}</strong> profile.
+                Switched to <strong>{profileInfo?.profiles.find(p => p.id === profileInfo?.currentProfileId)?.name ?? "unknown"}</strong> profile.
               </p>
               <p>
                 Please restart the app to ensure complete data isolation.
@@ -2649,10 +2703,10 @@ function App() {
         </button>
       </header>
 
-      {/* Profile warning banner when not on default profile */}
-      {profileInfo && profileInfo.current_profile !== "default" && (
+      {/* Profile warning banner when not on first/default profile */}
+      {profileInfo && profileInfo.profiles.length > 0 && profileInfo.currentProfileId !== profileInfo.profiles[0].id && (
         <div className="profile-banner">
-          Profile: {profileInfo.current_profile}
+          Profile: {profileInfo.profiles.find(p => p.id === profileInfo.currentProfileId)?.name ?? "Unknown"}
         </div>
       )}
 
@@ -2819,7 +2873,7 @@ function App() {
           <div className="modal-content">
             <h3>Profile Changed</h3>
             <p>
-              Switched to <strong>{profileInfo?.current_profile}</strong> profile.
+              Switched to <strong>{profileInfo?.profiles.find(p => p.id === profileInfo?.currentProfileId)?.name ?? "unknown"}</strong> profile.
             </p>
             <p>
               Please restart the app to ensure complete data isolation.

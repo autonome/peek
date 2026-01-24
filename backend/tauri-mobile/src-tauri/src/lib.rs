@@ -141,30 +141,39 @@ fn is_production_build() -> bool {
     unsafe { is_app_store_build() == 1 }
 }
 
-/// Get the default profile based on build type
-fn get_default_profile() -> String {
-    if is_production_build() {
-        "default".to_string()
-    } else {
-        "dev".to_string()
-    }
-}
-
 // ============================================================================
 // Profile Management System
 // ============================================================================
 
+/// Sync configuration (shared across all profiles)
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct SyncSettings {
+    #[serde(default)]
+    server_url: String,
+    #[serde(default)]
+    api_key: String,
+    #[serde(default)]
+    auto_sync: bool,
+}
+
 /// Profile configuration stored in profiles.json
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ProfileConfig {
-    current: String,
+    #[serde(rename = "currentProfileId")]
+    current_profile_id: String,
     profiles: Vec<ProfileEntry>,
+    #[serde(default)]
+    sync: SyncSettings,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ProfileEntry {
-    slug: String,
+    id: String,
     name: String,
+    #[serde(rename = "createdAt")]
+    created_at: String,
+    #[serde(rename = "lastUsedAt")]
+    last_used_at: String,
 }
 
 /// Cached profile config to avoid repeated file reads
@@ -208,25 +217,185 @@ fn load_profile_config() -> ProfileConfig {
     config
 }
 
+/// Old format profile entry (for migration)
+#[derive(Debug, Clone, Deserialize)]
+struct OldProfileEntry {
+    slug: String,
+    name: String,
+}
+
+/// Old format profile config (for migration)
+#[derive(Debug, Clone, Deserialize)]
+struct OldProfileConfig {
+    current: String,
+    profiles: Vec<OldProfileEntry>,
+}
+
+/// Migrate from old slug-based format to new UUID-based format
+fn migrate_old_profile_config(old_config: OldProfileConfig) -> ProfileConfig {
+    println!("[Rust] Migrating old profile config format to new UUID-based format");
+    println!("[Rust] Old config: current={}, profiles={:?}", old_config.current, old_config.profiles.iter().map(|p| &p.slug).collect::<Vec<_>>());
+
+    let container_path = get_container_path();
+    let now = Utc::now().to_rfc3339();
+
+    // List all files in container for debugging
+    if let Some(ref container) = container_path {
+        println!("[Rust] Container path: {}", container.display());
+        if let Ok(entries) = fs::read_dir(container) {
+            println!("[Rust] Container files:");
+            for entry in entries.flatten() {
+                println!("[Rust]   - {}", entry.file_name().to_string_lossy());
+            }
+        }
+    }
+
+    let mut new_profiles = Vec::new();
+    let mut current_profile_id = String::new();
+
+    for old_profile in &old_config.profiles {
+        let new_id = uuid::Uuid::new_v4().to_string();
+        println!("[Rust] Processing profile: {} -> {}", old_profile.slug, new_id);
+
+        // Rename database file from peek-{slug}.db to peek-{uuid}.db
+        if let Some(ref container) = container_path {
+            let old_db_path = container.join(format!("peek-{}.db", old_profile.slug));
+            let new_db_path = container.join(format!("peek-{}.db", new_id));
+
+            println!("[Rust] Looking for old DB: {} (exists: {})", old_db_path.display(), old_db_path.exists());
+
+            if old_db_path.exists() && !new_db_path.exists() {
+                println!("[Rust] Migrating database: {} -> {}", old_db_path.display(), new_db_path.display());
+                if let Err(e) = fs::rename(&old_db_path, &new_db_path) {
+                    println!("[Rust] Warning: Failed to rename database: {}", e);
+                } else {
+                    // Also rename WAL and SHM files if they exist
+                    let old_wal = container.join(format!("peek-{}.db-wal", old_profile.slug));
+                    let new_wal = container.join(format!("peek-{}.db-wal", new_id));
+                    if old_wal.exists() {
+                        let _ = fs::rename(&old_wal, &new_wal);
+                    }
+                    let old_shm = container.join(format!("peek-{}.db-shm", old_profile.slug));
+                    let new_shm = container.join(format!("peek-{}.db-shm", new_id));
+                    if old_shm.exists() {
+                        let _ = fs::rename(&old_shm, &new_shm);
+                    }
+                    println!("[Rust] Database migration successful");
+                }
+            }
+        }
+
+        // If this was the current profile, remember its new ID
+        if old_profile.slug == old_config.current {
+            current_profile_id = new_id.clone();
+        }
+
+        new_profiles.push(ProfileEntry {
+            id: new_id,
+            name: old_profile.name.clone(),
+            created_at: now.clone(),
+            last_used_at: now.clone(),
+        });
+    }
+
+    // If current profile wasn't found, use first profile or create based on build type
+    if current_profile_id.is_empty() {
+        if let Some(first) = new_profiles.first() {
+            current_profile_id = first.id.clone();
+        }
+    }
+
+    // Try to migrate sync settings from old database
+    let sync = migrate_sync_settings_from_db(&container_path, &old_config.current);
+
+    println!("[Rust] Migration complete: {} profiles, current={}", new_profiles.len(), current_profile_id);
+
+    ProfileConfig {
+        current_profile_id,
+        profiles: new_profiles,
+        sync,
+    }
+}
+
+/// Migrate sync settings from old per-profile database to shared config
+fn migrate_sync_settings_from_db(container_path: &Option<PathBuf>, old_current_slug: &str) -> SyncSettings {
+    // Try to read sync settings from the old current profile's database
+    if let Some(ref container) = container_path {
+        let old_db_path = container.join(format!("peek-{}.db", old_current_slug));
+
+        // The database might have already been renamed, so also check for peek.db as fallback
+        let db_path = if old_db_path.exists() {
+            Some(old_db_path)
+        } else {
+            let legacy_path = container.join("peek.db");
+            if legacy_path.exists() { Some(legacy_path) } else { None }
+        };
+
+        if let Some(path) = db_path {
+            if let Ok(conn) = Connection::open(&path) {
+                let server_url: String = conn
+                    .query_row("SELECT value FROM settings WHERE key = 'webhook_url'", [], |row| row.get(0))
+                    .unwrap_or_default();
+                let api_key: String = conn
+                    .query_row("SELECT value FROM settings WHERE key = 'webhook_api_key'", [], |row| row.get(0))
+                    .unwrap_or_default();
+                let auto_sync: String = conn
+                    .query_row("SELECT value FROM settings WHERE key = 'auto_sync'", [], |row| row.get(0))
+                    .unwrap_or_default();
+
+                if !server_url.is_empty() || !api_key.is_empty() {
+                    println!("[Rust] Migrated sync settings from old database");
+                    return SyncSettings {
+                        server_url,
+                        api_key,
+                        auto_sync: auto_sync == "1" || auto_sync == "true",
+                    };
+                }
+            }
+        }
+    }
+
+    SyncSettings::default()
+}
+
 /// Load profile config directly from file (bypasses cache)
 fn load_profile_config_from_file() -> ProfileConfig {
     let config_path = match get_profiles_config_path() {
         Some(p) => p,
         None => {
+            println!("[Rust] No config path available, creating default config");
             return create_default_profile_config();
         }
     };
 
+    println!("[Rust] Loading profile config from: {} (exists: {})", config_path.display(), config_path.exists());
+
     if config_path.exists() {
         match fs::read_to_string(&config_path) {
             Ok(contents) => {
+                // First try to parse as new format
                 match serde_json::from_str::<ProfileConfig>(&contents) {
                     Ok(config) => {
-                        println!("[Rust] Loaded profile config: current={}", config.current);
+                        println!("[Rust] Loaded profile config: current={}", config.current_profile_id);
+                        // Check if we need to migrate old slug-based databases
+                        migrate_slug_databases_to_uuid(&config);
                         return config;
                     }
                     Err(e) => {
-                        println!("[Rust] Failed to parse profiles.json: {}", e);
+                        println!("[Rust] Failed to parse as new format: {}", e);
+
+                        // Try to parse as old format and migrate
+                        match serde_json::from_str::<OldProfileConfig>(&contents) {
+                            Ok(old_config) => {
+                                println!("[Rust] Found old format profiles.json, migrating...");
+                                let new_config = migrate_old_profile_config(old_config);
+                                save_profile_config(&new_config);
+                                return new_config;
+                            }
+                            Err(e2) => {
+                                println!("[Rust] Failed to parse as old format either: {}", e2);
+                            }
+                        }
                     }
                 }
             }
@@ -242,23 +411,168 @@ fn load_profile_config_from_file() -> ProfileConfig {
     config
 }
 
+/// Migrate old slug-based databases to UUID-based names
+/// This handles the case where profiles.json was already migrated but databases weren't renamed
+/// Also migrates sync settings from database if not already set in profiles.json
+fn migrate_slug_databases_to_uuid(config: &ProfileConfig) {
+    let container_path = match get_container_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    // Map profile names to their expected old slugs
+    let slug_mappings = [
+        ("Default", "default"),
+        ("Development", "dev"),
+    ];
+
+    let mut needs_sync_migration = config.sync.server_url.is_empty() && config.sync.api_key.is_empty();
+    let mut migrated_sync = SyncSettings::default();
+
+    for profile in &config.profiles {
+        // Find the old slug for this profile name
+        let old_slug = slug_mappings.iter()
+            .find(|(name, _)| *name == profile.name)
+            .map(|(_, slug)| *slug);
+
+        if let Some(slug) = old_slug {
+            let old_db_path = container_path.join(format!("peek-{}.db", slug));
+            let new_db_path = container_path.join(format!("peek-{}.db", profile.id));
+
+            // Check if old database exists and new one doesn't have the data
+            if old_db_path.exists() {
+                let old_size = fs::metadata(&old_db_path).map(|m| m.len()).unwrap_or(0);
+                let new_size = fs::metadata(&new_db_path).map(|m| m.len()).unwrap_or(0);
+
+                println!("[Rust] Checking migration: {} ({}b) vs {} ({}b)",
+                    old_db_path.display(), old_size, new_db_path.display(), new_size);
+
+                // Try to migrate sync settings from old database before renaming
+                if needs_sync_migration {
+                    if let Ok(conn) = Connection::open(&old_db_path) {
+                        let server_url: String = conn
+                            .query_row("SELECT value FROM settings WHERE key = 'webhook_url'", [], |row| row.get(0))
+                            .unwrap_or_default();
+                        let api_key: String = conn
+                            .query_row("SELECT value FROM settings WHERE key = 'webhook_api_key'", [], |row| row.get(0))
+                            .unwrap_or_default();
+                        let auto_sync: String = conn
+                            .query_row("SELECT value FROM settings WHERE key = 'auto_sync'", [], |row| row.get(0))
+                            .unwrap_or_default();
+
+                        if !server_url.is_empty() || !api_key.is_empty() {
+                            println!("[Rust] Found sync settings in old database: {}", old_db_path.display());
+                            migrated_sync = SyncSettings {
+                                server_url,
+                                api_key,
+                                auto_sync: auto_sync == "1" || auto_sync == "true",
+                            };
+                            needs_sync_migration = false;
+                        }
+                    }
+                }
+
+                // If old database is larger (has more data), use it instead
+                if old_size > new_size {
+                    println!("[Rust] Migrating slug database: {} -> {}", old_db_path.display(), new_db_path.display());
+
+                    // Remove the empty new database if it exists
+                    if new_db_path.exists() {
+                        let _ = fs::remove_file(&new_db_path);
+                        // Also remove WAL/SHM for new db
+                        let _ = fs::remove_file(container_path.join(format!("peek-{}.db-wal", profile.id)));
+                        let _ = fs::remove_file(container_path.join(format!("peek-{}.db-shm", profile.id)));
+                    }
+
+                    // Rename old database to new UUID name
+                    if let Err(e) = fs::rename(&old_db_path, &new_db_path) {
+                        println!("[Rust] Warning: Failed to rename database: {}", e);
+                    } else {
+                        println!("[Rust] Successfully migrated database");
+                        // Also rename WAL and SHM files
+                        let old_wal = container_path.join(format!("peek-{}.db-wal", slug));
+                        let new_wal = container_path.join(format!("peek-{}.db-wal", profile.id));
+                        if old_wal.exists() {
+                            let _ = fs::rename(&old_wal, &new_wal);
+                        }
+                        let old_shm = container_path.join(format!("peek-{}.db-shm", slug));
+                        let new_shm = container_path.join(format!("peek-{}.db-shm", profile.id));
+                        if old_shm.exists() {
+                            let _ = fs::rename(&old_shm, &new_shm);
+                        }
+                    }
+                }
+            }
+
+            // Also check the current UUID database for sync settings (in case db was already migrated)
+            if needs_sync_migration && new_db_path.exists() {
+                if let Ok(conn) = Connection::open(&new_db_path) {
+                    let server_url: String = conn
+                        .query_row("SELECT value FROM settings WHERE key = 'webhook_url'", [], |row| row.get(0))
+                        .unwrap_or_default();
+                    let api_key: String = conn
+                        .query_row("SELECT value FROM settings WHERE key = 'webhook_api_key'", [], |row| row.get(0))
+                        .unwrap_or_default();
+                    let auto_sync: String = conn
+                        .query_row("SELECT value FROM settings WHERE key = 'auto_sync'", [], |row| row.get(0))
+                        .unwrap_or_default();
+
+                    if !server_url.is_empty() || !api_key.is_empty() {
+                        println!("[Rust] Found sync settings in UUID database: {}", new_db_path.display());
+                        migrated_sync = SyncSettings {
+                            server_url,
+                            api_key,
+                            auto_sync: auto_sync == "1" || auto_sync == "true",
+                        };
+                        needs_sync_migration = false;
+                    }
+                }
+            }
+        }
+    }
+
+    // If we found sync settings, update the config
+    if !migrated_sync.server_url.is_empty() || !migrated_sync.api_key.is_empty() {
+        let mut updated_config = config.clone();
+        updated_config.sync = migrated_sync;
+        save_profile_config(&updated_config);
+        // Update cache
+        if let Ok(mut guard) = PROFILE_CONFIG.write() {
+            *guard = Some(updated_config);
+        }
+        println!("[Rust] Migrated sync settings to profiles.json");
+    }
+}
+
 /// Create default profile config based on build type
 fn create_default_profile_config() -> ProfileConfig {
-    let default_profile = get_default_profile();
-    println!("[Rust] Creating default profile config with profile: {}", default_profile);
+    let now = Utc::now().to_rfc3339();
+    let default_id = uuid::Uuid::new_v4().to_string();
+    let dev_id = uuid::Uuid::new_v4().to_string();
+
+    // Determine which profile should be current based on build type
+    let is_production = is_production_build();
+    let current_id = if is_production { default_id.clone() } else { dev_id.clone() };
+
+    println!("[Rust] Creating default profile config with profile id: {} (production: {})", current_id, is_production);
 
     ProfileConfig {
-        current: default_profile.clone(),
+        current_profile_id: current_id,
         profiles: vec![
             ProfileEntry {
-                slug: "default".to_string(),
+                id: default_id,
                 name: "Default".to_string(),
+                created_at: now.clone(),
+                last_used_at: now.clone(),
             },
             ProfileEntry {
-                slug: "dev".to_string(),
+                id: dev_id,
                 name: "Development".to_string(),
+                created_at: now.clone(),
+                last_used_at: now,
             },
         ],
+        sync: SyncSettings::default(),
     }
 }
 
@@ -293,44 +607,68 @@ fn save_profile_config(config: &ProfileConfig) -> bool {
     }
 }
 
-/// Get the current profile slug (from profiles.json)
-fn get_current_profile_slug() -> Result<String, String> {
-    Ok(load_profile_config().current)
+/// Get the current profile ID (from profiles.json)
+fn get_current_profile_id() -> Result<String, String> {
+    Ok(load_profile_config().current_profile_id)
+}
+
+/// Get the current profile's name
+fn get_current_profile_name() -> Result<String, String> {
+    let config = load_profile_config();
+    config.profiles
+        .iter()
+        .find(|p| p.id == config.current_profile_id)
+        .map(|p| p.name.clone())
+        .ok_or_else(|| "Current profile not found".to_string())
+}
+
+/// Derive a slug from a profile name
+/// "Default" → "default", "Development" → "dev", etc.
+fn name_to_slug(name: &str) -> String {
+    match name {
+        "Default" => "default".to_string(),
+        "Development" => "dev".to_string(),
+        _ => name.to_lowercase().replace(' ', "-"),
+    }
 }
 
 /// Append profile parameter to a URL
+/// Includes both profile UUID and slug fallback for migration compatibility
 fn append_profile_to_url(url: &str) -> Result<String, String> {
-    let profile = get_current_profile_slug()?;
+    // Use profile UUID for sync URLs - immutable even if profile is renamed
+    let profile_id = get_current_profile_id()?;
+    let profile_name = get_current_profile_name().unwrap_or_else(|_| "default".to_string());
+    let slug = name_to_slug(&profile_name);
+
     let separator = if url.contains('?') { "&" } else { "?" };
-    Ok(format!("{}{}profile={}", url, separator, profile))
+    // Include both profile UUID and slug fallback for backwards compatibility
+    Ok(format!("{}{}profile={}&slug={}", url, separator, profile_id, slug))
 }
 
 fn get_db_path() -> Option<PathBuf> {
     let container_path = get_container_path()?;
 
-    // Use profile from config file for database selection
+    // Use profile ID from config file for database selection
     // This allows user to switch profiles and see different data
     let config = load_profile_config();
-    let profile = &config.current;
-    let db_name = format!("peek-{}.db", profile);
+    let profile_id = &config.current_profile_id;
+    let db_name = format!("peek-{}.db", profile_id);
     let new_db_path = container_path.join(&db_name);
 
-    // Migration: rename old peek.db to the DEFAULT profile's database
+    // Migration: rename old peek.db to the first profile's database
     // This runs once when upgrading from old single-database version
     // TODO: Remove this transitional code after all users have migrated
     let old_db_path = container_path.join("peek.db");
-    let default_profile = get_default_profile();
-    let default_db_path = container_path.join(format!("peek-{}.db", default_profile));
-    if old_db_path.exists() && !default_db_path.exists() {
-        println!("[Rust] Migrating {} to {}", old_db_path.display(), default_db_path.display());
-        if let Err(e) = fs::rename(&old_db_path, &default_db_path) {
+    if old_db_path.exists() && !new_db_path.exists() {
+        println!("[Rust] Migrating {} to {}", old_db_path.display(), new_db_path.display());
+        if let Err(e) = fs::rename(&old_db_path, &new_db_path) {
             println!("[Rust] Migration failed: {}. Will use new empty database.", e);
         } else {
             println!("[Rust] Migration successful");
         }
     }
 
-    println!("[Rust] Using database: {} (profile: {})", db_name, profile);
+    println!("[Rust] Using database: {} (profile id: {})", db_name, profile_id);
     Some(new_db_path)
 }
 
@@ -659,26 +997,18 @@ fn calculate_frecency(frequency: u32, last_used: &str) -> f64 {
 
 // Helper to get webhook config
 fn get_webhook_config() -> (Option<String>, Option<String>) {
-    match get_connection() {
-        Ok(conn) => {
-            let url = conn
-                .query_row(
-                    "SELECT value FROM settings WHERE key = 'webhook_url'",
-                    [],
-                    |row| row.get::<_, String>(0),
-                )
-                .ok();
-            let key = conn
-                .query_row(
-                    "SELECT value FROM settings WHERE key = 'webhook_api_key'",
-                    [],
-                    |row| row.get::<_, String>(0),
-                )
-                .ok();
-            (url, key)
-        }
-        Err(_) => (None, None),
-    }
+    let config = load_profile_config();
+    let url = if config.sync.server_url.is_empty() {
+        None
+    } else {
+        Some(config.sync.server_url)
+    };
+    let key = if config.sync.api_key.is_empty() {
+        None
+    } else {
+        Some(config.sync.api_key)
+    };
+    (url, key)
 }
 
 // Helper function to push a single URL to webhook (fire and forget)
@@ -881,6 +1211,70 @@ fn debug_list_container_files() -> Result<Vec<String>, String> {
 
         Ok(files)
     }
+}
+
+#[tauri::command]
+fn debug_profiles_json() -> Result<String, String> {
+    let config_path = match get_profiles_config_path() {
+        Some(p) => p,
+        None => return Err("No config path".to_string()),
+    };
+
+    let mut result = format!("Path: {}\nExists: {}\n", config_path.display(), config_path.exists());
+
+    if config_path.exists() {
+        match fs::read_to_string(&config_path) {
+            Ok(contents) => {
+                result.push_str(&format!("Content:\n{}", contents));
+            }
+            Err(e) => {
+                result.push_str(&format!("Read error: {}", e));
+            }
+        }
+    }
+
+    Ok(result)
+}
+
+#[tauri::command]
+fn debug_settings_table() -> Result<String, String> {
+    let db_path = get_db_path().ok_or("Failed to get database path")?;
+    let conn = Connection::open(&db_path).map_err(|e| format!("Failed to open database: {}", e))?;
+
+    let mut result = format!("DB: {:?}\n\nSettings table:\n", db_path);
+
+    // Check if settings table exists
+    let has_settings: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='settings'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .unwrap_or(0) > 0;
+
+    if !has_settings {
+        result.push_str("Settings table does not exist!");
+        return Ok(result);
+    }
+
+    // Get all settings
+    let mut stmt = conn.prepare("SELECT key, value FROM settings").map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    }).map_err(|e| e.to_string())?;
+
+    for row in rows {
+        if let Ok((key, value)) = row {
+            let display_value = if key.contains("api_key") || key.contains("key") {
+                format!("{}...", &value.chars().take(8).collect::<String>())
+            } else {
+                value
+            };
+            result.push_str(&format!("{} = {}\n", key, display_value));
+        }
+    }
+
+    Ok(result)
 }
 
 #[tauri::command]
@@ -2360,50 +2754,32 @@ fn quit_app() {
 
 #[tauri::command]
 async fn get_webhook_url() -> Result<Option<String>, String> {
-    let conn = get_connection()?;
-
-    let url: Option<String> = conn
-        .query_row(
-            "SELECT value FROM settings WHERE key = 'webhook_url'",
-            [],
-            |row| row.get(0),
-        )
-        .ok();
-
-    Ok(url)
+    let config = load_profile_config();
+    if config.sync.server_url.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(config.sync.server_url))
+    }
 }
 
 #[tauri::command]
 async fn get_webhook_api_key() -> Result<Option<String>, String> {
-    let conn = get_connection()?;
-
-    let key: Option<String> = conn
-        .query_row(
-            "SELECT value FROM settings WHERE key = 'webhook_api_key'",
-            [],
-            |row| row.get(0),
-        )
-        .ok();
-
-    Ok(key)
+    let config = load_profile_config();
+    if config.sync.api_key.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(config.sync.api_key))
+    }
 }
 
 #[tauri::command]
 async fn set_webhook_api_key(key: String) -> Result<(), String> {
     println!("[Rust] set_webhook_api_key called");
-    let conn = get_connection()?;
-
-    if key.is_empty() {
-        conn.execute("DELETE FROM settings WHERE key = 'webhook_api_key'", [])
-            .map_err(|e| format!("Failed to delete API key: {}", e))?;
-    } else {
-        conn.execute(
-            "INSERT OR REPLACE INTO settings (key, value) VALUES ('webhook_api_key', ?)",
-            params![&key],
-        )
-        .map_err(|e| format!("Failed to save API key: {}", e))?;
+    let mut config = load_profile_config();
+    config.sync.api_key = key;
+    if !save_profile_config(&config) {
+        return Err("Failed to save API key".to_string());
     }
-
     println!("[Rust] API key saved successfully");
     Ok(())
 }
@@ -2411,64 +2787,35 @@ async fn set_webhook_api_key(key: String) -> Result<(), String> {
 #[tauri::command]
 async fn set_webhook_url(url: String) -> Result<(), String> {
     println!("[Rust] set_webhook_url called with url: {}", url);
-    let conn = get_connection()?;
-
-    if url.is_empty() {
-        conn.execute("DELETE FROM settings WHERE key = 'webhook_url'", [])
-            .map_err(|e| format!("Failed to delete webhook URL: {}", e))?;
-    } else {
-        conn.execute(
-            "INSERT OR REPLACE INTO settings (key, value) VALUES ('webhook_url', ?)",
-            params![&url],
-        )
-        .map_err(|e| format!("Failed to save webhook URL: {}", e))?;
+    let mut config = load_profile_config();
+    config.sync.server_url = url;
+    if !save_profile_config(&config) {
+        return Err("Failed to save webhook URL".to_string());
     }
-
     println!("[Rust] Webhook URL saved successfully");
     Ok(())
 }
 
 #[tauri::command]
 fn get_auto_sync() -> Result<bool, String> {
-    let conn = get_connection()?;
-    let enabled: Option<String> = conn
-        .query_row(
-            "SELECT value FROM settings WHERE key = 'auto_sync'",
-            [],
-            |row| row.get(0),
-        )
-        .ok();
-
-    Ok(enabled.map(|v| v == "1" || v == "true").unwrap_or(false))
+    let config = load_profile_config();
+    Ok(config.sync.auto_sync)
 }
 
 #[tauri::command]
 fn set_auto_sync(enabled: bool) -> Result<(), String> {
-    let conn = get_connection()?;
-    conn.execute(
-        "INSERT OR REPLACE INTO settings (key, value) VALUES ('auto_sync', ?)",
-        params![if enabled { "1" } else { "0" }],
-    )
-    .map_err(|e| format!("Failed to save auto-sync setting: {}", e))?;
-
+    let mut config = load_profile_config();
+    config.sync.auto_sync = enabled;
+    if !save_profile_config(&config) {
+        return Err("Failed to save auto-sync setting".to_string());
+    }
     println!("[Rust] Auto-sync set to: {}", enabled);
     Ok(())
 }
 
 /// Check if auto-sync is enabled
 fn is_auto_sync_enabled() -> bool {
-    if let Ok(conn) = get_connection() {
-        let enabled: Option<String> = conn
-            .query_row(
-                "SELECT value FROM settings WHERE key = 'auto_sync'",
-                [],
-                |row| row.get(0),
-            )
-            .ok();
-        enabled.map(|v| v == "1" || v == "true").unwrap_or(false)
-    } else {
-        false
-    }
+    load_profile_config().sync.auto_sync
 }
 
 /// Trigger sync if auto-sync is enabled and webhook is configured
@@ -2477,18 +2824,9 @@ async fn trigger_auto_sync_if_enabled() {
         return;
     }
 
-    // Check if webhook is configured
-    let webhook_configured = if let Ok(conn) = get_connection() {
-        conn.query_row::<String, _, _>(
-            "SELECT value FROM settings WHERE key = 'webhook_url'",
-            [],
-            |row| row.get(0),
-        ).ok().map(|v| !v.is_empty()).unwrap_or(false)
-    } else {
-        false
-    };
-
-    if !webhook_configured {
+    // Check if webhook is configured (from profiles.json)
+    let config = load_profile_config();
+    if config.sync.server_url.is_empty() {
         println!("[Rust] Auto-sync: skipping, no webhook configured");
         return;
     }
@@ -2509,33 +2847,24 @@ async fn trigger_auto_sync_if_enabled() {
 async fn sync_to_webhook() -> Result<SyncResult, String> {
     println!("[Rust] sync_to_webhook called");
 
-    // Get webhook URL and API key
-    let conn = get_connection()?;
-    let base_webhook_url: String = conn
-        .query_row(
-            "SELECT value FROM settings WHERE key = 'webhook_url'",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|_| "No webhook URL configured".to_string())?;
+    // Get webhook URL and API key from profiles.json
+    let config = load_profile_config();
+    let base_webhook_url = &config.sync.server_url;
 
     if base_webhook_url.is_empty() {
         return Err("No webhook URL configured".to_string());
     }
 
     // Append profile to webhook URL
-    let webhook_url = append_profile_to_url(&base_webhook_url)?;
+    let webhook_url = append_profile_to_url(base_webhook_url)?;
 
-    let api_key: Option<String> = conn
-        .query_row(
-            "SELECT value FROM settings WHERE key = 'webhook_api_key'",
-            [],
-            |row| row.get(0),
-        )
-        .ok();
+    let api_key = if config.sync.api_key.is_empty() {
+        None
+    } else {
+        Some(config.sync.api_key.clone())
+    };
 
     // Get all items (reuse existing logic)
-    drop(conn); // Close connection before async calls
     let urls = get_saved_urls().await?;
     let texts = get_saved_texts().await?;
     let tagsets = get_saved_tagsets().await?;
@@ -2608,10 +2937,12 @@ fn get_last_sync() -> Result<Option<String>, String> {
 /// Profile info returned to the UI
 #[derive(Debug, Serialize, Deserialize)]
 struct ProfileInfo {
-    current_profile: String,
-    default_profile: String,
+    #[serde(rename = "currentProfileId")]
+    current_profile_id: String,
+    #[serde(rename = "isProductionBuild")]
     is_production_build: bool,
     profiles: Vec<ProfileEntry>,
+    sync: SyncSettings,
 }
 
 /// Get current profile information including all available profiles
@@ -2620,10 +2951,10 @@ fn get_profile_info() -> Result<ProfileInfo, String> {
     let config = load_profile_config();
 
     Ok(ProfileInfo {
-        current_profile: config.current.clone(),
-        default_profile: get_default_profile(),
+        current_profile_id: config.current_profile_id.clone(),
         is_production_build: is_production_build(),
         profiles: config.profiles,
+        sync: config.sync,
     })
 }
 
@@ -2631,21 +2962,30 @@ fn get_profile_info() -> Result<ProfileInfo, String> {
 /// This changes both local database and sync target
 /// Returns updated profile info
 #[tauri::command]
-fn set_profile(profile_slug: String) -> Result<ProfileInfo, String> {
+fn set_profile(profile_id: String) -> Result<ProfileInfo, String> {
     let mut config = load_profile_config();
 
     // Verify profile exists
-    if !config.profiles.iter().any(|p| p.slug == profile_slug) {
-        return Err(format!("Profile '{}' does not exist", profile_slug));
+    let profile = config.profiles.iter().find(|p| p.id == profile_id);
+    if profile.is_none() {
+        return Err(format!("Profile '{}' does not exist", profile_id));
+    }
+
+    // Update last_used_at for the profile being switched to
+    let now = Utc::now().to_rfc3339();
+    for p in &mut config.profiles {
+        if p.id == profile_id {
+            p.last_used_at = now.clone();
+        }
     }
 
     // Update current profile
-    config.current = profile_slug.clone();
+    config.current_profile_id = profile_id.clone();
     if !save_profile_config(&config) {
         return Err("Failed to save profile config".to_string());
     }
 
-    println!("[Rust] Switched to profile: {}", profile_slug);
+    println!("[Rust] Switched to profile: {}", profile_id);
 
     // Clear the database connection cache so next access uses new profile's DB
     // Note: This requires the app to re-initialize database on next access
@@ -2659,59 +2999,56 @@ fn set_profile(profile_slug: String) -> Result<ProfileInfo, String> {
 fn create_profile(name: String) -> Result<ProfileInfo, String> {
     let mut config = load_profile_config();
 
-    // Generate slug from name
-    let slug = name.to_lowercase()
-        .chars()
-        .map(|c| if c.is_alphanumeric() { c } else { '-' })
-        .collect::<String>()
-        .trim_matches('-')
-        .to_string();
-
-    if slug.is_empty() {
-        return Err("Invalid profile name".to_string());
+    if name.trim().is_empty() {
+        return Err("Profile name cannot be empty".to_string());
     }
 
-    // Check for duplicate
-    if config.profiles.iter().any(|p| p.slug == slug) {
-        return Err(format!("Profile '{}' already exists", slug));
+    // Check for duplicate name (case-insensitive)
+    if config.profiles.iter().any(|p| p.name.to_lowercase() == name.to_lowercase()) {
+        return Err(format!("Profile '{}' already exists", name));
     }
+
+    // Generate UUID for new profile
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
 
     // Add new profile
     config.profiles.push(ProfileEntry {
-        slug: slug.clone(),
+        id: id.clone(),
         name: name.clone(),
+        created_at: now.clone(),
+        last_used_at: now,
     });
 
     if !save_profile_config(&config) {
         return Err("Failed to save profile config".to_string());
     }
 
-    println!("[Rust] Created profile: {} ({})", name, slug);
+    println!("[Rust] Created profile: {} (id: {})", name, id);
     get_profile_info()
 }
 
-/// Delete a profile (cannot delete current or default profiles)
+/// Delete a profile (cannot delete current profile or the last remaining profile)
 #[tauri::command]
-fn delete_profile(profile_slug: String) -> Result<ProfileInfo, String> {
+fn delete_profile(profile_id: String) -> Result<ProfileInfo, String> {
     let mut config = load_profile_config();
-    let default = get_default_profile();
 
     // Cannot delete current profile
-    if config.current == profile_slug {
+    if config.current_profile_id == profile_id {
         return Err("Cannot delete the current profile. Switch to another profile first.".to_string());
     }
 
-    // Cannot delete default profile
-    if profile_slug == default || profile_slug == "default" || profile_slug == "dev" {
-        return Err("Cannot delete built-in profiles".to_string());
+    // Cannot delete if it's the last profile
+    if config.profiles.len() <= 1 {
+        return Err("Cannot delete the last profile".to_string());
     }
 
     // Remove profile
     let original_len = config.profiles.len();
-    config.profiles.retain(|p| p.slug != profile_slug);
+    config.profiles.retain(|p| p.id != profile_id);
 
     if config.profiles.len() == original_len {
-        return Err(format!("Profile '{}' not found", profile_slug));
+        return Err(format!("Profile '{}' not found", profile_id));
     }
 
     if !save_profile_config(&config) {
@@ -2719,15 +3056,63 @@ fn delete_profile(profile_slug: String) -> Result<ProfileInfo, String> {
     }
 
     // Note: We don't delete the database file - user can manually remove it
-    println!("[Rust] Deleted profile: {}", profile_slug);
+    println!("[Rust] Deleted profile: {}", profile_id);
     get_profile_info()
 }
 
-/// Reset to auto-detected default profile
+/// Swap databases between two profiles (one-time migration helper)
+#[tauri::command]
+fn swap_profile_databases(profile_id_a: String, profile_id_b: String) -> Result<String, String> {
+    let container_path = get_container_path().ok_or("Failed to get container path")?;
+
+    let db_a = container_path.join(format!("peek-{}.db", profile_id_a));
+    let db_b = container_path.join(format!("peek-{}.db", profile_id_b));
+    let db_temp = container_path.join("peek-swap-temp.db");
+
+    if !db_a.exists() {
+        return Err(format!("Database A not found: {}", db_a.display()));
+    }
+    if !db_b.exists() {
+        return Err(format!("Database B not found: {}", db_b.display()));
+    }
+
+    // Swap: A -> temp, B -> A, temp -> B
+    fs::rename(&db_a, &db_temp).map_err(|e| format!("Failed to move A to temp: {}", e))?;
+    fs::rename(&db_b, &db_a).map_err(|e| format!("Failed to move B to A: {}", e))?;
+    fs::rename(&db_temp, &db_b).map_err(|e| format!("Failed to move temp to B: {}", e))?;
+
+    // Also swap WAL files if they exist
+    let wal_a = container_path.join(format!("peek-{}.db-wal", profile_id_a));
+    let wal_b = container_path.join(format!("peek-{}.db-wal", profile_id_b));
+    let wal_temp = container_path.join("peek-swap-temp.db-wal");
+    if wal_a.exists() && wal_b.exists() {
+        let _ = fs::rename(&wal_a, &wal_temp);
+        let _ = fs::rename(&wal_b, &wal_a);
+        let _ = fs::rename(&wal_temp, &wal_b);
+    }
+
+    // Also swap SHM files if they exist
+    let shm_a = container_path.join(format!("peek-{}.db-shm", profile_id_a));
+    let shm_b = container_path.join(format!("peek-{}.db-shm", profile_id_b));
+    let shm_temp = container_path.join("peek-swap-temp.db-shm");
+    if shm_a.exists() && shm_b.exists() {
+        let _ = fs::rename(&shm_a, &shm_temp);
+        let _ = fs::rename(&shm_b, &shm_a);
+        let _ = fs::rename(&shm_temp, &shm_b);
+    }
+
+    Ok(format!("Swapped databases. Restart app to see changes."))
+}
+
+/// Reset to first profile (typically Default or Development based on build)
 #[tauri::command]
 fn reset_profile_to_default() -> Result<ProfileInfo, String> {
-    let default = get_default_profile();
-    set_profile(default)
+    let config = load_profile_config();
+    if let Some(first_profile) = config.profiles.first() {
+        set_profile(first_profile.id.clone())
+    } else {
+        Err("No profiles available".to_string())
+    }
 }
 
 /// Clear database cache to force re-initialization on profile switch
@@ -2741,21 +3126,14 @@ fn clear_db_cache() {
 
 #[tauri::command]
 async fn auto_sync_if_needed() -> Result<Option<SyncResult>, String> {
-    // Check if webhook URL is configured
-    let conn = get_connection()?;
-    let webhook_url: Option<String> = conn
-        .query_row(
-            "SELECT value FROM settings WHERE key = 'webhook_url'",
-            [],
-            |row| row.get(0),
-        )
-        .ok();
-
-    if webhook_url.is_none() || webhook_url.as_ref().map(|s| s.trim().is_empty()).unwrap_or(true) {
+    // Check if webhook URL is configured (from profiles.json)
+    let config = load_profile_config();
+    if config.sync.server_url.is_empty() {
         return Ok(None); // No webhook configured, nothing to do
     }
 
-    // Check last sync time
+    // Check last sync time (still in database as it's per-profile data)
+    let conn = get_connection()?;
     let last_sync: Option<String> = conn
         .query_row(
             "SELECT value FROM settings WHERE key = 'last_sync'",
@@ -3022,28 +3400,22 @@ fn update_item_tags_from_server(conn: &Connection, item_id: &str, tag_names: &[S
 async fn pull_from_server() -> Result<BidirectionalSyncResult, String> {
     println!("[Rust] pull_from_server called");
 
-    // Get server URL and API key
-    let conn = get_connection()?;
-    let server_url: String = conn
-        .query_row(
-            "SELECT value FROM settings WHERE key = 'webhook_url'",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|_| "No server URL configured".to_string())?;
+    // Get server URL and API key from profiles.json
+    let config = load_profile_config();
+    let server_url = &config.sync.server_url;
 
     if server_url.is_empty() {
         return Err("No server URL configured".to_string());
     }
 
-    let api_key: Option<String> = conn
-        .query_row(
-            "SELECT value FROM settings WHERE key = 'webhook_api_key'",
-            [],
-            |row| row.get(0),
-        )
-        .ok();
+    let api_key = if config.sync.api_key.is_empty() {
+        None
+    } else {
+        Some(config.sync.api_key.clone())
+    };
 
+    // Get last sync time from database (per-profile data)
+    let conn = get_connection()?;
     let last_sync: Option<String> = conn
         .query_row(
             "SELECT value FROM settings WHERE key = 'last_sync'",
@@ -3123,28 +3495,22 @@ async fn pull_from_server() -> Result<BidirectionalSyncResult, String> {
 async fn push_to_server() -> Result<BidirectionalSyncResult, String> {
     println!("[Rust] push_to_server called");
 
-    // Get server URL and API key
-    let conn = get_connection()?;
-    let server_url: String = conn
-        .query_row(
-            "SELECT value FROM settings WHERE key = 'webhook_url'",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|_| "No server URL configured".to_string())?;
+    // Get server URL and API key from profiles.json
+    let config = load_profile_config();
+    let server_url = &config.sync.server_url;
 
     if server_url.is_empty() {
         return Err("No server URL configured".to_string());
     }
 
-    let api_key: Option<String> = conn
-        .query_row(
-            "SELECT value FROM settings WHERE key = 'webhook_api_key'",
-            [],
-            |row| row.get(0),
-        )
-        .ok();
+    let api_key = if config.sync.api_key.is_empty() {
+        None
+    } else {
+        Some(config.sync.api_key.clone())
+    };
 
+    // Get last sync time from database (per-profile data)
+    let conn = get_connection()?;
     let last_sync: Option<String> = conn
         .query_row(
             "SELECT value FROM settings WHERE key = 'last_sync'",
@@ -3299,27 +3665,11 @@ async fn sync_all() -> Result<BidirectionalSyncResult, String> {
 fn get_sync_status() -> Result<SyncStatus, String> {
     let conn = get_connection()?;
 
-    // Check if configured
-    let server_url: Option<String> = conn
-        .query_row(
-            "SELECT value FROM settings WHERE key = 'webhook_url'",
-            [],
-            |row| row.get(0),
-        )
-        .ok();
+    // Check if configured (from profiles.json)
+    let config = load_profile_config();
+    let configured = !config.sync.server_url.is_empty() && !config.sync.api_key.is_empty();
 
-    let api_key: Option<String> = conn
-        .query_row(
-            "SELECT value FROM settings WHERE key = 'webhook_api_key'",
-            [],
-            |row| row.get(0),
-        )
-        .ok();
-
-    let configured = server_url.as_ref().map(|s| !s.is_empty()).unwrap_or(false)
-        && api_key.as_ref().map(|s| !s.is_empty()).unwrap_or(false);
-
-    // Get last sync time
+    // Get last sync time (per-profile data)
     let last_sync_time: Option<String> = conn
         .query_row(
             "SELECT value FROM settings WHERE key = 'last_sync'",
@@ -3407,8 +3757,11 @@ pub fn run() {
             get_shared_url,
             // Debug
             debug_list_container_files,
+            debug_profiles_json,
+            debug_settings_table,
             debug_query_database,
-            debug_export_database
+            debug_export_database,
+            swap_profile_databases
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -239,11 +239,13 @@ export async function pullFromServer(
   }
 
   // Fetch items from server with profile parameter
+  // Use profile UUID on the wire - immutable even if profile is renamed
+  // Include slug as fallback for migration (server may not have UUID registered yet)
   let path = '/items';
   if (since && since > 0) {
     path = `/items/since/${toISOString(since)}`;
   }
-  path += `?profile=${encodeURIComponent(profileSyncConfig.serverProfileSlug)}`;
+  path += `?profile=${encodeURIComponent(activeProfile.id)}&slug=${encodeURIComponent(activeProfile.slug)}`;
 
   DEBUG && console.log(`[sync] Fetching from: ${serverUrl}${path}`);
 
@@ -461,7 +463,9 @@ async function pushSingleItem(
   }
 
   // POST to server with profile parameter
-  const path = `/items?profile=${encodeURIComponent(profileSyncConfig.serverProfileSlug)}`;
+  // Use profile UUID on the wire - immutable even if profile is renamed
+  // Include slug as fallback for migration (server may not have UUID registered yet)
+  const path = `/items?profile=${encodeURIComponent(activeProfile.id)}&slug=${encodeURIComponent(activeProfile.slug)}`;
   const response = await serverFetch<{ id: string; created: boolean }>(
     serverUrl,
     apiKey,

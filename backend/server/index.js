@@ -38,7 +38,7 @@ app.get("/", (c) => {
 // Receive items from iOS app
 app.post("/webhook", async (c) => {
   const userId = c.get("userId");
-  const profileSlug = c.req.query("profile") || "default";
+  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default", c.req.query("slug"));
   const body = await c.req.json();
 
   console.log("=== Webhook Received ===");
@@ -92,7 +92,7 @@ app.post("/webhook", async (c) => {
 // Get all saved URLs
 app.get("/urls", (c) => {
   const userId = c.get("userId");
-  const profileSlug = c.req.query("profile") || "default";
+  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default", c.req.query("slug"));
   const urls = db.getSavedUrls(userId, profileSlug);
   return c.json({ urls });
 });
@@ -100,7 +100,7 @@ app.get("/urls", (c) => {
 // Get tags sorted by frecency
 app.get("/tags", (c) => {
   const userId = c.get("userId");
-  const profileSlug = c.req.query("profile") || "default";
+  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default", c.req.query("slug"));
   const tags = db.getTagsByFrecency(userId, profileSlug);
   return c.json({ tags });
 });
@@ -108,7 +108,7 @@ app.get("/tags", (c) => {
 // Delete a URL
 app.delete("/urls/:id", (c) => {
   const userId = c.get("userId");
-  const profileSlug = c.req.query("profile") || "default";
+  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default", c.req.query("slug"));
   const id = c.req.param("id");
   db.deleteUrl(userId, id, profileSlug);
   return c.json({ deleted: true });
@@ -117,7 +117,7 @@ app.delete("/urls/:id", (c) => {
 // Update tags for a URL
 app.patch("/urls/:id/tags", async (c) => {
   const userId = c.get("userId");
-  const profileSlug = c.req.query("profile") || "default";
+  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default", c.req.query("slug"));
   const id = c.req.param("id");
   const body = await c.req.json();
   db.updateUrlTags(userId, id, body.tags || [], profileSlug);
@@ -128,7 +128,7 @@ app.patch("/urls/:id/tags", async (c) => {
 
 app.post("/texts", async (c) => {
   const userId = c.get("userId");
-  const profileSlug = c.req.query("profile") || "default";
+  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default", c.req.query("slug"));
   const body = await c.req.json();
   if (!body.content) {
     return c.json({ error: "content is required" }, 400);
@@ -139,14 +139,14 @@ app.post("/texts", async (c) => {
 
 app.get("/texts", (c) => {
   const userId = c.get("userId");
-  const profileSlug = c.req.query("profile") || "default";
+  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default", c.req.query("slug"));
   const texts = db.getTexts(userId, profileSlug);
   return c.json({ texts });
 });
 
 app.delete("/texts/:id", (c) => {
   const userId = c.get("userId");
-  const profileSlug = c.req.query("profile") || "default";
+  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default", c.req.query("slug"));
   const id = c.req.param("id");
   db.deleteItem(userId, id, profileSlug);
   return c.json({ deleted: true });
@@ -154,7 +154,7 @@ app.delete("/texts/:id", (c) => {
 
 app.patch("/texts/:id/tags", async (c) => {
   const userId = c.get("userId");
-  const profileSlug = c.req.query("profile") || "default";
+  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default", c.req.query("slug"));
   const id = c.req.param("id");
   const body = await c.req.json();
   db.updateItemTags(userId, id, body.tags || [], profileSlug);
@@ -165,7 +165,7 @@ app.patch("/texts/:id/tags", async (c) => {
 
 app.post("/tagsets", async (c) => {
   const userId = c.get("userId");
-  const profileSlug = c.req.query("profile") || "default";
+  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default", c.req.query("slug"));
   const body = await c.req.json();
   if (!body.tags || !Array.isArray(body.tags) || body.tags.length === 0) {
     return c.json({ error: "tags array is required and must not be empty" }, 400);
@@ -176,14 +176,14 @@ app.post("/tagsets", async (c) => {
 
 app.get("/tagsets", (c) => {
   const userId = c.get("userId");
-  const profileSlug = c.req.query("profile") || "default";
+  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default", c.req.query("slug"));
   const tagsets = db.getTagsets(userId, profileSlug);
   return c.json({ tagsets });
 });
 
 app.delete("/tagsets/:id", (c) => {
   const userId = c.get("userId");
-  const profileSlug = c.req.query("profile") || "default";
+  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default", c.req.query("slug"));
   const id = c.req.param("id");
   db.deleteItem(userId, id, profileSlug);
   return c.json({ deleted: true });
@@ -191,7 +191,7 @@ app.delete("/tagsets/:id", (c) => {
 
 app.patch("/tagsets/:id/tags", async (c) => {
   const userId = c.get("userId");
-  const profileSlug = c.req.query("profile") || "default";
+  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default", c.req.query("slug"));
   const id = c.req.param("id");
   const body = await c.req.json();
   db.updateItemTags(userId, id, body.tags || [], profileSlug);
@@ -202,7 +202,7 @@ app.patch("/tagsets/:id/tags", async (c) => {
 
 app.post("/images", async (c) => {
   const userId = c.get("userId");
-  const profileSlug = c.req.query("profile") || "default";
+  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default", c.req.query("slug"));
   const contentType = c.req.header("Content-Type") || "";
 
   let filename, buffer, mimeType, tags = [];
@@ -265,14 +265,14 @@ app.post("/images", async (c) => {
 
 app.get("/images", (c) => {
   const userId = c.get("userId");
-  const profileSlug = c.req.query("profile") || "default";
+  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default", c.req.query("slug"));
   const images = db.getImages(userId, profileSlug);
   return c.json({ images });
 });
 
 app.get("/images/:id", (c) => {
   const userId = c.get("userId");
-  const profileSlug = c.req.query("profile") || "default";
+  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default", c.req.query("slug"));
   const id = c.req.param("id");
 
   const image = db.getImageById(userId, id, profileSlug);
@@ -297,7 +297,7 @@ app.get("/images/:id", (c) => {
 
 app.delete("/images/:id", (c) => {
   const userId = c.get("userId");
-  const profileSlug = c.req.query("profile") || "default";
+  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default", c.req.query("slug"));
   const id = c.req.param("id");
   db.deleteImage(userId, id, profileSlug);
   return c.json({ deleted: true });
@@ -305,7 +305,7 @@ app.delete("/images/:id", (c) => {
 
 app.patch("/images/:id/tags", async (c) => {
   const userId = c.get("userId");
-  const profileSlug = c.req.query("profile") || "default";
+  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default", c.req.query("slug"));
   const id = c.req.param("id");
   const body = await c.req.json();
   db.updateItemTags(userId, id, body.tags || [], profileSlug);
@@ -316,7 +316,7 @@ app.patch("/images/:id/tags", async (c) => {
 
 app.post("/items", async (c) => {
   const userId = c.get("userId");
-  const profileSlug = c.req.query("profile") || "default";
+  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default", c.req.query("slug"));
   const body = await c.req.json();
   const { type, content, tags = [], metadata = null, sync_id = null } = body;
 
@@ -378,7 +378,7 @@ app.post("/items", async (c) => {
 
 app.get("/items", (c) => {
   const userId = c.get("userId");
-  const profileSlug = c.req.query("profile") || "default";
+  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default", c.req.query("slug"));
   const type = c.req.query("type");
   if (type && !["url", "text", "tagset", "image"].includes(type)) {
     return c.json({ error: "type must be 'url', 'text', 'tagset', or 'image'" }, 400);
@@ -389,7 +389,7 @@ app.get("/items", (c) => {
 
 app.delete("/items/:id", (c) => {
   const userId = c.get("userId");
-  const profileSlug = c.req.query("profile") || "default";
+  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default", c.req.query("slug"));
   const id = c.req.param("id");
   db.deleteItem(userId, id, profileSlug);
   return c.json({ deleted: true });
@@ -397,7 +397,7 @@ app.delete("/items/:id", (c) => {
 
 app.patch("/items/:id/tags", async (c) => {
   const userId = c.get("userId");
-  const profileSlug = c.req.query("profile") || "default";
+  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default", c.req.query("slug"));
   const id = c.req.param("id");
   const body = await c.req.json();
   db.updateItemTags(userId, id, body.tags || [], profileSlug);
@@ -409,7 +409,7 @@ app.patch("/items/:id/tags", async (c) => {
 // Get items modified since a timestamp (for incremental sync)
 app.get("/items/since/:timestamp", (c) => {
   const userId = c.get("userId");
-  const profileSlug = c.req.query("profile") || "default";
+  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default", c.req.query("slug"));
   const timestamp = c.req.param("timestamp");
   const type = c.req.query("type");
 
@@ -430,7 +430,7 @@ app.get("/items/since/:timestamp", (c) => {
 // Get a single item by ID
 app.get("/items/:id", (c) => {
   const userId = c.get("userId");
-  const profileSlug = c.req.query("profile") || "default";
+  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default", c.req.query("slug"));
   const id = c.req.param("id");
 
   const item = db.getItemById(userId, id, profileSlug);

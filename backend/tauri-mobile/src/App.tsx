@@ -1837,6 +1837,23 @@ function App() {
           </button>
         </div>
         <div className="card-footer">
+          {(item.tags.includes("todo") || item.tags.includes("done")) && (
+            <button
+              className={`todo-checkbox ${item.tags.includes("done") ? "checked" : ""}`}
+              onClick={(e) => toggleTodoDone(e, item.id, "page", item.tags)}
+            >
+              {item.tags.includes("done") ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                  <polyline points="9 11 12 14 22 4"></polyline>
+                </svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                </svg>
+              )}
+            </button>
+          )}
           <div className="card-tags">
             {item.tags.map((tag) => (
               <span key={tag} className="card-tag">{tag}</span>
@@ -1883,6 +1900,23 @@ function App() {
           </button>
         </div>
         <div className="card-footer">
+          {(tags.includes("todo") || tags.includes("done")) && (
+            <button
+              className={`todo-checkbox ${tags.includes("done") ? "checked" : ""}`}
+              onClick={(e) => toggleTodoDone(e, item.id, "text", tags)}
+            >
+              {tags.includes("done") ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                  <polyline points="9 11 12 14 22 4"></polyline>
+                </svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                </svg>
+              )}
+            </button>
+          )}
           <div className="card-tags">
             {tags.map((tag) => (
               <span key={tag} className="card-tag">{tag}</span>
@@ -2008,6 +2042,46 @@ function App() {
     }
   };
 
+  // Toggle between todo and done states
+  const toggleTodoDone = async (e: React.MouseEvent, id: string, type: ItemType, currentTags: string[]) => {
+    e.stopPropagation(); // Don't trigger card click
+    const hasTodo = currentTags.includes("todo");
+    const hasDone = currentTags.includes("done");
+
+    let newTags: string[];
+    if (hasTodo) {
+      // todo -> done
+      newTags = currentTags.filter(t => t !== "todo").concat("done");
+    } else if (hasDone) {
+      // done -> todo
+      newTags = currentTags.filter(t => t !== "done").concat("todo");
+    } else {
+      return; // Neither tag present, shouldn't happen
+    }
+
+    try {
+      await invoke("update_url_tags", { id, tags: newTags });
+      // Reload the appropriate list
+      switch (type) {
+        case "page":
+          await loadSavedUrls();
+          break;
+        case "text":
+          await loadSavedTexts();
+          break;
+        case "tagset":
+          await loadSavedTagsets();
+          break;
+        case "image":
+          await loadSavedImages();
+          break;
+      }
+      await loadAllTags();
+    } catch (error) {
+      console.error("Failed to toggle todo/done:", error);
+    }
+  };
+
   const renderDiscardConfirmModal = () => {
     if (!pendingDiscard) return null;
 
@@ -2092,6 +2166,23 @@ function App() {
           </button>
         </div>
         <div className="card-footer">
+          {(item.tags.includes("todo") || item.tags.includes("done")) && (
+            <button
+              className={`todo-checkbox ${item.tags.includes("done") ? "checked" : ""}`}
+              onClick={(e) => toggleTodoDone(e, item.id, "image", item.tags)}
+            >
+              {item.tags.includes("done") ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                  <polyline points="9 11 12 14 22 4"></polyline>
+                </svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                </svg>
+              )}
+            </button>
+          )}
           <div className="card-tags">
             {item.tags.map((tag) => (
               <span key={tag} className="card-tag">{tag}</span>

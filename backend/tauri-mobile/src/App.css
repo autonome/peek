@@ -406,6 +406,31 @@ a.card-title {
   flex-shrink: 0;
 }
 
+/* Todo checkbox - shown for items with "todo" or "done" tag */
+.todo-checkbox {
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  color: #007aff;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.todo-checkbox.checked {
+  color: #34c759; /* Green for completed */
+}
+
+.todo-checkbox:active {
+  opacity: 0.6;
+}
+
+.todo-checkbox svg {
+  display: block;
+}
+
 /* Legacy styles for edit mode - keep for now */
 .saved-url-item {
   padding: 1.15rem;
@@ -829,6 +854,14 @@ body.dark .card-tag {
 
 body.dark .card-date {
   color: #666;
+}
+
+body.dark .todo-checkbox {
+  color: #0a84ff;
+}
+
+body.dark .todo-checkbox.checked {
+  color: #30d158; /* Green for completed in dark mode */
 }
 
 body.dark .card-delete-btn {

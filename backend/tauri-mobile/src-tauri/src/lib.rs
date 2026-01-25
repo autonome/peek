@@ -1665,16 +1665,17 @@ async fn delete_url(id: String) -> Result<(), String> {
     println!("[Rust] delete_url/delete_item called for id: {}", id);
 
     let conn = get_connection()?;
+    let now = Utc::now().to_rfc3339();
 
-    // Delete tag associations first
-    conn.execute("DELETE FROM item_tags WHERE item_id = ?", params![&id])
-        .map_err(|e| format!("Failed to delete item tags: {}", e))?;
+    // Soft delete: set deleted_at timestamp
+    // This prevents sync from re-creating the item when pulling from server
+    conn.execute(
+        "UPDATE items SET deleted_at = ?, updated_at = ? WHERE id = ?",
+        params![&now, &now, &id],
+    )
+    .map_err(|e| format!("Failed to delete item: {}", e))?;
 
-    // Hard delete the item
-    conn.execute("DELETE FROM items WHERE id = ?", params![&id])
-        .map_err(|e| format!("Failed to delete item: {}", e))?;
-
-    println!("[Rust] Item deleted successfully");
+    println!("[Rust] Item soft-deleted successfully");
     Ok(())
 }
 
@@ -2193,8 +2194,8 @@ async fn get_saved_tagsets() -> Result<Vec<SavedTagset>, String> {
 
 /// Update a text item
 #[tauri::command]
-async fn update_text(id: String, content: String) -> Result<(), String> {
-    println!("[Rust] update_text called for id: {}", id);
+async fn update_text(id: String, content: String, tags: Vec<String>) -> Result<(), String> {
+    println!("[Rust] update_text called for id: {}, tags: {:?}", id, tags);
 
     let conn = get_connection()?;
     let now = Utc::now().to_rfc3339();
@@ -2219,8 +2220,10 @@ async fn update_text(id: String, content: String) -> Result<(), String> {
     )
     .map_err(|e| format!("Failed to update text: {}", e))?;
 
-    // Re-parse hashtags and update tags
-    let new_tags = parse_hashtags(&content);
+    // Combine UI-provided tags with hashtags parsed from content
+    let hashtags = parse_hashtags(&content);
+    let mut new_tags_set: std::collections::HashSet<String> = tags.into_iter().collect();
+    new_tags_set.extend(hashtags);
 
     // Get existing tags
     let mut existing_tag_stmt = conn
@@ -2237,7 +2240,6 @@ async fn update_text(id: String, content: String) -> Result<(), String> {
         .filter_map(|r| r.ok())
         .collect();
 
-    let new_tags_set: std::collections::HashSet<String> = new_tags.iter().cloned().collect();
     let tags_to_add: Vec<&String> = new_tags_set.difference(&existing_tags).collect();
     let tags_to_remove: Vec<&String> = existing_tags.difference(&new_tags_set).collect();
 
@@ -2299,10 +2301,11 @@ async fn update_text(id: String, content: String) -> Result<(), String> {
     println!("[Rust] Text updated successfully");
 
     // Push to webhook
+    let final_tags: Vec<String> = new_tags_set.into_iter().collect();
     let saved_text = SavedText {
         id,
         content,
-        tags: new_tags,
+        tags: final_tags,
         saved_at: now,
         metadata: None,
     };
@@ -3248,6 +3251,20 @@ fn merge_server_item(conn: &Connection, server_item: &ServerItem) -> Result<&'st
     let now = Utc::now().to_rfc3339();
     let server_updated = parse_iso_datetime(&server_item.updated_at)
         .ok_or("Invalid server updated_at timestamp")?;
+
+    // Check if this item was soft-deleted locally - if so, skip the import
+    let was_deleted: bool = conn
+        .query_row(
+            "SELECT 1 FROM items WHERE sync_id = ? AND deleted_at IS NOT NULL",
+            params![&server_item.id],
+            |_| Ok(true)
+        )
+        .unwrap_or(false);
+
+    if was_deleted {
+        println!("[Rust] Sync: Skipping deleted item from server: {}", server_item.id);
+        return Ok("skipped");
+    }
 
     // Find local item by sync_id matching server id
     let local_item: Option<(String, String)> = conn

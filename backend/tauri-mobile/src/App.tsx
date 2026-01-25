@@ -2742,7 +2742,7 @@ function App() {
                 type="text"
                 className="expandable-card-input"
                 placeholder="Add note, URL, or tags..."
-                value={addInputExpanded ? "" : addInputText}
+                value={addInputText}
                 onChange={(e) => setAddInputText(e.target.value)}
                 onFocus={() => setAddInputExpanded(true)}
                 autoCapitalize="none"
@@ -2750,7 +2750,7 @@ function App() {
                 autoComplete="off"
                 spellCheck={false}
               />
-              <ClearButton show={!addInputExpanded && addInputText.length > 0} onClear={() => setAddInputText('')} />
+              <ClearButton show={addInputText.length > 0} onClear={() => setAddInputText('')} />
             </div>
             <button className="camera-btn" onClick={openCamera} title="Take photo">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

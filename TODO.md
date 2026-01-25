@@ -21,6 +21,8 @@ Today
 - [ ] image support end to end + better media storage
 
 Later
+- [ ][desktop] add archive tag support to hide items from views (like mobile)
+- [ ][arch] explore sharing UI logic (filters, archive, etc) across mobile/desktop without separate implementations
 - [ ][desktop] access to notes on filesystem, syncing them as markdown files in ~/sync/Notes/peek
 
 ## To process

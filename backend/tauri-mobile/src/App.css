@@ -982,6 +982,20 @@ body.dark .settings-btn svg {
   color: #999;
 }
 
+/* Spinning animation when syncing */
+.settings-btn.syncing svg {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 body.dark .header-btn {
   color: #0a84ff;
 }
@@ -2370,6 +2384,230 @@ body.dark .expandable-card-buttons .cancel-btn {
 
 body.dark .expandable-card-buttons .save-btn {
   background: #0a84ff;
+}
+
+/* ============================================================================
+   Shared Editor Components
+   ============================================================================ */
+
+/* Editor Card - base layout for all editors */
+.editor-card {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100% - 1rem);
+  height: auto;
+}
+
+/* Resizable Input Component */
+.resizable-input-wrapper {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.resizable-input-textarea {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  padding: 0.85rem 1.15rem;
+  border: none;
+  border-radius: 12px 12px 0 0;
+  font-size: 16px;
+  font-family: inherit;
+  resize: none;
+  min-height: 0;
+  box-sizing: border-box;
+  background: transparent;
+}
+
+.resizable-input-textarea:focus {
+  outline: none;
+}
+
+.resizable-input-handle {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 24px;
+  cursor: ns-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.03));
+  touch-action: none;
+}
+
+.drag-handle-bar {
+  width: 40px;
+  height: 4px;
+  background: #ccc;
+  border-radius: 2px;
+}
+
+body.dark .resizable-input-wrapper {
+  border-bottom-color: #444;
+}
+
+body.dark .resizable-input-textarea {
+  color: #f6f6f6;
+}
+
+body.dark .resizable-input-handle {
+  background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.03));
+}
+
+body.dark .drag-handle-bar {
+  background: #666;
+}
+
+/* Tags Section - scrollable tag area */
+.editor-tags-section {
+  flex: 1;
+  min-height: 60px;
+  max-height: none;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.65rem 1.15rem;
+}
+
+/* Editor Buttons - always visible at bottom */
+.editor-buttons {
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+
+/* URL Input for editor (non-resizable) */
+.editor-url-input {
+  width: 100%;
+  padding: 0.85rem 1.15rem;
+  border: none;
+  border-bottom: 1px solid #e0e0e0;
+  border-radius: 12px 12px 0 0;
+  font-size: 16px;
+  font-family: inherit;
+  box-sizing: border-box;
+  background: transparent;
+}
+
+.editor-url-input:focus {
+  outline: none;
+}
+
+body.dark .editor-url-input {
+  color: #f6f6f6;
+  border-bottom-color: #444;
+}
+
+/* Image preview for editor */
+.editor-image-preview {
+  padding: 0.75rem 1.15rem;
+  border-bottom: 1px solid #e0e0e0;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.editor-image-preview .edit-modal-image {
+  max-width: 100%;
+  max-height: 150px;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+.editor-image-preview .image-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100px;
+  color: #999;
+}
+
+.editor-image-preview .edit-image-title {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: #666;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+body.dark .editor-image-preview {
+  border-bottom-color: #444;
+}
+
+body.dark .editor-image-preview .edit-image-title {
+  color: #999;
+}
+
+/* Legacy text editor classes - keep for backwards compatibility */
+.text-editor-overlay {
+  align-items: stretch;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 0.5rem);
+}
+
+.text-editor-card {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100% - 1rem);
+  height: auto;
+}
+
+.text-editor-wrapper {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.text-editor-textarea {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  border: none !important;
+  border-radius: 12px 12px 0 0;
+  resize: none;
+  min-height: 0;
+}
+
+.text-editor-drag-handle {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 24px;
+  cursor: ns-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.03));
+  touch-action: none;
+}
+
+body.dark .text-editor-wrapper {
+  border-bottom-color: #444;
+}
+
+body.dark .text-editor-drag-handle {
+  background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.03));
+}
+
+/* Tag area scrollable with flex */
+.text-editor-tags-scroll {
+  flex: 1;
+  min-height: 60px;
+  max-height: none;
+  overflow-y: auto;
+}
+
+/* Buttons always visible at bottom */
+.text-editor-buttons {
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
 }
 
 /* Edit Modal Overlay */

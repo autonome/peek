@@ -101,6 +101,245 @@ interface UnifiedItem {
   height?: number;
 }
 
+// ============================================================================
+// Shared Editor Components
+// ============================================================================
+
+interface EditorOverlayProps {
+  children: React.ReactNode;
+  onDismiss: () => void;
+  keyboardHeight: number;
+  className?: string;
+}
+
+const EditorOverlay: React.FC<EditorOverlayProps> = ({ children, onDismiss, keyboardHeight, className = '' }) => (
+  <div
+    className={`edit-overlay ${className}`}
+    style={{ paddingBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : undefined }}
+    onClick={(e) => e.target === e.currentTarget && onDismiss()}
+  >
+    <div className="expandable-card expanded editor-card">
+      {children}
+    </div>
+  </div>
+);
+
+interface TagsSectionProps {
+  selectedTags: Set<string>;
+  availableTags: TagStats[];
+  tagInput: string;
+  onTagInputChange: (value: string) => void;
+  onToggleTag: (tagName: string) => void;
+  onAddTag: () => void;
+  placeholder?: string;
+}
+
+const TagsSection: React.FC<TagsSectionProps> = ({
+  selectedTags,
+  availableTags,
+  tagInput,
+  onTagInputChange,
+  onToggleTag,
+  onAddTag,
+  placeholder = "Add tag..."
+}) => {
+  // Filter available tags based on input and exclude already selected
+  const unusedTags = availableTags.filter((tag) =>
+    !selectedTags.has(tag.name) &&
+    (!tagInput.trim() || tag.name.toLowerCase().includes(tagInput.toLowerCase().trim()))
+  );
+
+  return (
+    <div className="editor-tags-section">
+      {selectedTags.size > 0 && (
+        <div className="expandable-card-section">
+          <div className="editing-tags">
+            {Array.from(selectedTags).sort().map((tag) => (
+              <span key={tag} className="editing-tag">
+                {tag}
+                <button onClick={() => onToggleTag(tag)}>&times;</button>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="expandable-card-section">
+        <div className="new-tag-input">
+          <input
+            type="text"
+            value={tagInput}
+            onChange={(e) => onTagInputChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                onAddTag();
+              }
+            }}
+            placeholder={placeholder}
+            autoCapitalize="none"
+            autoCorrect="off"
+            autoComplete="off"
+            spellCheck={false}
+          />
+          <button onClick={onAddTag} disabled={!tagInput.trim()}>
+            Add
+          </button>
+        </div>
+      </div>
+
+      {unusedTags.length > 0 && (
+        <div className="expandable-card-section">
+          <div className="all-tags-list">
+            {unusedTags.map((tag) => (
+              <span
+                key={tag.name}
+                className="tag-chip"
+                onClick={() => onToggleTag(tag.name)}
+              >
+                {tag.name}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+interface EditorButtonsProps {
+  onSave: () => void;
+  onCancel: () => void;
+  onDelete?: () => void;
+  saveLabel?: string;
+  cancelLabel?: string;
+  saveDisabled?: boolean;
+}
+
+const EditorButtons: React.FC<EditorButtonsProps> = ({
+  onSave,
+  onCancel,
+  onDelete,
+  saveLabel = "Save",
+  cancelLabel = "Cancel",
+  saveDisabled = false
+}) => (
+  <div className="expandable-card-buttons editor-buttons">
+    {onDelete && (
+      <button className="delete-btn" onClick={onDelete}>
+        Delete
+      </button>
+    )}
+    <button className="cancel-btn" onClick={onCancel}>
+      {cancelLabel}
+    </button>
+    <button className="save-btn" onClick={onSave} disabled={saveDisabled}>
+      {saveLabel}
+    </button>
+  </div>
+);
+
+interface ResizableInputProps {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  minHeightPercent?: number;
+  keyboardHeight: number;
+}
+
+const ResizableInput: React.FC<ResizableInputProps> = ({
+  value,
+  onChange,
+  placeholder = "Enter text...",
+  minHeightPercent = 0.5,
+  keyboardHeight
+}) => {
+  const [height, setHeight] = useState<number | null>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const isDraggingRef = useRef(false);
+  const dragStartYRef = useRef(0);
+  const dragStartHeightRef = useRef(0);
+
+  // Calculate minimum height: percentage of available space
+  const headerHeight = 56;
+  const buttonsHeight = 70;
+  const availableHeight = window.innerHeight - headerHeight - keyboardHeight - buttonsHeight - 32;
+  const minHeight = Math.max(80, availableHeight * minHeightPercent);
+  const currentHeight = height ?? minHeight;
+
+  const handleDragStart = (clientY: number) => {
+    if (!wrapperRef.current) return;
+    isDraggingRef.current = true;
+    dragStartYRef.current = clientY;
+    dragStartHeightRef.current = wrapperRef.current.offsetHeight;
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'ns-resize';
+  };
+
+  const handleDragMove = (clientY: number) => {
+    if (!isDraggingRef.current) return;
+    const delta = clientY - dragStartYRef.current;
+    const newHeight = Math.max(minHeight, dragStartHeightRef.current + delta);
+    setHeight(newHeight);
+  };
+
+  const handleDragEnd = () => {
+    isDraggingRef.current = false;
+    document.body.style.userSelect = '';
+    document.body.style.cursor = '';
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => handleDragMove(e.clientY);
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 1) handleDragMove(e.touches[0].clientY);
+    };
+    const handleEnd = () => handleDragEnd();
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleEnd);
+    document.addEventListener('touchmove', handleTouchMove, { passive: true });
+    document.addEventListener('touchend', handleEnd);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleEnd);
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleEnd);
+    };
+  }, [minHeight]);
+
+  return (
+    <div
+      className="resizable-input-wrapper"
+      ref={wrapperRef}
+      style={{ height: `${currentHeight}px`, minHeight: `${minHeight}px` }}
+    >
+      <textarea
+        className="resizable-input-textarea"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        autoCapitalize="none"
+        autoCorrect="off"
+        autoComplete="off"
+        spellCheck={false}
+      />
+      <div
+        className="resizable-input-handle"
+        onMouseDown={(e) => { e.preventDefault(); handleDragStart(e.clientY); }}
+        onTouchStart={(e) => { handleDragStart(e.touches[0].clientY); }}
+      >
+        <div className="drag-handle-bar" />
+      </div>
+    </div>
+  );
+};
+
+// ============================================================================
+// Custom Hooks
+// ============================================================================
+
 // Custom hook to detect iOS keyboard height via Visual Viewport API
 const useKeyboardHeight = () => {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -175,25 +414,6 @@ function App() {
 
   // Scroll ref for scroll-to-top
   const mainRef = useRef<HTMLElement>(null);
-
-  // Ref for textarea to focus without scroll
-  const addTextareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // Focus textarea when expanded, but prevent iOS scroll
-  useEffect(() => {
-    if (addInputExpanded && addTextareaRef.current) {
-      // Small delay to let React render the textarea first
-      setTimeout(() => {
-        const textarea = addTextareaRef.current;
-        if (textarea) {
-          textarea.focus({ preventScroll: true });
-          // Move cursor to end of text
-          const length = textarea.value.length;
-          textarea.setSelectionRange(length, length);
-        }
-      }, 10);
-    }
-  }, [addInputExpanded]);
 
   // Delete confirmation state
   const [pendingDelete, setPendingDelete] = useState<{ id: string; type: ItemType } | null>(null);
@@ -462,17 +682,17 @@ function App() {
   // Bidirectional sync: pull then push
   const syncAll = async () => {
     if (!webhookUrl) {
-      setSyncMessage("Please save a server URL first");
-      setTimeout(() => setSyncMessage(null), 3000);
+      showToast("Please configure server URL first", "error");
       return;
     }
 
     setIsSyncing(true);
-    setSyncMessage(null);
+    showToast("Syncing...");
 
     try {
       const result = await invoke<BidirectionalSyncResult>("sync_all");
       const msg = `Synced: ${result.pulled} pulled, ${result.pushed} pushed${result.conflicts > 0 ? `, ${result.conflicts} conflicts` : ''}`;
+      showToast(msg);
       setSyncMessage(msg);
       await loadLastSync();
       await loadSyncStatus();
@@ -485,7 +705,9 @@ function App() {
       setTimeout(() => setSyncMessage(null), 4000);
     } catch (error) {
       console.error("Failed to sync:", error);
-      setSyncMessage(`Sync failed: ${error}`);
+      const errorMsg = `Sync failed: ${error}`;
+      showToast(errorMsg, "error");
+      setSyncMessage(errorMsg);
       setTimeout(() => setSyncMessage(null), 5000);
     } finally {
       setIsSyncing(false);
@@ -682,13 +904,6 @@ function App() {
       setEditingTags(newTags);
     }
     setNewTagInput("");
-  };
-
-  const handleNewTagKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      addNewTag();
-    }
   };
 
   const saveChanges = async () => {
@@ -1393,265 +1608,80 @@ function App() {
     if (editingUrlId) {
       const item = savedUrls.find(u => u.id === editingUrlId);
       if (!item) return null;
-      const unusedTags = editingUrlTags.filter((tag) =>
-        !editingTags.has(tag.name) &&
-        (!newTagInput.trim() || tag.name.toLowerCase().includes(newTagInput.toLowerCase().trim()))
-      );
 
       return (
-        <div className="edit-overlay" style={{ paddingBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : undefined }} onClick={(e) => e.target === e.currentTarget && requestCancelEditing()}>
-          <div className="expandable-card expanded">
-            <div className="expandable-card-input-row">
-              <input
-                type="url"
-                className="expandable-card-input"
-                value={editingUrlValue}
-                onChange={(e) => setEditingUrlValue(e.target.value)}
-                placeholder="URL"
-                autoCapitalize="none"
-                autoCorrect="off"
-              />
-            </div>
-
-            <div className="expandable-card-scroll">
-              {editingTags.size > 0 && (
-                <div className="expandable-card-section">
-                  <div className="editing-tags">
-                    {Array.from(editingTags).sort().map((tag) => (
-                      <span key={tag} className="editing-tag">
-                        {tag}
-                        <button onClick={() => toggleTag(tag)}>&times;</button>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="expandable-card-section">
-                <div className="new-tag-input">
-                  <input
-                    type="text"
-                    value={newTagInput}
-                    onChange={(e) => setNewTagInput(e.target.value)}
-                    onKeyDown={handleNewTagKeyDown}
-                    placeholder="Add tag..."
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                  <button onClick={addNewTag} disabled={!newTagInput.trim()}>
-                    Add
-                  </button>
-                </div>
-              </div>
-
-              {unusedTags.length > 0 && (
-                <div className="expandable-card-section">
-                  <div className="all-tags-list">
-                    {unusedTags.map((tag) => (
-                      <span
-                        key={tag.name}
-                        className="tag-chip"
-                        onClick={() => toggleTag(tag.name)}
-                      >
-                        {tag.name}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="expandable-card-buttons">
-              <button className="delete-btn" onClick={() => requestDelete(editingUrlId, "page")}>
-                Delete
-              </button>
-              <button className="cancel-btn" onClick={requestCancelEditing}>
-                Cancel
-              </button>
-              <button className="save-btn" onClick={saveChanges}>
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
+        <EditorOverlay onDismiss={requestCancelEditing} keyboardHeight={keyboardHeight}>
+          <input
+            type="url"
+            className="editor-url-input"
+            value={editingUrlValue}
+            onChange={(e) => setEditingUrlValue(e.target.value)}
+            placeholder="URL"
+            autoCapitalize="none"
+            autoCorrect="off"
+          />
+          <TagsSection
+            selectedTags={editingTags}
+            availableTags={editingUrlTags}
+            tagInput={newTagInput}
+            onTagInputChange={setNewTagInput}
+            onToggleTag={toggleTag}
+            onAddTag={addNewTag}
+          />
+          <EditorButtons
+            onSave={saveChanges}
+            onCancel={requestCancelEditing}
+            onDelete={() => requestDelete(editingUrlId, "page")}
+          />
+        </EditorOverlay>
       );
     }
 
     // Text/Note editing
     if (editingTextId) {
-      const unusedTags = allTags.filter((tag) =>
-        !editingTextTags.has(tag.name) &&
-        (!editingTextTagInput.trim() || tag.name.toLowerCase().includes(editingTextTagInput.toLowerCase().trim()))
-      );
-
       return (
-        <div className="edit-overlay" style={{ paddingBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : undefined }} onClick={(e) => e.target === e.currentTarget && requestCancelEditingText()}>
-          <div className="expandable-card expanded">
-            <div className="expandable-card-input-row">
-              <textarea
-                className="expandable-card-input expanded-input"
-                value={editingTextContent}
-                onChange={(e) => setEditingTextContent(e.target.value)}
-                placeholder="Note text..."
-                rows={3}
-                autoCapitalize="none"
-                autoCorrect="off"
-                autoComplete="off"
-                spellCheck={false}
-              />
-            </div>
-
-            <div className="expandable-card-scroll">
-              {editingTextTags.size > 0 && (
-                <div className="expandable-card-section">
-                  <div className="editing-tags">
-                    {Array.from(editingTextTags).sort().map((tag) => (
-                      <span key={tag} className="editing-tag">
-                        {tag}
-                        <button onClick={() => toggleEditingTextTag(tag)}>&times;</button>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="expandable-card-section">
-                <div className="new-tag-input">
-                  <input
-                    type="text"
-                    value={editingTextTagInput}
-                    onChange={(e) => setEditingTextTagInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        addEditingTextTag();
-                      }
-                    }}
-                    placeholder="Add tag..."
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                  <button onClick={addEditingTextTag} disabled={!editingTextTagInput.trim()}>
-                    Add
-                  </button>
-                </div>
-              </div>
-
-              {unusedTags.length > 0 && (
-                <div className="expandable-card-section">
-                  <div className="all-tags-list">
-                    {unusedTags.map((tag) => (
-                      <span
-                        key={tag.name}
-                        className="tag-chip"
-                        onClick={() => toggleEditingTextTag(tag.name)}
-                      >
-                        {tag.name}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="expandable-card-buttons">
-              <button className="delete-btn" onClick={() => requestDelete(editingTextId, "text")}>
-                Delete
-              </button>
-              <button className="cancel-btn" onClick={requestCancelEditingText}>
-                Cancel
-              </button>
-              <button className="save-btn" onClick={saveTextChanges}>
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
+        <EditorOverlay onDismiss={requestCancelEditingText} keyboardHeight={keyboardHeight} className="text-editor-overlay">
+          <ResizableInput
+            value={editingTextContent}
+            onChange={setEditingTextContent}
+            placeholder="Note text..."
+            keyboardHeight={keyboardHeight}
+          />
+          <TagsSection
+            selectedTags={editingTextTags}
+            availableTags={allTags}
+            tagInput={editingTextTagInput}
+            onTagInputChange={setEditingTextTagInput}
+            onToggleTag={toggleEditingTextTag}
+            onAddTag={addEditingTextTag}
+          />
+          <EditorButtons
+            onSave={saveTextChanges}
+            onCancel={requestCancelEditingText}
+            onDelete={() => requestDelete(editingTextId, "text")}
+          />
+        </EditorOverlay>
       );
     }
 
     // Tagset editing
     if (editingTagsetId) {
-      const unusedTags = allTags.filter((tag) =>
-        !editingTagsetTags.has(tag.name) &&
-        (!editingTagsetInput.trim() || tag.name.toLowerCase().includes(editingTagsetInput.toLowerCase().trim()))
-      );
-
       return (
-        <div className="edit-overlay" style={{ paddingBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : undefined }} onClick={(e) => e.target === e.currentTarget && requestCancelEditingTagset()}>
-          <div className="expandable-card expanded">
-            <div className="expandable-card-scroll" style={{ paddingTop: '0.75rem' }}>
-              {editingTagsetTags.size > 0 && (
-                <div className="expandable-card-section">
-                  <div className="editing-tags">
-                    {Array.from(editingTagsetTags).sort().map((tag) => (
-                      <span key={tag} className="editing-tag">
-                        {tag}
-                        <button onClick={() => toggleEditingTagsetTag(tag)}>&times;</button>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="expandable-card-section">
-                <div className="new-tag-input">
-                  <input
-                    type="text"
-                    value={editingTagsetInput}
-                    onChange={(e) => setEditingTagsetInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        addEditingTagsetTag();
-                      }
-                    }}
-                    placeholder="Add tag..."
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                  <button onClick={addEditingTagsetTag} disabled={!editingTagsetInput.trim()}>
-                    Add
-                  </button>
-                </div>
-              </div>
-
-              {unusedTags.length > 0 && (
-                <div className="expandable-card-section">
-                  <div className="all-tags-list">
-                    {unusedTags.map((tag) => (
-                      <span
-                        key={tag.name}
-                        className="tag-chip"
-                        onClick={() => toggleEditingTagsetTag(tag.name)}
-                      >
-                        {tag.name}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="expandable-card-buttons">
-              <button className="delete-btn" onClick={() => requestDelete(editingTagsetId, "tagset")}>
-                Delete
-              </button>
-              <button className="cancel-btn" onClick={requestCancelEditingTagset}>
-                Cancel
-              </button>
-              <button className="save-btn" onClick={saveTagsetChanges}>
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
+        <EditorOverlay onDismiss={requestCancelEditingTagset} keyboardHeight={keyboardHeight}>
+          <TagsSection
+            selectedTags={editingTagsetTags}
+            availableTags={allTags}
+            tagInput={editingTagsetInput}
+            onTagInputChange={setEditingTagsetInput}
+            onToggleTag={toggleEditingTagsetTag}
+            onAddTag={addEditingTagsetTag}
+          />
+          <EditorButtons
+            onSave={saveTagsetChanges}
+            onCancel={requestCancelEditingTagset}
+            onDelete={() => requestDelete(editingTagsetId, "tagset")}
+          />
+        </EditorOverlay>
       );
     }
 
@@ -1659,103 +1689,43 @@ function App() {
     if (editingImageId) {
       const item = savedImages.find(i => i.id === editingImageId);
       if (!item) return null;
-      const unusedTags = allTags.filter((tag) =>
-        !editingImageTags.has(tag.name) &&
-        (!editingImageTagInput.trim() || tag.name.toLowerCase().includes(editingImageTagInput.toLowerCase().trim()))
-      );
       const metadata = item.metadata as Record<string, unknown> | undefined;
       const title = metadata?.title as string | undefined;
 
       return (
-        <div className="edit-overlay" style={{ paddingBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : undefined }} onClick={(e) => e.target === e.currentTarget && requestCancelEditingImage()}>
-          <div className="expandable-card expanded">
-            <div className="expandable-card-scroll" style={{ paddingTop: '0.75rem' }}>
-              <div className="expandable-card-section image-preview-section">
-                {item.thumbnail ? (
-                  <img
-                    src={`data:image/jpeg;base64,${item.thumbnail}`}
-                    alt={title || "Preview"}
-                    className="edit-modal-image"
-                  />
-                ) : (
-                  <div className="image-placeholder">
-                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                      <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                      <polyline points="21 15 16 10 5 21"></polyline>
-                    </svg>
-                  </div>
-                )}
-                {title && <div className="edit-image-title">{title}</div>}
+        <EditorOverlay onDismiss={requestCancelEditingImage} keyboardHeight={keyboardHeight}>
+          <div className="editor-image-preview">
+            {item.thumbnail ? (
+              <img
+                src={`data:image/jpeg;base64,${item.thumbnail}`}
+                alt={title || "Preview"}
+                className="edit-modal-image"
+              />
+            ) : (
+              <div className="image-placeholder">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                  <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                  <polyline points="21 15 16 10 5 21"></polyline>
+                </svg>
               </div>
-
-              {editingImageTags.size > 0 && (
-                <div className="expandable-card-section">
-                  <div className="editing-tags">
-                    {Array.from(editingImageTags).sort().map((tag) => (
-                      <span key={tag} className="editing-tag">
-                        {tag}
-                        <button onClick={() => toggleEditingImageTag(tag)}>&times;</button>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="expandable-card-section">
-                <div className="new-tag-input">
-                  <input
-                    type="text"
-                    value={editingImageTagInput}
-                    onChange={(e) => setEditingImageTagInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        addEditingImageTag();
-                      }
-                    }}
-                    placeholder="Add tag..."
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                  <button onClick={addEditingImageTag} disabled={!editingImageTagInput.trim()}>
-                    Add
-                  </button>
-                </div>
-              </div>
-
-              {unusedTags.length > 0 && (
-                <div className="expandable-card-section">
-                  <div className="all-tags-list">
-                    {unusedTags.map((tag) => (
-                      <span
-                        key={tag.name}
-                        className="tag-chip"
-                        onClick={() => toggleEditingImageTag(tag.name)}
-                      >
-                        {tag.name}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="expandable-card-buttons">
-              <button className="delete-btn" onClick={() => requestDelete(editingImageId, "image")}>
-                Delete
-              </button>
-              <button className="cancel-btn" onClick={requestCancelEditingImage}>
-                Cancel
-              </button>
-              <button className="save-btn" onClick={saveImageChanges}>
-                Save
-              </button>
-            </div>
+            )}
+            {title && <div className="edit-image-title">{title}</div>}
           </div>
-        </div>
+          <TagsSection
+            selectedTags={editingImageTags}
+            availableTags={allTags}
+            tagInput={editingImageTagInput}
+            onTagInputChange={setEditingImageTagInput}
+            onToggleTag={toggleEditingImageTag}
+            onAddTag={addEditingImageTag}
+          />
+          <EditorButtons
+            onSave={saveImageChanges}
+            onCancel={requestCancelEditingImage}
+            onDelete={() => requestDelete(editingImageId, "image")}
+          />
+        </EditorOverlay>
       );
     }
 
@@ -2713,7 +2683,7 @@ function App() {
             <span className="filter-count">{savedImages.length}</span>
           </button>
         </div>
-        <button className="header-btn settings-btn" onClick={() => { closeViewMode(); setShowSettings(true); }}>
+        <button className={`header-btn settings-btn ${isSyncing ? 'syncing' : ''}`} onClick={() => { closeViewMode(); setShowSettings(true); }}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="3"></circle>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
@@ -2737,124 +2707,28 @@ function App() {
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
-        {/* Quick add - expandable in place */}
-        <div className={`expandable-card ${addInputExpanded ? 'expanded' : ''}`}>
-          {!addInputExpanded ? (
-            /* Collapsed: use input (not textarea) to avoid iOS cursor bug */
-            <div className="expandable-card-input-row">
-              <input
-                type="text"
-                className="expandable-card-input"
-                placeholder="Add note, URL, or tags..."
-                value={addInputText}
-                onChange={(e) => setAddInputText(e.target.value)}
-                onFocus={() => setAddInputExpanded(true)}
-                autoCapitalize="none"
-                autoCorrect="off"
-                autoComplete="off"
-                spellCheck={false}
-              />
-              <button className="camera-btn" onClick={openCamera} title="Take photo">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
-                  <circle cx="12" cy="13" r="4"></circle>
-                </svg>
-              </button>
-            </div>
-          ) : (
-            /* Expanded: use textarea for multi-line */
-            <>
-              <div className="expandable-card-input-row">
-                <textarea
-                  ref={addTextareaRef}
-                  className="expandable-card-input expanded-input"
-                  placeholder="Enter text, URL, or just select tags..."
-                  value={addInputText}
-                  onChange={(e) => setAddInputText(e.target.value)}
-                  rows={3}
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-              </div>
-
-              <div className="expandable-card-scroll">
-                {addInputTags.size > 0 && (
-                  <div className="expandable-card-section">
-                    <div className="editing-tags">
-                      {Array.from(addInputTags).sort().map((tag) => (
-                        <span key={tag} className="editing-tag">
-                          {tag}
-                          <button onClick={() => toggleAddInputTag(tag)}>&times;</button>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className="expandable-card-section">
-                  <div className="new-tag-input">
-                    <input
-                      type="text"
-                      value={addInputNewTag}
-                      onChange={(e) => setAddInputNewTag(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          addInputAddNewTag();
-                        }
-                      }}
-                      placeholder="Add new tag..."
-                      autoCapitalize="none"
-                      autoCorrect="off"
-                      autoComplete="off"
-                      spellCheck={false}
-                    />
-                    <button onClick={addInputAddNewTag} disabled={!addInputNewTag.trim()}>
-                      Add
-                    </button>
-                  </div>
-                </div>
-
-                {allTags.filter((tag) =>
-                  !addInputTags.has(tag.name) &&
-                  (!addInputNewTag.trim() || tag.name.toLowerCase().includes(addInputNewTag.toLowerCase().trim()))
-                ).length > 0 && (
-                  <div className="expandable-card-section">
-                    <div className="all-tags-list">
-                      {allTags.filter((tag) =>
-                        !addInputTags.has(tag.name) &&
-                        (!addInputNewTag.trim() || tag.name.toLowerCase().includes(addInputNewTag.toLowerCase().trim()))
-                      ).map((tag) => (
-                        <span
-                          key={tag.name}
-                          className="tag-chip"
-                          onClick={() => toggleAddInputTag(tag.name)}
-                        >
-                          {tag.name}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Action buttons - always visible at bottom */}
-              <div className="expandable-card-buttons">
-                <button className="cancel-btn" onClick={() => setAddInputExpanded(false)}>
-                  Close
-                </button>
-                <button
-                  className="save-btn"
-                  onClick={saveAddInput}
-                  disabled={!getAddInputType()}
-                >
-                  Save
-                </button>
-              </div>
-            </>
-          )}
+        {/* Quick add - collapsed trigger */}
+        <div className="expandable-card">
+          <div className="expandable-card-input-row">
+            <input
+              type="text"
+              className="expandable-card-input"
+              placeholder="Add note, URL, or tags..."
+              value={addInputExpanded ? "" : addInputText}
+              onChange={(e) => setAddInputText(e.target.value)}
+              onFocus={() => setAddInputExpanded(true)}
+              autoCapitalize="none"
+              autoCorrect="off"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <button className="camera-btn" onClick={openCamera} title="Take photo">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                <circle cx="12" cy="13" r="4"></circle>
+              </svg>
+            </button>
+          </div>
         </div>
 
         <div className="unified-list">
@@ -2877,6 +2751,33 @@ function App() {
 
       {/* Edit modal overlay */}
       {renderEditModal()}
+
+      {/* Quick Add overlay */}
+      {addInputExpanded && (
+        <EditorOverlay onDismiss={() => setAddInputExpanded(false)} keyboardHeight={keyboardHeight}>
+          <ResizableInput
+            value={addInputText}
+            onChange={setAddInputText}
+            placeholder="Enter text, URL, or just select tags..."
+            keyboardHeight={keyboardHeight}
+          />
+          <TagsSection
+            selectedTags={addInputTags}
+            availableTags={allTags}
+            tagInput={addInputNewTag}
+            onTagInputChange={setAddInputNewTag}
+            onToggleTag={toggleAddInputTag}
+            onAddTag={addInputAddNewTag}
+            placeholder="Add new tag..."
+          />
+          <EditorButtons
+            onSave={saveAddInput}
+            onCancel={() => setAddInputExpanded(false)}
+            cancelLabel="Close"
+            saveDisabled={!getAddInputType()}
+          />
+        </EditorOverlay>
+      )}
 
       {/* Delete confirmation modal */}
       {renderDeleteConfirmModal()}

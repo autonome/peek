@@ -292,7 +292,6 @@ export function initDatabase(dbPath: string): Database.Database {
   migrateSyncColumns();
   migrateItemTypes();
   migrateItemVisitColumns();
-  migrateAddressesToItems();
 
   DEBUG && console.log('main', 'database initialized successfully');
   return db;
@@ -500,7 +499,7 @@ function isUrlLike(content: string | null): boolean {
 
 /**
  * Migrate item types from old 'note' to new 'url'/'text' types
- * Also adds syncedAt column if missing and ensures CHECK constraint includes 'url'
+ * Also adds syncedAt column if missing
  */
 function migrateItemTypes(): void {
   if (!db) return;
@@ -526,87 +525,86 @@ function migrateItemTypes(): void {
     }
   }
 
-  // Check if CHECK constraint allows 'url' type by looking at the table schema
-  const tableSchema = db.prepare(
-    `SELECT sql FROM sqlite_master WHERE type='table' AND name='items'`
-  ).get() as { sql: string } | undefined;
-
-  const needsConstraintUpdate = tableSchema && !tableSchema.sql.includes("'url'");
-
   // Check if we have any 'note' type items that need migration
   const noteItems = db.prepare(`SELECT id, content FROM items WHERE type = 'note'`).all() as { id: string; content: string | null }[];
 
-  // Recreate table if CHECK constraint needs update OR if there are 'note' items
-  if (needsConstraintUpdate || noteItems.length > 0) {
-    DEBUG && console.log('main', `Migrating items table: constraint update=${needsConstraintUpdate}, note items=${noteItems.length}`);
+  if (noteItems.length > 0) {
+    DEBUG && console.log('main', `Migrating ${noteItems.length} 'note' items to 'url'/'text' types`);
 
     // SQLite doesn't allow modifying CHECK constraints, so we need to recreate the table
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS items_new (
-        id TEXT PRIMARY KEY,
-        type TEXT NOT NULL CHECK(type IN ('url', 'text', 'tagset', 'image')),
-        content TEXT,
-        mimeType TEXT DEFAULT '',
-        metadata TEXT DEFAULT '{}',
-        syncId TEXT DEFAULT '',
-        syncSource TEXT DEFAULT '',
-        syncedAt INTEGER DEFAULT 0,
-        createdAt INTEGER NOT NULL,
-        updatedAt INTEGER NOT NULL,
-        deletedAt INTEGER DEFAULT 0,
-        starred INTEGER DEFAULT 0,
-        archived INTEGER DEFAULT 0,
-        visitCount INTEGER DEFAULT 0,
-        lastVisitAt INTEGER DEFAULT 0
-      )
-    `);
-
-    // Copy data, converting 'note' type
-    const allItems = db.prepare(`SELECT * FROM items`).all() as Array<Record<string, unknown>>;
-    const insertStmt = db.prepare(`
-      INSERT INTO items_new (id, type, content, mimeType, metadata, syncId, syncSource, syncedAt, createdAt, updatedAt, deletedAt, starred, archived, visitCount, lastVisitAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    for (const item of allItems) {
-      let newType = item.type as string;
-      if (newType === 'note') {
-        newType = isUrlLike(item.content as string | null) ? 'url' : 'text';
+    // But first, let's try updating the type values - if the constraint was created with the new schema, this will work
+    try {
+      const updateStmt = db.prepare(`UPDATE items SET type = ? WHERE id = ?`);
+      for (const item of noteItems) {
+        const newType = isUrlLike(item.content) ? 'url' : 'text';
+        updateStmt.run(newType, item.id);
       }
-      insertStmt.run(
-        item.id,
-        newType,
-        item.content,
-        item.mimeType || '',
-        item.metadata || '{}',
-        item.syncId || '',
-        item.syncSource || '',
-        item.syncedAt || 0,
-        item.createdAt,
-        item.updatedAt,
-        item.deletedAt || 0,
-        item.starred || 0,
-        item.archived || 0,
-        item.visitCount || 0,
-        item.lastVisitAt || 0
-      );
+      DEBUG && console.log('main', 'Item type migration complete');
+    } catch (error) {
+      // If CHECK constraint fails, we need to recreate the table
+      DEBUG && console.log('main', 'Recreating items table with new CHECK constraint...');
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS items_new (
+          id TEXT PRIMARY KEY,
+          type TEXT NOT NULL CHECK(type IN ('url', 'text', 'tagset', 'image')),
+          content TEXT,
+          mimeType TEXT DEFAULT '',
+          metadata TEXT DEFAULT '{}',
+          syncId TEXT DEFAULT '',
+          syncSource TEXT DEFAULT '',
+          syncedAt INTEGER DEFAULT 0,
+          createdAt INTEGER NOT NULL,
+          updatedAt INTEGER NOT NULL,
+          deletedAt INTEGER DEFAULT 0,
+          starred INTEGER DEFAULT 0,
+          archived INTEGER DEFAULT 0
+        )
+      `);
+
+      // Copy data, converting 'note' type
+      const allItems = db.prepare(`SELECT * FROM items`).all() as Array<Record<string, unknown>>;
+      const insertStmt = db.prepare(`
+        INSERT INTO items_new (id, type, content, mimeType, metadata, syncId, syncSource, syncedAt, createdAt, updatedAt, deletedAt, starred, archived)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      for (const item of allItems) {
+        let newType = item.type as string;
+        if (newType === 'note') {
+          newType = isUrlLike(item.content as string | null) ? 'url' : 'text';
+        }
+        insertStmt.run(
+          item.id,
+          newType,
+          item.content,
+          item.mimeType || '',
+          item.metadata || '{}',
+          item.syncId || '',
+          item.syncSource || '',
+          item.syncedAt || 0,
+          item.createdAt,
+          item.updatedAt,
+          item.deletedAt || 0,
+          item.starred || 0,
+          item.archived || 0
+        );
+      }
+
+      db.exec(`DROP TABLE items`);
+      db.exec(`ALTER TABLE items_new RENAME TO items`);
+
+      // Recreate indexes
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
+        CREATE INDEX IF NOT EXISTS idx_items_syncId ON items(syncId);
+        CREATE INDEX IF NOT EXISTS idx_items_deletedAt ON items(deletedAt);
+        CREATE INDEX IF NOT EXISTS idx_items_createdAt ON items(createdAt DESC);
+        CREATE INDEX IF NOT EXISTS idx_items_starred ON items(starred);
+      `);
+
+      DEBUG && console.log('main', 'Items table migration complete');
     }
-
-    db.exec(`DROP TABLE items`);
-    db.exec(`ALTER TABLE items_new RENAME TO items`);
-
-    // Recreate indexes
-    db.exec(`
-      CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
-      CREATE INDEX IF NOT EXISTS idx_items_syncId ON items(syncId);
-      CREATE INDEX IF NOT EXISTS idx_items_deletedAt ON items(deletedAt);
-      CREATE INDEX IF NOT EXISTS idx_items_createdAt ON items(createdAt DESC);
-      CREATE INDEX IF NOT EXISTS idx_items_starred ON items(starred);
-      CREATE INDEX IF NOT EXISTS idx_items_lastVisitAt ON items(lastVisitAt);
-      CREATE INDEX IF NOT EXISTS idx_items_visitCount ON items(visitCount);
-    `);
-
-    DEBUG && console.log('main', 'Items table migration complete');
   }
 }
 
@@ -636,112 +634,6 @@ function migrateItemVisitColumns(): void {
   } catch (error) {
     DEBUG && console.log('main', `Visit indexes for items:`, (error as Error).message);
   }
-}
-
-/**
- * Migrate tagged addresses from addresses/address_tags to items/item_tags
- * This ensures old tagged data is visible in the new Tags UI
- */
-function migrateAddressesToItems(): void {
-  if (!db) return;
-
-  const MIGRATION_ID = 'addresses_to_items_v1';
-
-  // Check if already migrated
-  const migrationRecord = db.prepare('SELECT * FROM migrations WHERE id = ?').get(MIGRATION_ID) as { status: string } | undefined;
-  if (migrationRecord && migrationRecord.status === 'complete') {
-    DEBUG && console.log('main', 'Addresses to items migration already complete');
-    return;
-  }
-
-  // Get all addresses that have tags
-  const taggedAddresses = db.prepare(`
-    SELECT DISTINCT a.* FROM addresses a
-    INNER JOIN address_tags at ON a.id = at.addressId
-  `).all() as Address[];
-
-  if (taggedAddresses.length === 0) {
-    // Mark as complete even if no data to migrate
-    db.prepare('INSERT OR REPLACE INTO migrations (id, status, completedAt) VALUES (?, ?, ?)').run(MIGRATION_ID, 'complete', Date.now());
-    DEBUG && console.log('main', 'No tagged addresses to migrate');
-    return;
-  }
-
-  DEBUG && console.log('main', `Migrating ${taggedAddresses.length} tagged addresses to items table`);
-
-  let migratedCount = 0;
-
-  for (const addr of taggedAddresses) {
-    // Check if item with this URL already exists
-    const existingItem = db.prepare('SELECT * FROM items WHERE type = ? AND content = ? AND deletedAt = 0').get('url', addr.uri) as Item | undefined;
-
-    let itemId: string;
-
-    if (existingItem) {
-      // Use existing item
-      itemId = existingItem.id;
-    } else {
-      // Create new item for this URL
-      itemId = generateId('item');
-      const timestamp = now();
-
-      // Build metadata from address
-      const metadata: Record<string, unknown> = {};
-      if (addr.title) metadata.title = addr.title;
-      if (addr.description) metadata.description = addr.description;
-      if (addr.favicon) metadata.favicon = addr.favicon;
-      if (addr.metadata) {
-        try {
-          const addrMeta = typeof addr.metadata === 'string' ? JSON.parse(addr.metadata) : addr.metadata;
-          Object.assign(metadata, addrMeta);
-        } catch {
-          // Ignore invalid JSON
-        }
-      }
-
-      db.prepare(`
-        INSERT INTO items (id, type, content, mimeType, metadata, syncId, syncSource, createdAt, updatedAt, deletedAt, starred, archived, visitCount, lastVisitAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
-      `).run(
-        itemId,
-        'url',
-        addr.uri,
-        addr.mimeType || 'text/html',
-        JSON.stringify(metadata),
-        '',
-        '',
-        addr.createdAt || timestamp,
-        addr.updatedAt || timestamp,
-        addr.starred || 0,
-        addr.archived || 0,
-        addr.visitCount || 0,
-        addr.lastVisitAt || 0
-      );
-
-      migratedCount++;
-    }
-
-    // Copy tag associations
-    const addressTags = db.prepare('SELECT * FROM address_tags WHERE addressId = ?').all(addr.id) as AddressTag[];
-
-    for (const at of addressTags) {
-      // Check if item-tag link already exists
-      const existingLink = db.prepare('SELECT * FROM item_tags WHERE itemId = ? AND tagId = ?').get(itemId, at.tagId);
-      if (!existingLink) {
-        const linkId = generateId('item_tag');
-        db.prepare('INSERT INTO item_tags (id, itemId, tagId, createdAt) VALUES (?, ?, ?, ?)').run(
-          linkId,
-          itemId,
-          at.tagId,
-          at.createdAt || now()
-        );
-      }
-    }
-  }
-
-  // Mark migration as complete
-  db.prepare('INSERT OR REPLACE INTO migrations (id, status, completedAt) VALUES (?, ?, ?)').run(MIGRATION_ID, 'complete', Date.now());
-  DEBUG && console.log('main', `Migrated ${migratedCount} addresses to items, copied tag associations`);
 }
 
 // ==================== Address Operations ====================

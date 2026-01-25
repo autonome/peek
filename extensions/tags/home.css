@@ -48,26 +48,19 @@ body {
   display: none;
   align-items: center;
   gap: 6px;
+  padding: 4px 10px;
+  background: var(--base0D);
+  color: var(--base00);
+  border-radius: 12px;
   font-size: 12px;
   font-weight: 500;
 }
 
 .active-tag-indicator.visible {
   display: flex;
-  flex-wrap: wrap;
 }
 
-.active-tag-chip {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  background: var(--base0D);
-  color: var(--base00);
-  border-radius: 12px;
-}
-
-.active-tag-chip .clear-tag {
+.active-tag-indicator .clear-tag {
   background: none;
   border: none;
   color: var(--base00);
@@ -75,28 +68,12 @@ body {
   font-size: 14px;
   line-height: 1;
   padding: 0;
-  margin-left: 2px;
+  margin-left: 4px;
   opacity: 0.8;
 }
 
-.active-tag-chip .clear-tag:hover {
+.active-tag-indicator .clear-tag:hover {
   opacity: 1;
-}
-
-.clear-all-tags {
-  background: var(--base02);
-  border: none;
-  color: var(--base04);
-  cursor: pointer;
-  font-size: 11px;
-  padding: 4px 8px;
-  border-radius: 12px;
-  margin-left: 4px;
-}
-
-.clear-all-tags:hover {
-  background: var(--base03);
-  color: var(--base05);
 }
 
 /* Filter icons */

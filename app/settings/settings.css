@@ -99,14 +99,6 @@ body {
   font-weight: 500;
 }
 
-/* Extension nav items - visual indicator */
-.nav-item-extension::before {
-  content: '⚙';
-  font-size: 11px;
-  margin-right: 6px;
-  opacity: 0.5;
-}
-
 /* Content Area */
 .content {
   flex: 1;

@@ -11,11 +11,14 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
-- [ ][mobile] filtering search of tags in tag input box
-- [ ][mobile] shares to Peek app on iOS are not saving to datastore , no available t
+- [x][mobile] filtering search of tags in tag input box
+- [x][mobile] shares to Peek app on iOS are not saving to datastore
 - [ ][mobile] text editor is too small and the resize work we did isn't working
 - [ ][mobile] bottom buttons (save, delete, etc) can be hidden behind iOS keyboard
 - [ ][desktop] extension rework in side nav
+- [ ][desktop] add new items (urls, notes, tagsets)
+- [ ][desktop] sync mirrors back pulled items - "17 pulled, 17 pushed" repeats on every sync
+- [ ] image support end to end + better media storage
 
 Later
 - [ ][desktop] access to notes on filesystem, syncing them as markdown files in ~/sync/Notes/peek

@@ -1393,7 +1393,10 @@ function App() {
     if (editingUrlId) {
       const item = savedUrls.find(u => u.id === editingUrlId);
       if (!item) return null;
-      const unusedTags = editingUrlTags.filter((tag) => !editingTags.has(tag.name));
+      const unusedTags = editingUrlTags.filter((tag) =>
+        !editingTags.has(tag.name) &&
+        (!newTagInput.trim() || tag.name.toLowerCase().includes(newTagInput.toLowerCase().trim()))
+      );
 
       return (
         <div className="edit-overlay" style={{ paddingBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : undefined }} onClick={(e) => e.target === e.currentTarget && requestCancelEditing()}>
@@ -1478,7 +1481,10 @@ function App() {
 
     // Text/Note editing
     if (editingTextId) {
-      const unusedTags = allTags.filter((tag) => !editingTextTags.has(tag.name));
+      const unusedTags = allTags.filter((tag) =>
+        !editingTextTags.has(tag.name) &&
+        (!editingTextTagInput.trim() || tag.name.toLowerCase().includes(editingTextTagInput.toLowerCase().trim()))
+      );
 
       return (
         <div className="edit-overlay" style={{ paddingBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : undefined }} onClick={(e) => e.target === e.currentTarget && requestCancelEditingText()}>
@@ -1570,7 +1576,10 @@ function App() {
 
     // Tagset editing
     if (editingTagsetId) {
-      const unusedTags = allTags.filter((tag) => !editingTagsetTags.has(tag.name));
+      const unusedTags = allTags.filter((tag) =>
+        !editingTagsetTags.has(tag.name) &&
+        (!editingTagsetInput.trim() || tag.name.toLowerCase().includes(editingTagsetInput.toLowerCase().trim()))
+      );
 
       return (
         <div className="edit-overlay" style={{ paddingBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : undefined }} onClick={(e) => e.target === e.currentTarget && requestCancelEditingTagset()}>
@@ -1650,7 +1659,10 @@ function App() {
     if (editingImageId) {
       const item = savedImages.find(i => i.id === editingImageId);
       if (!item) return null;
-      const unusedTags = allTags.filter((tag) => !editingImageTags.has(tag.name));
+      const unusedTags = allTags.filter((tag) =>
+        !editingImageTags.has(tag.name) &&
+        (!editingImageTagInput.trim() || tag.name.toLowerCase().includes(editingImageTagInput.toLowerCase().trim()))
+      );
       const metadata = item.metadata as Record<string, unknown> | undefined;
       const title = metadata?.title as string | undefined;
 
@@ -2591,10 +2603,16 @@ function App() {
               </div>
             </div>
 
-            {allTags.length > 0 && (
+            {allTags.filter((t) =>
+              !capturedImageTags.has(t.name) &&
+              (!capturedImageTagInput.trim() || t.name.toLowerCase().includes(capturedImageTagInput.toLowerCase().trim()))
+            ).length > 0 && (
               <div className="edit-section">
                 <div className="all-tags-list">
-                  {allTags.filter((t) => !capturedImageTags.has(t.name)).map((tag) => (
+                  {allTags.filter((t) =>
+                    !capturedImageTags.has(t.name) &&
+                    (!capturedImageTagInput.trim() || t.name.toLowerCase().includes(capturedImageTagInput.toLowerCase().trim()))
+                  ).map((tag) => (
                     <span
                       key={tag.name}
                       className="tag-chip"
@@ -2799,10 +2817,16 @@ function App() {
                   </div>
                 </div>
 
-                {allTags.filter((tag) => !addInputTags.has(tag.name)).length > 0 && (
+                {allTags.filter((tag) =>
+                  !addInputTags.has(tag.name) &&
+                  (!addInputNewTag.trim() || tag.name.toLowerCase().includes(addInputNewTag.toLowerCase().trim()))
+                ).length > 0 && (
                   <div className="expandable-card-section">
                     <div className="all-tags-list">
-                      {allTags.filter((tag) => !addInputTags.has(tag.name)).map((tag) => (
+                      {allTags.filter((tag) =>
+                        !addInputTags.has(tag.name) &&
+                        (!addInputNewTag.trim() || tag.name.toLowerCase().includes(addInputNewTag.toLowerCase().trim()))
+                      ).map((tag) => (
                         <span
                           key={tag.name}
                           className="tag-chip"

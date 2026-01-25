@@ -8,7 +8,7 @@ private let shareLog = OSLog(subsystem: "com.dietrich.peek-mobile.share", catego
 
 // MARK: - Item Types
 enum ItemType: String {
-    case page = "page"
+    case page = "url"      // Use 'url' to match Rust main app's expected type
     case text = "text"
     case tagset = "tagset"
     case image = "image"
@@ -91,6 +91,9 @@ class DatabaseManager {
     private let networkMonitor = NWPathMonitor()
     private var isConnected = false
 
+    // Cached sync settings from profiles.json
+    private var cachedSyncSettings: (serverUrl: String, apiKey: String)?
+
     private init() {
         setupDatabase()
         setupNetworkMonitor()
@@ -107,14 +110,71 @@ class DatabaseManager {
         return FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.dietrich.peek-mobile")
     }
 
+    /// Load profile configuration from profiles.json
+    /// Returns the current profile ID and sync settings (if configured)
+    private func loadProfileConfig() -> (profileId: String, syncSettings: (serverUrl: String, apiKey: String)?) {
+        guard let containerURL = getAppGroupContainerPath() else {
+            print("[DB] Failed to get App Group container for profile config")
+            return ("default", nil)
+        }
+
+        let configPath = containerURL.appendingPathComponent("profiles.json")
+        print("[DB] Looking for profile config at: \(configPath.path)")
+
+        guard FileManager.default.fileExists(atPath: configPath.path) else {
+            print("[DB] profiles.json not found, using default profile")
+            return ("default", nil)
+        }
+
+        guard let data = try? Data(contentsOf: configPath),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            print("[DB] Failed to parse profiles.json, using default profile")
+            return ("default", nil)
+        }
+
+        // Get current profile ID
+        guard let profileId = json["currentProfileId"] as? String, !profileId.isEmpty else {
+            print("[DB] No currentProfileId in profiles.json, using default profile")
+            return ("default", nil)
+        }
+
+        print("[DB] Found profile ID: \(profileId)")
+
+        // Extract sync settings from profiles.json
+        var syncSettings: (serverUrl: String, apiKey: String)? = nil
+        if let sync = json["sync"] as? [String: Any],
+           let serverUrl = sync["serverUrl"] as? String,
+           !serverUrl.isEmpty {
+            let apiKey = sync["apiKey"] as? String ?? ""
+            syncSettings = (serverUrl, apiKey)
+            print("[DB] Found sync settings - serverUrl: \(serverUrl), apiKey: \(apiKey.isEmpty ? "(empty)" : "(set)")")
+        }
+
+        return (profileId, syncSettings)
+    }
+
     private func setupDatabase() {
         guard let containerURL = getAppGroupContainerPath() else {
             print("[DB] Failed to get App Group container")
             return
         }
 
-        let dbPath = containerURL.appendingPathComponent("peek.db")
-        print("[DB] Opening database at: \(dbPath.path)")
+        // Load profile config to get current profile ID and sync settings
+        let (profileId, syncSettings) = loadProfileConfig()
+        cachedSyncSettings = syncSettings
+
+        // Use profile-based database path (matches Rust main app)
+        // Main app uses "peek-{profileId}.db" after migration
+        let dbName: String
+        if profileId == "default" {
+            // Fallback to peek.db for first run before main app creates profiles.json
+            dbName = "peek.db"
+        } else {
+            dbName = "peek-\(profileId).db"
+        }
+
+        let dbPath = containerURL.appendingPathComponent(dbName)
+        print("[DB] Opening database at: \(dbPath.path) (profile: \(profileId))")
 
         do {
             var config = Configuration()
@@ -429,6 +489,9 @@ class DatabaseManager {
                 savedItemId = itemId
             }
 
+            // Checkpoint to ensure writes are visible to main app
+            checkpointDatabase()
+
             // Push to webhook OUTSIDE of the database write block
             if let itemId = savedItemId {
                 pushImageToWebhook(imageId: itemId, sourceUrl: sourceUrl, tags: tags, metadata: combinedMetadata, savedAt: now) {
@@ -499,6 +562,8 @@ class DatabaseManager {
 
                 print("[DB] Updated image tags for \(imageId)")
             }
+            // Checkpoint to ensure writes are visible to main app
+            checkpointDatabase()
             completion()
         } catch {
             print("[DB] Failed to update image tags: \(error)")
@@ -626,6 +691,9 @@ class DatabaseManager {
                 savedItemId = itemId
             }
 
+            // Checkpoint to ensure writes are visible to main app
+            checkpointDatabase()
+
             // Push to webhook OUTSIDE of the database write block
             if let itemId = savedItemId {
                 let savedAt = existingSavedAt ?? now
@@ -645,24 +713,27 @@ class DatabaseManager {
         }
     }
 
-    private func getWebhookUrl() -> String? {
+    /// Force WAL checkpoint to ensure writes are visible to other processes (main app)
+    private func checkpointDatabase() {
         do {
-            return try dbQueue?.read { db in
-                try String.fetchOne(db, sql: "SELECT value FROM settings WHERE key = 'webhook_url'")
+            try dbQueue?.write { db in
+                try db.execute(sql: "PRAGMA wal_checkpoint(FULL)")
             }
+            print("[DB] WAL checkpoint completed")
         } catch {
-            return nil
+            print("[DB] WAL checkpoint failed: \(error)")
         }
     }
 
+    private func getWebhookUrl() -> String? {
+        // Use cached sync settings from profiles.json
+        // This is where the main app stores webhook configuration
+        return cachedSyncSettings?.serverUrl
+    }
+
     private func getWebhookApiKey() -> String? {
-        do {
-            return try dbQueue?.read { db in
-                try String.fetchOne(db, sql: "SELECT value FROM settings WHERE key = 'webhook_api_key'")
-            }
-        } catch {
-            return nil
-        }
+        // Use cached sync settings from profiles.json
+        return cachedSyncSettings?.apiKey
     }
 
     private func pushToWebhook(urlId: String, urlString: String, tags: [String], metadata: [String: Any]?, savedAt: String, completion: @escaping () -> Void) {

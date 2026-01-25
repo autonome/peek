@@ -270,6 +270,7 @@ npm run dev:ios
 
 ```bash
 # Development
+npm run dev:ios:sim  # Hot reload dev - clears libapp.a, starts vite, opens Xcode
 npm run dev:ios      # Full dev setup (servers + config + seed + Xcode)
 npm run xcode        # Just copy libraries and open Xcode
 npm run seed         # Seed test data (needs SERVER_URL and API_KEY env vars)
@@ -277,8 +278,9 @@ npm run reset:server # Delete server data directory
 
 # Building
 npm run build        # Build frontend (tsc + vite)
-npm run build:ios    # Build frontend + debug Rust library
-npm run build:ios:release  # Build frontend + release Rust library
+npm run build:ios    # Build frontend + debug Rust library (simulator)
+npm run build:ios:sim:release  # Build frontend + release Rust library (simulator)
+npm run build:ios:release  # Build frontend + release Rust library (device)
 
 # Testing
 npm run test         # Run integration tests
@@ -340,7 +342,7 @@ After running `npm run dev:ios`, test data is automatically seeded:
 - iOS simulator can't reach `localhost` - use Mac's IP address (dev:ios handles this automatically)
 
 **Critical Build Pipeline Issues:**
-- **Debug mode loads from devUrl, not bundled assets** - In debug builds, the iOS app loads from `http://localhost:1420` (vite dev server), NOT from bundled assets. Run vite (`npm run dev`) alongside Xcode for hot reload.
+- **Hot reload requires `dev:ios:sim`** - Use `npm run dev:ios:sim` for hot reload development. This clears `libapp.a` so Xcode rebuilds in dev mode, connecting to the vite server at `localhost:1420`. Without this, the app uses bundled assets.
 - **Xcode rebuild alone doesn't recompile Tauri** - When `tauri.conf.json` changes, you MUST run `npm run build:ios` to rebuild the Rust code. Just rebuilding in Xcode uses stale `libapp.a`.
 - **Invalid tauri.conf.json causes silent failures** - If the config has invalid properties, Tauri build fails but Xcode may still "succeed" using old artifacts. Always check `npm run build:ios` output for errors like "Additional properties are not allowed".
 - **Multiple xcodeproj files exist** - With agent workspaces, there may be many copies at `~/misc/mpeek/*/backend/tauri-mobile/src-tauri/gen/apple/peek-save.xcodeproj`. Verify you're opening the correct one (check Xcode window title or File → Project Settings).

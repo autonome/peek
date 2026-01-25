@@ -217,49 +217,66 @@ npm install
 
 ### Running
 
-**iOS Simulator:**
-```bash
-npm run tauri ios dev -- "iPhone 17 Pro"
-```
-
 **Desktop (for quick UI testing):**
 ```bash
 npm run tauri dev
 ```
 
+### Hot Reload Development (Recommended)
+
+For frontend development with instant CSS/JS hot reload:
+
+```bash
+npm run dev:ios:sim
+```
+
+This command:
+1. Clears any pre-built `libapp.a` to force dev-mode build
+2. Starts the Vite dev server on `http://localhost:1420`
+3. Opens Xcode with the Tauri CLI process running
+
+Then in Xcode:
+1. Build and run (Cmd+R) with Debug scheme on simulator
+2. Xcode runs the build script which compiles Rust in dev mode
+3. The app loads from `localhost:1420` - changes hot reload instantly
+
+**Note:** Keep the terminal process running - it maintains the dev server.
+
 ### Build Workflow
 
-Frontend assets (CSS, JS, HTML) are **embedded in the Rust binary** at compile time. This means:
+Frontend assets (CSS, JS, HTML) are **embedded in the Rust binary** at compile time for release builds. This means:
 - Changing CSS/JS requires rebuilding Rust with `cargo tauri build` (NOT just `cargo build`)
-- Simply rebuilding in Xcode won't pick up frontend changes
+- Simply rebuilding in Xcode won't pick up frontend changes for bundled builds
 - The library file to copy is in the `deps/` subdirectory
 
-**Debug Build (Simulator):**
+**Debug Build (Simulator - Bundled Assets):**
 ```bash
-# 1. Start Vite dev server (for hot reload during development)
-npx vite --host
-
-# 2. Build and run from Xcode with Debug scheme on simulator
-#    OR use the full embedded build:
-npm run build
-cd src-tauri
-cargo tauri build --target aarch64-apple-ios-sim --debug
-cp target/aarch64-apple-ios-sim/debug/deps/libpeek_save_lib.a gen/apple/Externals/arm64/Debug/libapp.a
+npm run build:ios
 # Then build in Xcode with Debug scheme, simulator target
+```
+
+**Release Build (Simulator - for testing release config):**
+```bash
+npm run build:ios:sim:release
+# Then build in Xcode with Release scheme, simulator target
 ```
 
 **Release Build (Device):**
 ```bash
-# Use the build script:
-npm run build:release
-
-# Or manually:
-npm run build
-cd src-tauri
-cargo tauri build --target aarch64-apple-ios
-cp target/aarch64-apple-ios/release/deps/libpeek_save_lib.a gen/apple/Externals/arm64/Release/libapp.a
+npm run build:ios:release
 # Then build in Xcode with Release scheme, device target
 ```
+
+### npm Scripts Reference
+
+| Script | Description |
+|--------|-------------|
+| `dev:ios:sim` | Hot reload development - starts vite, opens Xcode |
+| `build:ios` | Debug build for simulator (bundled assets) |
+| `build:ios:sim:release` | Release build for simulator |
+| `build:ios:release` | Release build for device |
+| `xcode` | Copy libraries and open Xcode (no build) |
+| `dev:ios` | Full dev setup with server (for sync testing) |
 
 **Important Notes:**
 - Debug uses `Externals/arm64/Debug/libapp.a` and target `aarch64-apple-ios-sim`
@@ -267,7 +284,7 @@ cp target/aarch64-apple-ios/release/deps/libpeek_save_lib.a gen/apple/Externals/
 - Always copy from the `deps/` subfolder (has embedded assets), not the root folder
 - Use `cargo tauri build`, NOT `cargo build` (the latter doesn't embed frontend assets)
 
-The Xcode preBuildScript checks if `libapp.a` exists and skips the Rust build if so. To force a Rust rebuild from Xcode, delete the corresponding `libapp.a` file.
+The Xcode preBuildScript checks if `libapp.a` exists and skips the Rust build if so. For hot reload development, `dev:ios:sim` clears this file so Xcode runs the build script in dev mode.
 
 ### App Icon
 

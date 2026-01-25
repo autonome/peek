@@ -105,6 +105,34 @@ interface UnifiedItem {
 // Shared Editor Components
 // ============================================================================
 
+// Clear button for inputs - round X icon
+interface ClearButtonProps {
+  onClear: () => void;
+  show: boolean;
+  className?: string;
+}
+
+const ClearButton: React.FC<ClearButtonProps> = ({ onClear, show, className = '' }) => {
+  if (!show) return null;
+  return (
+    <button
+      type="button"
+      className={`clear-btn ${className}`}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onClear();
+      }}
+      tabIndex={-1}
+    >
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+        <circle cx="12" cy="12" r="12" fill="currentColor" opacity="0.3" />
+        <path d="M15.5 8.5L8.5 15.5M8.5 8.5L15.5 15.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    </button>
+  );
+};
+
 interface EditorOverlayProps {
   children: React.ReactNode;
   onDismiss: () => void;
@@ -166,22 +194,25 @@ const TagsSection: React.FC<TagsSectionProps> = ({
 
       <div className="expandable-card-section">
         <div className="new-tag-input">
-          <input
-            type="text"
-            value={tagInput}
-            onChange={(e) => onTagInputChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                onAddTag();
-              }
-            }}
-            placeholder={placeholder}
-            autoCapitalize="none"
-            autoCorrect="off"
-            autoComplete="off"
-            spellCheck={false}
-          />
+          <div className="input-with-clear">
+            <input
+              type="text"
+              value={tagInput}
+              onChange={(e) => onTagInputChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  onAddTag();
+                }
+              }}
+              placeholder={placeholder}
+              autoCapitalize="none"
+              autoCorrect="off"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <ClearButton show={tagInput.length > 0} onClear={() => onTagInputChange('')} />
+          </div>
           <button onClick={onAddTag} disabled={!tagInput.trim()}>
             Add
           </button>
@@ -325,6 +356,7 @@ const ResizableInput: React.FC<ResizableInputProps> = ({
         autoComplete="off"
         spellCheck={false}
       />
+      <ClearButton show={value.length > 0} onClear={() => onChange('')} className="textarea-clear" />
       <div
         className="resizable-input-handle"
         onMouseDown={(e) => { e.preventDefault(); handleDragStart(e.clientY); }}
@@ -1611,15 +1643,18 @@ function App() {
 
       return (
         <EditorOverlay onDismiss={requestCancelEditing} keyboardHeight={keyboardHeight}>
-          <input
-            type="url"
-            className="editor-url-input"
-            value={editingUrlValue}
-            onChange={(e) => setEditingUrlValue(e.target.value)}
-            placeholder="URL"
-            autoCapitalize="none"
-            autoCorrect="off"
-          />
+          <div className="input-with-clear editor-url-wrapper">
+            <input
+              type="url"
+              className="editor-url-input"
+              value={editingUrlValue}
+              onChange={(e) => setEditingUrlValue(e.target.value)}
+              placeholder="URL"
+              autoCapitalize="none"
+              autoCorrect="off"
+            />
+            <ClearButton show={editingUrlValue.length > 0} onClear={() => setEditingUrlValue('')} />
+          </div>
           <TagsSection
             selectedTags={editingTags}
             availableTags={editingUrlTags}
@@ -2090,26 +2125,18 @@ function App() {
       >
         {/* Search box - matches quick-add styling */}
         <div className="view-mode-search">
-          <input
-            type="text"
-            className="view-mode-search-input"
-            placeholder="Search tags or items..."
-            value={viewSearchText}
-            onChange={(e) => setViewSearchText(e.target.value)}
-            autoCapitalize="none"
-            autoCorrect="off"
-          />
-          {viewSearchText && (
-            <button
-              className="view-mode-search-clear"
-              onClick={() => setViewSearchText("")}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>
-            </button>
-          )}
+          <div className="input-with-clear" style={{ flex: 1 }}>
+            <input
+              type="text"
+              className="view-mode-search-input"
+              placeholder="Search tags or items..."
+              value={viewSearchText}
+              onChange={(e) => setViewSearchText(e.target.value)}
+              autoCapitalize="none"
+              autoCorrect="off"
+            />
+            <ClearButton show={viewSearchText.length > 0} onClear={() => setViewSearchText('')} />
+          </div>
         </div>
 
         {/* Tags container - 25% height, scrollable */}
@@ -2710,18 +2737,21 @@ function App() {
         {/* Quick add - collapsed trigger */}
         <div className="expandable-card">
           <div className="expandable-card-input-row">
-            <input
-              type="text"
-              className="expandable-card-input"
-              placeholder="Add note, URL, or tags..."
-              value={addInputExpanded ? "" : addInputText}
-              onChange={(e) => setAddInputText(e.target.value)}
-              onFocus={() => setAddInputExpanded(true)}
-              autoCapitalize="none"
-              autoCorrect="off"
-              autoComplete="off"
-              spellCheck={false}
-            />
+            <div className="input-with-clear" style={{ flex: 1 }}>
+              <input
+                type="text"
+                className="expandable-card-input"
+                placeholder="Add note, URL, or tags..."
+                value={addInputExpanded ? "" : addInputText}
+                onChange={(e) => setAddInputText(e.target.value)}
+                onFocus={() => setAddInputExpanded(true)}
+                autoCapitalize="none"
+                autoCorrect="off"
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <ClearButton show={!addInputExpanded && addInputText.length > 0} onClear={() => setAddInputText('')} />
+            </div>
             <button className="camera-btn" onClick={openCamera} title="Take photo">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>

@@ -639,7 +639,7 @@ a.card-title {
   font-size: 16px; /* Prevents iOS auto-zoom on focus */
 }
 
-.new-tag-input button {
+.new-tag-input > button {
   padding: 0.5rem 1rem;
   background: #007aff;
   color: white;
@@ -650,7 +650,7 @@ a.card-title {
   cursor: pointer;
 }
 
-.new-tag-input button:disabled {
+.new-tag-input > button:disabled {
   background: #ccc;
   cursor: not-allowed;
 }
@@ -893,11 +893,11 @@ body.dark .new-tag-input input {
   color: #f6f6f6;
 }
 
-body.dark .new-tag-input button {
+body.dark .new-tag-input > button {
   background: #0a84ff;
 }
 
-body.dark .new-tag-input button:disabled {
+body.dark .new-tag-input > button:disabled {
   background: #555;
 }
 
@@ -2389,6 +2389,67 @@ body.dark .expandable-card-buttons .save-btn {
 /* ============================================================================
    Shared Editor Components
    ============================================================================ */
+
+/* Clear button for inputs */
+.clear-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: #999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+
+.clear-btn:active {
+  opacity: 0.7;
+}
+
+.clear-btn svg {
+  display: block;
+}
+
+/* Textarea clear button - top right */
+.clear-btn.textarea-clear {
+  top: 8px;
+  right: 8px;
+  transform: none;
+}
+
+/* Input wrapper for clear button positioning */
+.input-with-clear {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-with-clear input {
+  flex: 1;
+  padding-right: 32px;
+}
+
+/* URL editor wrapper */
+.editor-url-wrapper {
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.editor-url-wrapper .editor-url-input {
+  border-bottom: none;
+}
+
+body.dark .editor-url-wrapper {
+  border-bottom-color: #444;
+}
+
+body.dark .clear-btn {
+  color: #666;
+}
 
 /* Editor Card - base layout for all editors */
 .editor-card {

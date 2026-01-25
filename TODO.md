@@ -11,19 +11,15 @@ How we work:
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
-- [x][mobile] filtering search of tags in tag input box
-- [x][mobile] shares to Peek app on iOS are not saving to datastore
 - [ ][mobile] text editor is too small and the resize work we did isn't working
-- [ ][mobile] bottom buttons (save, delete, etc) can be hidden behind iOS keyboard
-- [ ][desktop] extension rework in side nav
 - [ ][desktop] add new items (urls, notes, tagsets)
 - [ ][desktop] sync mirrors back pulled items - "17 pulled, 17 pushed" repeats on every sync
 - [ ] image support end to end + better media storage
+- [ ] Test profile data isolation between desktop profiles
+- [ ] Test mobile-desktop sync with different profiles
 
 Later
 - [ ][desktop] access to notes on filesystem, syncing them as markdown files in ~/sync/Notes/peek
-
-## To process
 
 Unclear / needs context:
 - [ ] import signal note-to-self archive into peek notes
@@ -52,7 +48,7 @@ Navigation
 
 ## Profiles
 
-**Status**: Desktop + Server complete. Mobile works seamlessly with default profile (no changes needed).
+**Status**: ✅ Complete across Desktop, Server, and Mobile.
 
 ### Desktop + Server (✅ Complete)
 - [x][desktop] profile at OS level (electron+chromium profile isolation)
@@ -67,51 +63,21 @@ Navigation
 - [x] per-profile sync configuration
 - [x] automatic migration (non-destructive on desktop, needs backup on server)
 
-See: `docs/profiles.md`, `SERVER-MIGRATION-SAFETY-IMPROVEMENTS.md`
+### Mobile Profile Support (✅ Complete)
+- [x] Auto-detect App Store/TestFlight vs Xcode builds via receipt check
+- [x] Per-profile database files (peek-default.db, peek-dev.db)
+- [x] Append ?profile= to all sync URLs for server-side isolation
+- [x] Profile selector in Settings with quick-switch buttons
+- [x] Visual banner when not on default profile
+- [x] UUID-based profile sync across mobile, desktop, and server
 
-### Testing (In Progress)
-- [ ] Test creating new profile via Settings UI
-- [ ] Test switching profiles (verify app restarts correctly)
-- [ ] Test enabling sync for a profile with API key and server profile slug
-- [ ] Test data isolation between profiles
-- [ ] Test deleting a profile (verify cannot delete default/active)
+See: `docs/profiles.md`, `docs/mobile.md`
 
-### Server Safety Improvements (Priority)
+### Server Safety Improvements
 - [x] Add pre-migration backup to server migration
 - [ ] Add migration dry-run mode
 - [ ] Add database integrity verification
 - [ ] Add automatic backup cleanup after grace period
-
-### Mobile Profile Support (Optional - Future)
-
-**Current**: Mobile seamlessly uses "default" profile via server backward compatibility.
-
-**When to implement**: Only if users request multiple profiles on mobile.
-
-**Implementation plan**:
-1. Add profile selector in mobile settings UI
-2. Store selected profile slug in settings table:
-   ```rust
-   INSERT OR REPLACE INTO settings (key, value) VALUES ('profile_slug', ?)
-   ```
-3. Append profile to sync URLs:
-   ```rust
-   let profile_slug = get_profile_slug()?; // From settings
-   let items_url = format!("{}/items?profile={}", server_url, profile_slug);
-   let post_url = format!("{}/items?profile={}", server_url, profile_slug);
-   ```
-4. Test:
-   - Create "Work" profile on desktop with sync enabled
-   - Switch mobile to "Work" profile
-   - Sync on mobile
-   - Verify items go to correct server profile
-   - Switch back to "default", verify data isolation
-
-**Considerations**:
-- Mobile profile switching doesn't require app restart (simpler than desktop)
-- No Chromium session isolation on mobile (just database)
-- Keep UI simple - dropdown in settings
-- Default to "default" profile if not configured
 
 ## Desktop windows
 
@@ -485,6 +451,17 @@ Newly done items go here, grouped under third-level headings by week of year.
 
 ### 2026-W04
 
+- [x][mobile] iOS profile support with build detection and per-profile databases
+- [x][mobile] UUID-based profile sync across mobile, desktop, and server
+- [x][mobile] iOS share extension fixes + tag input filtering
+- [x][mobile] consolidate editor views with shared components
+- [x][mobile] add clear buttons to all input fields and textareas
+- [x][mobile] fix tags not persisting on text notes
+- [x][mobile] add archive tag support to hide items from views
+- [x][mobile] add font size slider in settings with realtime preview
+- [x][desktop] migrate old addresses to items table, fix CHECK constraint
+- [x][desktop] multi-tag search in tags UI
+- [x][desktop] extension nav styling improvements
 - [x][desktop] Desktop Windows - title bar, persistence, pin controls, animations
 - [x][security] remove production server endpoint from source - require env config
 - [x][workflow] agent workspace isolation - rules to stay in workspace, no parent repo access

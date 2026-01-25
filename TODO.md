@@ -14,22 +14,21 @@ Today
 - [ ][mobile] text editor is too small and the resize work we did isn't working
 - [ ][desktop] add new items (urls, notes, tagsets)
 - [ ][desktop] sync mirrors back pulled items - "17 pulled, 17 pushed" repeats on every sync
-- [ ] image support end to end + better media storage
-- [ ] Test profile data isolation between desktop profiles
-- [ ] Test mobile-desktop sync with different profiles
+- [ ][images] media storage for images
+- [ ][images] complete image sharing/tag-editing/viewing support
+- [ ][profiles] Test profile data isolation between desktop profiles
+- [ ][sync] Test mobile-desktop sync with different profiles
 
 Later
 - [ ][desktop] access to notes on filesystem, syncing them as markdown files in ~/sync/Notes/peek
 
-Unclear / needs context:
+Needs triage
 - [ ] import signal note-to-self archive into peek notes
 - [ ] implement old context plan eg https://www.reddit.com/r/hackernews/comments/1qddidm/sun_position_calculator/
 - [ ] step counter: app level interaction tracing/counting. when is reset? when does action end and new one start?
 - [ ] tabstats for peek
 - [ ] peeks/slides as tagged addresses with metadata properties?
 - [ ] edgeworkernode/server vs what we got now (both?)
-
-misc
 - [ ] click modifier to one-off peek a link
 - [ ] option to flash keyboard shortcuts on screen
 - [ ] pop up a board of built-in shortcuts/actions
@@ -45,68 +44,18 @@ Navigation
 - [ ] add to izui stack (and ix w/ history?)
 - [ ] interactions between peek:// and other
 
-
 ## Profiles
 
-**Status**: ✅ Complete across Desktop, Server, and Mobile.
-
-### Desktop + Server (✅ Complete)
-- [x][desktop] profile at OS level (electron+chromium profile isolation)
-- [x][server] profile-aware connection pooling (userId:profileSlug)
-- [x][desktop] settings app has profiles section
-- [x] there's a default profile (auto-created, cannot be deleted)
-- [x] can add named profiles
-- [x] can switch profiles (app restart required)
-- [x] can delete profiles (prompt - no undo, cannot delete default/active)
-- [x] production/dev profile isolation (dev NEVER touches production)
-- [x] profiles across platform connected by per-profile API key + server profile slug
-- [x] per-profile sync configuration
-- [x] automatic migration (non-destructive on desktop, needs backup on server)
-
-### Mobile Profile Support (✅ Complete)
-- [x] Auto-detect App Store/TestFlight vs Xcode builds via receipt check
-- [x] Per-profile database files (peek-default.db, peek-dev.db)
-- [x] Append ?profile= to all sync URLs for server-side isolation
-- [x] Profile selector in Settings with quick-switch buttons
-- [x] Visual banner when not on default profile
-- [x] UUID-based profile sync across mobile, desktop, and server
-
-See: `docs/profiles.md`, `docs/mobile.md`
+**Status**: ✅ Complete across Desktop, Server, and Mobile. See `docs/profiles.md`, `docs/mobile.md`
 
 ### Server Safety Improvements
-- [x] Add pre-migration backup to server migration
 - [ ] Add migration dry-run mode
 - [ ] Add database integrity verification
 - [ ] Add automatic backup cleanup after grace period
 
 ## Desktop windows
 
-Title bar and controls
-- [x] add universal titlebar hide/show pref (default hide)
-- [x] add pref to settings ui
 - [ ] show titlebar on hover at top edge
-- [x] why do some links in web pages open windows that show titlebars even when default is to hide?
-
-Size and position
-- [x] windows are movable by default
-- [x] windows are resizable by default
-- [x] window.open api param for whether a window is draggable or not
-- [x] window.open api param for whether a window is resizable or not
-
-Persistence
-- [x] pref to persist keyed/url window position+size across app restarts
-
-Pin control in titlebar
-- [x] pin window on top (app)
-- [x] pin window on top (os)
-- [x] cmds for all of this
-
-Interaction/integration
-- [x] configurable escape behavior per-window, as a window.open api option
-
-Animations
-- [x] add animation (to/from coords, time) option to window.open api
-- [x] update slides impl to use animation (see ./animation.js, can remove when done)
 
 ## UI Componentry
 
@@ -317,7 +266,6 @@ examples
 ## Mobile
 
 - [ ] add device ID tracking to item metadata (like desktop - stores `_sync.createdBy` and `_sync.modifiedBy` in metadata JSON)
-- [x] fix big bottom bar showing again (simplified viewport and safe-area handling)
 - [ ] show oembed, or at least page title
 - [ ] save images to server (look at how binaries are stored, and across profiles)
 
@@ -451,6 +399,14 @@ Newly done items go here, grouped under third-level headings by week of year.
 
 ### 2026-W04
 
+- [x][mobile] fix big bottom bar showing again (simplified viewport and safe-area handling)
+- [x][server] Add pre-migration backup to server migration
+- [x][desktop] window titlebar hide/show pref with settings UI
+- [x][desktop] windows movable and resizable by default with window.open API params
+- [x][desktop] persist keyed/url window position+size across app restarts
+- [x][desktop] pin window on top (app and OS level) with commands
+- [x][desktop] configurable escape behavior per-window via window.open API
+- [x][desktop] window animation API (to/from coords, time) + slides impl
 - [x][mobile] iOS profile support with build detection and per-profile databases
 - [x][mobile] UUID-based profile sync across mobile, desktop, and server
 - [x][mobile] iOS share extension fixes + tag input filtering

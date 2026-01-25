@@ -1454,13 +1454,13 @@ function App() {
   const openViewMode = () => {
     setViewModeActive(true);
     setViewSearchText("");
-    // Keep viewSelectedTags - persist tag filters across view toggles
+    setViewSelectedTags(new Set());
   };
 
   const closeViewMode = () => {
     setViewModeActive(false);
     setViewSearchText("");
-    // Keep viewSelectedTags - persist tag filters across view toggles
+    setViewSelectedTags(new Set());
   };
 
   const toggleViewTag = (tagName: string) => {
@@ -1559,11 +1559,6 @@ function App() {
       const matchesTags = viewSelectedTags.size === 0 ||
         Array.from(viewSelectedTags).every(t => item.tags.includes(t));
 
-      // Hide archived items unless "archive" tag is selected
-      const isArchived = item.tags.includes("archive");
-      const showArchived = viewSelectedTags.has("archive");
-      if (isArchived && !showArchived) return false;
-
       return matchesSearch && matchesTags;
     });
 
@@ -1630,11 +1625,8 @@ function App() {
       });
     }
 
-    // Filter out archived items from main list
-    const nonArchived = items.filter(item => !item.tags.includes("archive"));
-
     // Sort by date, newest first
-    return nonArchived.sort((a, b) => new Date(b.saved_at).getTime() - new Date(a.saved_at).getTime());
+    return items.sort((a, b) => new Date(b.saved_at).getTime() - new Date(a.saved_at).getTime());
   };
 
   // Check if any edit mode is active

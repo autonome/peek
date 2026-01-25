@@ -2960,11 +2960,11 @@ body.dark .confirm-modal-buttons .delete-btn {
   background: #f0f0f0;
 }
 
-/* Tags container - reduced height for more results space */
+/* Tags container - 25% of viewport height */
 .view-mode-tags-container {
-  height: 17vh;
-  min-height: 80px;
-  max-height: 130px;
+  height: 25vh;
+  min-height: 120px;
+  max-height: 200px;
   background: white;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);

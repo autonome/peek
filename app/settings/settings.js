@@ -2188,7 +2188,7 @@ const init = async () => {
 
           // Add nav item (insert before Extensions nav item)
           const navItem = document.createElement('a');
-          navItem.className = 'nav-item';
+          navItem.className = 'nav-item nav-item-extension';
           navItem.textContent = name;
           navItem.dataset.section = sectionId;
           navItem.dataset.featureName = name;

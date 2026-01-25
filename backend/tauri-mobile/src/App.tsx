@@ -459,23 +459,6 @@ function App() {
   const viewModeStartY = useRef<number | null>(null);
   const VIEW_SWIPE_THRESHOLD = 100;
 
-  // Font slider - fix entire section position during drag to prevent jumping
-  const fontSectionRef = useRef<HTMLDivElement>(null);
-  const [fontSliderDragging, setFontSliderDragging] = useState(false);
-  const [fontSectionFixedPos, setFontSectionFixedPos] = useState<{left: number, top: number, width: number} | null>(null);
-
-  const handleFontSliderDragStart = () => {
-    if (!fontSectionRef.current) return;
-    const rect = fontSectionRef.current.getBoundingClientRect();
-    setFontSectionFixedPos({ left: rect.left, top: rect.top, width: rect.width });
-    setFontSliderDragging(true);
-  };
-
-  const handleFontSliderDragEnd = () => {
-    setFontSliderDragging(false);
-    setFontSectionFixedPos(null);
-  };
-
   // Toast notification state
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -510,16 +493,6 @@ function App() {
   const [profileInfo, setProfileInfo] = useState<ProfileInfo | null>(null);
   const [profileInput, setProfileInput] = useState("");
   const [showRestartPrompt, setShowRestartPrompt] = useState(false);
-  const [fontSize, setFontSize] = useState(() => {
-    const saved = localStorage.getItem("peek-font-size");
-    return saved ? parseInt(saved, 10) : 100; // percentage, 100 = default
-  });
-
-  // Apply font size to root element - affects entire app
-  useEffect(() => {
-    document.documentElement.style.fontSize = `${fontSize}%`;
-    localStorage.setItem("peek-font-size", String(fontSize));
-  }, [fontSize]);
 
   // Keyboard height for iOS keyboard avoidance
   const keyboardHeight = useKeyboardHeight();
@@ -1481,13 +1454,13 @@ function App() {
   const openViewMode = () => {
     setViewModeActive(true);
     setViewSearchText("");
-    // Keep viewSelectedTags - persist tag filters across view toggles
+    setViewSelectedTags(new Set());
   };
 
   const closeViewMode = () => {
     setViewModeActive(false);
     setViewSearchText("");
-    // Keep viewSelectedTags - persist tag filters across view toggles
+    setViewSelectedTags(new Set());
   };
 
   const toggleViewTag = (tagName: string) => {
@@ -1586,11 +1559,6 @@ function App() {
       const matchesTags = viewSelectedTags.size === 0 ||
         Array.from(viewSelectedTags).every(t => item.tags.includes(t));
 
-      // Hide archived items unless "archive" tag is selected
-      const isArchived = item.tags.includes("archive");
-      const showArchived = viewSelectedTags.has("archive");
-      if (isArchived && !showArchived) return false;
-
       return matchesSearch && matchesTags;
     });
 
@@ -1657,11 +1625,8 @@ function App() {
       });
     }
 
-    // Filter out archived items from main list
-    const nonArchived = items.filter(item => !item.tags.includes("archive"));
-
     // Sort by date, newest first
-    return nonArchived.sort((a, b) => new Date(b.saved_at).getTime() - new Date(a.saved_at).getTime());
+    return items.sort((a, b) => new Date(b.saved_at).getTime() - new Date(a.saved_at).getTime());
   };
 
   // Check if any edit mode is active
@@ -2438,45 +2403,6 @@ function App() {
                 })()}
               </>
             )}
-          </div>
-
-          {/* Appearance Section - entire section fixes position during slider drag */}
-          <div
-            ref={fontSectionRef}
-            className={`settings-section ${fontSliderDragging ? 'fixed-during-drag' : ''}`}
-            style={fontSliderDragging && fontSectionFixedPos ? {
-              position: 'fixed',
-              left: fontSectionFixedPos.left,
-              top: fontSectionFixedPos.top,
-              width: fontSectionFixedPos.width,
-              zIndex: 9999,
-            } : undefined}
-          >
-            <h2>Appearance</h2>
-            <div className="font-size-setting">
-              <span className="font-size-label">Font Size: {fontSize}%</span>
-              <input
-                type="range"
-                min="75"
-                max="150"
-                step="5"
-                value={fontSize}
-                onChange={(e) => setFontSize(parseInt(e.target.value, 10))}
-                onTouchStart={handleFontSliderDragStart}
-                onTouchEnd={handleFontSliderDragEnd}
-                onMouseDown={handleFontSliderDragStart}
-                onMouseUp={handleFontSliderDragEnd}
-                className="font-size-slider"
-              />
-              {fontSize !== 100 && (
-                <button
-                  className="reset-font-btn"
-                  onClick={() => setFontSize(100)}
-                >
-                  Reset
-                </button>
-              )}
-            </div>
           </div>
 
           {/* Debug Section */}

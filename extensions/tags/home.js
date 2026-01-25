@@ -14,7 +14,7 @@ const debug = api?.debug;
 // State
 let state = {
   activeFilter: 'all',  // 'all' | 'page' | 'text' | 'tagset' | 'image'
-  activeTag: null,      // Tag object for filtering, or null
+  activeTags: [],       // Array of tag objects for filtering (AND logic)
   items: [],            // All addresses
   tags: [],             // All tags sorted by frecency
   itemTags: new Map(),  // Map of addressId -> [tags]
@@ -59,20 +59,30 @@ const init = async () => {
  */
 const loadData = async () => {
   // Load all items (unified: addresses, texts, tagsets, images)
+  console.log('[tags] Loading items...');
   const itemsResult = await api.datastore.queryItems({});
+  console.log('[tags] queryItems result:', itemsResult.success, 'count:', itemsResult.data?.length);
   if (itemsResult.success) {
     state.items = itemsResult.data;
-    debug && console.log('[tags] Loaded items:', state.items.length);
+    console.log('[tags] Loaded items:', state.items.length);
+    // Log first few items for debugging
+    state.items.slice(0, 3).forEach((item, i) => {
+      console.log(`[tags] Item ${i}:`, item.id, item.type, item.content?.substring(0, 50));
+    });
   } else {
     console.error('[tags] Failed to load items:', itemsResult.error);
     state.items = [];
   }
 
   // Load tags for each item
+  console.log('[tags] Loading tags for', state.items.length, 'items...');
   for (const item of state.items) {
     const tagsResult = await api.datastore.getItemTags(item.id);
     if (tagsResult.success) {
       state.itemTags.set(item.id, tagsResult.data);
+      if (tagsResult.data.length > 0) {
+        console.log('[tags] Item', item.id, 'has tags:', tagsResult.data.map(t => t.name).join(', '));
+      }
     }
   }
 
@@ -153,7 +163,7 @@ const setupEventListeners = () => {
       }
 
       // If tag filter is active, clear it
-      if (state.activeTag) {
+      if (state.activeTags.length > 0) {
         clearTagFilter();
         return { handled: true };
       }
@@ -327,33 +337,33 @@ const getFilteredItems = () => {
     });
   }
 
-  // Filter by active tag
-  if (state.activeTag) {
+  // Filter by active tags (AND logic - item must have ALL selected tags)
+  if (state.activeTags.length > 0) {
     items = items.filter(item => {
       const tags = state.itemTags.get(item.id) || [];
-      return tags.some(t => t.id === state.activeTag.id);
+      const tagIds = new Set(tags.map(t => t.id));
+      return state.activeTags.every(activeTag => tagIds.has(activeTag.id));
     });
   }
 
-  // Filter by search query
+  // Filter by search query - match tag names (supports multiple tags separated by comma or space)
   if (state.searchQuery) {
-    const q = state.searchQuery.toLowerCase();
-    items = items.filter(item => {
-      const tags = state.itemTags.get(item.id) || [];
-      const tagMatch = tags.some(t => t.name.toLowerCase().includes(q));
+    // Split by comma or space, filter empty strings
+    const searchTerms = state.searchQuery.toLowerCase()
+      .split(/[,\s]+/)
+      .map(t => t.trim())
+      .filter(t => t.length > 0);
 
-      // Handle both old address schema and new item schema
-      if (item.uri) {
-        // Old address schema
-        const titleMatch = (item.title || '').toLowerCase().includes(q);
-        const urlMatch = item.uri.toLowerCase().includes(q);
-        return titleMatch || urlMatch || tagMatch;
-      } else {
-        // New item schema
-        const contentMatch = (item.content || '').toLowerCase().includes(q);
-        return contentMatch || tagMatch;
-      }
-    });
+    if (searchTerms.length > 0) {
+      items = items.filter(item => {
+        const tags = state.itemTags.get(item.id) || [];
+        const tagNames = tags.map(t => t.name.toLowerCase());
+        // Item must have tags matching ALL search terms (AND logic)
+        return searchTerms.every(term =>
+          tagNames.some(tagName => tagName.includes(term))
+        );
+      });
+    }
   }
 
   return items;
@@ -394,13 +404,26 @@ const renderFilterButtons = () => {
 const renderActiveTagIndicator = () => {
   const indicator = document.querySelector('.active-tag-indicator');
 
-  if (state.activeTag) {
-    indicator.innerHTML = `
-      <span>${state.activeTag.name}</span>
-      <button class="clear-tag" title="Clear filter">&times;</button>
+  if (state.activeTags.length > 0) {
+    indicator.innerHTML = state.activeTags.map(tag => `
+      <span class="active-tag-chip" data-tag-id="${tag.id}">
+        ${escapeHtml(tag.name)}
+        <button class="clear-tag" title="Remove tag">&times;</button>
+      </span>
+    `).join('') + `
+      <button class="clear-all-tags" title="Clear all filters">&times; All</button>
     `;
     indicator.classList.add('visible');
-    indicator.querySelector('.clear-tag').addEventListener('click', clearTagFilter);
+
+    indicator.querySelectorAll('.active-tag-chip .clear-tag').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const tagId = parseInt(btn.parentElement.dataset.tagId, 10);
+        removeActiveTag(tagId);
+      });
+    });
+
+    indicator.querySelector('.clear-all-tags').addEventListener('click', clearTagFilter);
   } else {
     indicator.classList.remove('visible');
     indicator.innerHTML = '';
@@ -408,10 +431,19 @@ const renderActiveTagIndicator = () => {
 };
 
 /**
- * Clear the active tag filter
+ * Remove a single tag from active filters
+ */
+const removeActiveTag = (tagId) => {
+  state.activeTags = state.activeTags.filter(t => t.id !== tagId);
+  state.selectedIndex = 0;
+  render();
+};
+
+/**
+ * Clear all active tag filters
  */
 const clearTagFilter = () => {
-  state.activeTag = null;
+  state.activeTags = [];
   state.selectedIndex = 0;
   render();
 };
@@ -438,7 +470,8 @@ const renderTagSidebar = () => {
 
     const chip = document.createElement('div');
     chip.className = 'tag-chip';
-    if (state.activeTag && state.activeTag.id === tag.id) {
+    const isSelected = state.activeTags.some(t => t.id === tag.id);
+    if (isSelected) {
       chip.classList.add('selected');
     }
 
@@ -448,11 +481,11 @@ const renderTagSidebar = () => {
     `;
 
     chip.addEventListener('click', () => {
-      if (state.activeTag && state.activeTag.id === tag.id) {
-        // Toggle off
-        state.activeTag = null;
+      const existingIndex = state.activeTags.findIndex(t => t.id === tag.id);
+      if (existingIndex >= 0) {
+        state.activeTags = state.activeTags.filter(t => t.id !== tag.id);
       } else {
-        state.activeTag = tag;
+        state.activeTags = [...state.activeTags, tag];
       }
       state.selectedIndex = 0;
       render();
@@ -471,8 +504,8 @@ const renderCards = () => {
   if (items.length === 0) {
     const message = state.searchQuery
       ? 'No items match your search.'
-      : state.activeTag
-        ? `No items tagged "${state.activeTag.name}".`
+      : state.activeTags.length > 0
+        ? `No items with all selected tags.`
         : 'No saved items yet.';
     cardsContainer.innerHTML = `<div class="empty-state">${message}</div>`;
     return;
@@ -546,12 +579,17 @@ const createItemCard = (item) => {
 
   // Click on card to open edit modal
   card.addEventListener('click', (e) => {
-    // If clicking a tag, filter by that tag instead
+    // If clicking a tag, add it to filter (toggle behavior)
     if (e.target.classList.contains('card-tag')) {
       const tagId = parseInt(e.target.dataset.tagId, 10);
       const tag = state.tags.find(t => t.id === tagId);
       if (tag) {
-        state.activeTag = tag;
+        const existingIndex = state.activeTags.findIndex(t => t.id === tagId);
+        if (existingIndex >= 0) {
+          state.activeTags = state.activeTags.filter(t => t.id !== tagId);
+        } else {
+          state.activeTags = [...state.activeTags, tag];
+        }
         state.selectedIndex = 0;
         render();
       }

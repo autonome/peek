@@ -1,6 +1,6 @@
 /**
  * Tag command - add tags to the URL of the active window
- * Tags are saved using the proper join table (address_tags) with frecency tracking
+ * Tags are saved using the items table with item_tags join table
  *
  * Usage:
  *   tag foo          - add tag "foo" to active window's URL
@@ -23,34 +23,38 @@ const getActiveWindow = async () => {
 };
 
 /**
- * Find address record by URI
+ * Find item record by URL content
  */
-const findAddressByUri = async (uri) => {
-  const result = await api.datastore.queryAddresses({});
+const findItemByUrl = async (url) => {
+  const result = await api.datastore.queryItems({ type: 'url' });
   if (!result.success) return null;
 
-  return result.data.find(addr => addr.uri === uri) || null;
+  return result.data.find(item => item.content === url) || null;
 };
 
 /**
- * Add tags to an address using the join table
+ * Add tags to an item using the join table
  */
-const addTagsToAddress = async (addressId, tagNames) => {
+const addTagsToItem = async (itemId, tagNames) => {
   const results = [];
 
   for (const tagName of tagNames) {
     // Get or create the tag
-    // Returns { success, data: { tag: {...}, created: boolean } }
+    api.log('[tag] Getting/creating tag:', tagName);
     const tagResult = await api.datastore.getOrCreateTag(tagName);
+    api.log('[tag] getOrCreateTag result:', JSON.stringify(tagResult));
     if (!tagResult.success) {
       console.error('Failed to get/create tag:', tagName, tagResult.error);
       continue;
     }
 
     const tag = tagResult.data.tag;
+    api.log('[tag] Tag id:', tag.id, 'name:', tag.name);
 
-    // Link tag to address
-    const linkResult = await api.datastore.tagAddress(addressId, tag.id);
+    // Link tag to item
+    api.log('[tag] Linking tag', tag.id, 'to item', itemId);
+    const linkResult = await api.datastore.tagItem(itemId, tag.id);
+    api.log('[tag] tagItem result:', JSON.stringify(linkResult));
     if (!linkResult.success) {
       console.error('Failed to link tag:', tagName, linkResult.error);
       continue;
@@ -66,13 +70,13 @@ const addTagsToAddress = async (addressId, tagNames) => {
 };
 
 /**
- * Remove tags from an address
+ * Remove tags from an item
  */
-const removeTagsFromAddress = async (addressId, tagNames) => {
+const removeTagsFromItem = async (itemId, tagNames) => {
   const results = [];
 
-  // Get current tags for address
-  const tagsResult = await api.datastore.getAddressTags(addressId);
+  // Get current tags for item
+  const tagsResult = await api.datastore.getItemTags(itemId);
   if (!tagsResult.success) {
     return results;
   }
@@ -81,15 +85,15 @@ const removeTagsFromAddress = async (addressId, tagNames) => {
     // Find the tag by name
     const tag = tagsResult.data.find(t => t.name.toLowerCase() === tagName.toLowerCase());
     if (!tag) {
-      console.log('Tag not found on address:', tagName);
+      console.log('Tag not found on item:', tagName);
       continue;
     }
 
-    // Unlink tag from address
-    const unlinkResult = await api.datastore.untagAddress(addressId, tag.id);
+    // Unlink tag from item
+    const unlinkResult = await api.datastore.untagItem(itemId, tag.id);
     results.push({
       tag,
-      removed: unlinkResult.removed
+      removed: unlinkResult.success
     });
   }
 
@@ -97,10 +101,10 @@ const removeTagsFromAddress = async (addressId, tagNames) => {
 };
 
 /**
- * Get tags for an address
+ * Get tags for an item
  */
-const getTagsForAddress = async (addressId) => {
-  const result = await api.datastore.getAddressTags(addressId);
+const getTagsForItem = async (itemId) => {
+  const result = await api.datastore.getItemTags(itemId);
   if (!result.success) return [];
   return result.data;
 };
@@ -123,24 +127,30 @@ const commands = [
       const url = activeWindow.url;
       api.log('Tagging URL:', url);
 
-      // Find address in datastore
-      let address = await findAddressByUri(url);
+      // Find item in datastore
+      let item = await findItemByUrl(url);
 
-      // If no address exists, create one
-      if (!address) {
-        const addResult = await api.datastore.addAddress(url, {
-          title: activeWindow.title || ''
+      // If no item exists, create one
+      if (!item) {
+        api.log('[tag] Creating new item for URL:', url);
+        const addResult = await api.datastore.addItem('url', {
+          content: url,
+          metadata: JSON.stringify({ title: activeWindow.title || '' })
         });
+        api.log('[tag] addItem result:', JSON.stringify(addResult));
         if (!addResult.success) {
-          console.error('Failed to create address:', addResult.error);
-          return { success: false, error: 'Failed to create address' };
+          console.error('Failed to create item:', addResult.error);
+          return { success: false, error: 'Failed to create item' };
         }
-        address = { id: addResult.data.id };
+        item = { id: addResult.data.id };
+        api.log('[tag] Created item with id:', item.id);
+      } else {
+        api.log('[tag] Found existing item:', item.id, 'for URL:', url);
       }
 
       // No args - show current tags
       if (!ctx.search) {
-        const tags = await getTagsForAddress(address.id);
+        const tags = await getTagsForItem(item.id);
         if (tags.length === 0) {
           console.log('No tags for:', url);
         } else {
@@ -170,16 +180,16 @@ const commands = [
 
       // Add or remove tags
       if (removeMode) {
-        const results = await removeTagsFromAddress(address.id, tagsToProcess);
+        const results = await removeTagsFromItem(item.id, tagsToProcess);
         const removed = results.filter(r => r.removed).map(r => r.tag.name);
         if (removed.length > 0) {
           console.log('Removed tags:', removed.join(', '), 'from', url);
         }
         return { success: true, removed };
       } else {
-        api.log('Adding tags to address:', address.id, 'tags:', tagsToProcess);
-        const results = await addTagsToAddress(address.id, tagsToProcess);
-        api.log('addTagsToAddress results:', results);
+        api.log('Adding tags to item:', item.id, 'tags:', tagsToProcess);
+        const results = await addTagsToItem(item.id, tagsToProcess);
+        api.log('addTagsToItem results:', results);
         const added = results.filter(r => !r.alreadyExists).map(r => r.tag.name);
         const existing = results.filter(r => r.alreadyExists).map(r => r.tag.name);
         if (added.length > 0) {
@@ -239,13 +249,13 @@ const commands = [
         return { success: true, tags: result.data };
       }
 
-      const address = await findAddressByUri(activeWindow.url);
-      if (!address) {
+      const item = await findItemByUrl(activeWindow.url);
+      if (!item) {
         console.log('No tags for:', activeWindow.url);
         return { success: true, tags: [] };
       }
 
-      const tags = await getTagsForAddress(address.id);
+      const tags = await getTagsForItem(item.id);
 
       if (tags.length === 0) {
         console.log('No tags for:', activeWindow.url);

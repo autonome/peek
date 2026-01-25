@@ -1,7 +1,7 @@
 /**
  * Groups Extension Background Script
  *
- * Tag-based grouping of addresses
+ * Tag-based grouping of URLs
  *
  * Runs in isolated extension process (peek://ext/groups/background.html)
  * Uses api.settings for datastore-backed settings storage
@@ -72,19 +72,22 @@ const openGroupsWindow = () => {
 // ===== Command helpers =====
 
 /**
- * Helper to get or create an address for a URI
+ * Helper to get or create a URL item
  */
-const getOrCreateAddress = async (uri) => {
-  const result = await api.datastore.queryAddresses({});
+const getOrCreateUrlItem = async (url, title = '') => {
+  const result = await api.datastore.queryItems({ type: 'url' });
   if (!result.success) return null;
 
-  const existing = result.data.find(addr => addr.uri === uri);
+  const existing = result.data.find(item => item.content === url);
   if (existing) return existing;
 
-  const addResult = await api.datastore.addAddress(uri, {});
+  const addResult = await api.datastore.addItem('url', {
+    content: url,
+    metadata: JSON.stringify({ title })
+  });
   if (!addResult.success) return null;
 
-  return { id: addResult.id, uri, tags: '' };
+  return { id: addResult.data.id, content: url };
 };
 
 /**
@@ -108,7 +111,7 @@ const saveToGroup = async (groupName) => {
     return { success: false, error: tagResult.error };
   }
 
-  const tagId = tagResult.data.id;
+  const tagId = tagResult.data.tag.id;
 
   const listResult = await api.window.list({ includeInternal: false });
   if (!listResult.success || listResult.windows.length === 0) {
@@ -119,21 +122,21 @@ const saveToGroup = async (groupName) => {
   let savedCount = 0;
 
   for (const win of listResult.windows) {
-    const addr = await getOrCreateAddress(win.url);
-    if (addr) {
-      const linkResult = await api.datastore.tagAddress(addr.id, tagId);
+    const item = await getOrCreateUrlItem(win.url, win.title);
+    if (item) {
+      const linkResult = await api.datastore.tagItem(item.id, tagId);
       if (linkResult.success && !linkResult.alreadyExists) {
         savedCount++;
       }
     }
   }
 
-  console.log(`[ext:groups] Saved ${savedCount} addresses to group "${groupName}"`);
+  console.log(`[ext:groups] Saved ${savedCount} URLs to group "${groupName}"`);
   return { success: true, count: savedCount, total: listResult.windows.length };
 };
 
 /**
- * Open all addresses in a group (tag)
+ * Open all URLs in a group (tag)
  */
 const openGroup = async (groupName) => {
   console.log('[ext:groups] Opening group:', groupName);
@@ -149,21 +152,28 @@ const openGroup = async (groupName) => {
     return { success: false, error: 'Group not found' };
   }
 
-  const addressesResult = await api.datastore.getAddressesByTag(tag.id);
-  if (!addressesResult.success || addressesResult.data.length === 0) {
-    console.log('[ext:groups] No addresses in group:', groupName);
+  const itemsResult = await api.datastore.getItemsByTag(tag.id);
+  if (!itemsResult.success) {
+    console.log('[ext:groups] Failed to get items for group:', groupName);
+    return { success: false, error: 'Failed to get group items' };
+  }
+
+  // Filter to URL items only
+  const urlItems = itemsResult.data.filter(item => item.type === 'url');
+  if (urlItems.length === 0) {
+    console.log('[ext:groups] No URLs in group:', groupName);
     return { success: false, error: 'Group is empty' };
   }
 
-  for (const addr of addressesResult.data) {
-    await api.window.open(addr.uri, {
+  for (const item of urlItems) {
+    await api.window.open(item.content, {
       trackingSource: 'cmd',
       trackingSourceId: `group:${groupName}`
     });
   }
 
-  console.log(`[ext:groups] Opened ${addressesResult.data.length} windows from group "${groupName}"`);
-  return { success: true, count: addressesResult.data.length };
+  console.log(`[ext:groups] Opened ${urlItems.length} windows from group "${groupName}"`);
+  return { success: true, count: urlItems.length };
 };
 
 // ===== Command definitions =====
@@ -188,11 +198,11 @@ const commandDefinitions = [
         return { output: 'No groups yet. Tag some pages to create groups.', mimeType: 'text/plain' };
       }
 
-      // Get address counts for each group
+      // Get URL item counts for each group
       const groupsWithCounts = await Promise.all(groups.map(async (g) => {
-        const result = await api.datastore.getAddressesByTag(g.id);
-        const count = result.success ? result.data.length : 0;
-        return { id: g.id, name: g.name, color: g.color, count };
+        const result = await api.datastore.getItemsByTag(g.id);
+        const urlCount = result.success ? result.data.filter(item => item.type === 'url').length : 0;
+        return { id: g.id, name: g.name, color: g.color, count: urlCount };
       }));
 
       // Filter to non-empty groups
@@ -229,7 +239,7 @@ const commandDefinitions = [
   },
   {
     name: 'open group',
-    description: 'Open all addresses in a group',
+    description: 'Open all URLs in a group',
     execute: async (ctx) => {
       if (ctx.search) {
         const groupName = ctx.search.trim();
@@ -273,12 +283,12 @@ const registerDynamicGroupCommands = async () => {
   }
   dynamicGroupCommands = [];
 
-  // Get all groups with addresses
+  // Get all groups with URL items
   const groups = await getAllGroups();
   const groupsWithCounts = await Promise.all(groups.map(async (g) => {
-    const result = await api.datastore.getAddressesByTag(g.id);
-    const count = result.success ? result.data.length : 0;
-    return { ...g, count };
+    const result = await api.datastore.getItemsByTag(g.id);
+    const urlCount = result.success ? result.data.filter(item => item.type === 'url').length : 0;
+    return { ...g, count: urlCount };
   }));
 
   // Register a command for each non-empty group

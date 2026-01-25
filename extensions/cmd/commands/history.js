@@ -1,50 +1,55 @@
 /**
- * History command - search and open pages from address history
- * Addresses are sorted by visitCount (frecency)
+ * History command - search and open pages from saved URLs
+ * URLs are sorted by recent first (createdAt descending)
  */
 import windows from 'peek://app/windows.js';
 import api from 'peek://app/api.js';
 
 /**
- * Get addresses sorted by visit count (frecency)
+ * Get URL items sorted by most recent
  * Optionally filter by search term
  */
 const getHistory = async (searchTerm = '', limit = 20) => {
-  const result = await api.datastore.queryAddresses({});
+  const result = await api.datastore.queryItems({ type: 'url' });
   if (!result.success) return [];
 
-  let addresses = result.data;
+  let items = result.data;
 
-  // Filter by search term if provided
+  // Filter by search term if provided (check URL content and metadata title)
   if (searchTerm) {
     const lower = searchTerm.toLowerCase();
-    addresses = addresses.filter(addr => {
-      const uri = (addr.uri || '').toLowerCase();
-      const title = (addr.title || '').toLowerCase();
-      const domain = (addr.domain || '').toLowerCase();
-      return uri.includes(lower) || title.includes(lower) || domain.includes(lower);
+    items = items.filter(item => {
+      const url = (item.content || '').toLowerCase();
+      let title = '';
+      if (item.metadata) {
+        try {
+          const meta = typeof item.metadata === 'string' ? JSON.parse(item.metadata) : item.metadata;
+          title = (meta.title || '').toLowerCase();
+        } catch (e) {}
+      }
+      return url.includes(lower) || title.includes(lower);
     });
   }
 
-  // Sort by visitCount descending (frecency)
-  addresses.sort((a, b) => (b.visitCount || 0) - (a.visitCount || 0));
+  // Sort by createdAt descending (most recent first)
+  items.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
-  return addresses.slice(0, limit);
+  return items.slice(0, limit);
 };
 
 /**
- * Open an address from history
+ * Open a URL from history
  */
-const openFromHistory = async (uri) => {
+const openFromHistory = async (url) => {
   try {
-    const windowController = await windows.createWindow(uri, {
+    const windowController = await windows.createWindow(url, {
       width: 800,
       height: 600,
       openDevTools: window.app.debug,
       trackingSource: 'cmd',
       trackingSourceId: 'history'
     });
-    console.log('Opened from history:', uri, 'window:', windowController.id);
+    console.log('Opened from history:', url, 'window:', windowController.id);
     return { success: true };
   } catch (error) {
     console.error('Failed to open from history:', error);
@@ -52,26 +57,44 @@ const openFromHistory = async (uri) => {
   }
 };
 
+/**
+ * Get display title for an item
+ */
+const getItemTitle = (item) => {
+  if (item.metadata) {
+    try {
+      const meta = typeof item.metadata === 'string' ? JSON.parse(item.metadata) : item.metadata;
+      if (meta.title) return meta.title;
+    } catch (e) {}
+  }
+  return item.content || 'Untitled';
+};
+
 // Commands
 const commands = [
   {
     name: 'history',
+    description: 'Search and open saved URLs',
     async execute(ctx) {
       if (ctx.search) {
-        // Search provided - find matching address and open it
+        // Search provided - find matching URL and open it
         const matches = await getHistory(ctx.search, 1);
         if (matches.length > 0) {
-          await openFromHistory(matches[0].uri);
+          await openFromHistory(matches[0].content);
         } else {
           console.log('No history matches for:', ctx.search);
         }
       } else {
         // No search - just log recent history
         const recent = await getHistory('', 10);
-        console.log('Recent history:');
-        recent.forEach((addr, i) => {
-          console.log(`${i + 1}. [${addr.visitCount || 0}] ${addr.title || addr.uri}`);
-        });
+        if (recent.length === 0) {
+          console.log('No saved URLs yet');
+        } else {
+          console.log('Recent URLs:');
+          recent.forEach((item, i) => {
+            console.log(`${i + 1}. ${getItemTitle(item)}`);
+          });
+        }
       }
     }
   }
@@ -80,27 +103,29 @@ const commands = [
 /**
  * Initialize history entries as commands
  * Each history entry becomes a searchable command
- * Adaptive matching will handle ranking based on user selections
  */
 export const initializeSources = async (addCommand) => {
-  const history = await getHistory('', 50); // Get more entries
+  const history = await getHistory('', 50);
   console.log('Adding history entries as commands:', history.length);
 
-  history.forEach(addr => {
-    // Use the URI as the command name so it's searchable
+  history.forEach(item => {
+    const url = item.content;
+    const title = getItemTitle(item);
+
+    // Add URL as command
     addCommand({
-      name: addr.uri,
+      name: url,
       async execute(ctx) {
-        await openFromHistory(addr.uri);
+        await openFromHistory(url);
       }
     });
 
-    // Also add title as a command if it exists and is different
-    if (addr.title && addr.title !== addr.uri) {
+    // Also add title as a command if different from URL
+    if (title && title !== url) {
       addCommand({
-        name: addr.title,
+        name: title,
         async execute(ctx) {
-          await openFromHistory(addr.uri);
+          await openFromHistory(url);
         }
       });
     }

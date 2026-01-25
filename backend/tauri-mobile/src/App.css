@@ -951,19 +951,11 @@ header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 4px;
-  overflow: hidden;
-  /* Fixed pixel sizes - header shouldn't scale with font size */
-  font-size: 16px;
+  gap: 0.5rem;
 }
 
 header h1 {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  text-align: center;
+  flex-shrink: 0;
 }
 
 .header-btn {
@@ -976,12 +968,10 @@ header h1 {
   justify-content: center;
   color: #007aff;
   font-size: 1rem;
-  flex-shrink: 0;
 }
 
 .header-spacer {
   width: 44px;
-  flex-shrink: 0;
 }
 
 .settings-btn svg {
@@ -1041,59 +1031,6 @@ body.dark .header-btn {
   color: #666;
   margin: 0 0 1rem 0;
   line-height: 1.4;
-}
-
-/* Font size slider */
-.font-size-setting {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.font-size-label {
-  font-size: 14px;
-  color: #333;
-}
-
-.font-size-slider {
-  width: 100%;
-  height: 6px;
-  -webkit-appearance: none;
-  appearance: none;
-  background: #e0e0e0;
-  border-radius: 3px;
-  outline: none;
-}
-
-.font-size-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 28px;
-  height: 28px;
-  background: #007aff;
-  border-radius: 50%;
-  cursor: pointer;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
-}
-
-/* Section becomes fixed during slider drag */
-.settings-section.fixed-during-drag {
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-}
-
-.reset-font-btn {
-  align-self: flex-start;
-  padding: 6px 12px;
-  background: #f0f0f0;
-  border: none;
-  border-radius: 6px;
-  font-size: 13px;
-  color: #666;
-  cursor: pointer;
-}
-
-.reset-font-btn:active {
-  background: #e0e0e0;
 }
 
 /* Profile banner shown in main view when not on default profile */
@@ -1477,27 +1414,6 @@ body.dark .settings-section h2 {
 
 body.dark .settings-description {
   color: #999;
-}
-
-body.dark .font-size-label {
-  color: #f6f6f6;
-}
-
-body.dark .font-size-slider {
-  background: #3a3a3c;
-}
-
-body.dark .font-size-slider::-webkit-slider-thumb {
-  background: #0a84ff;
-}
-
-body.dark .reset-font-btn {
-  background: #3a3a3c;
-  color: #999;
-}
-
-body.dark .reset-font-btn:active {
-  background: #4a4a4c;
 }
 
 body.dark .webhook-input input {
@@ -3044,11 +2960,11 @@ body.dark .confirm-modal-buttons .delete-btn {
   background: #f0f0f0;
 }
 
-/* Tags container - reduced height for more results space */
+/* Tags container - 25% of viewport height */
 .view-mode-tags-container {
-  height: 17vh;
-  min-height: 80px;
-  max-height: 130px;
+  height: 25vh;
+  min-height: 120px;
+  max-height: 200px;
   background: white;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);

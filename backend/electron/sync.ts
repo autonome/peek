@@ -294,10 +294,11 @@ function mergeServerItem(serverItem: ServerItem): 'pulled' | 'conflict' | 'skipp
       syncSource: 'server',
     });
 
-    // Update timestamps to match server
+    // Update timestamps to match server, and set syncedAt to track when we synced this item
+    const now = Date.now();
     db.prepare(`
-      UPDATE items SET createdAt = ?, updatedAt = ? WHERE id = ?
-    `).run(fromISOString(serverItem.created_at), serverUpdatedAt, localId);
+      UPDATE items SET createdAt = ?, updatedAt = ?, syncedAt = ? WHERE id = ?
+    `).run(fromISOString(serverItem.created_at), serverUpdatedAt, now, localId);
 
     // Add tags
     syncTagsToItem(localId, serverItem.tags);
@@ -315,10 +316,11 @@ function mergeServerItem(serverItem: ServerItem): 'pulled' | 'conflict' | 'skipp
       metadata: serverItem.metadata ? JSON.stringify(serverItem.metadata) : undefined,
     });
 
-    // Update timestamps to match server
+    // Update timestamps to match server, and set syncedAt to track when we synced this item
+    const now = Date.now();
     db.prepare(`
-      UPDATE items SET updatedAt = ? WHERE id = ?
-    `).run(serverUpdatedAt, localItem.id);
+      UPDATE items SET updatedAt = ?, syncedAt = ? WHERE id = ?
+    `).run(serverUpdatedAt, now, localItem.id);
 
     // Update tags
     syncTagsToItem(localItem.id, serverItem.tags);
@@ -377,13 +379,17 @@ export async function pushToServer(
   const db = getDb();
 
   // Find items to push
+  // Push items that:
+  // 1. Have never been synced (syncSource = ''), OR
+  // 2. Have been locally modified after their last sync (updatedAt > syncedAt)
+  // This prevents re-pushing items that were just pulled from the server
   let items: Item[];
   if (lastSyncTime > 0) {
-    // Incremental: items modified since last sync, or never synced
+    // Incremental: items modified locally after their last sync, or never synced
     items = db.prepare(`
       SELECT * FROM items
-      WHERE deletedAt = 0 AND (syncSource = '' OR updatedAt > ?)
-    `).all(lastSyncTime) as Item[];
+      WHERE deletedAt = 0 AND (syncSource = '' OR (syncedAt > 0 AND updatedAt > syncedAt))
+    `).all() as Item[];
   } else {
     // Full: all items that haven't been synced
     items = db.prepare(`
@@ -473,10 +479,11 @@ async function pushSingleItem(
     { method: 'POST', body }
   );
 
-  // Update local item with sync info
+  // Update local item with sync info and set syncedAt to track when we synced
+  const now = Date.now();
   db.prepare(`
-    UPDATE items SET syncId = ?, syncSource = 'server' WHERE id = ?
-  `).run(response.id, item.id);
+    UPDATE items SET syncId = ?, syncSource = 'server', syncedAt = ? WHERE id = ?
+  `).run(response.id, now, item.id);
 
   DEBUG && console.log(`[sync] Pushed item ${item.id} → ${response.id}`);
 }
@@ -542,10 +549,11 @@ export function getSyncStatus(): {
   const db = getDb();
 
   // Count items that need to be synced
+  // Same logic as push: never synced OR locally modified after last sync
   const pendingCount = (db.prepare(`
     SELECT COUNT(*) as count FROM items
-    WHERE deletedAt = 0 AND (syncSource = '' OR updatedAt > ?)
-  `).get(config.lastSyncTime) as { count: number }).count;
+    WHERE deletedAt = 0 AND (syncSource = '' OR (syncedAt > 0 AND updatedAt > syncedAt))
+  `).get() as { count: number }).count;
 
   return {
     configured: !!(config.serverUrl && config.apiKey),

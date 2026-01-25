@@ -231,39 +231,41 @@ test.describe('Groups Navigation @desktop', () => {
   });
 
   test('groups to group to url and back navigation', async () => {
-    // Create a tag/group with some addresses
+    // Create a tag/group with some items
     const tagResult = await bgWindow.evaluate(async () => {
       return await (window as any).app.datastore.getOrCreateTag('test-group');
     });
     expect(tagResult.success).toBe(true);
-    const tagId = tagResult.data?.data?.id || tagResult.data?.id;
+    const tagId = tagResult.data?.tag?.id || tagResult.data?.data?.id || tagResult.data?.id;
 
-    // Add addresses and tag them
-    const addr1 = await bgWindow.evaluate(async () => {
-      return await (window as any).app.datastore.addAddress('https://group-test-1.example.com', {
-        title: 'Group Test 1'
+    // Add URL items and tag them
+    const item1 = await bgWindow.evaluate(async () => {
+      return await (window as any).app.datastore.addItem('url', {
+        content: 'https://group-test-1.example.com',
+        metadata: JSON.stringify({ title: 'Group Test 1' })
       });
     });
-    expect(addr1.success).toBe(true);
+    expect(item1.success).toBe(true);
 
-    const addr2 = await bgWindow.evaluate(async () => {
-      return await (window as any).app.datastore.addAddress('https://group-test-2.example.com', {
-        title: 'Group Test 2'
+    const item2 = await bgWindow.evaluate(async () => {
+      return await (window as any).app.datastore.addItem('url', {
+        content: 'https://group-test-2.example.com',
+        metadata: JSON.stringify({ title: 'Group Test 2' })
       });
     });
-    expect(addr2.success).toBe(true);
+    expect(item2.success).toBe(true);
 
-    // Tag the addresses
-    if (tagId && addr1.id) {
-      await bgWindow.evaluate(async ({ addressId, tagId }) => {
-        return await (window as any).app.datastore.tagAddress(addressId, tagId);
-      }, { addressId: addr1.id, tagId });
+    // Tag the items
+    if (tagId && item1.data?.id) {
+      await bgWindow.evaluate(async ({ itemId, tagId }) => {
+        return await (window as any).app.datastore.tagItem(itemId, tagId);
+      }, { itemId: item1.data.id, tagId });
     }
 
-    if (tagId && addr2.id) {
-      await bgWindow.evaluate(async ({ addressId, tagId }) => {
-        return await (window as any).app.datastore.tagAddress(addressId, tagId);
-      }, { addressId: addr2.id, tagId });
+    if (tagId && item2.data?.id) {
+      await bgWindow.evaluate(async ({ itemId, tagId }) => {
+        return await (window as any).app.datastore.tagItem(itemId, tagId);
+      }, { itemId: item2.data.id, tagId });
     }
 
     // Open groups home
@@ -345,13 +347,13 @@ test.describe('Groups Navigation @desktop', () => {
       }
     }
 
-    // Verify addresses can be retrieved by tag
+    // Verify items can be retrieved by tag
     if (tagId) {
-      const taggedAddresses = await bgWindow.evaluate(async (tId: string) => {
-        return await (window as any).app.datastore.getAddressesByTag(tId);
+      const taggedItems = await bgWindow.evaluate(async (tId: string) => {
+        return await (window as any).app.datastore.getItemsByTag(tId);
       }, tagId);
-      expect(taggedAddresses.success).toBe(true);
-      expect(taggedAddresses.data.length).toBeGreaterThanOrEqual(2);
+      expect(taggedItems.success).toBe(true);
+      expect(taggedItems.data.length).toBeGreaterThanOrEqual(2);
     }
   });
 });
@@ -955,28 +957,29 @@ test.describe('Groups View @desktop', () => {
   });
 
   test('empty groups are not shown in groups list', async () => {
-    // Create an empty tag (group with no addresses)
+    // Create an empty tag (group with no items)
     const emptyTag = await bgWindow.evaluate(async () => {
       return await (window as any).app.datastore.getOrCreateTag('empty-group-test');
     });
     expect(emptyTag.success).toBe(true);
 
-    // Create a tag with an address
+    // Create a tag with an item
     const nonEmptyTag = await bgWindow.evaluate(async () => {
       return await (window as any).app.datastore.getOrCreateTag('non-empty-group-test');
     });
     expect(nonEmptyTag.success).toBe(true);
 
-    const addr = await bgWindow.evaluate(async () => {
-      return await (window as any).app.datastore.addAddress('https://non-empty-group-addr.example.com', {
-        title: 'Non Empty Group Address'
+    const item = await bgWindow.evaluate(async () => {
+      return await (window as any).app.datastore.addItem('url', {
+        content: 'https://non-empty-group-addr.example.com',
+        metadata: JSON.stringify({ title: 'Non Empty Group Address' })
       });
     });
-    expect(addr.success).toBe(true);
+    expect(item.success).toBe(true);
 
-    await bgWindow.evaluate(async ({ addressId, tagId }) => {
-      return await (window as any).app.datastore.tagAddress(addressId, tagId);
-    }, { addressId: addr.data.id, tagId: nonEmptyTag.data.tag.id });
+    await bgWindow.evaluate(async ({ itemId, tagId }) => {
+      return await (window as any).app.datastore.tagItem(itemId, tagId);
+    }, { itemId: item.data.id, tagId: nonEmptyTag.data.tag.id });
 
     // Open groups home
     const groupsResult = await bgWindow.evaluate(async () => {
@@ -1018,22 +1021,23 @@ test.describe('Groups View @desktop', () => {
     }
   });
 
-  test('Untagged group shows when there are untagged addresses', async () => {
-    // Create an untagged address
-    // Note: datastore normalizes URLs (adds trailing slash)
-    const testUri = 'https://untagged-for-groups-view.example.com/';
-    const addr = await bgWindow.evaluate(async (uri: string) => {
-      return await (window as any).app.datastore.addAddress(uri, {
-        title: 'Untagged For Groups View'
+  test('Untagged group shows when there are untagged items', async () => {
+    // Create an untagged URL item
+    const testUrl = 'https://untagged-for-groups-view.example.com/';
+    const item = await bgWindow.evaluate(async (url: string) => {
+      return await (window as any).app.datastore.addItem('url', {
+        content: url,
+        metadata: JSON.stringify({ title: 'Untagged For Groups View' })
       });
-    }, testUri);
-    expect(addr.success).toBe(true);
+    }, testUrl);
+    expect(item.success).toBe(true);
 
-    // Verify it's untagged
-    const untagged = await bgWindow.evaluate(async () => {
-      return await (window as any).app.datastore.getUntaggedAddresses();
-    });
-    expect(untagged.data.some((a: any) => a.uri === testUri)).toBe(true);
+    // Verify the item exists and has no tags
+    const itemTags = await bgWindow.evaluate(async (itemId: string) => {
+      return await (window as any).app.datastore.getItemTags(itemId);
+    }, item.data.id);
+    expect(itemTags.success).toBe(true);
+    expect(itemTags.data.length).toBe(0);
 
     // Open groups home
     const groupsResult = await bgWindow.evaluate(async () => {

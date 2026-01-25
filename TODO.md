@@ -15,6 +15,7 @@ Today
 - [x][mobile] shares to Peek app on iOS are not saving to datastore
 - [ ][mobile] text editor is too small and the resize work we did isn't working
 - [ ][mobile] bottom buttons (save, delete, etc) can be hidden behind iOS keyboard
+- [ ][desktop] in tags ui, add ability to search by multiple tags and change the search to be by tag only (not post content)
 - [ ][desktop] extension rework in side nav
 - [ ][desktop] add new items (urls, notes, tagsets)
 - [ ][desktop] sync mirrors back pulled items - "17 pulled, 17 pushed" repeats on every sync

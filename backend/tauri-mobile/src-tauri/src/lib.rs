@@ -164,6 +164,12 @@ struct ProfileConfig {
     profiles: Vec<ProfileEntry>,
     #[serde(default)]
     sync: SyncSettings,
+    #[serde(default = "default_archive_tag")]
+    archive_tag: String,
+}
+
+fn default_archive_tag() -> String {
+    "archive".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -314,6 +320,7 @@ fn migrate_old_profile_config(old_config: OldProfileConfig) -> ProfileConfig {
         current_profile_id,
         profiles: new_profiles,
         sync,
+        archive_tag: default_archive_tag(),
     }
 }
 
@@ -573,6 +580,7 @@ fn create_default_profile_config() -> ProfileConfig {
             },
         ],
         sync: SyncSettings::default(),
+        archive_tag: default_archive_tag(),
     }
 }
 
@@ -2816,6 +2824,21 @@ fn set_auto_sync(enabled: bool) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn get_archive_tag() -> Result<String, String> {
+    Ok(load_profile_config().archive_tag)
+}
+
+#[tauri::command]
+fn set_archive_tag(tag: String) -> Result<(), String> {
+    let mut config = load_profile_config();
+    config.archive_tag = tag;
+    if !save_profile_config(&config) {
+        return Err("Failed to save archive tag".to_string());
+    }
+    Ok(())
+}
+
 /// Check if auto-sync is enabled
 fn is_auto_sync_enabled() -> bool {
     load_profile_config().sync.auto_sync
@@ -3755,6 +3778,8 @@ pub fn run() {
             set_webhook_api_key,
             get_auto_sync,
             set_auto_sync,
+            get_archive_tag,
+            set_archive_tag,
             sync_to_webhook,
             get_last_sync,
             auto_sync_if_needed,

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "dev:ios:sim": "rm -f src-tauri/gen/apple/Externals/arm64/*/libapp.a && cd src-tauri && cargo tauri ios dev --open",
+    "dev:ios:sim": "./dev-ios-sim.sh",
     "build:ios:sim": "npm run build && cd src-tauri && cargo tauri build --target aarch64-apple-ios-sim --debug && mkdir -p gen/apple/Externals/arm64/Debug && cp target/aarch64-apple-ios-sim/debug/deps/libpeek_save_lib.a gen/apple/Externals/arm64/Debug/libapp.a",
     "build:ios:device": "npm run build && cd src-tauri && cargo tauri build --target aarch64-apple-ios && mkdir -p gen/apple/Externals/arm64/Release && cp target/aarch64-apple-ios/release/deps/libpeek_save_lib.a gen/apple/Externals/arm64/Release/libapp.a",
     "preview": "vite preview",

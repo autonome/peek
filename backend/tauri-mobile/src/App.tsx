@@ -450,14 +450,9 @@ function App() {
   // Delete confirmation state
   const [pendingDelete, setPendingDelete] = useState<{ id: string; type: ItemType } | null>(null);
 
-  // View mode state (search/browse)
-  const [viewModeActive, setViewModeActive] = useState(false);
-  const [viewSearchText, setViewSearchText] = useState("");
-  const [viewSelectedTags, setViewSelectedTags] = useState<Set<string>>(new Set());
-
-  // View mode swipe tracking
-  const viewModeStartY = useRef<number | null>(null);
-  const VIEW_SWIPE_THRESHOLD = 100;
+  // Search and tag filter state
+  const [searchText, setSearchText] = useState("");
+  const [selectedFilterTags, setSelectedFilterTags] = useState<Set<string>>(new Set());
 
   // Toast notification state
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
@@ -493,6 +488,8 @@ function App() {
   const [profileInfo, setProfileInfo] = useState<ProfileInfo | null>(null);
   const [profileInput, setProfileInput] = useState("");
   const [showRestartPrompt, setShowRestartPrompt] = useState(false);
+  const [archiveTag, setArchiveTag] = useState("archive");
+  const [archiveTagInput, setArchiveTagInput] = useState("archive");
 
   // Keyboard height for iOS keyboard avoidance
   const keyboardHeight = useKeyboardHeight();
@@ -500,6 +497,16 @@ function App() {
   // Pull-to-refresh state
   const pullStartY = useRef<number | null>(null);
   const PULL_THRESHOLD = 80;
+
+  // DEV: random background tint on every load to verify page refreshed
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      const hue = Math.floor(Math.random() * 360);
+      document.documentElement.style.setProperty('--dev-bg-light', `hsl(${hue}, 15%, 96%)`);
+      document.documentElement.style.setProperty('--dev-bg-dark', `hsl(${hue}, 10%, 12%)`);
+      console.log(`[DEV] Page loaded — bg hue: ${hue}`);
+    }
+  }, []);
 
   // Detect system dark mode via native iOS API
   useEffect(() => {
@@ -566,6 +573,7 @@ function App() {
     loadLastSync();
     loadSyncStatus();
     loadProfileInfo();
+    loadArchiveTag();
     tryAutoSync();
 
     // Reload when app comes back to foreground (to pick up items from share extension)
@@ -637,6 +645,25 @@ function App() {
       setAutoSyncEnabled(enabled);
     } catch (error) {
       console.error("Failed to set auto-sync:", error);
+    }
+  };
+
+  const loadArchiveTag = async () => {
+    try {
+      const tag = await invoke<string>("get_archive_tag");
+      setArchiveTag(tag);
+      setArchiveTagInput(tag);
+    } catch (error) {
+      console.error("Failed to load archive tag:", error);
+    }
+  };
+
+  const saveArchiveTag = async () => {
+    try {
+      await invoke("set_archive_tag", { tag: archiveTagInput });
+      setArchiveTag(archiveTagInput);
+    } catch (error) {
+      console.error("Failed to save archive tag:", error);
     }
   };
 
@@ -1444,129 +1471,33 @@ function App() {
     };
   }, [editingUrlId, editingTextId, editingTagsetId, editingImageId, addInputExpanded, isSyncing]);
 
-  // Reset to show all types (home view) and scroll to top
+  // Reset to show all types, clear search/filters, and scroll to top
   const showAll = () => {
     setActiveFilter("all");
+    setSearchText("");
+    setSelectedFilterTags(new Set());
     scrollToTop();
   };
 
-  // View mode functions
-  const openViewMode = () => {
-    setViewModeActive(true);
-    setViewSearchText("");
-    setViewSelectedTags(new Set());
-  };
-
-  const closeViewMode = () => {
-    setViewModeActive(false);
-    setViewSearchText("");
-    setViewSelectedTags(new Set());
-  };
-
-  const toggleViewTag = (tagName: string) => {
-    const newTags = new Set(viewSelectedTags);
+  // Tag filter functions
+  const toggleFilterTag = (tagName: string) => {
+    const newTags = new Set(selectedFilterTags);
     if (newTags.has(tagName)) {
       newTags.delete(tagName);
     } else {
       newTags.add(tagName);
     }
-    setViewSelectedTags(newTags);
+    setSelectedFilterTags(newTags);
   };
 
-  // View mode swipe handlers
-  const handleViewModeTouchStart = (e: React.TouchEvent) => {
-    viewModeStartY.current = e.touches[0].clientY;
-  };
-
-  const handleViewModeTouchEnd = (e: React.TouchEvent) => {
-    if (viewModeStartY.current === null) return;
-    const deltaY = e.changedTouches[0].clientY - viewModeStartY.current;
-    viewModeStartY.current = null;
-    if (deltaY > VIEW_SWIPE_THRESHOLD) {
-      closeViewMode();
-    }
-  };
-
-  // Filter tags for view mode
-  const getFilteredViewTags = () => {
-    if (!viewSearchText.trim()) return allTags;
-    const search = viewSearchText.toLowerCase();
+  // Filter tags by search text
+  const getFilteredTags = () => {
+    if (!searchText.trim()) return allTags;
+    const search = searchText.toLowerCase();
     return allTags.filter(tag => tag.name.toLowerCase().includes(search));
   };
 
-  // Filter items for view mode
-  const getFilteredViewItems = (): UnifiedItem[] => {
-    const items: UnifiedItem[] = [];
-
-    // Include all item types in view mode
-    savedUrls.forEach((url) => {
-      items.push({
-        id: url.id,
-        type: "page",
-        url: url.url,
-        tags: url.tags,
-        saved_at: url.saved_at,
-        metadata: url.metadata,
-      });
-    });
-
-    savedTexts.forEach((text) => {
-      items.push({
-        id: text.id,
-        type: "text",
-        content: text.content,
-        tags: text.tags,
-        saved_at: text.saved_at,
-        metadata: text.metadata,
-      });
-    });
-
-    savedTagsets.forEach((tagset) => {
-      items.push({
-        id: tagset.id,
-        type: "tagset",
-        tags: tagset.tags,
-        saved_at: tagset.saved_at,
-        metadata: tagset.metadata,
-      });
-    });
-
-    savedImages.forEach((image) => {
-      items.push({
-        id: image.id,
-        type: "image",
-        tags: image.tags,
-        saved_at: image.saved_at,
-        metadata: image.metadata,
-        thumbnail: image.thumbnail,
-        mime_type: image.mime_type,
-        width: image.width,
-        height: image.height,
-      });
-    });
-
-    // Filter by search text and selected tags
-    const searchLower = viewSearchText.toLowerCase();
-    const filtered = items.filter(item => {
-      // Match search text against tags, url, content, or title
-      const matchesSearch = !viewSearchText.trim() ||
-        item.tags.some(t => t.toLowerCase().includes(searchLower)) ||
-        item.url?.toLowerCase().includes(searchLower) ||
-        item.content?.toLowerCase().includes(searchLower) ||
-        item.metadata?.title?.toLowerCase().includes(searchLower);
-
-      // Match selected tags (AND filter - item must have all selected tags)
-      const matchesTags = viewSelectedTags.size === 0 ||
-        Array.from(viewSelectedTags).every(t => item.tags.includes(t));
-
-      return matchesSearch && matchesTags;
-    });
-
-    // Sort by date, newest first
-    return filtered.sort((a, b) => new Date(b.saved_at).getTime() - new Date(a.saved_at).getTime());
-  };
-
-  // Create unified sorted list
+  // Create unified sorted list (filtered by type, search text, and selected tags)
   const getUnifiedItems = (): UnifiedItem[] => {
     const items: UnifiedItem[] = [];
     const showType = (type: ItemType) => activeFilter === "all" || activeFilter === type;
@@ -1625,8 +1556,30 @@ function App() {
       });
     }
 
+    // Filter by search text and selected tags
+    const searchLower = searchText.toLowerCase();
+    const filtered = items.filter(item => {
+      // Match search text against tags, url, content, or title
+      const matchesSearch = !searchText.trim() ||
+        item.tags.some(t => t.toLowerCase().includes(searchLower)) ||
+        item.url?.toLowerCase().includes(searchLower) ||
+        item.content?.toLowerCase().includes(searchLower) ||
+        item.metadata?.title?.toLowerCase().includes(searchLower);
+
+      // Match selected tags (AND filter - item must have all selected tags)
+      const matchesTags = selectedFilterTags.size === 0 ||
+        Array.from(selectedFilterTags).every(t => item.tags.includes(t));
+
+      // Hide archived items unless archive tag is explicitly selected
+      const isArchived = archiveTag && item.tags.includes(archiveTag);
+      const archiveSelected = archiveTag && selectedFilterTags.has(archiveTag);
+      if (isArchived && !archiveSelected) return false;
+
+      return matchesSearch && matchesTags;
+    });
+
     // Sort by date, newest first
-    return items.sort((a, b) => new Date(b.saved_at).getTime() - new Date(a.saved_at).getTime());
+    return filtered.sort((a, b) => new Date(b.saved_at).getTime() - new Date(a.saved_at).getTime());
   };
 
   // Check if any edit mode is active
@@ -2203,70 +2156,6 @@ function App() {
     loadAllTags();
   };
 
-  // Render view mode UI
-  const renderViewMode = () => {
-    const filteredTags = getFilteredViewTags();
-    const filteredItems = getFilteredViewItems();
-
-    return (
-      <div
-        className="view-mode-container"
-        onTouchStart={handleViewModeTouchStart}
-        onTouchEnd={handleViewModeTouchEnd}
-      >
-        {/* Search box - matches quick-add styling */}
-        <div className="view-mode-search">
-          <div className="input-with-clear" style={{ flex: 1 }}>
-            <input
-              type="text"
-              className="view-mode-search-input"
-              placeholder="Search tags or items..."
-              value={viewSearchText}
-              onChange={(e) => setViewSearchText(e.target.value)}
-              autoCapitalize="none"
-              autoCorrect="off"
-            />
-            <ClearButton show={viewSearchText.length > 0} onClear={() => setViewSearchText('')} />
-          </div>
-        </div>
-
-        {/* Tags container - 25% height, scrollable */}
-        <div className="view-mode-tags-container">
-          {filteredTags.length === 0 ? (
-            <div className="view-mode-empty-tags">No matching tags</div>
-          ) : (
-            <div className="view-mode-tags">
-              {filteredTags.map((tag) => (
-                <span
-                  key={tag.name}
-                  className={`tag-chip ${viewSelectedTags.has(tag.name) ? "selected" : ""}`}
-                  onClick={() => toggleViewTag(tag.name)}
-                >
-                  {tag.name}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Results list - fills remaining space */}
-        <div className="view-mode-results">
-          {filteredItems.length === 0 ? (
-            <div className="view-mode-empty-results">
-              {viewSearchText || viewSelectedTags.size > 0
-                ? "No matching items"
-                : "No items saved yet"}
-            </div>
-          ) : (
-            <div className="view-mode-results-list">
-              {filteredItems.map((item) => renderUnifiedItem(item))}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
   if (showSettings) {
     return (
       <div className="app">
@@ -2494,6 +2383,31 @@ function App() {
                 })()}
               </>
             )}
+          </div>
+
+          {/* Display Section */}
+          <div className="settings-section">
+            <h2>Display</h2>
+            <p className="settings-description">
+              Items with this tag are hidden from the main view unless the tag is selected as a filter.
+            </p>
+            <div className="webhook-input">
+              <input
+                type="text"
+                value={archiveTagInput}
+                onChange={(e) => setArchiveTagInput(e.target.value)}
+                placeholder="archive"
+                autoCapitalize="none"
+                autoCorrect="off"
+              />
+            </div>
+            <button
+              onClick={saveArchiveTag}
+              disabled={archiveTagInput === archiveTag}
+              className="save-settings-btn"
+            >
+              Save Archive Tag
+            </button>
           </div>
 
           {/* Debug Section */}
@@ -2733,24 +2647,13 @@ function App() {
       <header>
         <h1
           onClick={() => {
-            if (viewModeActive) closeViewMode();
-            else if (activeFilter !== "all") showAll();
+            if (activeFilter !== "all" || searchText || selectedFilterTags.size > 0) showAll();
             else scrollToTop();
           }}
           style={{ cursor: "pointer" }}
         >
           Peek
         </h1>
-        <button
-          className={`header-btn view-mode-btn ${viewModeActive ? "active" : ""}`}
-          onClick={() => viewModeActive ? closeViewMode() : openViewMode()}
-          title="Search & Browse"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
-        </button>
         <div className="filter-icons">
           <button
             className={`filter-btn ${activeFilter === "page" ? "active" : ""}`}
@@ -2801,7 +2704,7 @@ function App() {
             <span className="filter-count">{savedImages.length}</span>
           </button>
         </div>
-        <button className={`header-btn settings-btn ${isSyncing ? 'syncing' : ''}`} onClick={() => { closeViewMode(); setShowSettings(true); }}>
+        <button className={`header-btn settings-btn ${isSyncing ? 'syncing' : ''}`} onClick={() => setShowSettings(true)}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="3"></circle>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
@@ -2816,23 +2719,36 @@ function App() {
         </div>
       )}
 
-      {viewModeActive ? (
-        renderViewMode()
-      ) : (
       <main
         className="saved-view"
         ref={mainRef}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
-        {/* Quick add - collapsed trigger */}
-        <div className="expandable-card">
-          <div className="expandable-card-input-row">
+        {/* Input row: search + add side by side */}
+        <div className="input-row">
+          <div className="input-row-card">
             <div className="input-with-clear" style={{ flex: 1 }}>
               <input
                 type="text"
-                className="expandable-card-input"
-                placeholder="Add note, URL, or tags..."
+                className="input-row-input"
+                placeholder="Search..."
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                autoCapitalize="none"
+                autoCorrect="off"
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <ClearButton show={searchText.length > 0} onClear={() => { setSearchText(''); setSelectedFilterTags(new Set()); }} />
+            </div>
+          </div>
+          <div className="input-row-card">
+            <div className="input-with-clear" style={{ flex: 1 }}>
+              <input
+                type="text"
+                className="input-row-input"
+                placeholder="Add..."
                 value={addInputText}
                 onChange={(e) => setAddInputText(e.target.value)}
                 onFocus={() => setAddInputExpanded(true)}
@@ -2852,6 +2768,26 @@ function App() {
           </div>
         </div>
 
+        {/* Tag chips - always visible, filterable */}
+        <div className="filter-tags-container">
+          {getFilteredTags().length === 0 ? (
+            <div className="filter-tags-empty">No matching tags</div>
+          ) : (
+            <div className="filter-tags">
+              {getFilteredTags().map((tag) => (
+                <span
+                  key={tag.name}
+                  className={`tag-chip ${selectedFilterTags.has(tag.name) ? "selected" : ""}`}
+                  onClick={() => toggleFilterTag(tag.name)}
+                >
+                  {tag.name}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Item list */}
         <div className="unified-list">
           {totalCount === 0 ? (
             <div className="empty-state">
@@ -2860,15 +2796,14 @@ function App() {
             </div>
           ) : unifiedItems.length === 0 ? (
             <div className="empty-state">
-              <p>No {activeFilter === "page" ? "pages" : activeFilter === "text" ? "notes" : activeFilter === "tagset" ? "tag sets" : "images"} saved yet.</p>
-              <p>Tap Peek to see all items.</p>
+              <p>No matching items.</p>
+              <p>Tap Peek to clear filters.</p>
             </div>
           ) : (
             unifiedItems.map((item) => renderUnifiedItem(item))
           )}
         </div>
       </main>
-      )}
 
       {/* Edit modal overlay */}
       {renderEditModal()}

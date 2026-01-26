@@ -39,7 +39,7 @@ html, body {
   margin: 0;
   padding: 0;
   height: 100vh;
-  background-color: #f6f6f6;
+  background-color: var(--dev-bg-light, #f6f6f6);
 }
 
 #root {
@@ -60,7 +60,7 @@ main.saved-view {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
   padding: 0.75rem;
-  background-color: #f6f6f6;
+  background-color: var(--dev-bg-light, #f6f6f6);
 }
 
 header {
@@ -749,11 +749,11 @@ a.card-title {
 
 body.dark {
   color: #f6f6f6;
-  background-color: #1c1c1e;
+  background-color: var(--dev-bg-dark, #1c1c1e);
 }
 
 body.dark main.saved-view {
-  background-color: #1c1c1e;
+  background-color: var(--dev-bg-dark, #1c1c1e);
 }
 
 body.dark header {
@@ -819,7 +819,7 @@ body.dark .save-button:active {
 }
 
 body.dark main.saved-view {
-  background-color: #1c1c1e;
+  background-color: var(--dev-bg-dark, #1c1c1e);
 }
 
 body.dark .saved-url-item {
@@ -1751,6 +1751,88 @@ body.dark .add-input-save {
 
 body.dark .add-input-save:disabled {
   background: #555;
+}
+
+/* Input Row: search + add side by side */
+.input-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.input-row-card {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  padding-right: 0.25rem;
+}
+
+.input-row-card .input-with-clear {
+  min-width: 0;
+}
+
+.input-row-input {
+  flex: 1;
+  padding: 0.6rem 0.85rem;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-family: inherit;
+  background: transparent;
+  box-sizing: border-box;
+}
+
+.input-row-input:focus {
+  outline: none;
+}
+
+body.dark .input-row-card {
+  background: #2c2c2e;
+}
+
+body.dark .input-row-input {
+  color: #f6f6f6;
+}
+
+/* Filter Tags Container */
+.filter-tags-container {
+  height: 14.3vh;
+  min-height: 71px;
+  max-height: 116px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin-bottom: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  flex-shrink: 0;
+}
+
+.filter-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.filter-tags-empty {
+  color: #999;
+  font-style: italic;
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 0.25rem;
+}
+
+body.dark .filter-tags-container {
+  background: #2c2c2e;
+}
+
+body.dark .filter-tags-empty {
+  color: #666;
 }
 
 /* Unified List */
@@ -2940,159 +3022,7 @@ body.dark .confirm-modal-buttons .delete-btn {
   background: #ff453a;
 }
 
-/* View Mode (Search/Browse) */
-.view-mode-container {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  padding: 0.5rem;
-  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
-}
-
-/* Search box - matches quick-add styling */
-.view-mode-search {
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  margin-bottom: 0.5rem;
-  display: flex;
-  align-items: center;
-  padding-right: 0.5rem;
-  flex-shrink: 0;
-}
-
-.view-mode-search-input {
-  flex: 1;
-  padding: 0.75rem 1rem;
-  border: none;
-  border-radius: 12px;
-  font-size: 16px;
-  font-family: inherit;
-  background: transparent;
-  box-sizing: border-box;
-}
-
-.view-mode-search-input:focus {
-  outline: none;
-}
-
-.view-mode-search-clear {
-  padding: 0.4rem;
-  background: transparent;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  color: #999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.view-mode-search-clear:active {
-  background: #f0f0f0;
-}
-
-/* Tags container - 25% of viewport height */
-.view-mode-tags-container {
-  height: 25vh;
-  min-height: 120px;
-  max-height: 200px;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  margin-bottom: 0.5rem;
-  padding: 0.75rem;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  flex-shrink: 0;
-}
-
-.view-mode-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.view-mode-empty-tags {
-  color: #999;
-  font-style: italic;
-  font-size: 0.9rem;
-  text-align: center;
-  padding: 1rem;
-}
-
-/* Results list - fills remaining space */
-.view-mode-results {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-.view-mode-results-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.view-mode-empty-results {
-  color: #999;
-  font-style: italic;
-  font-size: 0.9rem;
-  text-align: center;
-  padding: 2rem 1rem;
-}
-
-/* View mode button in header */
-.view-mode-btn {
-  color: #888;
-}
-
-.view-mode-btn.active {
-  color: #007aff;
-}
-
-.view-mode-btn svg {
-  transition: color 0.15s;
-}
-
-/* Dark mode for view mode */
-body.dark .view-mode-search {
-  background: #2c2c2e;
-}
-
-body.dark .view-mode-search-input {
-  color: #f6f6f6;
-}
-
-body.dark .view-mode-search-clear {
-  color: #666;
-}
-
-body.dark .view-mode-search-clear:active {
-  background: #3a3a3c;
-}
-
-body.dark .view-mode-tags-container {
-  background: #2c2c2e;
-}
-
-body.dark .view-mode-empty-tags {
-  color: #666;
-}
-
-body.dark .view-mode-empty-results {
-  color: #666;
-}
-
-body.dark .view-mode-btn {
-  color: #666;
-}
-
-body.dark .view-mode-btn.active {
-  color: #0a84ff;
-}
+/* (View mode CSS removed - merged into unified view)
 
 /* Toast notifications */
 .toast {

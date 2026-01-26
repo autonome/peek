@@ -8,11 +8,13 @@ How we work:
 
 ## Design principles
 
-must feel like home
-- trust, comfort, control
-- feeling of magical mind-reading
+core
+- feels like home: trust, comfort, control
+- continuous instances of magical mind-reading
+- sleep at night because no idea or anything you saw is ever lost
+- create, save, classify at the speed of thought
 
-what makes home feeling
+what makes a home
 - everything is right where you need it, b/c you control what is where
 - when you know what is where, you can make things without frustration
 
@@ -35,7 +37,6 @@ Be able to use the app on mobile and desktop with the safety of knowing there's 
 Today
 - [ ][mobile] fix sync re-pushing all items every time - use per-item synced_at instead of global last_sync in get_items_to_push query (desktop fix: jj change ltovmzon, see backend/electron/sync.ts:465)
 - [~][mobile] integrate app versioning changes, local end to end testing, deployment to server/mobile/desktop and test
-- [ ][mobile] merge home and search views, put search/add inputs side by side in top row
 - [ ][mobile] add version headers to mobile sync (DATASTORE_VERSION + PROTOCOL_VERSION) — needs mobile workspace
 - [ ][desktop] add new items (urls, notes, tagsets)
 - [ ][desktop] show titlebar on hover at top edge of window for all pages
@@ -544,41 +545,50 @@ Newly done items go here, grouped under third-level headings by week of year.
 
 ### 2026-W04
 
-- [x][mobile] fix big bottom bar showing again (simplified viewport and safe-area handling)
-- [x][server] Add pre-migration backup to server migration
-- [x][desktop] window titlebar hide/show pref with settings UI
-- [x][desktop] windows movable and resizable by default with window.open API params
-- [x][desktop] persist keyed/url window position+size across app restarts
-- [x][desktop] pin window on top (app and OS level) with commands
-- [x][desktop] configurable escape behavior per-window via window.open API
-- [x][desktop] window animation API (to/from coords, time) + slides impl
-- [x][mobile] iOS profile support with build detection and per-profile databases
-- [x][mobile] UUID-based profile sync across mobile, desktop, and server
-- [x][mobile] iOS share extension fixes + tag input filtering
-- [x][mobile] consolidate editor views with shared components
-- [x][mobile] add clear buttons to all input fields and textareas
-- [x][mobile] fix tags not persisting on text notes
-- [x][mobile] add archive tag support to hide items from views
-- [x][mobile] add font size slider in settings with realtime preview
-- [x][desktop] migrate old addresses to items table, fix CHECK constraint
-- [x][desktop] multi-tag search in tags UI
-- [x][desktop] extension nav styling improvements
-- [x][desktop] Desktop Windows - title bar, persistence, pin controls, animations
-- [x][security] remove production server endpoint from source - require env config
-- [x][workflow] agent workspace isolation - rules to stay in workspace, no parent repo access
-- [x][workflow] fix divergent commits - mmerge uses jj new+restore pattern
-- [x][workflow] Railway deploy scripts - npm/yarn scripts with --service flag
-- [x][desktop] fix groups extension - add visit tracking, filter for URLs only
-- [x][workflow] fix TODO archival - updated agent templates with clearer instructions
-- [x][workflow] clarify ./app rule - now about respecting front-end/back-end architecture boundary
-- [x][desktop] fix sync status in settings UI - use correct field name for display
-- [x][mobile] mobile editing ux - toasts, validation, draft persistence, spacing, bottom bar fix
-- [x][desktop] add tags extension for tag visualization and management
+- [x][mobile] fix share extension creating duplicate items per tag (yvumsuqr)
+- [x][mobile] merge home and search into unified view, configurable archive tag (txzkumku)
+- [x][mobile] fix big bottom bar showing again (tqnmowqm)
+- [x][mobile] iOS profile support with build detection and per-profile databases (ylkwxtut)
+- [x][mobile] UUID-based profile sync across mobile, desktop, and server (mlqntkvw)
+- [x][mobile] iOS share extension fixes + tag input filtering (smuxwlzx)
+- [x][mobile] consolidate editor views with shared components (wvvqrquo)
+- [x][mobile] add clear buttons to all input fields and textareas (vyuwkrpy)
+- [x][mobile] fix tags not persisting on text notes (qowppxlk)
+- [x][mobile] add archive tag support to hide items from views (urmmzrvr)
+- [x][mobile] add font size slider in settings with realtime preview (umqpnqto)
+- [x][mobile] mobile editing ux - toasts, validation, draft persistence, spacing, bottom bar fix (rqwmmpnm)
+- [x][mobile] pull-to-refresh gesture triggers sync (roqqsxyp)
+- [x][desktop] window titlebar hide/show pref with settings UI (wpykxvrl)
+- [x][desktop] windows movable and resizable by default with window.open API params (wpykxvrl)
+- [x][desktop] persist keyed/url window position+size across app restarts (wpykxvrl)
+- [x][desktop] pin window on top (app and OS level) with commands (wpykxvrl)
+- [x][desktop] configurable escape behavior per-window via window.open API (wpykxvrl)
+- [x][desktop] window animation API (to/from coords, time) + slides impl (wpykxvrl)
+- [x][desktop] Desktop Windows - title bar, persistence, pin controls, animations (wpykxvrl)
+- [x][desktop] migrate old addresses to items table, fix CHECK constraint (ltovmzon)
+- [x][desktop] multi-tag search in tags UI (ltovmzon)
+- [x][desktop] extension nav styling improvements (ltovmzon)
+- [x][desktop] fix groups extension - add visit tracking, filter for URLs only (wuywuwyn)
+- [x][desktop] fix sync status in settings UI - use correct field name for display (xxtpswys)
+- [x][desktop] persist autoSync setting in extension_settings (vyvorvtq)
+- [x][desktop+server] add sync version compatibility - DATASTORE_VERSION + PROTOCOL_VERSION (rltmkytv)
 - [x][desktop+server] add user profiles and profile switching
-- [x][server] add daily snapshot backups on server, test locally, deploy, test and confirm working on railway
-- [x] update main README
-- [x][desktop] update release build and drive it
+- [x][desktop] add tags extension for tag visualization and management
+- [x][desktop] click-and-hold window dragging for frameless windows
+- [x][desktop] fix better-sqlite3 node/electron version mismatch with postinstall script
+- [x][desktop] debug and stabilize build on new Electron (stale node_modules after upgrade)
+- [x][desktop] upgrade Electron to 40 + pin Node to 24
+- [x][desktop] e2e sync test infrastructure for production
+- [x][desktop] daily data snapshots saved to compress archives in ~/sync/peek-backups
 - [x][desktop] fix 5GB packaged build by adding exclusions to electron-builder.yml (~280MB now)
+- [x][desktop] update release build and drive it
+- [x][security] remove production server endpoint from source - require env config (rnxppwkx)
+- [x][server] Add pre-migration backup to server migration
+- [x][server] add daily snapshot backups on server, test locally, deploy, test and confirm working on railway
+- [x][server] document Railway deployment info so agents don't have to relearn each time
+- [x][sync] fix duplicates: add sync_id parameter for server-side deduplication
+- [x][sync] investigate remaining sync edge cases
+- [x][sync] E2E integration tests for desktop-server sync
 - [x] data model: multi-user support (server full, desktop profile isolation)
 - [x] desktop sync working (bidirectional in backend/electron/sync.ts)
 - [x] sync config in settings UI
@@ -587,22 +597,16 @@ Newly done items go here, grouped under third-level headings by week of year.
 - [x] peek-node supports text/urls/tagsets/images
 - [x] backup/restore snapshots (daily automated + manual)
 - [x] action history storage (visits table)
+- [x] update main README
 - [x][mobile] shared iOS build cache to avoid Rust rebuilds across agent workspaces
-- [x][desktop] debug and stabilize build on new Electron (stale node_modules after upgrade)
-- [x][desktop] upgrade Electron to 40 + pin Node to 24 (ensure yarn start always runs with correct better-sqlite3)
-- [x][mobile] pull-to-refresh gesture triggers sync
-- [x][desktop] click-and-hold window dragging for frameless windows
-- [x][desktop] fix better-sqlite3 node/electron version mismatch with postinstall script
-- [x][desktop] e2e sync test infrastructure for production
-- [x][desktop] daily data snapshots saved to compress archives in ~/sync/peek-backups
-- [x][workflow] restore git/github push for Railway deploys
-- [x][desktop] fix better-sqlite3 node vs electron version mismatch
-- [x][sync] investigate remaining sync edge cases
-- [x][workflow] fix jj commit/merge strategy - agents no longer touch main bookmark
-- [x][server] document Railway deployment info so agents don't have to relearn each time
-- [x][sync] fix duplicates: add sync_id parameter for server-side deduplication
 - [x][mobile] update to full bidirectional sync (pull + push, not just webhook push)
-- [x][sync] E2E integration tests for desktop-server sync
+- [x][workflow] agent workspace isolation - rules to stay in workspace, no parent repo access
+- [x][workflow] fix divergent commits - mmerge uses jj new+restore pattern
+- [x][workflow] Railway deploy scripts - npm/yarn scripts with --service flag
+- [x][workflow] fix TODO archival - updated agent templates with clearer instructions
+- [x][workflow] clarify ./app rule - now about respecting front-end/back-end architecture boundary (tkvzpvlu)
+- [x][workflow] restore git/github push for Railway deploys
+- [x][workflow] fix jj commit/merge strategy - agents no longer touch main bookmark
 
 ### 2026-W03
 

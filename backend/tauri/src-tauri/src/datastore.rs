@@ -204,7 +204,7 @@ const CREATE_TABLE_STATEMENTS: &str = r#"
 
   CREATE TABLE IF NOT EXISTS items (
     id TEXT PRIMARY KEY,
-    type TEXT NOT NULL CHECK(type IN ('note', 'tagset', 'image')),
+    type TEXT NOT NULL CHECK(type IN ('url', 'text', 'tagset', 'image')),
     content TEXT,
     mimeType TEXT DEFAULT '',
     metadata TEXT DEFAULT '{}',
@@ -214,13 +214,27 @@ const CREATE_TABLE_STATEMENTS: &str = r#"
     updatedAt INTEGER NOT NULL,
     deletedAt INTEGER DEFAULT 0,
     starred INTEGER DEFAULT 0,
-    archived INTEGER DEFAULT 0
+    archived INTEGER DEFAULT 0,
+    syncedAt INTEGER DEFAULT 0,
+    visitCount INTEGER DEFAULT 0,
+    lastVisitAt INTEGER DEFAULT 0
   );
   CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
   CREATE INDEX IF NOT EXISTS idx_items_syncId ON items(syncId);
   CREATE INDEX IF NOT EXISTS idx_items_deletedAt ON items(deletedAt);
   CREATE INDEX IF NOT EXISTS idx_items_createdAt ON items(createdAt DESC);
   CREATE INDEX IF NOT EXISTS idx_items_starred ON items(starred);
+
+  CREATE TABLE IF NOT EXISTS themes (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    description TEXT DEFAULT '',
+    colorScheme TEXT DEFAULT 'dark',
+    cssPath TEXT DEFAULT '',
+    metadata TEXT DEFAULT '{}',
+    createdAt INTEGER,
+    updatedAt INTEGER
+  );
 
   CREATE TABLE IF NOT EXISTS item_tags (
     id TEXT PRIMARY KEY,
@@ -377,6 +391,9 @@ pub struct Item {
     pub deleted_at: i64,
     pub starred: i64,
     pub archived: i64,
+    pub synced_at: i64,
+    pub visit_count: i64,
+    pub last_visit_at: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -474,6 +491,196 @@ pub fn calculate_frecency(frequency: i64, last_used_at: i64) -> i64 {
     (frequency as f64 * 10.0 * decay_factor).round() as i64
 }
 
+// ==================== Version Constants ====================
+
+/// Tracks schema changes in sync-relevant tables (items, tags, item_tags).
+/// Exact match required between client and server, or sync is refused.
+pub const DATASTORE_VERSION: i64 = 1;
+
+/// Tracks wire format changes in JSON payloads and endpoint behavior.
+/// Exact match required between client and server, or sync is refused.
+pub const PROTOCOL_VERSION: i64 = 1;
+
+/// Flag set by version check if datastore version doesn't match
+static SYNC_DISABLED_DUE_TO_VERSION: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Check if sync is disabled due to version mismatch
+pub fn is_sync_disabled_due_to_version() -> bool {
+    SYNC_DISABLED_DUE_TO_VERSION.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+// ==================== Database Migrations ====================
+
+/// Check if a column exists in a table
+fn column_exists(conn: &Connection, table: &str, column: &str) -> bool {
+    let sql = format!("PRAGMA table_info({})", table);
+    let mut stmt = match conn.prepare(&sql) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    let columns: Vec<String> = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .unwrap_or_else(|_| panic!("Failed to query table_info for {}", table))
+        .filter_map(|r| r.ok())
+        .collect();
+    columns.contains(&column.to_string())
+}
+
+/// Migrate items table to add syncedAt column if missing
+fn migrate_item_sync_columns(conn: &Connection) -> Result<()> {
+    if !column_exists(conn, "items", "syncedAt") {
+        println!("[tauri:migration] Adding syncedAt column to items");
+        conn.execute_batch("ALTER TABLE items ADD COLUMN syncedAt INTEGER DEFAULT 0")?;
+    }
+    Ok(())
+}
+
+/// Migrate items table to add visitCount and lastVisitAt columns if missing
+fn migrate_item_visit_columns(conn: &Connection) -> Result<()> {
+    if !column_exists(conn, "items", "visitCount") {
+        println!("[tauri:migration] Adding visitCount column to items");
+        conn.execute_batch("ALTER TABLE items ADD COLUMN visitCount INTEGER DEFAULT 0")?;
+    }
+    if !column_exists(conn, "items", "lastVisitAt") {
+        println!("[tauri:migration] Adding lastVisitAt column to items");
+        conn.execute_batch("ALTER TABLE items ADD COLUMN lastVisitAt INTEGER DEFAULT 0")?;
+    }
+    // Create indexes if they don't exist (safe to run even if already present)
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_items_lastVisitAt ON items(lastVisitAt);
+         CREATE INDEX IF NOT EXISTS idx_items_visitCount ON items(visitCount);"
+    )?;
+    Ok(())
+}
+
+/// Migrate items table CHECK constraint from ('note', 'tagset', 'image') to ('url', 'text', 'tagset', 'image').
+/// Uses the same approach as Electron: detect old constraint, create items_new, copy data, swap tables.
+fn migrate_item_types(conn: &Connection) -> Result<()> {
+    // Check if migration is needed by looking at the table schema
+    let table_sql: String = conn.query_row(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='items'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    // If the constraint already has 'url' and 'text', no migration needed
+    if table_sql.contains("'url'") && table_sql.contains("'text'") {
+        return Ok(());
+    }
+
+    // If the table has 'note' type, we need to migrate
+    if !table_sql.contains("'note'") {
+        // Unknown schema state, skip migration
+        return Ok(());
+    }
+
+    println!("[tauri:migration] Migrating items table types: note -> url/text");
+
+    conn.execute_batch("BEGIN TRANSACTION")?;
+
+    // Create new table with updated CHECK constraint
+    conn.execute_batch(r#"
+        CREATE TABLE items_new (
+            id TEXT PRIMARY KEY,
+            type TEXT NOT NULL CHECK(type IN ('url', 'text', 'tagset', 'image')),
+            content TEXT,
+            mimeType TEXT DEFAULT '',
+            metadata TEXT DEFAULT '{}',
+            syncId TEXT DEFAULT '',
+            syncSource TEXT DEFAULT '',
+            createdAt INTEGER NOT NULL,
+            updatedAt INTEGER NOT NULL,
+            deletedAt INTEGER DEFAULT 0,
+            starred INTEGER DEFAULT 0,
+            archived INTEGER DEFAULT 0,
+            syncedAt INTEGER DEFAULT 0,
+            visitCount INTEGER DEFAULT 0,
+            lastVisitAt INTEGER DEFAULT 0
+        )
+    "#)?;
+
+    // Copy data, converting 'note' type:
+    // If content looks like a URL, use 'url'; otherwise use 'text'
+    conn.execute_batch(r#"
+        INSERT INTO items_new
+        SELECT id,
+               CASE
+                 WHEN type = 'note' AND (content LIKE 'http://%' OR content LIKE 'https://%') THEN 'url'
+                 WHEN type = 'note' THEN 'text'
+                 ELSE type
+               END,
+               content, mimeType, metadata, syncId, syncSource,
+               createdAt, updatedAt, deletedAt, starred, archived,
+               COALESCE(syncedAt, 0),
+               COALESCE(visitCount, 0),
+               COALESCE(lastVisitAt, 0)
+        FROM items
+    "#)?;
+
+    // Swap tables
+    conn.execute_batch(r#"
+        DROP TABLE items;
+        ALTER TABLE items_new RENAME TO items;
+
+        CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
+        CREATE INDEX IF NOT EXISTS idx_items_syncId ON items(syncId);
+        CREATE INDEX IF NOT EXISTS idx_items_deletedAt ON items(deletedAt);
+        CREATE INDEX IF NOT EXISTS idx_items_createdAt ON items(createdAt DESC);
+        CREATE INDEX IF NOT EXISTS idx_items_starred ON items(starred);
+        CREATE INDEX IF NOT EXISTS idx_items_lastVisitAt ON items(lastVisitAt);
+        CREATE INDEX IF NOT EXISTS idx_items_visitCount ON items(visitCount);
+    "#)?;
+
+    conn.execute_batch("COMMIT")?;
+
+    println!("[tauri:migration] Items table type migration complete");
+    Ok(())
+}
+
+/// Check and write datastore version to extension_settings.
+/// If mismatch detected, sets sync_disabled flag.
+fn check_and_write_datastore_version(conn: &Connection) -> Result<()> {
+    let existing: Option<String> = conn
+        .query_row(
+            "SELECT value FROM extension_settings WHERE extensionId = 'system' AND key = 'datastoreVersion'",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
+
+    if let Some(ref version_str) = existing {
+        if let Ok(stored_version) = version_str.trim_matches('"').parse::<i64>() {
+            if stored_version != DATASTORE_VERSION {
+                println!(
+                    "[tauri:version] Datastore version mismatch: stored={}, current={}. Sync disabled.",
+                    stored_version, DATASTORE_VERSION
+                );
+                SYNC_DISABLED_DUE_TO_VERSION
+                    .store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
+    }
+
+    // Write current version
+    let timestamp = now();
+    conn.execute(
+        "INSERT OR REPLACE INTO extension_settings (id, extensionId, key, value, updatedAt) VALUES ('system-datastoreVersion', 'system', 'datastoreVersion', ?1, ?2)",
+        params![DATASTORE_VERSION.to_string(), timestamp],
+    )?;
+
+    Ok(())
+}
+
+/// Run all migrations
+fn run_migrations(conn: &Connection) -> Result<()> {
+    migrate_item_sync_columns(conn)?;
+    migrate_item_visit_columns(conn)?;
+    migrate_item_types(conn)?;
+    check_and_write_datastore_version(conn)?;
+    Ok(())
+}
+
 // ==================== Database Initialization ====================
 
 pub fn init_database(db_path: &Path) -> Result<Connection> {
@@ -484,6 +691,9 @@ pub fn init_database(db_path: &Path) -> Result<Connection> {
 
     // Execute schema
     conn.execute_batch(CREATE_TABLE_STATEMENTS)?;
+
+    // Run migrations for existing databases
+    run_migrations(&conn)?;
 
     println!("[tauri] Database initialized successfully");
     Ok(conn)
@@ -1004,6 +1214,9 @@ pub fn get_table(
         "extensions",
         "extension_settings",
         "migrations",
+        "items",
+        "item_tags",
+        "themes",
     ];
     if !valid_tables.contains(&table_name) {
         return Err(rusqlite::Error::InvalidParameterName(format!(
@@ -1065,6 +1278,9 @@ pub fn get_row(
         "extensions",
         "extension_settings",
         "migrations",
+        "items",
+        "item_tags",
+        "themes",
     ];
     if !valid_tables.contains(&table_name) {
         return Err(rusqlite::Error::InvalidParameterName(format!(
@@ -1128,6 +1344,9 @@ pub fn set_row(
         "extensions",
         "extension_settings",
         "migrations",
+        "items",
+        "item_tags",
+        "themes",
     ];
     if !valid_tables.contains(&table_name) {
         return Err(rusqlite::Error::InvalidParameterName(format!(
@@ -1211,8 +1430,8 @@ pub fn add_item(conn: &Connection, item_type: &str, options: &ItemOptions) -> Re
 
     conn.execute(
         r#"INSERT INTO items
-           (id, type, content, mimeType, metadata, syncId, syncSource, createdAt, updatedAt, deletedAt, starred, archived)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0, ?10, ?11)"#,
+           (id, type, content, mimeType, metadata, syncId, syncSource, createdAt, updatedAt, deletedAt, starred, archived, syncedAt, visitCount, lastVisitAt)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0, ?10, ?11, 0, 0, 0)"#,
         params![
             item_id,
             item_type,
@@ -1233,7 +1452,7 @@ pub fn add_item(conn: &Connection, item_type: &str, options: &ItemOptions) -> Re
 
 pub fn get_item(conn: &Connection, id: &str) -> Result<Option<Item>> {
     let mut stmt = conn.prepare(
-        "SELECT id, type, content, mimeType, metadata, syncId, syncSource, createdAt, updatedAt, deletedAt, starred, archived FROM items WHERE id = ?1 AND deletedAt = 0",
+        "SELECT id, type, content, mimeType, metadata, syncId, syncSource, createdAt, updatedAt, deletedAt, starred, archived, syncedAt, visitCount, lastVisitAt FROM items WHERE id = ?1 AND deletedAt = 0",
     )?;
 
     let mut rows = stmt.query(params![id])?;
@@ -1251,6 +1470,9 @@ pub fn get_item(conn: &Connection, id: &str) -> Result<Option<Item>> {
             deleted_at: row.get(9)?,
             starred: row.get(10)?,
             archived: row.get(11)?,
+            synced_at: row.get(12)?,
+            visit_count: row.get(13)?,
+            last_visit_at: row.get(14)?,
         })),
         None => Ok(None),
     }
@@ -1377,7 +1599,7 @@ pub fn query_items(conn: &Connection, filter: &ItemFilter) -> Result<Vec<Item>> 
         .unwrap_or_default();
 
     let sql = format!(
-        "SELECT id, type, content, mimeType, metadata, syncId, syncSource, createdAt, updatedAt, deletedAt, starred, archived FROM items {} ORDER BY {} {}",
+        "SELECT id, type, content, mimeType, metadata, syncId, syncSource, createdAt, updatedAt, deletedAt, starred, archived, syncedAt, visitCount, lastVisitAt FROM items {} ORDER BY {} {}",
         where_clause, order_by, limit_clause
     );
 
@@ -1397,6 +1619,9 @@ pub fn query_items(conn: &Connection, filter: &ItemFilter) -> Result<Vec<Item>> 
             deleted_at: row.get(9)?,
             starred: row.get(10)?,
             archived: row.get(11)?,
+            synced_at: row.get(12)?,
+            visit_count: row.get(13)?,
+            last_visit_at: row.get(14)?,
         })
     })?;
 
@@ -1489,7 +1714,8 @@ pub fn get_item_tags(conn: &Connection, item_id: &str) -> Result<Vec<Tag>> {
 pub fn get_items_by_tag(conn: &Connection, tag_id: &str) -> Result<Vec<Item>> {
     let mut stmt = conn.prepare(
         r#"SELECT i.id, i.type, i.content, i.mimeType, i.metadata, i.syncId, i.syncSource,
-                  i.createdAt, i.updatedAt, i.deletedAt, i.starred, i.archived
+                  i.createdAt, i.updatedAt, i.deletedAt, i.starred, i.archived,
+                  i.syncedAt, i.visitCount, i.lastVisitAt
            FROM items i
            JOIN item_tags it ON i.id = it.itemId
            WHERE it.tagId = ?1 AND i.deletedAt = 0"#,
@@ -1509,6 +1735,9 @@ pub fn get_items_by_tag(conn: &Connection, tag_id: &str) -> Result<Vec<Item>> {
             deleted_at: row.get(9)?,
             starred: row.get(10)?,
             archived: row.get(11)?,
+            synced_at: row.get(12)?,
+            visit_count: row.get(13)?,
+            last_visit_at: row.get(14)?,
         })
     })?;
 

@@ -269,10 +269,9 @@ function getProfileById(userId, profileId) {
  *
  * @param {string} userId - The user ID
  * @param {string} profileIdentifier - Either a UUID or a slug
- * @param {string|null} fallbackSlug - Optional fallback slug from client
  * @returns {string} The slug to use for folder paths
  */
-function resolveProfileSlug(userId, profileIdentifier, fallbackSlug = null) {
+function resolveProfileSlug(userId, profileIdentifier) {
   // If it looks like a UUID (36 chars with dashes), try to look it up
   const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -283,13 +282,7 @@ function resolveProfileSlug(userId, profileIdentifier, fallbackSlug = null) {
       return profile.slug;
     }
 
-    // UUID not found - use fallback slug if provided
-    if (fallbackSlug) {
-      console.log(`[profiles] UUID ${profileIdentifier} not found, using fallback slug: ${fallbackSlug}`);
-      return fallbackSlug;
-    }
-
-    // No fallback - use UUID as-is (truly new profile)
+    // UUID not found - use as-is (truly new profile)
   }
 
   // Not a UUID or not found - use as-is (backwards compatible)

@@ -52,16 +52,18 @@ All platforms use the same unified types:
 
 ### Server
 
-All endpoints accept an optional `?profile={slug}` parameter (defaults to `default`):
+All endpoints accept a `?profile={uuid}` parameter (defaults to `default`):
 
 ```
-GET  /items?profile=work                    # All items in work profile
-GET  /items/since/:timestamp?profile=work   # Items modified after timestamp
-GET  /items/:id?profile=work               # Single item
-POST /items?profile=work                   # Create item in profile
-PATCH /items/:id/tags?profile=work         # Update tags
-DELETE /items/:id?profile=work             # Delete item
+GET  /items?profile=<uuid>                    # All items in profile
+GET  /items/since/:timestamp?profile=<uuid>   # Items modified after timestamp
+GET  /items/:id?profile=<uuid>               # Single item
+POST /items?profile=<uuid>                   # Create item in profile
+PATCH /items/:id/tags?profile=<uuid>         # Update tags
+DELETE /items/:id?profile=<uuid>             # Delete item
 ```
+
+The `profile` parameter is a server-side profile UUID. The server resolves UUIDs to internal slugs for storage. Slug fallback has been removed — clients must send valid server profile UUIDs.
 
 **Profile Management:**
 ```
@@ -104,9 +106,13 @@ Personal           alice's key    personal
 
 ### Mobile
 
-Settings keys in Tauri:
-- `webhook_url` - Server URL
-- `webhook_api_key` - API key
+Sync configuration is stored in `profiles.json` in the App Group container:
+- `sync.server_url` - Server URL (top-level, used for requests)
+- `sync.api_key` - API key (top-level, used for auth)
+- `profiles[].server_profile_id` - Server profile UUID for each local profile
+- `profiles[].server_url` / `profiles[].api_key` - Per-profile sync config
+
+The mobile sends `?profile=<server_profile_id>` on sync requests. If `server_profile_id` is not set, falls back to the local profile UUID.
 
 ## Known Limitations
 
@@ -132,5 +138,5 @@ Failed push operations are logged but not retried. After sync, `lastSyncTime` ad
 
 - `backend/electron/sync.ts` - Desktop sync implementation
 - `backend/server/db.js` - Server database with sync support
-- `backend/tauri-mobile/src-tauri/src/commands/sync.rs` - Mobile sync
+- `backend/tauri-mobile/src-tauri/src/lib.rs` - Mobile sync (pull/push/sync_all)
 - `notes/sync-edge-cases.md` - Detailed edge case documentation

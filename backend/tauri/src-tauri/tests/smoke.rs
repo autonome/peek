@@ -552,6 +552,227 @@ fn test_extension_error_tracking() {
     println!("✓ Extension error cleared");
 }
 
+/// Test item operations with new columns (syncedAt, visitCount, lastVisitAt)
+#[test]
+fn test_item_new_columns() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.sqlite");
+    let conn = datastore::init_database(&db_path).unwrap();
+
+    // Add a 'url' type item (new type)
+    let options = datastore::ItemOptions {
+        content: Some("https://example.com".to_string()),
+        ..Default::default()
+    };
+    let item_id = datastore::add_item(&conn, "url", &options).expect("Failed to add url item");
+    assert!(item_id.starts_with("item_"));
+    println!("✓ URL item added: {}", item_id);
+
+    // Get the item and check new columns default to 0
+    let item = datastore::get_item(&conn, &item_id).unwrap().unwrap();
+    assert_eq!(item.item_type, "url");
+    assert_eq!(item.synced_at, 0);
+    assert_eq!(item.visit_count, 0);
+    assert_eq!(item.last_visit_at, 0);
+    println!("✓ New columns default to 0");
+
+    // Add a 'text' type item
+    let options2 = datastore::ItemOptions {
+        content: Some("Hello world".to_string()),
+        ..Default::default()
+    };
+    let item_id2 = datastore::add_item(&conn, "text", &options2).expect("Failed to add text item");
+    let item2 = datastore::get_item(&conn, &item_id2).unwrap().unwrap();
+    assert_eq!(item2.item_type, "text");
+    println!("✓ Text item type works");
+
+    // Update syncedAt via raw SQL (as sync module would)
+    let now = datastore::now();
+    conn.execute(
+        "UPDATE items SET syncedAt = ?1, visitCount = 5, lastVisitAt = ?1 WHERE id = ?2",
+        rusqlite::params![now, item_id],
+    ).unwrap();
+
+    let item = datastore::get_item(&conn, &item_id).unwrap().unwrap();
+    assert_eq!(item.synced_at, now);
+    assert_eq!(item.visit_count, 5);
+    assert_eq!(item.last_visit_at, now);
+    println!("✓ New columns updated correctly");
+
+    // Query items and verify new columns
+    let filter = datastore::ItemFilter {
+        item_type: Some("url".to_string()),
+        ..Default::default()
+    };
+    let items = datastore::query_items(&conn, &filter).unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].synced_at, now);
+    assert_eq!(items[0].visit_count, 5);
+    println!("✓ Query items returns new columns");
+}
+
+/// Test item type migration (note -> url/text)
+#[test]
+fn test_item_type_migration() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.sqlite");
+
+    // Phase 1: Create a database with old-style 'note' type
+    {
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.pragma_update(None, "journal_mode", "WAL").unwrap();
+
+        // Create old-style items table with 'note' type
+        conn.execute_batch(r#"
+            CREATE TABLE IF NOT EXISTS items (
+                id TEXT PRIMARY KEY,
+                type TEXT NOT NULL CHECK(type IN ('note', 'tagset', 'image')),
+                content TEXT,
+                mimeType TEXT DEFAULT '',
+                metadata TEXT DEFAULT '{}',
+                syncId TEXT DEFAULT '',
+                syncSource TEXT DEFAULT '',
+                createdAt INTEGER NOT NULL,
+                updatedAt INTEGER NOT NULL,
+                deletedAt INTEGER DEFAULT 0,
+                starred INTEGER DEFAULT 0,
+                archived INTEGER DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS item_tags (
+                id TEXT PRIMARY KEY,
+                itemId TEXT NOT NULL,
+                tagId TEXT NOT NULL,
+                createdAt INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS tags (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                slug TEXT,
+                color TEXT DEFAULT '#999999',
+                parentId TEXT DEFAULT '',
+                description TEXT DEFAULT '',
+                metadata TEXT DEFAULT '{}',
+                createdAt INTEGER,
+                updatedAt INTEGER,
+                frequency INTEGER DEFAULT 0,
+                lastUsedAt INTEGER DEFAULT 0,
+                frecencyScore INTEGER DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS extension_settings (
+                id TEXT PRIMARY KEY,
+                extensionId TEXT NOT NULL,
+                key TEXT NOT NULL,
+                value TEXT,
+                updatedAt INTEGER
+            );
+            CREATE TABLE IF NOT EXISTS migrations (
+                id TEXT PRIMARY KEY,
+                status TEXT DEFAULT 'pending',
+                completedAt INTEGER DEFAULT 0
+            );
+        "#).unwrap();
+
+        // Insert items with 'note' type
+        let now = chrono::Utc::now().timestamp_millis();
+        conn.execute(
+            "INSERT INTO items (id, type, content, createdAt, updatedAt) VALUES ('item1', 'note', 'https://example.com', ?1, ?1)",
+            rusqlite::params![now],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO items (id, type, content, createdAt, updatedAt) VALUES ('item2', 'note', 'Just a text note', ?1, ?1)",
+            rusqlite::params![now],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO items (id, type, content, createdAt, updatedAt) VALUES ('item3', 'tagset', '{}', ?1, ?1)",
+            rusqlite::params![now],
+        ).unwrap();
+
+        println!("✓ Phase 1: Old-style items created");
+    }
+
+    // Phase 2: Open with init_database (should run migrations)
+    {
+        let conn = datastore::init_database(&db_path).unwrap();
+
+        // Check that note types were migrated
+        let item1 = datastore::get_item(&conn, "item1").unwrap().unwrap();
+        assert_eq!(item1.item_type, "url", "URL content should become 'url' type");
+        println!("✓ Phase 2: note with URL content migrated to 'url'");
+
+        let item2 = datastore::get_item(&conn, "item2").unwrap().unwrap();
+        assert_eq!(item2.item_type, "text", "Text content should become 'text' type");
+        println!("✓ Phase 2: note with text content migrated to 'text'");
+
+        let item3 = datastore::get_item(&conn, "item3").unwrap().unwrap();
+        assert_eq!(item3.item_type, "tagset", "tagset type should be preserved");
+        println!("✓ Phase 2: tagset type preserved");
+
+        // New columns should exist with defaults
+        assert_eq!(item1.synced_at, 0);
+        assert_eq!(item1.visit_count, 0);
+        assert_eq!(item1.last_visit_at, 0);
+        println!("✓ Phase 2: New columns have defaults after migration");
+
+        // Verify we can insert new types
+        let opts = datastore::ItemOptions {
+            content: Some("new url".to_string()),
+            ..Default::default()
+        };
+        let new_id = datastore::add_item(&conn, "url", &opts).unwrap();
+        let new_item = datastore::get_item(&conn, &new_id).unwrap().unwrap();
+        assert_eq!(new_item.item_type, "url");
+        println!("✓ Phase 2: Can insert new 'url' type items");
+    }
+
+    println!("✓ Item type migration complete");
+}
+
+/// Test datastore version check
+#[test]
+fn test_datastore_version_check() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.sqlite");
+
+    let conn = datastore::init_database(&db_path).unwrap();
+
+    // Check that version was written
+    let version: String = conn.query_row(
+        "SELECT value FROM extension_settings WHERE extensionId = 'system' AND key = 'datastoreVersion'",
+        [],
+        |row| row.get(0),
+    ).expect("Version should be written to extension_settings");
+
+    assert_eq!(version, datastore::DATASTORE_VERSION.to_string());
+    println!("✓ Datastore version written: {}", version);
+
+    // Verify constants
+    assert_eq!(datastore::DATASTORE_VERSION, 1);
+    assert_eq!(datastore::PROTOCOL_VERSION, 1);
+    println!("✓ Version constants correct");
+}
+
+/// Test items and item_tags in valid_tables
+#[test]
+fn test_items_in_valid_tables() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.sqlite");
+    let conn = datastore::init_database(&db_path).unwrap();
+
+    // get_table should work for items and item_tags
+    let items_table = datastore::get_table(&conn, "items").expect("items should be a valid table");
+    assert_eq!(items_table.len(), 0);
+    println!("✓ 'items' is a valid table for get_table");
+
+    let item_tags_table = datastore::get_table(&conn, "item_tags").expect("item_tags should be a valid table");
+    assert_eq!(item_tags_table.len(), 0);
+    println!("✓ 'item_tags' is a valid table for get_table");
+
+    // themes should be valid too
+    let themes_table = datastore::get_table(&conn, "themes").expect("themes should be a valid table");
+    assert_eq!(themes_table.len(), 0);
+    println!("✓ 'themes' is a valid table for get_table");
+}
+
 /// Main test runner - prints summary
 fn main() {
     println!("\n🧪 Tauri Backend Smoke Tests\n");

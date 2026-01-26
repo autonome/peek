@@ -372,6 +372,59 @@
     getItemsByTag: (tagId) => invoke('datastore_get_items_by_tag', { tagId })
   };
 
+  // ==================== Sync ====================
+
+  api.sync = {
+    getConfig: async () => {
+      try {
+        return await invoke('sync_get_config', {});
+      } catch (e) {
+        console.error('[tauri] sync.getConfig error:', e);
+        return { success: false, error: String(e) };
+      }
+    },
+    setConfig: async (config) => {
+      try {
+        return await invoke('sync_set_config', { config });
+      } catch (e) {
+        console.error('[tauri] sync.setConfig error:', e);
+        return { success: false, error: String(e) };
+      }
+    },
+    pull: async (options) => {
+      try {
+        return await invoke('sync_pull', { options: options || null });
+      } catch (e) {
+        console.error('[tauri] sync.pull error:', e);
+        return { success: false, error: String(e) };
+      }
+    },
+    push: async (options) => {
+      try {
+        return await invoke('sync_push', { options: options || null });
+      } catch (e) {
+        console.error('[tauri] sync.push error:', e);
+        return { success: false, error: String(e) };
+      }
+    },
+    syncAll: async () => {
+      try {
+        return await invoke('sync_full', {});
+      } catch (e) {
+        console.error('[tauri] sync.syncAll error:', e);
+        return { success: false, error: String(e) };
+      }
+    },
+    getStatus: async () => {
+      try {
+        return await invoke('sync_status', {});
+      } catch (e) {
+        console.error('[tauri] sync.getStatus error:', e);
+        return { success: false, error: String(e) };
+      }
+    }
+  };
+
   // ==================== Commands ====================
   // Extensions should wait for cmd:ready before registering commands.
   // The cmd extension is loaded first and publishes cmd:ready when initialized.

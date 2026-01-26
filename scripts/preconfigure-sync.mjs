@@ -81,7 +81,7 @@ app.whenReady().then(async () => {
 
   // Enable sync for this profile
   const activeProfile = profiles.getActiveProfile();
-  profiles.enableSync(activeProfile.id, API_KEY, 'default');
+  profiles.enableSync(activeProfile.id, API_KEY, process.env.SERVER_PROFILE_SLUG || 'default');
 
   // Set server URL globally
   sync.setSyncConfig({

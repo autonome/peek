@@ -469,6 +469,15 @@ Two integer version numbers gate sync compatibility between desktop, server, and
 ### Testing
 
 ```bash
-yarn test:version-compat       # 15 automated tests (HTTP + DB logic)
-yarn test:version-compat:e2e   # Full E2E with optional iOS simulator steps
+yarn test:version-compat          # 15 automated tests (HTTP + DB logic)
+yarn test:version-compat:e2e      # Full E2E with optional iOS simulator steps
+yarn test:e2e:version             # E2E sync + version test suite (all phases)
+yarn test:e2e:version:phase 2,3   # Run specific phases only
+yarn test:e2e:server start        # Start/stop/status e2e test server helper
 ```
+
+The `test:e2e:version` suite tests:
+- **Phase 2**: Desktop multi-account/multi-profile sync (automated)
+- **Phase 3**: 9 version permutation tests — GET + POST for each (automated)
+- **Phase 4**: Mobile sync via iOS simulator (semi-automated)
+- **Phase 5**: Mobile version mismatch error (semi-automated)

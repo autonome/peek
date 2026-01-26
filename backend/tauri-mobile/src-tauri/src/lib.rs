@@ -10,6 +10,13 @@ use reqwest;
 use regex::Regex;
 use tauri::Manager;
 
+// Sync version constants — must match backend/version.ts and backend/server/version.js
+// Bump DATASTORE_VERSION when schema changes break sync.
+// Bump PROTOCOL_VERSION when request/response shape changes.
+// Exact match required — server returns 409 on mismatch.
+const DATASTORE_VERSION: u32 = 1;
+const PROTOCOL_VERSION: u32 = 1;
+
 // Legacy model for backward compatibility (webhook, etc.)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SavedUrl {
@@ -180,6 +187,10 @@ struct ProfileEntry {
     created_at: String,
     #[serde(rename = "lastUsedAt")]
     last_used_at: String,
+    /// Server profile UUID — maps this local profile to a server-side profile for sync.
+    /// When set, sync requests send this ID instead of the local profile ID.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    server_profile_id: Option<String>,
 }
 
 /// Cached profile config to avoid repeated file reads
@@ -301,6 +312,7 @@ fn migrate_old_profile_config(old_config: OldProfileConfig) -> ProfileConfig {
             name: old_profile.name.clone(),
             created_at: now.clone(),
             last_used_at: now.clone(),
+            server_profile_id: None,
         });
     }
 
@@ -571,12 +583,14 @@ fn create_default_profile_config() -> ProfileConfig {
                 name: "Default".to_string(),
                 created_at: now.clone(),
                 last_used_at: now.clone(),
+                server_profile_id: None,
             },
             ProfileEntry {
                 id: dev_id,
                 name: "Development".to_string(),
                 created_at: now.clone(),
                 last_used_at: now,
+                server_profile_id: None,
             },
         ],
         sync: SyncSettings::default(),
@@ -615,42 +629,21 @@ fn save_profile_config(config: &ProfileConfig) -> bool {
     }
 }
 
-/// Get the current profile ID (from profiles.json)
-fn get_current_profile_id() -> Result<String, String> {
-    Ok(load_profile_config().current_profile_id)
-}
-
-/// Get the current profile's name
-fn get_current_profile_name() -> Result<String, String> {
-    let config = load_profile_config();
-    config.profiles
-        .iter()
-        .find(|p| p.id == config.current_profile_id)
-        .map(|p| p.name.clone())
-        .ok_or_else(|| "Current profile not found".to_string())
-}
-
-/// Derive a slug from a profile name
-/// "Default" → "default", "Development" → "dev", etc.
-fn name_to_slug(name: &str) -> String {
-    match name {
-        "Default" => "default".to_string(),
-        "Development" => "dev".to_string(),
-        _ => name.to_lowercase().replace(' ', "-"),
-    }
-}
-
 /// Append profile parameter to a URL
-/// Includes both profile UUID and slug fallback for migration compatibility
+/// Sends the server profile UUID if configured, otherwise falls back to local profile UUID
 fn append_profile_to_url(url: &str) -> Result<String, String> {
-    // Use profile UUID for sync URLs - immutable even if profile is renamed
-    let profile_id = get_current_profile_id()?;
-    let profile_name = get_current_profile_name().unwrap_or_else(|_| "default".to_string());
-    let slug = name_to_slug(&profile_name);
+    let config = load_profile_config();
+    let current_profile = config.profiles
+        .iter()
+        .find(|p| p.id == config.current_profile_id);
+
+    // Use server_profile_id if set, otherwise fall back to local profile ID
+    let profile_id = current_profile
+        .and_then(|p| p.server_profile_id.clone())
+        .unwrap_or_else(|| config.current_profile_id.clone());
 
     let separator = if url.contains('?') { "&" } else { "?" };
-    // Include both profile UUID and slug fallback for backwards compatibility
-    Ok(format!("{}{}profile={}&slug={}", url, separator, profile_id, slug))
+    Ok(format!("{}{}profile={}", url, separator, profile_id))
 }
 
 fn get_db_path() -> Option<PathBuf> {
@@ -3044,6 +3037,7 @@ fn create_profile(name: String) -> Result<ProfileInfo, String> {
         name: name.clone(),
         created_at: now.clone(),
         last_used_at: now,
+        server_profile_id: None,
     });
 
     if !save_profile_config(&config) {
@@ -3207,46 +3201,60 @@ fn parse_iso_datetime(iso: &str) -> Option<chrono::DateTime<Utc>> {
         .map(|dt| dt.with_timezone(&Utc))
 }
 
-/// Get items that need to be pushed (never synced or modified since last sync)
-fn get_items_to_push(conn: &Connection, last_sync: Option<&str>) -> Result<Vec<(String, String, Option<String>, Option<String>, String, String)>, String> {
-    // Returns: (id, type, url, content, metadata, updated_at)
-    if let Some(sync_time) = last_sync {
-        // Items never synced OR modified after last sync
-        let mut stmt = conn
-            .prepare(
-                "SELECT id, type, url, content, COALESCE(metadata, ''), updated_at FROM items
-                 WHERE deleted_at IS NULL AND (sync_source = '' OR sync_source IS NULL OR updated_at > ?)"
-            )
-            .map_err(|e| format!("Failed to prepare query: {}", e))?;
-
-        let items: Vec<(String, String, Option<String>, Option<String>, String, String)> = stmt
-            .query_map(params![sync_time], |row| {
-                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?))
-            })
-            .map_err(|e| format!("Failed to query items: {}", e))?
-            .filter_map(|r| r.ok())
-            .collect();
-
-        Ok(items)
-    } else {
-        // All items that haven't been synced
-        let mut stmt = conn
-            .prepare(
-                "SELECT id, type, url, content, COALESCE(metadata, ''), updated_at FROM items
-                 WHERE deleted_at IS NULL AND (sync_source = '' OR sync_source IS NULL)"
-            )
-            .map_err(|e| format!("Failed to prepare query: {}", e))?;
-
-        let items: Vec<(String, String, Option<String>, Option<String>, String, String)> = stmt
-            .query_map([], |row| {
-                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?))
-            })
-            .map_err(|e| format!("Failed to query items: {}", e))?
-            .filter_map(|r| r.ok())
-            .collect();
-
-        Ok(items)
+/// Check server version headers in a response.
+/// If the server includes version headers that don't match ours, return an error.
+/// If the server includes no version headers (legacy), skip the check.
+fn check_response_version_headers(headers: &reqwest::header::HeaderMap) -> Result<(), String> {
+    if let Some(ds) = headers.get("X-Peek-Datastore-Version") {
+        if let Ok(ds_str) = ds.to_str() {
+            if let Ok(ds_num) = ds_str.parse::<u32>() {
+                if ds_num != DATASTORE_VERSION {
+                    return Err(format!(
+                        "Datastore version mismatch: server={}, client={}. Please update the app.",
+                        ds_num, DATASTORE_VERSION
+                    ));
+                }
+            }
+        }
     }
+    if let Some(proto) = headers.get("X-Peek-Protocol-Version") {
+        if let Ok(proto_str) = proto.to_str() {
+            if let Ok(proto_num) = proto_str.parse::<u32>() {
+                if proto_num != PROTOCOL_VERSION {
+                    return Err(format!(
+                        "Protocol version mismatch: server={}, client={}. Please update the app.",
+                        proto_num, PROTOCOL_VERSION
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Get items that need to be pushed (never synced or locally modified after their last sync)
+fn get_items_to_push(conn: &Connection) -> Result<Vec<(String, String, Option<String>, Option<String>, String, String)>, String> {
+    // Returns: (id, type, url, content, metadata, updated_at)
+    // Push items that:
+    // 1. Have never been synced (sync_source = '' or NULL), OR
+    // 2. Have been locally modified after their last sync (updated_at > synced_at)
+    // This prevents re-pushing items that were just pulled from the server
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, type, url, content, COALESCE(metadata, ''), updated_at FROM items
+             WHERE deleted_at IS NULL AND (sync_source = '' OR sync_source IS NULL OR (synced_at IS NOT NULL AND updated_at > synced_at))"
+        )
+        .map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+    let items: Vec<(String, String, Option<String>, Option<String>, String, String)> = stmt
+        .query_map([], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?))
+        })
+        .map_err(|e| format!("Failed to query items: {}", e))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(items)
 }
 
 /// Get tags for an item
@@ -3320,8 +3328,8 @@ fn merge_server_item(conn: &Connection, server_item: &ServerItem) -> Result<&'st
                 };
 
                 conn.execute(
-                    "UPDATE items SET type = ?, url = ?, content = ?, metadata = ?, updated_at = ? WHERE id = ?",
-                    params![item_type, url_val, content_val, &metadata_json, &server_item.updated_at, &local_id],
+                    "UPDATE items SET type = ?, url = ?, content = ?, metadata = ?, updated_at = ?, synced_at = ? WHERE id = ?",
+                    params![item_type, url_val, content_val, &metadata_json, &server_item.updated_at, &now, &local_id],
                 )
                 .map_err(|e| format!("Failed to update item: {}", e))?;
 
@@ -3480,7 +3488,10 @@ async fn pull_from_server() -> Result<BidirectionalSyncResult, String> {
 
     // Fetch items from server
     let client = reqwest::Client::new();
-    let mut request = client.get(&items_url);
+    let mut request = client.get(&items_url)
+        .header("X-Peek-Datastore-Version", DATASTORE_VERSION.to_string())
+        .header("X-Peek-Protocol-Version", PROTOCOL_VERSION.to_string())
+        .header("X-Peek-Client", "mobile");
 
     if let Some(key) = &api_key {
         if !key.is_empty() {
@@ -3493,11 +3504,19 @@ async fn pull_from_server() -> Result<BidirectionalSyncResult, String> {
         .await
         .map_err(|e| format!("Failed to fetch from server: {}", e))?;
 
+    if response.status().as_u16() == 409 {
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("Version mismatch — please update the app. {}", body));
+    }
+
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
         return Err(format!("Server returned error {}: {}", status, body));
     }
+
+    // Check server version headers in response (defensive, server already 409s on mismatch)
+    check_response_version_headers(response.headers())?;
 
     let server_response: ServerItemsResponse = response
         .json()
@@ -3549,18 +3568,10 @@ async fn push_to_server() -> Result<BidirectionalSyncResult, String> {
         Some(config.sync.api_key.clone())
     };
 
-    // Get last sync time from database (per-profile data)
     let conn = get_connection()?;
-    let last_sync: Option<String> = conn
-        .query_row(
-            "SELECT value FROM settings WHERE key = 'last_sync'",
-            [],
-            |row| row.get(0),
-        )
-        .ok();
 
-    // Get items to push
-    let items = get_items_to_push(&conn, last_sync.as_deref())?;
+    // Get items to push (uses per-item synced_at, not global last_sync)
+    let items = get_items_to_push(&conn)?;
     println!("[Rust] Found {} items to push", items.len());
 
     if items.is_empty() {
@@ -3608,7 +3619,10 @@ async fn push_to_server() -> Result<BidirectionalSyncResult, String> {
             "sync_id": item_id,  // Send local id as sync_id for deduplication
         });
 
-        let mut request = client.post(&post_url).json(&body);
+        let mut request = client.post(&post_url).json(&body)
+            .header("X-Peek-Datastore-Version", DATASTORE_VERSION.to_string())
+            .header("X-Peek-Protocol-Version", PROTOCOL_VERSION.to_string())
+            .header("X-Peek-Client", "mobile");
 
         if let Some(key) = &api_key {
             if !key.is_empty() {
@@ -3618,6 +3632,10 @@ async fn push_to_server() -> Result<BidirectionalSyncResult, String> {
 
         match request.send().await {
             Ok(response) => {
+                if response.status().as_u16() == 409 {
+                    let body_text = response.text().await.unwrap_or_default();
+                    return Err(format!("Version mismatch — please update the app. {}", body_text));
+                }
                 if response.status().is_success() {
                     // Parse response to get server ID
                     if let Ok(create_response) = response.json::<ServerCreateResponse>().await {
@@ -3718,22 +3736,13 @@ fn get_sync_status() -> Result<SyncStatus, String> {
         )
         .ok();
 
-    // Count pending items (never synced or modified since last sync)
-    let pending_count: usize = if let Some(ref sync_time) = last_sync_time {
-        conn.query_row(
-            "SELECT COUNT(*) FROM items WHERE deleted_at IS NULL AND (sync_source = '' OR sync_source IS NULL OR updated_at > ?)",
-            params![sync_time],
-            |row| row.get::<_, i64>(0),
-        )
-        .unwrap_or(0) as usize
-    } else {
-        conn.query_row(
-            "SELECT COUNT(*) FROM items WHERE deleted_at IS NULL AND (sync_source = '' OR sync_source IS NULL)",
-            [],
-            |row| row.get::<_, i64>(0),
-        )
-        .unwrap_or(0) as usize
-    };
+    // Count pending items (never synced or locally modified after their last sync)
+    let pending_count: usize = conn.query_row(
+        "SELECT COUNT(*) FROM items WHERE deleted_at IS NULL AND (sync_source = '' OR sync_source IS NULL OR (synced_at IS NOT NULL AND updated_at > synced_at))",
+        [],
+        |row| row.get::<_, i64>(0),
+    )
+    .unwrap_or(0) as usize;
 
     Ok(SyncStatus {
         configured,

@@ -8,6 +8,7 @@ mod datastore;
 mod extensions;
 mod protocol;
 mod state;
+mod sync;
 mod theme;
 
 use state::AppState;
@@ -443,6 +444,13 @@ pub fn run() {
             commands::theme::theme_set_theme,
             commands::theme::theme_set_color_scheme,
             commands::theme::theme_list,
+            // Sync
+            commands::sync::sync_get_config,
+            commands::sync::sync_set_config,
+            commands::sync::sync_pull,
+            commands::sync::sync_push,
+            commands::sync::sync_full,
+            commands::sync::sync_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -5,7 +5,7 @@ use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 /// Window information stored in registry
 #[derive(Debug, Clone)]
@@ -47,8 +47,8 @@ pub struct RegisteredShortcut {
 
 /// Application state shared across all commands
 pub struct AppState {
-    /// SQLite database connection (mutex for thread safety)
-    pub db: Mutex<Connection>,
+    /// SQLite database connection (mutex for thread safety, Arc for sharing across async boundaries)
+    pub db: Arc<Mutex<Connection>>,
 
     /// Current profile name (dev, default, etc.)
     pub profile: String,
@@ -75,7 +75,7 @@ pub struct AppState {
 impl AppState {
     pub fn new(db: Connection, profile: String, profile_dir: PathBuf, headless: bool) -> Self {
         Self {
-            db: Mutex::new(db),
+            db: Arc::new(Mutex::new(db)),
             profile,
             profile_dir,
             windows: Mutex::new(HashMap::new()),
@@ -84,6 +84,11 @@ impl AppState {
             extensions: Mutex::new(HashMap::new()),
             shortcuts: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Get a clone of the Arc<Mutex<Connection>> for use in async contexts
+    pub fn db_arc(&self) -> Arc<Mutex<Connection>> {
+        Arc::clone(&self.db)
     }
 
     /// Register a shortcut mapping

@@ -6,6 +6,12 @@ How we work:
 - Checkbox states: `- [ ]` pending, `- [~]` in-progress, `- [x]` done
 - We move completed items into the Done section at the bottom, grouped by week of year the items were completed
 
+## Design principles
+
+- files > arcane/opaque boxes/formats
+- metadata can be weird non-file, as long as consistent
+- external systems require consent to touch my stuff (eg http caching rules)
+
 ## Prioritization
 
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
@@ -14,48 +20,103 @@ Today
 - [ ][mobile] text editor is too small and the resize work we did isn't working
 - [ ][desktop] add new items (urls, notes, tagsets)
 - [ ][desktop] sync mirrors back pulled items - "17 pulled, 17 pushed" repeats on every sync
-- [ ][images] media storage for images
-- [ ][images] complete image sharing/tag-editing/viewing support
-- [ ][profiles] Test profile data isolation between desktop profiles
-- [ ][sync] Test mobile-desktop sync with different profiles
+- [ ][desktop] show titlebar on hover at top edge
+- [ ] do the "Profiles Server Safety Improvements" section
 
-Later
-- [ ][desktop] access to notes on filesystem, syncing them as markdown files in ~/sync/Notes/peek
+## unfiled
 
-Needs triage
-- [ ] import signal note-to-self archive into peek notes
+context
 - [ ] implement old context plan eg https://www.reddit.com/r/hackernews/comments/1qddidm/sun_position_calculator/
-- [ ] step counter: app level interaction tracing/counting. when is reset? when does action end and new one start?
-- [ ] tabstats for peek
-- [ ] peeks/slides as tagged addresses with metadata properties?
-- [ ] edgeworkernode/server vs what we got now (both?)
+
+server
+- [ ] edgeworkernode/server vs what we got now? both? lite-version, or this it?
+
+peeks on links
 - [ ] click modifier to one-off peek a link
+- [ ] anchored to cursor w/in window bounds
+- [ ] as an extension? hotkey + page viewer
+
+once we have cardinal ui
 - [ ] option to flash keyboard shortcuts on screen
 - [ ] pop up a board of built-in shortcuts/actions
 - [ ] pop up a board of common shortcuts/actions you use
 
-App dev
-- [ ] shared libs, eg utils
-- [ ] language: call them feature or apps? other? extensions? mods?
+## Accounts/profiles/sync safety/fidelity
 
-Navigation
-- [ ] make izui stack manager (part of window mgr?)
-- [ ] esc stack: from feature settings back to core settings
-- [ ] add to izui stack (and ix w/ history?)
-- [ ] interactions between peek:// and other
+api key (accounts)
+- [ ] how initiated operator only for now is fine
+- [ ] 
 
-## Profiles
+syncing history
+- [ ] "don't sync peek addresses" might be enough?
+- [ ] how to sync/merge frencency and adaptive matching?
 
-**Status**: ✅ Complete across Desktop, Server, and Mobile. See `docs/profiles.md`, `docs/mobile.md`
-
-### Server Safety Improvements
+server
 - [ ] Add migration dry-run mode
 - [ ] Add database integrity verification
 - [ ] Add automatic backup cleanup after grace period
 
-## Desktop windows
+desktop
+- [ ] Test profile data isolation between desktop profiles
 
-- [ ] show titlebar on hover at top edge
+end to end
+- [ ] Test mobile-desktop sync with different profiles
+
+
+## Addessibility / Core history / feeds
+
+For record/replay, daily ribbon, state feedback loops and observability, etc
+All of those require addressibility of all primary actions.
+Includes any peek:// invocation.
+May require the connector/parameter context for each invocation, tbd.
+Requires explicit chaining.
+
+History
+- [ ] add peek:// loads to history record
+
+Chain
+- [ ] next/prev cols or separate table?
+- [ ] each time a history record is added, set prevId
+- [ ] each time a history record is added, set nextId to its prevId
+
+Integration
+- [ ] add to all window/frame/webview loads of any kind
+
+API
+- [ ] enumerate history
+- [ ] filter on date ranges
+
+Migration
+
+Review against impl
+- [ ] step counter: app level interaction tracing/counting. when is reset? when does action end and new one start?
+- [ ] peeks/slides as tagged addresses with metadata properties? or urls?
+
+## Metadata, QS and reflection
+
+- [ ] tabstats for peek
+
+## Files-ness
+
+- [ ] access to notes folder(s) on filesystem to import+sync
+- [ ] syncing peek-only ontes as markdown files in specified dir (or library, boo)
+- [ ] import signal note-to-self archive into peek notes
+
+## Extension dev
+- [ ] shared libs, eg utils
+- [ ] language: call them feature or apps? other? extensions? mods?
+
+## Izui
+
+- [ ] formalize model
+- [ ] make izui stack manager (part of window mgr?)
+- [ ] esc stack: from feature settings back to core settings
+- [ ] add to izui stack (and ix w/ history?)
+- [ ] interactions/sec-policy between peek:// and other
+
+## Polish
+
+- [ ] if no api key set, sync settings are disabled, and pull-to-sync on mobile
 
 ## UI Componentry
 
@@ -63,33 +124,62 @@ Right now we're replicating/forking html and js across extensions.
 This is messy, error prone, poor DRY practice.
 It also makes it so we can't generatively and rapidly build out UIs without whole new piles of html/js/css.
 We want a flexible and reusable system provided at the ./app layer which extensions can include and inject data/styling into.
-Ideally this is some loosely coupled system with deterministic management.
+this is a loosely coupled system with deterministic management.
 Not just importing and writing js components w/ css, React-style.
 This is more like a templating system injecting schema, a card (html fragment?), and data.
+It's designed for single-component scoping, not complex document management. You'd insert these as smaller pieces into a larger system like React, etc.
+Once we add atproto support, this same system could be used to bind lexicons + data for generated viewing/CRUD interfaces.
 
 reactive schema+card+data system
-- [ ] cards + json schema + data?
-- [ ] ui rendering primitives: card, cards, button, button set, list, grid, chat, carousel, image viewer
+- [ ] cards + json schema + data
+- [ ] no hierarchy, just single component to start, renders to markup
+- [ ] instantiatable with data
+- [ ] receive updates to refresh
+
+integration
+- [ ] determine how extensions will import from core
+- [ ] determine how consumers will apply styles
+- [ ] explore node reuse/recycle approaches
+
+ui
+- [ ] button
+- [ ] button set (eg for tag boards/sets)
+- [ ] card
+- [ ] list
+- [ ] grid
+- [ ] vertical carousel of cards (like a chat view w/ interactable focus card)
+- [ ] horizontal carousel of cards (eg for command chaining, day ribbons)
+- [ ] image viewer
+- [ ] command input
+- [ ] command suggestion
+- [ ] command preview pane
+- [ ] search/filters on enumerable items (list, grid)
+- [ ] editor
+
+initial porting
+- [ ] groups -> card/cards
+- [ ] tags -> card/cards
+- [ ] tag sets -> button set
+- [ ] cmd -> command input/suggestions
+- [ ] cmd chaining -> horizontal carousel, list
 
 popup carousel system
-- [ ] see ~/sync/Sites/base/hud.html/css/js for basic ui system
 - [ ] horizontal and vertical carousel components
+- [ ] see ~/sync/Sites/base/hud.html/css/js for basic ui system
 - [ ] active item focused in popup
 - [ ] arrow controls and vim directionals
 - [ ] port cmd chaining to horizontal carousel popups
 - [ ] port cmd previews to vertical carousel popups
 
-window templates
-- [ ] eg page info hud overlay
-- [ ] explode: windows using groups ui with transparent background and vi directionals, enter opens
-- [ ] tile/untile, eg the Explode extension
-
-button groups
-- [ ] add/remove/both modes
-- [ ] on/off mode
+button sets
+- [ ] set of buttons
+- [ ] up/depressed states
+- [ ] x endcap option
 
 tags
+- [ ] all built on buttons and button sets
 - [ ] tag input field
+- [ ] combo of selected tags, input w/ filtering search, available tags
 
 ## Modes/scopes
 
@@ -104,6 +194,13 @@ notes
 - [ ] How does cmd indicate scope/target?
    - [ ] eg "Target: [window title]" header when window-scoped command is selected?
 
+
+## window templates
+
+- [ ] declarative sets of ui components?
+- [ ] eg page info hud overlay
+- [ ] explode: windows using groups ui with transparent background and vi directionals, enter opens
+- [ ] tile/untile, eg the Explode extension
 
 ## Web page experience
 
@@ -237,7 +334,17 @@ examples
 - [ ] links on page -> list -> button cloud -> kb activate (then shorten to "link cloud" cmd)
 - [ ] compound cmds (like "link cloud". uses chaining? like a chain package?)
 
-## Favicon/screenshot cache
+## Media: images/videos, favicon/screenshot cache
+
+Media storage architecture
+- [ ] review use-cases for images/videos/favicons/screenshot
+- [ ] files or other, hybrid?
+- [ ] addressing scheme
+- [ ] platform-specific integrations (eg mobile)
+
+Image saving
+- [ ] media storage for images
+- [ ][mobile] complete image sharing/tag-editing/viewing support
 
 - [ ] store screenshots and favicons for any page loaded through window system
 - [ ] save on disk in profile

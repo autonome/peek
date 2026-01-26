@@ -33,10 +33,8 @@ the rules
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
-- [ ][mobile] text editor is too small and the resize work we did isn't working
 - [ ][desktop] add new items (urls, notes, tagsets)
-- [ ][desktop] sync mirrors back pulled items - "17 pulled, 17 pushed" repeats on every sync
-- [ ][desktop] show titlebar on hover at top edge
+- [ ][desktop] show titlebar on hover at top edge of window for all pages
 - [ ][all] app versioning, see below
 
 ## unfiled
@@ -542,6 +540,8 @@ Newly done items go here, grouped under third-level headings by week of year.
 
 ### 2026-W04
 
+- [x][mobile] fix text editor too small / resize not working
+- [x][desktop] fix sync mirroring back pulled items on every sync
 - [x][mobile] fix big bottom bar showing again (simplified viewport and safe-area handling)
 - [x][server] Add pre-migration backup to server migration
 - [x][desktop] window titlebar hide/show pref with settings UI

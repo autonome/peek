@@ -2,6 +2,7 @@ const Database = require("better-sqlite3");
 const path = require("path");
 const crypto = require("crypto");
 const fs = require("fs");
+const { DATASTORE_VERSION } = require("./version");
 
 const DATA_DIR = process.env.DATA_DIR || "./data";
 
@@ -107,6 +108,12 @@ function initializeSchema(db) {
       value TEXT NOT NULL
     );
   `);
+
+  // Write datastore version after all migrations
+  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(
+    "datastore_version",
+    String(DATASTORE_VERSION)
+  );
 
   // Enable foreign keys
   db.pragma("foreign_keys = ON");

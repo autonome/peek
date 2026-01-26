@@ -28,6 +28,7 @@ import {
   tagItem,
 } from './datastore.js';
 import { DEBUG } from './config.js';
+import { DATASTORE_VERSION, PROTOCOL_VERSION } from '../version.js';
 import {
   getActiveProfile,
   getSyncConfig as getProfileSyncConfig,
@@ -54,7 +55,7 @@ export function getSyncConfig(): SyncConfig {
         serverUrl: getServerUrl(),
         apiKey: '',
         lastSyncTime: 0,
-        autoSync: false,
+        autoSync: getAutoSync(),
       };
     }
 
@@ -63,7 +64,7 @@ export function getSyncConfig(): SyncConfig {
       serverUrl: getServerUrl(),
       apiKey: profileSyncConfig.apiKey,
       lastSyncTime: activeProfile.lastSyncAt || 0,
-      autoSync: false, // TODO: Add autoSync to profile schema
+      autoSync: getAutoSync(),
     };
   } catch (error) {
     DEBUG && console.error('[sync] Failed to get sync config:', error);
@@ -123,6 +124,46 @@ function setServerUrl(url: string): void {
 }
 
 /**
+ * Get autoSync setting from extension_settings
+ */
+function getAutoSync(): boolean {
+  const db = getDb();
+
+  try {
+    const row = db.prepare(`
+      SELECT value FROM extension_settings
+      WHERE extensionId = 'sync' AND key = 'autoSync'
+    `).get() as { value: string } | undefined;
+
+    if (row && row.value) {
+      try {
+        return JSON.parse(row.value) === true;
+      } catch {
+        return false;
+      }
+    }
+  } catch (error) {
+    // If query fails, return default
+  }
+
+  return false;
+}
+
+/**
+ * Save autoSync setting
+ */
+function setAutoSync(enabled: boolean): void {
+  const db = getDb();
+
+  const jsonValue = JSON.stringify(enabled);
+
+  db.prepare(`
+    INSERT OR REPLACE INTO extension_settings (id, extensionId, key, value, updatedAt)
+    VALUES (?, 'sync', 'autoSync', ?, ?)
+  `).run(`sync-autoSync`, jsonValue, Date.now());
+}
+
+/**
  * Save sync configuration to active profile
  * Note: This is a compatibility wrapper for the Sync UI.
  * Saves serverUrl (global), apiKey, and serverProfileSlug (per-profile).
@@ -153,6 +194,12 @@ export function setSyncConfig(config: Partial<SyncConfig>): void {
     if (config.lastSyncTime !== undefined) {
       updateLastSyncTime(activeProfile.id, config.lastSyncTime);
     }
+
+    // Update autoSync if provided
+    if (config.autoSync !== undefined) {
+      setAutoSync(config.autoSync);
+      DEBUG && console.log(`[sync] Updated autoSync: ${config.autoSync}`);
+    }
   } catch (error) {
     DEBUG && console.error('[sync] Failed to set sync config:', error);
   }
@@ -182,7 +229,8 @@ interface FetchOptions {
 }
 
 /**
- * Make an authenticated request to the sync server
+ * Make an authenticated request to the sync server.
+ * Sends version headers and checks server's response version headers.
  */
 async function serverFetch<T>(
   serverUrl: string,
@@ -196,6 +244,9 @@ async function serverFetch<T>(
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
+      'X-Peek-Datastore-Version': String(DATASTORE_VERSION),
+      'X-Peek-Protocol-Version': String(PROTOCOL_VERSION),
+      'X-Peek-Client': 'desktop',
     },
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
@@ -203,6 +254,29 @@ async function serverFetch<T>(
   if (!response.ok) {
     const error = await response.text();
     throw new Error(`Server error ${response.status}: ${error}`);
+  }
+
+  // Check server version headers (if present)
+  // If server returns no version headers (rollback/legacy), skip check
+  const serverDS = response.headers.get('X-Peek-Datastore-Version');
+  const serverProto = response.headers.get('X-Peek-Protocol-Version');
+
+  if (serverDS) {
+    const serverDSNum = parseInt(serverDS, 10);
+    if (serverDSNum !== DATASTORE_VERSION) {
+      throw new Error(
+        `Datastore version mismatch: server=${serverDSNum}, client=${DATASTORE_VERSION}. Please update your app.`
+      );
+    }
+  }
+
+  if (serverProto) {
+    const serverProtoNum = parseInt(serverProto, 10);
+    if (serverProtoNum !== PROTOCOL_VERSION) {
+      throw new Error(
+        `Protocol version mismatch: server=${serverProtoNum}, client=${PROTOCOL_VERSION}. Please update your app.`
+      );
+    }
   }
 
   return response.json() as Promise<T>;

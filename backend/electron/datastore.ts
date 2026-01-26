@@ -28,7 +28,11 @@ import type {
 } from '../types/index.js';
 import { tableNames } from '../types/index.js';
 import { DEBUG } from './config.js';
+import { DATASTORE_VERSION } from '../version.js';
 import { addDeviceMetadata } from './device.js';
+
+// Flag: set to true if stored datastore version > code version (downgrade detected)
+let syncDisabledDueToVersionMismatch = false;
 
 // SQL Schema
 const createTableStatements = `
@@ -293,6 +297,9 @@ export function initDatabase(dbPath: string): Database.Database {
   migrateItemTypes();
   migrateItemVisitColumns();
   migrateAddressesToItems();
+
+  // Check and write datastore version
+  checkAndWriteDatastoreVersion();
 
   DEBUG && console.log('main', 'database initialized successfully');
   return db;
@@ -742,6 +749,63 @@ function migrateAddressesToItems(): void {
   // Mark migration as complete
   db.prepare('INSERT OR REPLACE INTO migrations (id, status, completedAt) VALUES (?, ?, ?)').run(MIGRATION_ID, 'complete', Date.now());
   DEBUG && console.log('main', `Migrated ${migratedCount} addresses to items, copied tag associations`);
+}
+
+// ==================== Version Check ====================
+
+/**
+ * Check stored datastore version against code version.
+ * - If stored > code: old binary running against newer schema — disable sync
+ * - If stored < code: upgrade — update stored version
+ * - If stored == code or no stored version: write current version
+ */
+function checkAndWriteDatastoreVersion(): void {
+  if (!db) return;
+
+  const row = db.prepare(`
+    SELECT value FROM extension_settings
+    WHERE extensionId = 'system' AND key = 'datastore_version'
+  `).get() as { value: string } | undefined;
+
+  if (row) {
+    let storedVersion: number;
+    try {
+      storedVersion = parseInt(JSON.parse(row.value), 10);
+    } catch {
+      storedVersion = parseInt(row.value, 10);
+    }
+
+    if (storedVersion > DATASTORE_VERSION) {
+      // Downgrade detected: stored version is newer than code
+      console.error(
+        `[datastore] DATASTORE VERSION MISMATCH: stored=${storedVersion}, code=${DATASTORE_VERSION}. ` +
+        `This binary is older than the database schema. Sync will be disabled to prevent data corruption.`
+      );
+      syncDisabledDueToVersionMismatch = true;
+      return;
+    }
+
+    if (storedVersion < DATASTORE_VERSION) {
+      // Upgrade: update stored version
+      DEBUG && console.log('main', `Upgrading datastore version: ${storedVersion} → ${DATASTORE_VERSION}`);
+    }
+  }
+
+  // Write current version
+  db.prepare(`
+    INSERT OR REPLACE INTO extension_settings (id, extensionId, key, value, updatedAt)
+    VALUES (?, 'system', 'datastore_version', ?, ?)
+  `).run('system-datastore_version', JSON.stringify(DATASTORE_VERSION), Date.now());
+
+  syncDisabledDueToVersionMismatch = false;
+}
+
+/**
+ * Returns true if sync should be disabled due to a datastore version mismatch
+ * (old binary running against a database migrated by a newer version).
+ */
+export function isSyncDisabledDueToVersion(): boolean {
+  return syncDisabledDueToVersionMismatch;
 }
 
 // ==================== Address Operations ====================

@@ -438,3 +438,37 @@ Different from desktop datastore - optimized for mobile sync:
 - `settings` - Key-value config
 
 Images stored on disk in `./data/{userId}/images/` with content-hash deduplication.
+
+## Sync Version Compatibility
+
+Two integer version numbers gate sync compatibility between desktop, server, and mobile:
+
+- **`DATASTORE_VERSION`** (`backend/version.ts`, `backend/server/version.js`) — schema shape of sync-relevant tables. Bump when a schema change would break sync.
+- **`PROTOCOL_VERSION`** (same files) — wire format of sync JSON payloads. Bump when request/response shape changes.
+
+### How it works
+
+- Clients send `X-Peek-Datastore-Version` and `X-Peek-Protocol-Version` headers on sync requests
+- Server checks incoming headers — returns **HTTP 409** on mismatch with a clear error message
+- Desktop checks server response headers — throws on mismatch
+- **Missing headers are allowed** (backward compat during rollout)
+- Both sides are lenient about missing headers, strict about mismatched headers
+
+### Deployment order
+
+1. **Server first** — starts sending/checking version headers. Legacy clients with no headers still work.
+2. **Desktop second** — starts sending headers. Server already understands them.
+3. **Mobile** — same pattern (not yet implemented, separate workspace).
+
+### Database version tracking
+
+- Server writes `datastore_version` to its `settings` table after migrations
+- Desktop writes `DATASTORE_VERSION` to `extension_settings` after migrations
+- On startup, if stored version > code version, sync is disabled (prevents old binary from corrupting newer schema)
+
+### Testing
+
+```bash
+yarn test:version-compat       # 15 automated tests (HTTP + DB logic)
+yarn test:version-compat:e2e   # Full E2E with optional iOS simulator steps
+```

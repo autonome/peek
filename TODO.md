@@ -33,10 +33,12 @@ the rules
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
-- [ ][mobile] merge home and search views, put search/add inputs side by side in top row
+- [ ][mobile] text editor is too small and the resize work we did isn't working
 - [ ][desktop] add new items (urls, notes, tagsets)
-- [ ][desktop] show titlebar on hover at top edge of window for all pages
-- [ ][all] app versioning, see below
+- [ ][desktop] sync mirrors back pulled items - "17 pulled, 17 pushed" repeats on every sync
+- [ ][desktop] show titlebar on hover at top edge
+- [~][all] app versioning, see below
+- [ ][mobile] add version headers to mobile sync (DATASTORE_VERSION + PROTOCOL_VERSION) — needs mobile workspace
 
 ## unfiled
 
@@ -59,12 +61,13 @@ once we have cardinal ui
 ## Accounts/profiles/sync safety/fidelity
 
 app/data versioning
-- [ ] (maybe done)? add device ID tracking to item metadata
-- [ ] need app version and datastore version, b/c those are different layers of compatibility
-- [ ] define system that works for compat (and detecting incompatibility) across desktop/server/mobile/other
-- [ ] define how sync works when incompatible (maybe clients only sync w/ datastore-compatible nodes?)
-- [ ] assume sync is not a spoke server - all nodes equal participants
-- [ ] implement in desktop/mobile/server
+- [x] (maybe done)? add device ID tracking to item metadata
+- [x] need app version and datastore version, b/c those are different layers of compatibility
+- [x] define system that works for compat (and detecting incompatibility) across desktop/server/mobile/other
+- [x] define how sync works when incompatible (maybe clients only sync w/ datastore-compatible nodes?)
+- [x] assume sync is not a spoke server - all nodes equal participants
+- [x] implement in desktop/server (DATASTORE_VERSION + PROTOCOL_VERSION, exact match, 409 on mismatch)
+- [ ] implement in mobile (add version headers to lib.rs sync — separate workspace)
 
 api key (accounts)
 - [ ] how initiated (manually my operator only for now, just document it)
@@ -541,8 +544,6 @@ Newly done items go here, grouped under third-level headings by week of year.
 
 ### 2026-W04
 
-- [x][mobile] fix text editor too small / resize not working
-- [x][desktop] fix sync mirroring back pulled items on every sync
 - [x][mobile] fix big bottom bar showing again (simplified viewport and safe-area handling)
 - [x][server] Add pre-migration backup to server migration
 - [x][desktop] window titlebar hide/show pref with settings UI

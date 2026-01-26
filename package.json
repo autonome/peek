@@ -80,6 +80,8 @@
     "test:sync:three-way": "node backend/tests/sync-three-way.test.js",
     "test:sync:three-way:verbose": "VERBOSE=1 node backend/tests/sync-three-way.test.js",
     "test:sync:ios": "./scripts/ios-sync-test.sh",
+    "test:version-compat": "node backend/tests/sync-version-compat.test.js",
+    "test:version-compat:e2e": "./scripts/version-compat-e2e.sh",
     "test:mobile": "cd backend/tauri-mobile && npm test",
     "//-- Packaged Electron --//": "",
     "kill:packaged": "pkill -f 'out/mac-arm64/Peek.app' || true",

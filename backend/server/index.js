@@ -5,8 +5,16 @@ const path = require("path");
 const db = require("./db");
 const users = require("./users");
 const backup = require("./backup");
+const { DATASTORE_VERSION, PROTOCOL_VERSION } = require("./version");
 
 const app = new Hono();
+
+// Version headers middleware - add version info to all responses
+app.use("*", async (c, next) => {
+  await next();
+  c.header("X-Peek-Datastore-Version", String(DATASTORE_VERSION));
+  c.header("X-Peek-Protocol-Version", String(PROTOCOL_VERSION));
+});
 
 // Auth middleware - looks up user by API key
 app.use("*", async (c, next) => {
@@ -31,8 +39,60 @@ app.use("*", async (c, next) => {
   return next();
 });
 
+// Version check middleware for sync endpoints
+// Rejects requests with mismatched version headers (HTTP 409)
+// Allows requests with no version headers (backward compat during rollout)
+app.use("/items/*", async (c, next) => {
+  return checkVersionHeaders(c, next);
+});
+app.use("/items", async (c, next) => {
+  return checkVersionHeaders(c, next);
+});
+
+function checkVersionHeaders(c, next) {
+  const clientDS = c.req.header("X-Peek-Datastore-Version");
+  const clientProto = c.req.header("X-Peek-Protocol-Version");
+
+  // If client sends no version headers, allow (backward compat)
+  if (!clientDS && !clientProto) {
+    return next();
+  }
+
+  const clientDSNum = parseInt(clientDS, 10) || 0;
+  const clientProtoNum = parseInt(clientProto, 10) || 0;
+
+  // Check datastore version mismatch
+  if (clientDSNum > 0 && clientDSNum !== DATASTORE_VERSION) {
+    return c.json({
+      error: "Version mismatch",
+      message: `Datastore version mismatch: client=${clientDSNum}, server=${DATASTORE_VERSION}. Please update your app.`,
+      type: "datastore_version_mismatch",
+      client_version: clientDSNum,
+      server_version: DATASTORE_VERSION,
+    }, 409);
+  }
+
+  // Check protocol version mismatch
+  if (clientProtoNum > 0 && clientProtoNum !== PROTOCOL_VERSION) {
+    return c.json({
+      error: "Version mismatch",
+      message: `Protocol version mismatch: client=${clientProtoNum}, server=${PROTOCOL_VERSION}. Please update your app.`,
+      type: "protocol_version_mismatch",
+      client_version: clientProtoNum,
+      server_version: PROTOCOL_VERSION,
+    }, 409);
+  }
+
+  return next();
+}
+
 app.get("/", (c) => {
-  return c.json({ status: "ok", message: "Webhook server running" });
+  return c.json({
+    status: "ok",
+    message: "Webhook server running",
+    datastore_version: DATASTORE_VERSION,
+    protocol_version: PROTOCOL_VERSION,
+  });
 });
 
 // Receive items from iOS app

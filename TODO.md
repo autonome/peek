@@ -56,14 +56,6 @@ once we have cardinal ui
 - [ ] pop up a board of built-in shortcuts/actions
 - [ ] pop up a board of common shortcuts/actions you use
 
-## Accounts/profiles/sync safety/fidelity
-
-api key (accounts)
-- [ ] how initiated (manually my operator only for now, just document it)
-
-syncing history
-- [ ] how to sync/merge frencency and adaptive matching?
-
 ## Addessibility / Core history / feeds
 
 For record/replay, daily ribbon, state feedback loops and observability, etc we need a complete chained history.
@@ -195,12 +187,6 @@ Page info/metadata/action widgets (depends on window templates maybe?)
 Titlebar
 - [ ] show titlebar on hover at top edge of window for all pages
 
-## server
-
-- [ ] Add migration dry-run mode
-- [ ] Add database integrity verification
-- [ ] Add automatic backup cleanup after grace period
-
 ## Metadata, QS and reflection
 
 - [ ] tabstats for peek
@@ -210,6 +196,14 @@ Titlebar
 - [ ] access to notes folder(s) on filesystem to import+sync
 - [ ] syncing peek-only ontes as markdown files in specified dir (or library, boo)
 - [ ] import signal note-to-self archive into peek notes
+
+## Accounts/profiles/sync safety/fidelity
+
+api key (accounts)
+- [ ] how initiated (manually my operator only for now, just document it)
+
+syncing history
+- [ ] how to sync/merge frencency and adaptive matching?
 
 ## Extension dev
 - [ ] shared libs, eg utils
@@ -226,13 +220,6 @@ Titlebar
 ## Polish
 
 - [ ] if no api key set, sync settings are disabled, and pull-to-sync on mobile
-
-## window templates
-
-- [ ] declarative sets of ui components?
-- [ ] eg page info hud overlay
-- [ ] explode: windows using groups ui with transparent background and vi directionals, enter opens
-- [ ] tile/untile, eg the Explode extension
 
 ## Pagestream
 
@@ -344,6 +331,13 @@ examples
 - [ ] links on page -> list -> button cloud -> kb activate (then shorten to "link cloud" cmd)
 - [ ] compound cmds (like "link cloud". uses chaining? like a chain package?)
 
+## window templates
+
+- [ ] declarative sets of ui components?
+- [ ] eg page info hud overlay
+- [ ] explode: windows using groups ui with transparent background and vi directionals, enter opens
+- [ ] tile/untile, eg the Explode extension
+
 ## Media: images/videos, favicon/screenshot cache
 
 Media storage architecture
@@ -376,14 +370,27 @@ Image saving
 
 ## Server Backend
 
-- [ ] headless sync server that's a "back-end" of Peek API… or just peek running headless?
-- [ ] route all external urls to peek node webhook, eg every bsky like, reddit save, oauthwonderwall?
-- [ ] diagnostic/status API: resource usage, overall disk usage, per-user disk stats
+agent mode
+- [ ] agent mode: explore running application logic in a headless node
+
+diagnostics
+- [ ] diagnostic/status API: resource usage, overall disk usage, per-user disk stats, request volume and data types
+- [ ] make widget on desktop
+
+misc
+- [ ] Add migration dry-run mode
+- [ ] Add database integrity verification
+- [ ] Add automatic backup cleanup after grace period
+
+## harvester / hearts and stars
+
+- [ ] push all services to peek node webhook, eg bsky like, reddit, oauthwonderwall?
 
 ## Mobile
 
-- [ ] show oembed, or at least page title
-- [ ] save images to server (look at how binaries are stored, and across profiles)
+- [ ] in url saves/views, show oembed, or at least page title
+- [ ] for url saves, save title and any other metadata
+- [ ] investigate detecting which app a share came from
 
 ## Session & State Management
 

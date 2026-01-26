@@ -23,7 +23,7 @@ const createTagset = async (tagsString) => {
 
   // Create the tagset item
   const result = await api.datastore.addItem('tagset', {
-    content: null // Tagsets don't have content, they're defined by their tags
+    content: tagNames.join(', ')
   });
 
   if (!result.success) {
@@ -60,15 +60,15 @@ const commands = [
           const { id, tags } = await createTagset(ctx.search);
           console.log(`Tagset created with ID: ${id}`);
           console.log(`Tags: ${tags.join(', ')}`);
+          api.publish('editor:changed', { action: 'add', itemId: id }, api.scopes.GLOBAL);
           return { success: true, message: `Tagset created with tags: ${tags.join(', ')}` };
         } catch (error) {
           console.error('Failed to create tagset:', error);
           return { success: false, message: error.message };
         }
       } else {
-        console.log('Usage: tagset <tag1,tag2,...>');
-        console.log('Example: tagset work,important,urgent');
-        return { success: false, message: 'Usage: tagset <tag1,tag2,...>' };
+        api.publish('editor:add', { type: 'tagset' }, api.scopes.GLOBAL);
+        return { success: true, message: 'Opening editor' };
       }
     }
   }

@@ -9,6 +9,8 @@ import noteModule from './note.js';
 import historyModule from './history.js';
 import tagModule from './tag.js';
 import pinModule from './pin.js';
+import urlModule from './url.js';
+import tagsetModule from './tagset.js';
 
 console.log('tagModule.commands:', tagModule.commands?.map(c => c.name));
 
@@ -33,7 +35,9 @@ const activeCommands = [
   ...noteModule.commands,
   ...historyModule.commands,
   ...tagModule.commands,
-  ...pinModule.commands
+  ...pinModule.commands,
+  ...urlModule.commands,
+  ...tagsetModule.commands
 ];
 
 console.log('activeCommands:', activeCommands.map(c => c.name));

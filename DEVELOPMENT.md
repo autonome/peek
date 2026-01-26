@@ -68,7 +68,7 @@ yarn test:grep "pattern"  # Run specific test by name
    - Core app logic loads from `peek://app/background.html`
    - Extension loader at `app/extensions/loader.js`
    - Feature modules: scripts, cmd (registered in `app/features.js`)
-   - Built-in extensions: groups, peeks, slides (in `./extensions/`)
+   - Built-in extensions: groups, peeks, slides, tags, editor (in `./extensions/`)
    - Settings UI at `peek://app/settings/settings.html`
 
 3. **Peek API** (`window.app`):
@@ -116,10 +116,14 @@ Extensions run in isolated BrowserWindow processes at `peek://ext/{id}/backgroun
 
 ```
 extensions/
+├── cmd/                  # Command palette
+│   └── commands/         # Built-in command modules (note, url, tagset, tag, etc.)
+├── editor/               # Item CRUD: add, edit content, delete
 ├── example/              # Hello world example
 ├── groups/
 ├── peeks/
-└── slides/
+├── slides/
+└── tags/                 # Tag browsing, filtering, tag editing on items
     ├── manifest.json           # Extension metadata
     ├── settings-schema.json    # Settings UI schema (optional)
     ├── background.html         # Entry point
@@ -147,6 +151,35 @@ const extension = {
 
 export default extension;
 ```
+
+### Editor Extension
+
+The editor extension (`extensions/editor/`) is the canonical surface for creating, editing, and deleting items. It complements the tags extension, which focuses on browsing and tag management.
+
+**Features:**
+- Inline add with smart type detection (URLs auto-detected vs text notes)
+- Type-specific content editing (URL input, textarea, image preview, tagset notice)
+- Tag editing with frecency-sorted available tags
+- Delete with confirmation
+- Keyboard navigation (vim keys, search with `/`)
+
+**Shortcut:** `Option+E` opens the editor.
+
+**Pubsub topics:**
+- `editor:open` — open editor with a specific item for editing. Payload: `{ itemId }`
+- `editor:add` — open editor in add mode. Payload: `{ type?, content?, url? }`
+- `editor:changed` — published after any create/update/delete, so other views can refresh. Payload: `{ action, itemId }`
+
+### Cmd Commands (Item Creation)
+
+Commands live in `extensions/cmd/commands/` and are loaded by the cmd panel.
+
+| Command | With args | Without args |
+|---------|-----------|--------------|
+| `note <text or url>` | Saves item (auto-detects URL vs text note). Text notes tagged `note`, `from:cmd`. | Opens editor in add mode (text) |
+| `url <url>` | Saves URL item | Opens editor in add mode (url) |
+| `tagset <tag1,tag2,...>` | Creates tagset item with linked tags, tagged `from:cmd` | Opens editor in add mode (tagset) |
+| `notes` | Lists recent notes (items tagged `note`) | — |
 
 ### Window Management
 - Windows identified by keys for lifecycle management (e.g., `peek:${address}`)
@@ -469,15 +502,6 @@ Two integer version numbers gate sync compatibility between desktop, server, and
 ### Testing
 
 ```bash
-yarn test:version-compat          # 15 automated tests (HTTP + DB logic)
-yarn test:version-compat:e2e      # Full E2E with optional iOS simulator steps
-yarn test:e2e:version             # E2E sync + version test suite (all phases)
-yarn test:e2e:version:phase 2,3   # Run specific phases only
-yarn test:e2e:server start        # Start/stop/status e2e test server helper
+yarn test:version-compat       # 15 automated tests (HTTP + DB logic)
+yarn test:version-compat:e2e   # Full E2E with optional iOS simulator steps
 ```
-
-The `test:e2e:version` suite tests:
-- **Phase 2**: Desktop multi-account/multi-profile sync (automated)
-- **Phase 3**: 9 version permutation tests — GET + POST for each (automated)
-- **Phase 4**: Mobile sync via iOS simulator (semi-automated)
-- **Phase 5**: Mobile version mismatch error (semi-automated)

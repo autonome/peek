@@ -142,6 +142,11 @@ const setupEventListeners = () => {
     }
   });
 
+  // Add item button
+  document.querySelector('.add-item-btn').addEventListener('click', () => {
+    api.publish('editor:add', {}, api.scopes.GLOBAL);
+  });
+
   // Keyboard navigation
   document.addEventListener('keydown', handleKeydown);
 

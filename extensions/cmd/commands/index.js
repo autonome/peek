@@ -7,6 +7,7 @@ import debugCommand from './debug.js';
 import modalCommand from './modal.js';
 import noteModule from './note.js';
 import tagsetModule from './tagset.js';
+import urlModule from './url.js';
 import historyModule from './history.js';
 import tagModule from './tag.js';
 
@@ -37,6 +38,7 @@ const activeCommands = [
   modalCommand,
   ...noteModule.commands,
   ...tagsetModule.commands,
+  ...urlModule.commands,
   ...historyModule.commands,
   ...tagModule.commands,
 

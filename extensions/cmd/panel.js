@@ -397,12 +397,11 @@ function handleSpecialKey(e) {
  * Builds execution context from typed string and command name
  */
 function buildExecutionContext(name, typed) {
-  // Split typed text by command name to get parts
-  const parts = typed.trim().split(name).map(s => s.trim());
-  // Parameters are everything after the command name
-  const params = parts.slice(1).filter(p => p.length > 0);
-  // Search is the joined params (text after command name)
-  const search = params.length > 0 ? params.join(' ') : null;
+  // Strip the command name from the beginning to get the rest
+  const trimmed = typed.trim();
+  const rest = trimmed.startsWith(name) ? trimmed.slice(name.length).trim() : trimmed;
+  const params = rest.length > 0 ? rest.split(/\s+/) : [];
+  const search = rest.length > 0 ? rest : null;
 
   const context = {
     typed,       // Full typed string

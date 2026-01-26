@@ -1,36 +1,51 @@
 /**
- * Note command - saves quick notes to the datastore
- * Notes are stored in the items table with type='text'
- * and tagged with 'note' and 'from:cmd'
+ * Note command - saves items to the datastore with smart type detection
+ *
+ * If input is a URL → saves as url item
+ * If input is text → saves as text item tagged with 'note' and 'from:cmd'
  */
 import api from 'peek://app/api.js';
 
 const NOTE_TAGS = ['note', 'from:cmd'];
 
 /**
- * Save a new note to the datastore using the unified items API
+ * Detect item type from input
  */
-const saveNote = async (noteText) => {
-  // Create the text item
-  const result = await api.datastore.addItem('text', {
-    content: noteText
-  });
+const detectType = (text) => {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return 'url';
+  return 'text';
+};
 
+/**
+ * Save input to the datastore, auto-detecting type
+ */
+const saveItem = async (input) => {
+  const type = detectType(input);
+  if (!type) throw new Error('No input provided');
+
+  const opts = { content: input };
+  if (type === 'url') opts.url = input;
+
+  const result = await api.datastore.addItem(type, opts);
   if (!result.success) {
-    throw new Error(result.error || 'Failed to save note');
+    throw new Error(result.error || 'Failed to save item');
   }
 
   const itemId = result.data.id;
 
-  // Add tags to the item
-  for (const tagName of NOTE_TAGS) {
-    const tagResult = await api.datastore.getOrCreateTag(tagName);
-    if (tagResult.success) {
-      await api.datastore.tagItem(itemId, tagResult.data.tag.id);
+  // Tag text notes with 'note' and 'from:cmd'
+  if (type === 'text') {
+    for (const tagName of NOTE_TAGS) {
+      const tagResult = await api.datastore.getOrCreateTag(tagName);
+      if (tagResult.success) {
+        await api.datastore.tagItem(itemId, tagResult.data.tag.id);
+      }
     }
   }
 
-  return itemId;
+  return { itemId, type };
 };
 
 /**
@@ -66,20 +81,21 @@ const getNotes = async (limit = 20) => {
 const commands = [
   {
     name: 'note',
-    description: 'Save a quick note',
+    description: 'Save a note or URL (auto-detects type)',
     async execute(ctx) {
       if (ctx.search) {
         try {
-          const noteId = await saveNote(ctx.search);
-          console.log('Note saved with ID:', noteId);
-          return { success: true, message: 'Note saved' };
+          const { itemId, type } = await saveItem(ctx.search);
+          console.log(`Saved ${type} item:`, itemId);
+          api.publish('editor:changed', { action: 'add', itemId }, api.scopes.GLOBAL);
+          return { success: true, message: `${type === 'url' ? 'URL' : 'Note'} saved` };
         } catch (error) {
-          console.error('Failed to save note:', error);
+          console.error('Failed to save:', error);
           return { success: false, message: error.message };
         }
       } else {
-        console.log('Usage: note <text>');
-        return { success: false, message: 'Usage: note <text>' };
+        api.publish('editor:add', { type: 'text' }, api.scopes.GLOBAL);
+        return { success: true, message: 'Opening editor' };
       }
     }
   },

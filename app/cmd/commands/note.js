@@ -1,61 +1,95 @@
 /**
- * Note command - saves quick notes to the datastore
- * Notes are stored in the content table with mimeType='text/plain'
- * and tagged with 'note' and 'from:cmd'
+ * Note command - saves items to the datastore with smart type detection
+ *
+ * If input is a URL → saves as url item
+ * If input is text → saves as text item tagged with 'note' and 'from:cmd'
  */
 import api from '../../api.js';
 
-const NOTE_TAGS = 'note,from:cmd';
+const NOTE_TAG_NAMES = ['note', 'from:cmd'];
 
 /**
- * Save a new note to the datastore
+ * Detect item type from input
  */
-const saveNote = async (noteText) => {
-  const result = await api.datastore.addContent({
-    title: noteText.substring(0, 50) + (noteText.length > 50 ? '...' : ''),
-    content: noteText,
-    mimeType: 'text/plain',
-    tags: NOTE_TAGS
-  });
+const detectType = (text) => {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return 'url';
+  return 'text';
+};
 
+/**
+ * Save input to the datastore, auto-detecting type
+ */
+const saveItem = async (input) => {
+  const type = detectType(input);
+  if (!type) throw new Error('No input provided');
+
+  const opts = { content: input };
+  if (type === 'url') opts.url = input;
+
+  const result = await api.datastore.addItem(type, opts);
   if (!result.success) {
-    throw new Error(result.error || 'Failed to save note');
+    throw new Error(result.error || 'Failed to save item');
   }
 
-  return result.id;
+  const itemId = result.data.id;
+
+  // Tag text notes with 'note' and 'from:cmd'
+  if (type === 'text') {
+    for (const name of NOTE_TAG_NAMES) {
+      const tagResult = await api.datastore.getOrCreateTag(name);
+      if (tagResult.success) {
+        await api.datastore.tagItem(itemId, tagResult.data.tag.id);
+      }
+    }
+  }
+
+  return { itemId, type };
 };
 
 /**
  * Get all notes from the datastore
  */
 const getNotes = async (limit = 20) => {
-  const result = await api.datastore.queryContent({
-    tag: 'note',
-    sortBy: 'created',
-    limit
-  });
-
+  // Query text items and filter to those tagged 'note'
+  const result = await api.datastore.queryItems({ type: 'text' });
   if (!result.success) {
     return [];
   }
 
-  return result.data;
+  // Filter to items that have the 'note' tag
+  const notes = [];
+  for (const item of result.data) {
+    const tagsResult = await api.datastore.getItemTags(item.id);
+    if (tagsResult.success) {
+      const hasNoteTag = tagsResult.data.some(t => t.name === 'note');
+      if (hasNoteTag) {
+        notes.push(item);
+        if (notes.length >= limit) break;
+      }
+    }
+  }
+
+  return notes;
 };
 
 // Commands
 const commands = [
   {
     name: 'note',
+    description: 'Save a note or URL (auto-detects type)',
     async execute(ctx) {
       if (ctx.search) {
         try {
-          const noteId = await saveNote(ctx.search);
-          console.log('Note saved with ID:', noteId);
+          const { itemId, type } = await saveItem(ctx.search);
+          console.log(`Saved ${type} item:`, itemId);
+          api.publish('editor:changed', { action: 'add', itemId }, api.scopes.GLOBAL);
         } catch (error) {
-          console.error('Failed to save note:', error);
+          console.error('Failed to save:', error);
         }
       } else {
-        console.log('Usage: note <text>');
+        console.log('Usage: note <text or url>');
       }
     }
   },
@@ -68,7 +102,8 @@ const commands = [
       } else {
         console.log('Recent notes:');
         notes.forEach((note, i) => {
-          console.log(`${i + 1}. ${note.title}`);
+          const preview = note.content.substring(0, 50) + (note.content.length > 50 ? '...' : '');
+          console.log(`${i + 1}. ${preview}`);
         });
       }
     }

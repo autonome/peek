@@ -1,0 +1,9 @@
+{
+  "id": "editor",
+  "shortname": "editor",
+  "name": "Editor",
+  "description": "View, add, and edit saved items",
+  "version": "1.0.0",
+  "background": "background.html",
+  "builtin": true
+}

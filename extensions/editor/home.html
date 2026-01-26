@@ -4,16 +4,24 @@
     <meta charset="utf-8">
     <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline';">
     <meta name="viewport" content="width=device-width,user-scalable=no,initial-scale=1">
-    <title>Tags</title>
+    <title>Editor</title>
     <link rel="stylesheet" type="text/css" href="home.css">
   </head>
   <body>
     <header class="header">
       <div class="header-left">
-        <h1 class="header-title">Tags</h1>
-        <span class="active-tag-indicator"></span>
+        <h1 class="header-title">Editor</h1>
       </div>
       <div class="filter-icons">
+        <button class="filter-btn active" data-filter="all" title="All">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7"></rect>
+            <rect x="14" y="3" width="7" height="7"></rect>
+            <rect x="3" y="14" width="7" height="7"></rect>
+            <rect x="14" y="14" width="7" height="7"></rect>
+          </svg>
+          <span class="filter-count" data-count="all">0</span>
+        </button>
         <button class="filter-btn" data-filter="page" title="Pages">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"></circle>
@@ -47,45 +55,50 @@
           <span class="filter-count" data-count="image">0</span>
         </button>
       </div>
-      <button class="add-item-btn" title="Add item">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="12" y1="5" x2="12" y2="19"></line>
-          <line x1="5" y1="12" x2="19" y2="12"></line>
-        </svg>
-      </button>
     </header>
 
     <div class="search-container">
       <input type="text" class="search-input" placeholder="Search items and tags...">
     </div>
 
-    <div class="content-wrapper">
-      <aside class="tag-sidebar">
-        <h2 class="sidebar-title">Tags</h2>
-        <div class="tag-list"></div>
-      </aside>
-
-      <main class="items-container">
-        <div class="cards"></div>
-      </main>
+    <!-- Add item section -->
+    <div class="add-section">
+      <div class="add-input-row">
+        <input type="text" class="add-input" placeholder="Add URL, note, or tagset...">
+        <span class="add-type-badge">text</span>
+        <button class="add-save-btn">Save</button>
+      </div>
+      <div class="add-tags-section" style="display:none;">
+        <div class="add-selected-tags"></div>
+        <div class="add-tag-input-row">
+          <input type="text" class="add-tag-input" placeholder="Add tags (comma-separated)...">
+        </div>
+        <div class="add-available-tags"></div>
+      </div>
     </div>
 
-    <!-- Edit Modal -->
+    <main class="items-container">
+      <div class="cards"></div>
+    </main>
+
+    <!-- Edit Modal Overlay -->
     <div class="modal-overlay" id="editModal">
       <div class="modal">
         <div class="modal-header">
-          <h2 class="modal-title">Edit Tags</h2>
+          <h2 class="modal-title">Edit Item</h2>
           <button class="modal-close">&times;</button>
         </div>
         <div class="modal-body">
-          <div class="modal-item-info">
-            <img class="modal-favicon" src="" alt="">
-            <div class="modal-item-details">
-              <div class="modal-item-title"></div>
-              <div class="modal-item-url"></div>
-            </div>
+          <!-- Content editor (type-specific) -->
+          <div class="edit-content-section">
+            <label class="edit-label">Content</label>
+            <input type="text" class="edit-url-input" placeholder="URL" style="display:none;">
+            <textarea class="edit-text-input" placeholder="Note text..." style="display:none;"></textarea>
+            <div class="edit-image-preview" style="display:none;"></div>
+            <div class="edit-tagset-notice" style="display:none;">Tag set &mdash; edit tags below.</div>
           </div>
 
+          <!-- Tag editing -->
           <div class="edit-section">
             <label class="edit-label">Current Tags</label>
             <div class="current-tags"></div>
@@ -102,6 +115,32 @@
           <div class="edit-section">
             <label class="edit-label">Available Tags</label>
             <div class="available-tags"></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="modal-delete-btn">Delete</button>
+          <div class="modal-footer-right">
+            <button class="modal-cancel-btn">Cancel</button>
+            <button class="modal-save-btn">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Delete confirmation -->
+    <div class="modal-overlay" id="deleteConfirm">
+      <div class="modal modal-small">
+        <div class="modal-header">
+          <h2 class="modal-title">Delete Item</h2>
+          <button class="modal-close delete-cancel-btn">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p>Are you sure you want to delete this item? This cannot be undone.</p>
+        </div>
+        <div class="modal-footer">
+          <div class="modal-footer-right">
+            <button class="delete-cancel-btn">Cancel</button>
+            <button class="delete-confirm-btn">Delete</button>
           </div>
         </div>
       </div>

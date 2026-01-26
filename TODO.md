@@ -8,6 +8,22 @@ How we work:
 
 ## Design principles
 
+must feel like home
+- trust, comfort, control
+- feeling of magical mind-reading
+
+what makes home feeling
+- everything is right where you need it, b/c you control what is where
+- when you know what is where, you can make things without frustration
+
+synthesis
+- frecency + adaptive matching gives experience/feeling of magical mind-readingness
+- ability to customize/create/generate interfaces gives the comfort of home
+
+cf
+- bulthaup - german kitchen company w/ designs based on carpentry workshops
+
+the rules
 - files > arcane/opaque boxes/formats
 - metadata can be weird non-file, as long as consistent
 - external systems require consent to touch my stuff (eg http caching rules)
@@ -21,7 +37,7 @@ Today
 - [ ][desktop] add new items (urls, notes, tagsets)
 - [ ][desktop] sync mirrors back pulled items - "17 pulled, 17 pushed" repeats on every sync
 - [ ][desktop] show titlebar on hover at top edge
-- [ ] do the "Profiles Server Safety Improvements" section
+- [ ][all] app versioning, see below
 
 ## unfiled
 
@@ -43,9 +59,16 @@ once we have cardinal ui
 
 ## Accounts/profiles/sync safety/fidelity
 
+app/data versioning
+- [ ] (maybe done)? add device ID tracking to item metadata
+- [ ] need app version and datastore version, b/c those are different layers of compatibility
+- [ ] define system that works for compat (and detecting incompatibility) across desktop/server/mobile/other
+- [ ] define how sync works when incompatible (maybe clients only sync w/ datastore-compatible nodes?)
+- [ ] assume sync is not a spoke server - all nodes equal participants
+- [ ] implement in desktop/mobile/server
+
 api key (accounts)
-- [ ] how initiated operator only for now is fine
-- [ ] 
+- [ ] how initiated (manually my operator only for now, just document it)
 
 syncing history
 - [ ] "don't sync peek addresses" might be enough?
@@ -372,7 +395,6 @@ Image saving
 
 ## Mobile
 
-- [ ] add device ID tracking to item metadata (like desktop - stores `_sync.createdBy` and `_sync.modifiedBy` in metadata JSON)
 - [ ] show oembed, or at least page title
 - [ ] save images to server (look at how binaries are stored, and across profiles)
 
@@ -435,7 +457,9 @@ Web extensions
 
 ## Sorting/scoring/magic
 
-- [ ] Implement the Firefox "awesomebar" scoring and search algorithm so that Peek *learns* you
+Generally default is based on the old Firefox "awesomebar" scoring/search algorithms.
+Frecency + adaptive matching.
+The app *learns* you, and what you want magically appears w/o AI as requirement.
 
 ## Desktop Performance
 
@@ -445,10 +469,20 @@ Web extensions
 - [ ] Suspend inactive tabs (reduce memory for background pages)
 - [ ] Performant BrowserWindow unloading (fully release resources when not needed)
 
-## Private mode
+## Identity and privacy
 
-- [ ] private links and private mode pages
-- [ ] private section altogether (eg gift ideas)
+keys
+- [ ] server-less identity system
+- [ ] key backup/restore/rotation
+
+encrypted storage
+- [ ] account unlocks its profiles
+- [ ] profile switching/opening screen
+
+point-of-use privacy
+- [ ] private items, eg gift ideas, cf archived - visible with magic tag (which itself doesn't show in history)
+- [ ] private links - click not tracked, opens page in private mode
+- [ ] private profiles
 
 ## Demos / Tutorials / Comms
 
@@ -467,7 +501,7 @@ History (depends on ui primitives)
 - [ ] history search
 - [ ] Infinite lossless personal encrypted archive of web history
 
-## Publishing, Provenance, Remote Extensions?
+## Publishing, Provenance, Remote Extensions
 
 - [ ] share system
 - [ ] poke at remote loading + provenance
@@ -490,15 +524,17 @@ History (depends on ui primitives)
 - [ ] Devtools command to open devtools for a specific extension or window
 - [ ] Fix `api.extensions.devtools()` - currently not working for consolidated extensions
 
-
 ## Later
 
+storage backends
 - [ ] try DuckDB as datastore storage backend instead of SQLite
 
-- [ ] Tray work
-- [ ] Identities system?
+- [ ] Identities system
 - [ ] Contacts integration
 - [ ] Collaboration
+
+desktop
+- [ ] Tray work
 
 ## Done
 

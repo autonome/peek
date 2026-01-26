@@ -4,6 +4,7 @@
 
 pub mod datastore;
 pub mod extensions;
+pub mod profiles;
 pub mod sync;
 pub mod theme;
 pub mod window;

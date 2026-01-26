@@ -6,6 +6,7 @@
 mod commands;
 mod datastore;
 mod extensions;
+mod profiles;
 mod protocol;
 mod state;
 mod sync;
@@ -123,14 +124,27 @@ pub fn run() {
             let profile_dir = app_data_dir.join(&profile);
             std::fs::create_dir_all(&profile_dir).expect("Failed to create profile directory");
 
-            // Initialize database
+            // Initialize datastore database
             let db_path = profile_dir.join("datastore.sqlite");
             println!("[tauri] Initializing database at: {:?}", db_path);
 
             let db = datastore::init_database(&db_path).expect("Failed to initialize database");
 
+            // Initialize profiles database (shared across profiles, in app data root)
+            let profiles_db_path = app_data_dir.join("profiles.db");
+            println!("[tauri] Initializing profiles database at: {:?}", profiles_db_path);
+
+            let profiles_db = profiles::init_profiles_db(&profiles_db_path)
+                .expect("Failed to initialize profiles database");
+
+            // Migrate existing profile directories and ensure default profile exists
+            profiles::migrate_existing_profiles(&profiles_db, &app_data_dir);
+
+            // Set active profile based on current profile slug
+            let _ = profiles::set_active_profile(&profiles_db, &profile);
+
             // Create app state
-            let state = AppState::new(db, profile, profile_dir, headless);
+            let state = AppState::new(db, profiles_db, profile, profile_dir, app_data_dir.clone(), headless);
             let state_arc = Arc::new(state);
             app.manage(state_arc.clone());
 
@@ -451,6 +465,16 @@ pub fn run() {
             commands::sync::sync_push,
             commands::sync::sync_full,
             commands::sync::sync_status,
+            // Profiles
+            commands::profiles::profiles_list,
+            commands::profiles::profiles_create,
+            commands::profiles::profiles_get,
+            commands::profiles::profiles_delete,
+            commands::profiles::profiles_get_current,
+            commands::profiles::profiles_switch,
+            commands::profiles::profiles_enable_sync,
+            commands::profiles::profiles_disable_sync,
+            commands::profiles::profiles_get_sync_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

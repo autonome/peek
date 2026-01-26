@@ -50,11 +50,17 @@ pub struct AppState {
     /// SQLite database connection (mutex for thread safety, Arc for sharing across async boundaries)
     pub db: Arc<Mutex<Connection>>,
 
+    /// Profiles database connection (shared, for profile management + per-profile sync config)
+    pub profiles_db: Arc<Mutex<Connection>>,
+
     /// Current profile name (dev, default, etc.)
     pub profile: String,
 
     /// Profile data directory
     pub profile_dir: PathBuf,
+
+    /// App data directory (parent of all profile dirs)
+    pub app_data_dir: PathBuf,
 
     /// Window registry - tracks all open windows
     pub windows: Mutex<HashMap<String, WindowInfo>>,
@@ -73,11 +79,20 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(db: Connection, profile: String, profile_dir: PathBuf, headless: bool) -> Self {
+    pub fn new(
+        db: Connection,
+        profiles_db: Connection,
+        profile: String,
+        profile_dir: PathBuf,
+        app_data_dir: PathBuf,
+        headless: bool,
+    ) -> Self {
         Self {
             db: Arc::new(Mutex::new(db)),
+            profiles_db: Arc::new(Mutex::new(profiles_db)),
             profile,
             profile_dir,
+            app_data_dir,
             windows: Mutex::new(HashMap::new()),
             headless,
             commands: Mutex::new(HashMap::new()),
@@ -89,6 +104,11 @@ impl AppState {
     /// Get a clone of the Arc<Mutex<Connection>> for use in async contexts
     pub fn db_arc(&self) -> Arc<Mutex<Connection>> {
         Arc::clone(&self.db)
+    }
+
+    /// Get a clone of the profiles db Arc<Mutex<Connection>> for use in async contexts
+    pub fn profiles_db_arc(&self) -> Arc<Mutex<Connection>> {
+        Arc::clone(&self.profiles_db)
     }
 
     /// Register a shortcut mapping

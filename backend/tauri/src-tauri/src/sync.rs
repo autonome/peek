@@ -8,12 +8,17 @@
 //! - Push: POST /items for each local item
 //! - Conflict resolution: last-write-wins based on updatedAt
 //!
+//! Sync configuration is per-profile:
+//! - apiKey + serverProfileSlug stored in profiles.db (per-profile)
+//! - serverUrl + autoSync stored in extension_settings (global)
+//!
 //! Note: rusqlite::Connection is not Send/Sync, so all async functions that need
 //! DB access accept Arc<Mutex<Connection>> and lock/unlock around await points.
 
 use crate::datastore::{
     self, is_sync_disabled_due_to_version, Item, ItemOptions, DATASTORE_VERSION, PROTOCOL_VERSION,
 };
+use crate::profiles;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
@@ -99,71 +104,127 @@ struct ItemPushData {
     body: PushBody,
 }
 
+/// Profile context extracted before async work (avoids holding locks across await)
+struct ProfileContext {
+    profile_id: String,
+    profile_slug: String,
+    server_profile_slug: String,
+}
+
 // ==================== Settings Storage ====================
+
+// Note: Sync configuration is now stored per-profile in profiles.db
+// Legacy extension_settings storage is deprecated for apiKey/lastSyncTime
+// Only serverUrl and autoSync remain global in extension_settings
 
 const DEFAULT_SERVER_URL: &str = "https://peek-node.up.railway.app";
 
-/// Get sync configuration from extension_settings
-pub fn get_sync_config(conn: &Connection) -> SyncConfig {
-    let server_url = get_setting(conn, "sync", "serverUrl")
-        .and_then(|v| serde_json::from_str::<String>(&v).ok())
-        .unwrap_or_else(|| {
-            std::env::var("SYNC_SERVER_URL").unwrap_or_else(|_| DEFAULT_SERVER_URL.to_string())
-        });
+/// Get sync configuration for the active profile
+/// Reads per-profile data from profiles_db, global settings from datastore db
+pub fn get_sync_config(
+    datastore_conn: &Connection,
+    profiles_conn: &Connection,
+) -> SyncConfig {
+    let server_url = get_server_url(datastore_conn);
+    let auto_sync = get_auto_sync(datastore_conn);
 
-    let api_key = get_setting(conn, "sync", "apiKey")
-        .and_then(|v| serde_json::from_str::<String>(&v).ok())
-        .unwrap_or_default();
+    // Get per-profile sync config from profiles.db
+    let active_profile = profiles::get_active_profile(profiles_conn);
+    let profile_sync_config = profiles::get_sync_config(profiles_conn, &active_profile.id);
 
-    let last_sync_time = get_setting(conn, "sync", "lastSyncTime")
-        .and_then(|v| v.parse::<i64>().ok())
-        .unwrap_or(0);
-
-    let auto_sync = get_setting(conn, "sync", "autoSync")
-        .and_then(|v| serde_json::from_str::<bool>(&v).ok())
-        .unwrap_or(false);
-
-    SyncConfig {
-        server_url,
-        api_key,
-        last_sync_time,
-        auto_sync,
+    match profile_sync_config {
+        Some(config) => SyncConfig {
+            server_url,
+            api_key: config.api_key,
+            last_sync_time: active_profile.last_sync_at.unwrap_or(0),
+            auto_sync,
+        },
+        None => SyncConfig {
+            server_url,
+            api_key: String::new(),
+            last_sync_time: 0,
+            auto_sync,
+        },
     }
 }
 
-/// Save sync configuration to extension_settings
-pub fn set_sync_config(conn: &Connection, config: &SyncConfig) -> rusqlite::Result<()> {
+/// Save sync configuration
+/// Saves serverUrl (global in extension_settings), apiKey (per-profile in profiles.db)
+pub fn set_sync_config(
+    datastore_conn: &Connection,
+    profiles_conn: &Connection,
+    config: &SyncConfig,
+) -> rusqlite::Result<()> {
+    // Update serverUrl if provided (stored globally in extension_settings)
     if !config.server_url.is_empty() {
-        set_setting(
-            conn,
-            "sync",
-            "serverUrl",
-            &serde_json::to_string(&config.server_url).unwrap_or_default(),
-        )?;
+        set_server_url(datastore_conn, &config.server_url)?;
     }
+
+    // Update autoSync (global)
+    set_auto_sync(datastore_conn, config.auto_sync)?;
+
+    // Update apiKey if provided (stored per-profile)
     if !config.api_key.is_empty() {
-        set_setting(
-            conn,
-            "sync",
-            "apiKey",
-            &serde_json::to_string(&config.api_key).unwrap_or_default(),
-        )?;
+        let active_profile = profiles::get_active_profile(profiles_conn);
+        let current = profiles::get_sync_config(profiles_conn, &active_profile.id);
+        let server_profile_slug = current
+            .as_ref()
+            .map(|c| c.server_profile_slug.clone())
+            .unwrap_or_else(|| "default".to_string());
+
+        // Enable sync with the provided apiKey
+        let _ = profiles::enable_sync(
+            profiles_conn,
+            &active_profile.id,
+            &config.api_key,
+            &server_profile_slug,
+        );
     }
+
+    // Update lastSyncTime if provided
     if config.last_sync_time > 0 {
-        set_setting(
-            conn,
-            "sync",
-            "lastSyncTime",
-            &config.last_sync_time.to_string(),
-        )?;
+        let active_profile = profiles::get_active_profile(profiles_conn);
+        let _ =
+            profiles::update_last_sync_time(profiles_conn, &active_profile.id, config.last_sync_time);
     }
+
+    Ok(())
+}
+
+/// Get server URL from settings or environment
+fn get_server_url(conn: &Connection) -> String {
+    get_setting(conn, "sync", "serverUrl")
+        .and_then(|v| serde_json::from_str::<String>(&v).ok())
+        .unwrap_or_else(|| {
+            std::env::var("SYNC_SERVER_URL").unwrap_or_else(|_| DEFAULT_SERVER_URL.to_string())
+        })
+}
+
+/// Save server URL to settings
+fn set_server_url(conn: &Connection, url: &str) -> rusqlite::Result<()> {
+    set_setting(
+        conn,
+        "sync",
+        "serverUrl",
+        &serde_json::to_string(url).unwrap_or_default(),
+    )
+}
+
+/// Get autoSync setting
+fn get_auto_sync(conn: &Connection) -> bool {
+    get_setting(conn, "sync", "autoSync")
+        .and_then(|v| serde_json::from_str::<bool>(&v).ok())
+        .unwrap_or(false)
+}
+
+/// Save autoSync setting
+fn set_auto_sync(conn: &Connection, enabled: bool) -> rusqlite::Result<()> {
     set_setting(
         conn,
         "sync",
         "autoSync",
-        &serde_json::to_string(&config.auto_sync).unwrap_or_default(),
-    )?;
-    Ok(())
+        &serde_json::to_string(&enabled).unwrap_or_default(),
+    )
 }
 
 /// Get a setting value from extension_settings
@@ -209,6 +270,15 @@ fn from_iso_string(iso: &str) -> i64 {
         .or_else(|_| chrono::DateTime::parse_from_str(iso, "%Y-%m-%dT%H:%M:%S%.fZ"))
         .map(|dt| dt.timestamp_millis())
         .unwrap_or(0)
+}
+
+/// Build profile query string for sync URLs
+fn profile_query_string(ctx: &ProfileContext) -> String {
+    format!(
+        "?profile={}&slug={}",
+        urlencoding::encode(&ctx.profile_id),
+        urlencoding::encode(&ctx.server_profile_slug),
+    )
 }
 
 // ==================== Server API Helpers ====================
@@ -292,6 +362,7 @@ async fn server_fetch<T: serde::de::DeserializeOwned>(
 /// Accepts Arc<Mutex<Connection>> to safely lock/unlock around async boundaries.
 pub async fn pull_from_server(
     db: &Arc<Mutex<Connection>>,
+    profiles_db: &Arc<Mutex<Connection>>,
     server_url: &str,
     api_key: &str,
     since: Option<i64>,
@@ -309,6 +380,21 @@ pub async fn pull_from_server(
         }
     );
 
+    // Get profile context under lock, then release
+    let profile_ctx = {
+        let pconn = profiles_db.lock().unwrap();
+        let active = profiles::get_active_profile(&pconn);
+        let sync_config = profiles::get_sync_config(&pconn, &active.id);
+        match sync_config {
+            Some(sc) => ProfileContext {
+                profile_id: active.id,
+                profile_slug: active.slug,
+                server_profile_slug: sc.server_profile_slug,
+            },
+            None => return Err("Sync not configured for active profile".to_string()),
+        }
+    };
+
     let client = reqwest::Client::new();
 
     let mut path = String::from("/items");
@@ -317,6 +403,11 @@ pub async fn pull_from_server(
             path = format!("/items/since/{}", to_iso_string(since_ts));
         }
     }
+
+    // Add profile query parameters
+    path.push_str(&profile_query_string(&profile_ctx));
+
+    println!("[sync] Fetching from: {}{}", server_url, path);
 
     // Async HTTP call - no DB lock held
     let response: ServerPullResponse =
@@ -571,6 +662,7 @@ fn query_items_to_push(conn: &Connection, last_sync_time: i64) -> Result<Vec<Ite
 /// Accepts Arc<Mutex<Connection>> to safely lock/unlock around async boundaries.
 pub async fn push_to_server(
     db: &Arc<Mutex<Connection>>,
+    profiles_db: &Arc<Mutex<Connection>>,
     server_url: &str,
     api_key: &str,
     last_sync_time: i64,
@@ -588,6 +680,21 @@ pub async fn push_to_server(
         }
     );
 
+    // Get profile context under lock, then release
+    let profile_ctx = {
+        let pconn = profiles_db.lock().unwrap();
+        let active = profiles::get_active_profile(&pconn);
+        let sync_config = profiles::get_sync_config(&pconn, &active.id);
+        match sync_config {
+            Some(sc) => ProfileContext {
+                profile_id: active.id,
+                profile_slug: active.slug,
+                server_profile_slug: sc.server_profile_slug,
+            },
+            None => return Err("Sync not configured for active profile".to_string()),
+        }
+    };
+
     // Phase 1: Read items from DB (under lock)
     let push_items = {
         let conn = db.lock().unwrap();
@@ -601,15 +708,17 @@ pub async fn push_to_server(
     let mut pushed: i64 = 0;
     let mut failed: i64 = 0;
 
+    // Build push path with profile params
+    let push_path = format!("/items{}", profile_query_string(&profile_ctx));
+
     // Phase 2: Push each item via HTTP (no lock held)
     // Then update DB after each successful push
     for item_data in &push_items {
-        let path = "/items";
         match server_fetch::<ServerPushResponse>(
             &client,
             server_url,
             api_key,
-            path,
+            &push_path,
             "POST",
             Some(&item_data.body),
         )
@@ -649,10 +758,14 @@ pub async fn push_to_server(
 
 /// Perform a full bidirectional sync.
 /// Accepts Arc<Mutex<Connection>> to safely lock/unlock around async boundaries.
-pub async fn sync_all(db: &Arc<Mutex<Connection>>) -> Result<SyncResult, String> {
+pub async fn sync_all(
+    db: &Arc<Mutex<Connection>>,
+    profiles_db: &Arc<Mutex<Connection>>,
+) -> Result<SyncResult, String> {
     let (config, start_time) = {
         let conn = db.lock().unwrap();
-        let config = get_sync_config(&conn);
+        let pconn = profiles_db.lock().unwrap();
+        let config = get_sync_config(&conn, &pconn);
         let start_time = datastore::now();
         (config, start_time)
     };
@@ -666,6 +779,7 @@ pub async fn sync_all(db: &Arc<Mutex<Connection>>) -> Result<SyncResult, String>
     // Pull first (to get any server changes)
     let pull_result = pull_from_server(
         db,
+        profiles_db,
         &config.server_url,
         &config.api_key,
         if config.last_sync_time > 0 {
@@ -678,13 +792,14 @@ pub async fn sync_all(db: &Arc<Mutex<Connection>>) -> Result<SyncResult, String>
 
     // Then push local changes
     let push_result =
-        push_to_server(db, &config.server_url, &config.api_key, config.last_sync_time).await?;
+        push_to_server(db, profiles_db, &config.server_url, &config.api_key, config.last_sync_time)
+            .await?;
 
-    // Update last sync time (under lock)
+    // Update last sync time in profile (under lock)
     {
-        let conn = db.lock().unwrap();
-        set_setting(&conn, "sync", "lastSyncTime", &start_time.to_string())
-            .map_err(|e| format!("Failed to update lastSyncTime: {}", e))?;
+        let pconn = profiles_db.lock().unwrap();
+        let active = profiles::get_active_profile(&pconn);
+        let _ = profiles::update_last_sync_time(&pconn, &active.id, start_time);
     }
 
     println!(
@@ -703,11 +818,11 @@ pub async fn sync_all(db: &Arc<Mutex<Connection>>) -> Result<SyncResult, String>
 // ==================== Status ====================
 
 /// Get current sync status
-pub fn get_sync_status(conn: &Connection) -> SyncStatus {
-    let config = get_sync_config(conn);
+pub fn get_sync_status(datastore_conn: &Connection, profiles_conn: &Connection) -> SyncStatus {
+    let config = get_sync_config(datastore_conn, profiles_conn);
 
     // Count items that need to be synced
-    let pending_count: i64 = conn
+    let pending_count: i64 = datastore_conn
         .query_row(
             "SELECT COUNT(*) FROM items WHERE deletedAt = 0 AND (syncSource = '' OR (syncedAt > 0 AND updatedAt > syncedAt))",
             [],

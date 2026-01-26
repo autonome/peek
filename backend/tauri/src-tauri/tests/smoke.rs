@@ -773,8 +773,91 @@ fn test_items_in_valid_tables() {
     println!("✓ 'themes' is a valid table for get_table");
 }
 
+#[path = "../src/profiles.rs"]
+mod profiles;
+
+/// Test profiles module
+#[test]
+fn test_profiles() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("profiles.db");
+
+    let conn = profiles::init_profiles_db(&db_path).unwrap();
+
+    // Ensure default profile
+    profiles::ensure_default_profile(&conn, Some(temp_dir.path()));
+    let list = profiles::list_profiles(&conn);
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].slug, "default");
+    assert!(list[0].is_default);
+    println!("  Default profile created");
+
+    // Get active profile (should be default)
+    let active = profiles::get_active_profile(&conn);
+    assert_eq!(active.slug, "default");
+    println!("  Active profile is default");
+
+    // Create a new profile
+    let work = profiles::create_profile(&conn, "Work", Some(temp_dir.path())).unwrap();
+    assert_eq!(work.name, "Work");
+    assert_eq!(work.slug, "work");
+    assert!(!work.is_default);
+    assert!(!work.sync_enabled);
+    println!("  Work profile created");
+
+    // List profiles
+    let list = profiles::list_profiles(&conn);
+    assert_eq!(list.len(), 2);
+    println!("  2 profiles listed");
+
+    // Switch active profile
+    profiles::set_active_profile(&conn, "work").unwrap();
+    let active = profiles::get_active_profile(&conn);
+    assert_eq!(active.slug, "work");
+    println!("  Switched to work profile");
+
+    // Enable sync for work profile
+    profiles::enable_sync(&conn, &work.id, "test-api-key", "server-slug").unwrap();
+    let sync_config = profiles::get_sync_config(&conn, &work.id);
+    assert!(sync_config.is_some());
+    let sc = sync_config.unwrap();
+    assert_eq!(sc.api_key, "test-api-key");
+    assert_eq!(sc.server_profile_slug, "server-slug");
+    println!("  Sync enabled for work profile");
+
+    // Verify profile shows sync_enabled
+    let work_updated = profiles::get_profile_by_id(&conn, &work.id).unwrap();
+    assert!(work_updated.sync_enabled);
+    println!("  Profile sync_enabled flag set");
+
+    // Update last sync time
+    profiles::update_last_sync_time(&conn, &work.id, 1234567890).unwrap();
+    let work_synced = profiles::get_profile_by_id(&conn, &work.id).unwrap();
+    assert_eq!(work_synced.last_sync_at, Some(1234567890));
+    println!("  Last sync time updated");
+
+    // Disable sync
+    profiles::disable_sync(&conn, &work.id).unwrap();
+    let sync_config = profiles::get_sync_config(&conn, &work.id);
+    assert!(sync_config.is_none());
+    println!("  Sync disabled");
+
+    // Cannot delete default profile
+    let default_profile = profiles::get_profile(&conn, "default").unwrap();
+    let result = profiles::delete_profile(&conn, &default_profile.id);
+    assert!(result.is_err());
+    println!("  Cannot delete default profile");
+
+    // Can delete non-default, non-active profile
+    profiles::set_active_profile(&conn, "default").unwrap();
+    profiles::delete_profile(&conn, &work.id).unwrap();
+    let list = profiles::list_profiles(&conn);
+    assert_eq!(list.len(), 1);
+    println!("  Work profile deleted");
+}
+
 /// Main test runner - prints summary
 fn main() {
-    println!("\n🧪 Tauri Backend Smoke Tests\n");
+    println!("\n Tauri Backend Smoke Tests\n");
     println!("Run with: cargo test --test smoke\n");
 }

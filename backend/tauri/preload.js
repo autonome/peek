@@ -425,6 +425,83 @@
     }
   };
 
+  // ==================== Profiles ====================
+
+  api.profiles = {
+    list: async () => {
+      try {
+        return await invoke('profiles_list', {});
+      } catch (e) {
+        console.error('[tauri] profiles.list error:', e);
+        return { success: false, error: String(e) };
+      }
+    },
+    create: async (name) => {
+      try {
+        return await invoke('profiles_create', { name });
+      } catch (e) {
+        console.error('[tauri] profiles.create error:', e);
+        return { success: false, error: String(e) };
+      }
+    },
+    get: async (slug) => {
+      try {
+        return await invoke('profiles_get', { slug });
+      } catch (e) {
+        console.error('[tauri] profiles.get error:', e);
+        return { success: false, error: String(e) };
+      }
+    },
+    delete: async (profileId) => {
+      try {
+        return await invoke('profiles_delete', { id: profileId });
+      } catch (e) {
+        console.error('[tauri] profiles.delete error:', e);
+        return { success: false, error: String(e) };
+      }
+    },
+    getCurrent: async () => {
+      try {
+        return await invoke('profiles_get_current', {});
+      } catch (e) {
+        console.error('[tauri] profiles.getCurrent error:', e);
+        return { success: false, error: String(e) };
+      }
+    },
+    switch: async (slug) => {
+      try {
+        return await invoke('profiles_switch', { slug });
+      } catch (e) {
+        console.error('[tauri] profiles.switch error:', e);
+        return { success: false, error: String(e) };
+      }
+    },
+    enableSync: async (profileId, apiKey, serverProfileSlug) => {
+      try {
+        return await invoke('profiles_enable_sync', { profileId, apiKey, serverProfileSlug });
+      } catch (e) {
+        console.error('[tauri] profiles.enableSync error:', e);
+        return { success: false, error: String(e) };
+      }
+    },
+    disableSync: async (profileId) => {
+      try {
+        return await invoke('profiles_disable_sync', { profileId });
+      } catch (e) {
+        console.error('[tauri] profiles.disableSync error:', e);
+        return { success: false, error: String(e) };
+      }
+    },
+    getSyncConfig: async (profileId) => {
+      try {
+        return await invoke('profiles_get_sync_config', { profileId });
+      } catch (e) {
+        console.error('[tauri] profiles.getSyncConfig error:', e);
+        return { success: false, error: String(e) };
+      }
+    }
+  };
+
   // ==================== Commands ====================
   // Extensions should wait for cmd:ready before registering commands.
   // The cmd extension is loaded first and publishes cmd:ready when initialized.

@@ -33,6 +33,7 @@ the rules
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
+- [ ][mobile] merge home and search views, put search/add inputs side by side in top row
 - [ ][desktop] add new items (urls, notes, tagsets)
 - [ ][desktop] show titlebar on hover at top edge of window for all pages
 - [ ][all] app versioning, see below

@@ -6,6 +6,12 @@ Peek is a web user agent application that provides alternative ways to interact 
 
 **Multi-Backend Architecture**: Peek supports multiple backends (Electron, Tauri) that can coexist and sync data. The `app/` directory is **backend-agnostic** and must not contain backend-specific code. Backend-specific code lives in `backend/{electron,tauri}/`.
 
+**Remotes:**
+- Tangled: `git@tangled.sh:burrito.space/peek` (primary)
+- GitHub: `git@github.com:autonome/peek` (Railway deploy only — not for general use)
+
+**Documentation:** `docs/api.md` (API reference), `docs/mobile.md` (iOS/Android), `docs/sync.md` (sync architecture)
+
 ## Requirements
 
 - **Node.js 24+** - Required for both desktop (Electron 40) and server
@@ -428,9 +434,8 @@ All endpoints except `/` require `Authorization: Bearer <api_key>` header.
 
 ### Server Deployment (Railway)
 
-> **For the comprehensive deployment guide**, see the "Railway Deployment (Peek Server)" section in `AGENTS.md`. This includes step-by-step workflow, user management, production testing, and troubleshooting.
-
-The server is configured for Railway deployment.
+Railway project: `amusing-courtesy`, service: `peek-node`
+URL: `https://peek-node.up.railway.app`
 
 **Initial Setup:**
 1. Connect Railway to `backend/server/` subdirectory
@@ -440,7 +445,7 @@ The server is configured for Railway deployment.
 **Deploying Updates:**
 ```bash
 # Link to project (one-time, from backend/server/)
-railway link -p <project-name> -s <service-name> -e production
+railway link -p amusing-courtesy
 
 # Always run tests first
 npm test

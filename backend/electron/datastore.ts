@@ -297,6 +297,7 @@ export function initDatabase(dbPath: string): Database.Database {
   migrateItemTypes();
   migrateItemVisitColumns();
   migrateAddressesToItems();
+  migrateVisitChaining();
 
   // Check and write datastore version
   checkAndWriteDatastoreVersion();
@@ -751,6 +752,51 @@ function migrateAddressesToItems(): void {
   DEBUG && console.log('main', `Migrated ${migratedCount} addresses to items, copied tag associations`);
 }
 
+/**
+ * Add prevId/nextId columns to visits table for history chaining
+ */
+function migrateVisitChaining(): void {
+  if (!db) return;
+
+  const columns = db.prepare(`PRAGMA table_info(visits)`).all() as { name: string }[];
+  const hasPrevId = columns.some(col => col.name === 'prevId');
+
+  if (!hasPrevId) {
+    DEBUG && console.log('main', 'Adding chaining columns to visits table');
+    try {
+      db.exec(`ALTER TABLE visits ADD COLUMN prevId TEXT DEFAULT NULL`);
+      db.exec(`ALTER TABLE visits ADD COLUMN nextId TEXT DEFAULT NULL`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_visits_prevId ON visits(prevId)`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_visits_nextId ON visits(nextId)`);
+
+      // Backfill existing visits with chaining
+      const visits = db.prepare('SELECT id FROM visits ORDER BY timestamp ASC').all() as { id: string }[];
+      if (visits.length > 1) {
+        const updatePrev = db.prepare('UPDATE visits SET prevId = ? WHERE id = ?');
+        const updateNext = db.prepare('UPDATE visits SET nextId = ? WHERE id = ?');
+        const backfill = db.transaction(() => {
+          for (let i = 1; i < visits.length; i++) {
+            updatePrev.run(visits[i - 1].id, visits[i].id);
+            updateNext.run(visits[i].id, visits[i - 1].id);
+          }
+        });
+        backfill();
+        DEBUG && console.log('main', `Backfilled chaining for ${visits.length} visits`);
+      }
+    } catch (error) {
+      DEBUG && console.log('main', `Visit chaining migration:`, (error as Error).message);
+    }
+  }
+
+  // Ensure indexes exist even if columns were added previously
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_visits_prevId ON visits(prevId)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_visits_nextId ON visits(nextId)`);
+  } catch (error) {
+    DEBUG && console.log('main', `Visit chaining indexes:`, (error as Error).message);
+  }
+}
+
 // ==================== Version Check ====================
 
 /**
@@ -900,10 +946,15 @@ export function queryAddresses(filter: AddressFilter = {}): Address[] {
 export function addVisit(addressId: string, options: VisitOptions = {}): { id: string } {
   const visitId = generateId('visit');
   const timestamp = now();
+  const d = getDb();
 
-  getDb().prepare(`
-    INSERT INTO visits (id, addressId, timestamp, duration, source, sourceId, windowType, metadata, scrollDepth, interacted)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  // Find the most recent visit for chaining
+  const prevVisit = d.prepare('SELECT id FROM visits ORDER BY timestamp DESC LIMIT 1').get() as { id: string } | undefined;
+  const prevId = prevVisit ? prevVisit.id : null;
+
+  d.prepare(`
+    INSERT INTO visits (id, addressId, timestamp, duration, source, sourceId, windowType, metadata, scrollDepth, interacted, prevId, nextId)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
   `).run(
     visitId,
     addressId,
@@ -914,11 +965,17 @@ export function addVisit(addressId: string, options: VisitOptions = {}): { id: s
     options.windowType || 'main',
     options.metadata || '{}',
     options.scrollDepth || 0,
-    options.interacted || 0
+    options.interacted || 0,
+    prevId
   );
 
+  // Update nextId on the previous visit
+  if (prevId) {
+    d.prepare('UPDATE visits SET nextId = ? WHERE id = ?').run(visitId, prevId);
+  }
+
   // Update address visit stats
-  getDb().prepare(`
+  d.prepare(`
     UPDATE addresses SET lastVisitAt = ?, visitCount = visitCount + 1, updatedAt = ?
     WHERE id = ?
   `).run(timestamp, timestamp, addressId);
@@ -926,7 +983,7 @@ export function addVisit(addressId: string, options: VisitOptions = {}): { id: s
   // Also update any items with matching URL content
   const address = getAddress(addressId);
   if (address && address.uri) {
-    getDb().prepare(`
+    d.prepare(`
       UPDATE items SET lastVisitAt = ?, visitCount = visitCount + 1, updatedAt = ?
       WHERE type = 'url' AND content = ? AND deletedAt = 0
     `).run(timestamp, timestamp, address.uri);
@@ -951,6 +1008,10 @@ export function queryVisits(filter: VisitFilter = {}): Visit[] {
     sql += ' AND timestamp >= ?';
     params.push(filter.since);
   }
+  if (filter.until) {
+    sql += ' AND timestamp <= ?';
+    params.push(filter.until);
+  }
 
   sql += ' ORDER BY timestamp DESC';
 
@@ -960,6 +1021,110 @@ export function queryVisits(filter: VisitFilter = {}): Visit[] {
   }
 
   return getDb().prepare(sql).all(...params) as Visit[];
+}
+
+// ==================== History Operations ====================
+
+export interface HistoryFilter {
+  since?: number;
+  until?: number;
+  source?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface HistoryEntry {
+  id: string;
+  addressId: string;
+  timestamp: number;
+  duration: number;
+  source: string;
+  sourceId: string;
+  windowType: string;
+  metadata: string;
+  scrollDepth: number;
+  interacted: number;
+  prevId: string | null;
+  nextId: string | null;
+  uri: string;
+  title: string;
+  domain: string;
+  protocol: string;
+  favicon: string;
+}
+
+/**
+ * Track a window load: find or create address, then add visit with chaining
+ */
+export function trackWindowLoad(uri: string, options: {
+  source?: string;
+  sourceId?: string;
+  windowType?: string;
+  title?: string;
+} = {}): { visitId: string; addressId: string } {
+  const normalizedUri = normalizeUrl(uri);
+
+  // Find existing address by URI
+  const existing = getDb().prepare('SELECT id FROM addresses WHERE uri = ?').get(normalizedUri) as { id: string } | undefined;
+
+  let addressId: string;
+  if (existing) {
+    addressId = existing.id;
+    // Update title if provided and different
+    if (options.title) {
+      getDb().prepare('UPDATE addresses SET title = ?, updatedAt = ? WHERE id = ? AND (title = \'\' OR title IS NULL)').run(options.title, now(), addressId);
+    }
+  } else {
+    const result = addAddress(uri, { title: options.title || '' });
+    addressId = result.id;
+  }
+
+  const visit = addVisit(addressId, {
+    source: options.source || 'window',
+    sourceId: options.sourceId || '',
+    windowType: options.windowType || 'main',
+  });
+
+  return { visitId: visit.id, addressId };
+}
+
+/**
+ * Get history entries (visits joined with addresses) with filtering
+ */
+export function getHistory(filter: HistoryFilter = {}): HistoryEntry[] {
+  let sql = `
+    SELECT v.*, a.uri, a.title, a.domain, a.protocol, a.favicon
+    FROM visits v
+    LEFT JOIN addresses a ON v.addressId = a.id
+    WHERE 1=1
+  `;
+  const params: (string | number)[] = [];
+
+  if (filter.since) {
+    sql += ' AND v.timestamp >= ?';
+    params.push(filter.since);
+  }
+  if (filter.until) {
+    sql += ' AND v.timestamp <= ?';
+    params.push(filter.until);
+  }
+  if (filter.source) {
+    sql += ' AND v.source = ?';
+    params.push(filter.source);
+  }
+
+  sql += ' ORDER BY v.timestamp DESC';
+
+  if (filter.limit) {
+    sql += ' LIMIT ?';
+    params.push(filter.limit);
+  }
+  if (filter.offset) {
+    sql += ' OFFSET ?';
+    params.push(filter.offset);
+  }
+
+  return getDb().prepare(sql).all(...params) as HistoryEntry[];
 }
 
 // ==================== Content Operations ====================

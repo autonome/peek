@@ -9,7 +9,7 @@ import { app, BrowserWindow, ipcMain, Menu, nativeImage, nativeTheme } from 'ele
 import path from 'node:path';
 import fs from 'node:fs';
 
-import { initDatabase, closeDatabase, getDb } from './datastore.js';
+import { initDatabase, closeDatabase, getDb, trackWindowLoad } from './datastore.js';
 import { registerScheme, initProtocol, registerExtensionPath, getExtensionPath, getRegisteredExtensionIds, registerThemePath } from './protocol.js';
 import { discoverExtensions, loadExtensionManifest, isBuiltinExtensionEnabled, getExternalExtensions } from './extensions.js';
 import { initTray } from './tray.js';
@@ -887,6 +887,33 @@ export function createBackgroundWindow(): BrowserWindow {
             ...featuresMap,
             address: details.url,
             modal: featuresMap.modal
+          });
+
+          // Track this load in history
+          try {
+            trackWindowLoad(details.url, {
+              source: (featuresMap.trackingSource as string) || 'background',
+              sourceId: (featuresMap.trackingSourceId as string) || '',
+              windowType: featuresMap.modal ? 'modal' : 'main',
+              title: newWin.getTitle() || '',
+            });
+          } catch (e) {
+            DEBUG && console.log('Failed to track background child window load:', e);
+          }
+
+          // Track in-page navigation within this window
+          newWin.webContents.on('did-navigate', (_event: Electron.Event, navUrl: string) => {
+            if (navUrl === details.url) return;
+            try {
+              trackWindowLoad(navUrl, {
+                source: 'navigation',
+                sourceId: '',
+                windowType: featuresMap.modal ? 'modal' : 'main',
+                title: newWin.getTitle() || '',
+              });
+            } catch (e) {
+              DEBUG && console.log('Failed to track did-navigate:', e);
+            }
           });
 
           // Add escape key handler

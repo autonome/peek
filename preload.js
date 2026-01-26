@@ -425,6 +425,11 @@ api.datastore = {
   },
   getItemsByTag: (tagId) => {
     return ipcRenderer.invoke('datastore-get-items-by-tag', { tagId });
+  },
+
+  // History operations (visits joined with addresses)
+  getHistory: (filter = {}) => {
+    return ipcRenderer.invoke('datastore-get-history', { filter });
   }
 };
 

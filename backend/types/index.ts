@@ -35,6 +35,8 @@ export interface Visit {
   metadata: string;
   scrollDepth: number;
   interacted: number;
+  prevId: string | null;
+  nextId: string | null;
 }
 
 export interface Content {
@@ -163,6 +165,7 @@ export interface VisitFilter {
   addressId?: string;
   source?: string;
   since?: number;
+  until?: number;
   limit?: number;
 }
 

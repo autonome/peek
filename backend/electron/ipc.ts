@@ -43,6 +43,9 @@ import {
   untagItem,
   getItemTags,
   getItemsByTag,
+  // History operations
+  trackWindowLoad,
+  getHistory,
 } from './datastore.js';
 
 import {
@@ -509,6 +512,17 @@ export function registerDatastoreHandlers(): void {
   ipcMain.handle('datastore-get-items-by-tag', async (ev, data) => {
     try {
       const result = getItemsByTag(data.tagId);
+      return { success: true, data: result };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // History operations (visits joined with addresses)
+  ipcMain.handle('datastore-get-history', async (ev, data = {}) => {
+    try {
+      const result = getHistory(data.filter);
       return { success: true, data: result };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -1499,6 +1513,51 @@ export function registerWindowHandlers(): void {
       };
       DEBUG && console.log('Adding window to manager:', win.id, 'modal:', windowParams.modal, 'keepLive:', windowParams.keepLive);
       registerWindow(win.id, msg.source, windowParams);
+
+      // Track this load in history
+      try {
+        trackWindowLoad(url, {
+          source: options.trackingSource || options.feature || 'window',
+          sourceId: options.trackingSourceId || '',
+          windowType: options.modal ? 'modal' : 'main',
+          title: options.title || win.getTitle() || '',
+        });
+      } catch (e) {
+        DEBUG && console.log('Failed to track window load:', e);
+      }
+
+      // Track in-page navigation (link clicks within the window)
+      win.webContents.on('did-navigate', (_event: Electron.Event, navUrl: string) => {
+        // Skip if it's the same URL we just loaded
+        if (navUrl === url) return;
+        try {
+          trackWindowLoad(navUrl, {
+            source: 'navigation',
+            sourceId: '',
+            windowType: options.modal ? 'modal' : 'main',
+            title: win.getTitle() || '',
+          });
+        } catch (e) {
+          DEBUG && console.log('Failed to track did-navigate:', e);
+        }
+      });
+
+      // Track JS window.open() from web content windows
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        win.webContents.setWindowOpenHandler((details: Electron.HandlerDetails) => {
+          // Track the URL that JS is trying to open
+          try {
+            trackWindowLoad(details.url, {
+              source: 'window-open',
+              sourceId: url,
+              windowType: 'main',
+            });
+          } catch (e) {
+            DEBUG && console.log('Failed to track setWindowOpenHandler:', e);
+          }
+          return { action: 'allow' };
+        });
+      }
 
       // Add escape key handler to all windows
       addEscHandler(win);

@@ -9,16 +9,11 @@ const clear = false;
 const windows = new Map();
 
 /**
- * Track navigation for an address unless it's an internal peek:// URL
+ * Track navigation for an address
  * @param {string} address - URL that was navigated to
  * @param {Object} params - Window parameters containing tracking options
  */
 const maybeTrackNavigation = (address, params = {}) => {
-  // Skip tracking for internal peek:// URLs
-  if (address.startsWith('peek://')) {
-    return;
-  }
-
   trackNavigation(address, {
     source: params.trackingSource || params.feature || 'window',
     sourceId: params.trackingSourceId || '',

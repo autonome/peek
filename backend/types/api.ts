@@ -179,6 +179,7 @@ export interface VisitFilter {
   addressId?: string;
   source?: string;
   since?: number;
+  until?: number;
   limit?: number;
 }
 

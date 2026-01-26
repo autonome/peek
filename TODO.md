@@ -35,11 +35,8 @@ the rules
 Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
 
 Today
-- [ ][mobile] fix sync re-pushing all items every time - use per-item synced_at instead of global last_sync in get_items_to_push query (desktop fix: jj change ltovmzon, see backend/electron/sync.ts:465)
-- [~][mobile] integrate app versioning changes, local end to end testing, deployment to server/mobile/desktop and test
-- [ ][mobile] add version headers to mobile sync (DATASTORE_VERSION + PROTOCOL_VERSION) — needs mobile workspace
-- [ ][desktop] add new items (urls, notes, tagsets)
-- [ ][desktop] show titlebar on hover at top edge of window for all pages
+- [~] integrate app versioning changes, local end to end testing, deployment to server/mobile/desktop and test
+- [ ][desktop] the items in the History section under the Addressability header
 
 ## unfiled
 
@@ -61,88 +58,40 @@ once we have cardinal ui
 
 ## Accounts/profiles/sync safety/fidelity
 
-app/data versioning
-- [x] (maybe done)? add device ID tracking to item metadata
-- [x] need app version and datastore version, b/c those are different layers of compatibility
-- [x] define system that works for compat (and detecting incompatibility) across desktop/server/mobile/other
-- [x] define how sync works when incompatible (maybe clients only sync w/ datastore-compatible nodes?)
-- [x] assume sync is not a spoke server - all nodes equal participants
-- [x] implement in desktop/server (DATASTORE_VERSION + PROTOCOL_VERSION, exact match, 409 on mismatch)
-- [ ] implement in mobile (add version headers to lib.rs sync — separate workspace)
-
 api key (accounts)
 - [ ] how initiated (manually my operator only for now, just document it)
 
 syncing history
-- [ ] "don't sync peek addresses" might be enough?
 - [ ] how to sync/merge frencency and adaptive matching?
-
-server
-- [ ] Add migration dry-run mode
-- [ ] Add database integrity verification
-- [ ] Add automatic backup cleanup after grace period
-
-desktop
-- [ ] Test profile data isolation between desktop profiles
-
-end to end
-- [ ] Test mobile-desktop sync with different profiles
-
 
 ## Addessibility / Core history / feeds
 
-For record/replay, daily ribbon, state feedback loops and observability, etc
-All of those require addressibility of all primary actions.
-Includes any peek:// invocation.
+For record/replay, daily ribbon, state feedback loops and observability, etc we need a complete chained history.
+All of those require addressibility of all primary actions, and connections to prev/next actions.
+Includes any peek:// invocation and parameters passed.
 May require the connector/parameter context for each invocation, tbd.
 Requires explicit chaining.
 
 History
-- [ ] add peek:// loads to history record
+- [ ] add peek:// loads to history table
+- [ ] peek urls don't need params yet, but we'll need to do cmd params and connector data somehow maybe
+- [ ] ensure all window/frame/webview loads of any kind are entered in history
+- [ ] bug: some link clicks in web pages open in a window with a title bar that's clearly not entered in peek's window tracking, maybe js in the page opening windows?
+- [ ] sync: don't sync peek addresses for now
 
-Chain
-- [ ] next/prev cols or separate table?
-- [ ] each time a history record is added, set prevId
+History chaining
+- [ ] not doing paths/forking yet - is just one single chain of actions
+- [ ] add next/prev cols to history table, or maintain in new table?
+- [ ] when a history record is added, set prevId pointing to previous history record
 - [ ] each time a history record is added, set nextId to its prevId
-
-Integration
-- [ ] add to all window/frame/webview loads of any kind
 
 API
 - [ ] enumerate history
 - [ ] filter on date ranges
 
-Migration
-
 Review against impl
 - [ ] step counter: app level interaction tracing/counting. when is reset? when does action end and new one start?
 - [ ] peeks/slides as tagged addresses with metadata properties? or urls?
-
-## Metadata, QS and reflection
-
-- [ ] tabstats for peek
-
-## Files-ness
-
-- [ ] access to notes folder(s) on filesystem to import+sync
-- [ ] syncing peek-only ontes as markdown files in specified dir (or library, boo)
-- [ ] import signal note-to-self archive into peek notes
-
-## Extension dev
-- [ ] shared libs, eg utils
-- [ ] language: call them feature or apps? other? extensions? mods?
-
-## Izui
-
-- [ ] formalize model
-- [ ] make izui stack manager (part of window mgr?)
-- [ ] esc stack: from feature settings back to core settings
-- [ ] add to izui stack (and ix w/ history?)
-- [ ] interactions/sec-policy between peek:// and other
-
-## Polish
-
-- [ ] if no api key set, sync settings are disabled, and pull-to-sync on mobile
 
 ## UI Componentry
 
@@ -221,13 +170,6 @@ notes
    - [ ] eg "Target: [window title]" header when window-scoped command is selected?
 
 
-## window templates
-
-- [ ] declarative sets of ui components?
-- [ ] eg page info hud overlay
-- [ ] explode: windows using groups ui with transparent background and vi directionals, enter opens
-- [ ] tile/untile, eg the Explode extension
-
 ## Web page experience
 
 Page loading core
@@ -249,6 +191,48 @@ Page info/metadata/action widgets (depends on window templates maybe?)
 - [ ] media (imgs, rss, etc)
 - [ ] actions (new extension cmd type?)
 - [ ] scripts (tbd)
+
+Titlebar
+- [ ] show titlebar on hover at top edge of window for all pages
+
+## server
+
+- [ ] Add migration dry-run mode
+- [ ] Add database integrity verification
+- [ ] Add automatic backup cleanup after grace period
+
+## Metadata, QS and reflection
+
+- [ ] tabstats for peek
+
+## Files-ness
+
+- [ ] access to notes folder(s) on filesystem to import+sync
+- [ ] syncing peek-only ontes as markdown files in specified dir (or library, boo)
+- [ ] import signal note-to-self archive into peek notes
+
+## Extension dev
+- [ ] shared libs, eg utils
+- [ ] language: call them feature or apps? other? extensions? mods?
+
+## Izui
+
+- [ ] formalize model
+- [ ] make izui stack manager (part of window mgr?)
+- [ ] esc stack: from feature settings back to core settings
+- [ ] add to izui stack (and ix w/ history?)
+- [ ] interactions/sec-policy between peek:// and other
+
+## Polish
+
+- [ ] if no api key set, sync settings are disabled, and pull-to-sync on mobile
+
+## window templates
+
+- [ ] declarative sets of ui components?
+- [ ] eg page info hud overlay
+- [ ] explode: windows using groups ui with transparent background and vi directionals, enter opens
+- [ ] tile/untile, eg the Explode extension
 
 ## Pagestream
 
@@ -545,6 +529,19 @@ Newly done items go here, grouped under third-level headings by week of year.
 
 ### 2026-W04
 
+- [x] add device ID tracking to item metadata
+- [x] app version and datastore version as separate layers of compatibility
+- [x] define compat detection system across desktop/server/mobile/other
+- [x] define how sync works when incompatible (clients only sync w/ datastore-compatible nodes)
+- [x] sync is not spoke server - all nodes equal participants
+- [x] implement version compat in desktop/server (DATASTORE_VERSION + PROTOCOL_VERSION, exact match, 409 on mismatch)
+- [x] implement version compat in mobile (add version headers to lib.rs sync) (rlrlqkqz)
+- [x][mobile] fix sync re-pushing all items every time - per-item synced_at (nxszorty)
+- [x][mobile] add version headers to mobile sync - DATASTORE_VERSION + PROTOCOL_VERSION (rlrlqkqz)
+- [x][desktop] add new items - url/tagset/note commands (pwuyrstl)
+- [x][desktop] editor extension with full note editing (rmztsrkr)
+- [x][tauri] sync module, schema migrations, version compat to match Electron (zzyllzsk)
+- [x] e2e sync & version test suite, fix sync profile resolution (rlrlqkqz)
 - [x][mobile] fix share extension creating duplicate items per tag (yvumsuqr)
 - [x][mobile] merge home and search into unified view, configurable archive tag (txzkumku)
 - [x][mobile] fix big bottom bar showing again (tqnmowqm)

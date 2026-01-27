@@ -57,8 +57,6 @@
     "mobile:ios:build:release": "cd backend/tauri-mobile && ./build-release.sh",
     "mobile:ios:xcode": "open backend/tauri-mobile/src-tauri/gen/apple/peek-save.xcodeproj",
     "mobile:ios:test": "cd backend/tauri-mobile && ./dev-setup.sh",
-    "mobile:ios:e2e": "./scripts/ios-sync-test.sh",
-    "e2e:full-sync": "./scripts/e2e-full-sync-test.sh",
     "mobile:android:init": "cd backend/tauri-mobile/src-tauri && cargo tauri android init",
     "mobile:android:dev": "cd backend/tauri-mobile/src-tauri && cargo tauri android dev",
     "mobile:android:build": "cd backend/tauri-mobile/src-tauri && cargo tauri android build",
@@ -88,6 +86,9 @@
     "test:e2e:version:phase": "./scripts/e2e-version-test.sh --phase",
     "test:e2e:server": "./scripts/e2e-server.sh",
     "test:mobile": "cd backend/tauri-mobile && npm test",
+    "test:extension": "node --test backend/extension/tests/*.test.js",
+    "extension:chrome": "backend/extension/scripts/launch-chrome.sh",
+    "extension:firefox": "web-ext run --source-dir backend/extension --firefox-profile /tmp/peek-firefox-profile --keep-profile-changes --no-reload",
     "//-- Packaged Electron --//": "",
     "kill:packaged": "pkill -f 'out/mac-arm64/Peek.app' || true",
     "kill:prod": "pkill -f '/Applications/Peek.app' || true",
@@ -148,8 +149,10 @@
     "@types/node": "^25.0.3",
     "electron": "^40.0.0",
     "electron-builder": "26.0.12",
+    "fake-indexeddb": "^6.2.5",
     "playwright": "^1.57.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "web-ext": "^9.2.0"
   },
   "resolutions": {
     "tmp": "^0.2.5",

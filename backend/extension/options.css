@@ -1,0 +1,191 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #333;
+  background: #f5f5f5;
+  padding: 24px;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+h1 {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 24px;
+}
+
+h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #ddd;
+}
+
+section {
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.field {
+  margin-bottom: 16px;
+}
+
+.field:last-child {
+  margin-bottom: 0;
+}
+
+label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+input[type="text"],
+input[type="url"],
+input[type="password"] {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+input[type="text"]:focus,
+input[type="url"]:focus,
+input[type="password"]:focus {
+  outline: none;
+  border-color: #4a90d9;
+  box-shadow: 0 0 0 2px rgba(74, 144, 217, 0.2);
+}
+
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.checkbox-field input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+}
+
+.checkbox-field label {
+  margin-bottom: 0;
+  font-weight: 400;
+}
+
+button {
+  padding: 8px 16px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #f0f0f0;
+}
+
+button.primary {
+  background: #4a90d9;
+  color: #fff;
+  border-color: #4a90d9;
+}
+
+button.primary:hover {
+  background: #3a7bc8;
+}
+
+.button-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.status-msg {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #666;
+}
+
+.status-msg.error {
+  color: #c0392b;
+}
+
+.status-msg.success {
+  color: #27ae60;
+}
+
+.diag-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 16px;
+  margin-bottom: 16px;
+}
+
+.diag-grid dt {
+  font-weight: 500;
+  color: #666;
+}
+
+.diag-grid dd {
+  font-weight: 400;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #1a1a1a;
+    color: #ddd;
+  }
+
+  section {
+    background: #2a2a2a;
+    border-color: #444;
+  }
+
+  h2 {
+    border-bottom-color: #444;
+  }
+
+  input[type="text"],
+  input[type="url"],
+  input[type="password"] {
+    background: #333;
+    border-color: #555;
+    color: #ddd;
+  }
+
+  button {
+    background: #333;
+    border-color: #555;
+    color: #ddd;
+  }
+
+  button:hover {
+    background: #444;
+  }
+
+  button.primary {
+    background: #4a90d9;
+    border-color: #4a90d9;
+    color: #fff;
+  }
+
+  .diag-grid dt {
+    color: #999;
+  }
+}

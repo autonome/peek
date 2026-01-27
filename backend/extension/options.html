@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Peek - Options</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <h1>Peek Settings</h1>
+
+  <section id="sync-config">
+    <h2>Sync Configuration</h2>
+    <div class="field">
+      <label for="server-url">Server URL</label>
+      <input type="url" id="server-url" placeholder="https://peek-node.up.railway.app">
+    </div>
+    <div class="field">
+      <label for="api-key">API Key</label>
+      <input type="password" id="api-key" placeholder="Enter your API key">
+    </div>
+    <div class="field">
+      <label for="server-profile-slug">Server Profile Slug</label>
+      <input type="text" id="server-profile-slug" placeholder="default">
+    </div>
+    <div class="checkbox-field">
+      <input type="checkbox" id="auto-sync">
+      <label for="auto-sync">Auto-sync every 15 minutes</label>
+    </div>
+    <div class="button-row">
+      <button id="save-config" class="primary">Save</button>
+    </div>
+    <div id="config-status" class="status-msg"></div>
+  </section>
+
+  <section id="diagnostics">
+    <h2>Diagnostics</h2>
+    <dl class="diag-grid">
+      <dt>Items</dt>
+      <dd id="diag-items">--</dd>
+      <dt>Tags</dt>
+      <dd id="diag-tags">--</dd>
+      <dt>Pending sync</dt>
+      <dd id="diag-pending">--</dd>
+      <dt>Last sync</dt>
+      <dd id="diag-last-sync">--</dd>
+      <dt>Sync configured</dt>
+      <dd id="diag-configured">--</dd>
+      <dt>Active profile</dt>
+      <dd id="diag-profile">--</dd>
+      <dt>Datastore version</dt>
+      <dd id="diag-ds-version">--</dd>
+      <dt>Protocol version</dt>
+      <dd id="diag-proto-version">--</dd>
+    </dl>
+    <div class="button-row">
+      <button id="btn-pull">Pull</button>
+      <button id="btn-push">Push</button>
+      <button id="btn-sync-all">Sync All</button>
+      <button id="btn-refresh">Refresh</button>
+    </div>
+    <div id="diag-status" class="status-msg"></div>
+  </section>
+
+  <script type="module" src="options.js"></script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Peek",
+  "version": "1.0.0",
+  "description": "Peek browser extension - storage, sync, and profile backend",
+  "background": {
+    "service_worker": "background.js",
+    "scripts": ["background.js"],
+    "type": "module"
+  },
+  "permissions": ["storage", "alarms"],
+  "options_page": "options.html",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "peek@burrito.space",
+      "strict_min_version": "109.0"
+    }
+  }
+}

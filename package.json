@@ -68,6 +68,7 @@
     "server:test:api": "cd backend/server && npm run test:api",
     "server:install": "cd backend/server && npm install",
     "server:healthcheck": "cd backend/server && npm run healthcheck",
+    "server:deploy": "./scripts/deploy-server.sh",
     "//-- Sync Tests --//": "",
     "test:sync": "node backend/tests/sync-integration.test.js",
     "test:sync:verbose": "VERBOSE=1 node backend/tests/sync-integration.test.js",

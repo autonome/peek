@@ -1,2 +1,1 @@
-export const DATASTORE_VERSION = 1;
-export const PROTOCOL_VERSION = 1;
+export { DATASTORE_VERSION, PROTOCOL_VERSION } from './sync/version.js';

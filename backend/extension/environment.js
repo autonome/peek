@@ -5,7 +5,7 @@
  * Mirrors backend/electron/device.ts for the extension backend.
  */
 
-import { getRawDb } from './datastore.js';
+import { data } from './engine.js';
 
 let cachedDeviceId = null;
 
@@ -13,31 +13,26 @@ let cachedDeviceId = null;
 
 /**
  * Get or generate a persistent device ID.
- * Stored in extension_settings IndexedDB store (key: system-deviceId).
- * Requires openDatabase() to have been called first.
+ * Stored in settings store (key: system-deviceId).
+ * Requires initialize() to have been called first.
  */
 export async function getDeviceId() {
   if (cachedDeviceId) {
     return cachedDeviceId;
   }
 
-  const db = getRawDb();
-
   // Try to load existing ID
   try {
-    const tx = db.transaction('extension_settings', 'readonly');
-    const store = tx.objectStore('extension_settings');
-    const row = await idbGet(store, 'system-deviceId');
-
-    if (row && row.value) {
-      const parsed = JSON.parse(row.value);
+    const value = await data.getSetting('system-deviceId');
+    if (value) {
+      const parsed = JSON.parse(value);
       if (typeof parsed === 'string' && parsed.startsWith('extension-')) {
         cachedDeviceId = parsed;
         return cachedDeviceId;
       }
     }
   } catch {
-    // Store may not exist yet
+    // Setting may not exist yet
   }
 
   // Generate new ID
@@ -45,15 +40,7 @@ export async function getDeviceId() {
 
   // Persist
   try {
-    const tx = db.transaction('extension_settings', 'readwrite');
-    const store = tx.objectStore('extension_settings');
-    await idbPut(store, {
-      id: 'system-deviceId',
-      extensionId: 'system',
-      key: 'deviceId',
-      value: JSON.stringify(cachedDeviceId),
-      updatedAt: Date.now(),
-    });
+    await data.setSetting('system-deviceId', JSON.stringify(cachedDeviceId));
   } catch {
     // Non-fatal — ID is still cached in memory
   }
@@ -156,24 +143,6 @@ function detectPlatformFromUA() {
   if (/Mac OS X|Macintosh/.test(ua)) return 'macOS';
   if (/Linux/.test(ua)) return 'Linux';
   return 'Unknown';
-}
-
-// ==================== IndexedDB Helpers ====================
-
-function idbGet(store, key) {
-  return new Promise((resolve, reject) => {
-    const req = store.get(key);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-function idbPut(store, value) {
-  return new Promise((resolve, reject) => {
-    const req = store.put(value);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
 }
 
 /**

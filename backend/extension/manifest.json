@@ -8,7 +8,10 @@
     "scripts": ["background.js"],
     "type": "module"
   },
-  "permissions": ["storage", "alarms"],
+  "action": {
+    "default_title": "Peek"
+  },
+  "permissions": ["storage", "alarms", "bookmarks", "tabs", "tabGroups", "history"],
   "options_page": "options.html",
   "browser_specific_settings": {
     "gecko": {

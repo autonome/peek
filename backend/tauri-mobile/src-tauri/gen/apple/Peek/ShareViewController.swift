@@ -1780,13 +1780,14 @@ class ShareViewController: UIViewController {
                 metadata: metadata,
                 existingId: existingSavedItem?.id,
                 existingSavedAt: existingSavedItem?.saved_at
-            ) { [weak self] in
-                // After first save, update existingSavedItem so subsequent saves are updates
-                if self?.existingSavedItem == nil {
-                    DispatchQueue.main.async {
-                        self?.existingSavedItem = DatabaseManager.shared.findExistingUrl(url)
-                    }
-                }
+            ) { }
+
+            // Set existingSavedItem synchronously after the DB write completes
+            // (saveUrl's DB write is synchronous; only the webhook push is async).
+            // Setting this in the completion handler caused a race condition where
+            // tag taps before the webhook response would see nil and INSERT again.
+            if existingSavedItem == nil {
+                existingSavedItem = DatabaseManager.shared.findExistingUrl(url)
             }
 
         case .text:

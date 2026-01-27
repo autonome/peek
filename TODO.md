@@ -44,6 +44,7 @@ context
 - [ ] implement old context plan eg https://www.reddit.com/r/hackernews/comments/1qddidm/sun_position_calculator/
 
 server
+- [x] remove yarn.lock from backend/server/ on main (Railway uses npm, yarn.lock causes build failures)
 - [ ] edgeworkernode/server vs what we got now? both? lite-version, or this it?
 
 peeks on links

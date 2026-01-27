@@ -3,22 +3,23 @@
  *
  * Exposes window.app with datastore, sync, profiles, and pubsub.
  * Imported directly by the options page (same extension origin).
+ *
+ * Wraps engine calls in { success, data } for options page compatibility.
  */
 
-import * as datastore from './datastore.js';
-import * as sync from './sync.js';
+import { data, sync, getConfig, setConfig } from './engine.js';
 import * as profiles from './profiles.js';
-import { DATASTORE_VERSION, PROTOCOL_VERSION } from './version.js';
+import { DATASTORE_VERSION, PROTOCOL_VERSION } from './sync/version.js';
 import { getEnvironment } from './environment.js';
 
 // Simple pub/sub
 const subscribers = new Map();
 
-function publish(topic, data) {
+function publish(topic, payload) {
   const listeners = subscribers.get(topic);
   if (listeners) {
     for (const cb of listeners) {
-      try { cb(data); } catch (e) { console.error('[peek:pubsub] error:', e); }
+      try { cb(payload); } catch (e) { console.error('[peek:pubsub] error:', e); }
     }
   }
 }
@@ -33,30 +34,81 @@ function subscribe(topic, callback) {
 
 const app = {
   datastore: {
-    addItem: (type, options) => datastore.addItem(type, options),
-    getItem: (id) => datastore.getItem(id),
-    updateItem: (id, options) => datastore.updateItem(id, options),
-    deleteItem: (id) => datastore.deleteItem(id),
-    hardDeleteItem: (id) => datastore.hardDeleteItem(id),
-    queryItems: (filter) => datastore.queryItems(filter),
-    getOrCreateTag: (name) => datastore.getOrCreateTag(name),
-    tagItem: (itemId, tagId) => datastore.tagItem(itemId, tagId),
-    untagItem: (itemId, tagId) => datastore.untagItem(itemId, tagId),
-    getItemTags: (itemId) => datastore.getItemTags(itemId),
-    getItemsByTag: (tagId) => datastore.getItemsByTag(tagId),
-    getTable: (name) => datastore.getTable(name),
-    getRow: (name, id) => datastore.getRow(name, id),
-    setRow: (name, id, data) => datastore.setRow(name, id, data),
-    getStats: () => datastore.getStats(),
+    addItem: async (type, options) => {
+      const result = await data.addItem(type, options);
+      return { success: true, data: result };
+    },
+    getItem: async (id) => {
+      const item = await data.getItem(id);
+      return { success: true, data: item };
+    },
+    updateItem: async (id, options) => {
+      await data.updateItem(id, options);
+      return { success: true, data: true };
+    },
+    deleteItem: async (id) => {
+      await data.deleteItem(id);
+      return { success: true, data: true };
+    },
+    hardDeleteItem: async (id) => {
+      await data.hardDeleteItem(id);
+      return { success: true, data: true };
+    },
+    queryItems: async (filter) => {
+      const items = await data.queryItems(filter);
+      return { success: true, data: items };
+    },
+    getOrCreateTag: async (name) => {
+      const result = await data.getOrCreateTag(name);
+      return { success: true, data: result };
+    },
+    tagItem: async (itemId, tagId) => {
+      await data.tagItem(itemId, tagId);
+      return { success: true, data: true };
+    },
+    untagItem: async (itemId, tagId) => {
+      await data.untagItem(itemId, tagId);
+      return { success: true, data: true };
+    },
+    getItemTags: async (itemId) => {
+      const tags = await data.getItemTags(itemId);
+      return { success: true, data: tags };
+    },
+    getItemsByTag: async (tagId) => {
+      const items = await data.adapter.getItemsByTag(tagId);
+      return { success: true, data: items };
+    },
+    getStats: async () => {
+      const stats = await data.getStats();
+      return { success: true, data: stats };
+    },
   },
 
   sync: {
-    getConfig: () => sync.getSyncConfig(),
-    setConfig: (config) => sync.setSyncConfig(config),
-    pull: (options) => sync.pullFromServer(options),
-    push: (options) => sync.pushToServer(options),
-    syncAll: () => sync.syncAll(),
-    getStatus: () => sync.getSyncStatus(),
+    getConfig: async () => {
+      const config = await getConfig();
+      return { success: true, data: config };
+    },
+    setConfig: async (config) => {
+      await setConfig(config);
+      return { success: true };
+    },
+    pull: async (options) => {
+      const result = await sync.pullFromServer(options);
+      return { success: true, data: result };
+    },
+    push: async (options) => {
+      const result = await sync.pushToServer(options);
+      return { success: true, data: result };
+    },
+    syncAll: async () => {
+      const result = await sync.syncAll();
+      return { success: true, data: result };
+    },
+    getStatus: async () => {
+      const status = await sync.getSyncStatus();
+      return { success: true, data: status };
+    },
   },
 
   profiles: {

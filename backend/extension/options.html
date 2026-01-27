@@ -72,6 +72,63 @@
     <div id="diag-status" class="status-msg"></div>
   </section>
 
+  <section id="test-features">
+    <h2>Test Features</h2>
+    <div class="checkbox-field">
+      <input type="checkbox" id="bookmark-sync">
+      <label for="bookmark-sync">Import bookmarks into Peek</label>
+    </div>
+    <p class="feature-description">
+      One-way import: adds all browser bookmarks as URL items and listens for new ones.
+      Disabling stops listening but does not remove already-imported items.
+    </p>
+    <dl id="bookmark-diag" class="diag-grid" hidden>
+      <dt>Browser bookmarks</dt>
+      <dd id="diag-bm-browser">--</dd>
+      <dt>Imported into Peek</dt>
+      <dd id="diag-bm-imported">--</dd>
+      <dt>Synced to server</dt>
+      <dd id="diag-bm-synced">--</dd>
+    </dl>
+    <div id="bookmark-status" class="status-msg"></div>
+
+    <div class="checkbox-field">
+      <input type="checkbox" id="tab-sync">
+      <label for="tab-sync">Import open tabs into Peek</label>
+    </div>
+    <p class="feature-description">
+      One-way import: adds all open browser tabs as URL items and listens for new page loads.
+      Disabling stops listening but does not remove already-imported items.
+    </p>
+    <dl id="tab-diag" class="diag-grid" hidden>
+      <dt>Open tabs</dt>
+      <dd id="diag-tab-open">--</dd>
+      <dt>Imported into Peek</dt>
+      <dd id="diag-tab-imported">--</dd>
+      <dt>Synced to server</dt>
+      <dd id="diag-tab-synced">--</dd>
+    </dl>
+    <div id="tab-status" class="status-msg"></div>
+
+    <div class="checkbox-field">
+      <input type="checkbox" id="history-sync">
+      <label for="history-sync">Import browser history into Peek</label>
+    </div>
+    <p class="feature-description">
+      One-way import: adds all browser history as URL items with full visit metadata.
+      Updates existing items on revisit. Disabling stops listening but does not remove already-imported items.
+    </p>
+    <dl id="history-diag" class="diag-grid" hidden>
+      <dt>Browser history items</dt>
+      <dd id="diag-hist-browser">--</dd>
+      <dt>Imported into Peek</dt>
+      <dd id="diag-hist-imported">--</dd>
+      <dt>Synced to server</dt>
+      <dd id="diag-hist-synced">--</dd>
+    </dl>
+    <div id="history-status" class="status-msg"></div>
+  </section>
+
   <script type="module" src="options.js"></script>
 </body>
 </html>

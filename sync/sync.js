@@ -53,9 +53,12 @@ export class SyncEngine {
     if (since && since > 0) {
       path = `/items/since/${toISOString(since)}`;
     }
+    const separator = path.includes('?') ? '&' : '?';
     if (config.serverProfileId) {
-      path += `?profile=${encodeURIComponent(config.serverProfileId)}`;
+      path += `${separator}profile=${encodeURIComponent(config.serverProfileId)}`;
     }
+    // Always include deleted items so tombstones propagate during sync
+    path += `${path.includes('?') ? '&' : '?'}includeDeleted=true`;
 
     const response = await this._serverFetch(
       config.serverUrl,
@@ -104,6 +107,18 @@ export class SyncEngine {
       itemsToPush = allItems.filter(i => i.syncSource === '');
     }
 
+    // Also include deleted items that need tombstone push
+    const allWithDeleted = await this.data.queryItems({ includeDeleted: true });
+    const deletedToPush = allWithDeleted.filter(
+      i =>
+        i.deletedAt > 0 &&
+        i.syncId &&
+        i.syncId !== '' &&
+        i.syncedAt > 0 &&
+        i.updatedAt > i.syncedAt
+    );
+    itemsToPush = itemsToPush.concat(deletedToPush);
+
     let pushed = 0;
     let failed = 0;
 
@@ -128,6 +143,9 @@ export class SyncEngine {
           sync_id: item.syncId || item.id,
         };
         if (metadata) body.metadata = metadata;
+        if (item.deletedAt > 0) {
+          body.deleted_at = item.deletedAt;
+        }
 
         let pushPath = '/items';
         if (config.serverProfileId) {
@@ -199,10 +217,21 @@ export class SyncEngine {
         (i.syncedAt > 0 && i.updatedAt > i.syncedAt)
     ).length;
 
+    // Count deleted tombstones that need pushing
+    const allWithDeleted = await this.data.queryItems({ includeDeleted: true });
+    const pendingTombstones = allWithDeleted.filter(
+      i =>
+        i.deletedAt > 0 &&
+        i.syncId &&
+        i.syncId !== '' &&
+        i.syncedAt > 0 &&
+        i.updatedAt > i.syncedAt
+    ).length;
+
     return {
       configured: !!(config.serverUrl && config.apiKey),
       lastSyncTime: config.lastSyncTime || 0,
-      pendingCount,
+      pendingCount: pendingCount + pendingTombstones,
     };
   }
 
@@ -330,10 +359,36 @@ export class SyncEngine {
    */
   async _mergeServerItem(serverItem) {
     const serverUpdatedAt = fromISOString(serverItem.updated_at);
+    const serverDeletedAt = serverItem.deleted_at
+      ? fromISOString(serverItem.deleted_at)
+      : 0;
 
     // Find local item by syncId
     const localItem = await this.data.adapter.findItemBySyncId(serverItem.id);
 
+    // Handle server-side tombstones (deleted_at > 0)
+    if (serverDeletedAt > 0) {
+      if (!localItem) {
+        // No local item — nothing to delete, skip
+        return 'skipped';
+      }
+      if (localItem.deletedAt > 0) {
+        // Already deleted locally — just update syncedAt
+        await this.data.adapter.updateItem(localItem.id, {
+          syncedAt: Date.now(),
+        });
+        return 'pulled';
+      }
+      // Local item exists and is active — soft-delete it
+      await this.data.adapter.updateItem(localItem.id, {
+        deletedAt: serverDeletedAt,
+        updatedAt: serverDeletedAt,
+        syncedAt: Date.now(),
+      });
+      return 'pulled';
+    }
+
+    // Server item is active (deleted_at is 0 or absent)
     if (!localItem) {
       // New item from server — insert
       const { id: localId } = await this.data.addItem(serverItem.type, {
@@ -357,7 +412,27 @@ export class SyncEngine {
       return 'pulled';
     }
 
-    // Item exists — check timestamps
+    // Local item exists and is deleted, but server item is active
+    if (localItem.deletedAt > 0) {
+      if (serverUpdatedAt > localItem.updatedAt) {
+        // Server is newer — undelete locally
+        await this.data.adapter.updateItem(localItem.id, {
+          content: serverItem.content || null,
+          metadata: serverItem.metadata
+            ? JSON.stringify(serverItem.metadata)
+            : null,
+          deletedAt: 0,
+          updatedAt: serverUpdatedAt,
+          syncedAt: Date.now(),
+        });
+        await this._syncTagsToItem(localItem.id, serverItem.tags || []);
+        return 'pulled';
+      }
+      // Local is newer — conflict (will push tombstone next sync)
+      return 'conflict';
+    }
+
+    // Both active — check timestamps
     if (serverUpdatedAt > localItem.updatedAt) {
       // Server is newer — update local
       await this.data.updateItem(localItem.id, {

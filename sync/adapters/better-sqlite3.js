@@ -121,8 +121,8 @@ export function createBetterSqliteAdapter(db) {
       getSetting: db.prepare('SELECT value FROM settings WHERE key = ?'),
       setSetting: db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)'),
 
-      findBySyncId: db.prepare('SELECT * FROM items WHERE id = ? AND deletedAt = 0'),
-      findBySyncIdField: db.prepare('SELECT * FROM items WHERE syncId = ? AND deletedAt = 0'),
+      findBySyncId: db.prepare('SELECT * FROM items WHERE id = ?'),
+      findBySyncIdField: db.prepare('SELECT * FROM items WHERE syncId = ?'),
 
       getAllTags: db.prepare('SELECT * FROM tags'),
     };

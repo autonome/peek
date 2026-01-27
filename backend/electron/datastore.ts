@@ -303,6 +303,7 @@ export function initDatabase(dbPath: string): Database.Database {
   migrateItemVisitColumns();
   migrateAddressesToItems();
   migrateVisitChaining();
+  migrateDeduplicateItems();
 
   // Check and write datastore version
   checkAndWriteDatastoreVersion();
@@ -799,6 +800,96 @@ function migrateVisitChaining(): void {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_visits_nextId ON visits(nextId)`);
   } catch (error) {
     DEBUG && console.log('main', `Visit chaining indexes:`, (error as Error).message);
+  }
+}
+
+/**
+ * One-time deduplication of items.
+ * Removes duplicate url/text items (same type+content) and duplicate tagsets (same sorted tag names).
+ * Keeps the item with the most recent updatedAt; prefers items with a syncId.
+ */
+function migrateDeduplicateItems(): void {
+  if (!db) return;
+
+  // Check if already done
+  const flag = db.prepare('SELECT value FROM settings WHERE key = ?').get('dedup_cleanup_v1') as { value: string } | undefined;
+  if (flag) return;
+
+  DEBUG && console.log('main', 'Running one-time dedup cleanup...');
+  let totalRemoved = 0;
+
+  // --- Deduplicate url/text items by (type, content) ---
+  const dupGroups = db.prepare(`
+    SELECT type, content, COUNT(*) as cnt
+    FROM items
+    WHERE deletedAt = 0 AND type IN ('url', 'text') AND content IS NOT NULL AND content != ''
+    GROUP BY type, content
+    HAVING cnt > 1
+  `).all() as { type: string; content: string; cnt: number }[];
+
+  for (const group of dupGroups) {
+    const items = db.prepare(`
+      SELECT id, syncId, updatedAt
+      FROM items
+      WHERE type = ? AND content = ? AND deletedAt = 0
+      ORDER BY
+        CASE WHEN syncId IS NOT NULL AND syncId != '' THEN 0 ELSE 1 END,
+        updatedAt DESC
+    `).all(group.type, group.content) as { id: string; syncId: string; updatedAt: number }[];
+
+    for (let i = 1; i < items.length; i++) {
+      db.prepare('DELETE FROM item_tags WHERE itemId = ?').run(items[i].id);
+      db.prepare('DELETE FROM items WHERE id = ?').run(items[i].id);
+      totalRemoved++;
+    }
+  }
+
+  // --- Deduplicate tagsets by sorted tag names ---
+  const tagsets = db.prepare(`
+    SELECT id, syncId, updatedAt
+    FROM items
+    WHERE type = 'tagset' AND deletedAt = 0
+  `).all() as { id: string; syncId: string; updatedAt: number }[];
+
+  const tagsetGroups = new Map<string, { id: string; syncId: string; updatedAt: number }[]>();
+  for (const ts of tagsets) {
+    const tagNames = (db.prepare(`
+      SELECT t.name FROM tags t
+      JOIN item_tags it ON t.id = it.tagId
+      WHERE it.itemId = ?
+      ORDER BY t.name
+    `).all(ts.id) as { name: string }[]).map(t => t.name).join('\0');
+
+    if (!tagsetGroups.has(tagNames)) {
+      tagsetGroups.set(tagNames, []);
+    }
+    tagsetGroups.get(tagNames)!.push(ts);
+  }
+
+  for (const [, items] of tagsetGroups) {
+    if (items.length <= 1) continue;
+
+    items.sort((a, b) => {
+      const aHasSync = a.syncId && a.syncId !== '' ? 0 : 1;
+      const bHasSync = b.syncId && b.syncId !== '' ? 0 : 1;
+      if (aHasSync !== bHasSync) return aHasSync - bHasSync;
+      return b.updatedAt - a.updatedAt;
+    });
+
+    for (let i = 1; i < items.length; i++) {
+      db.prepare('DELETE FROM item_tags WHERE itemId = ?').run(items[i].id);
+      db.prepare('DELETE FROM items WHERE id = ?').run(items[i].id);
+      totalRemoved++;
+    }
+  }
+
+  // Set flag so this doesn't run again
+  db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('dedup_cleanup_v1', '1');
+
+  if (totalRemoved > 0) {
+    console.log(`[dedup] Removed ${totalRemoved} duplicate items`);
+  } else {
+    DEBUG && console.log('main', 'Dedup cleanup: no duplicates found');
   }
 }
 

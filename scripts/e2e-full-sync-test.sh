@@ -91,12 +91,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# --- Step 1: Build desktop ---
+# --- Step 1: Build desktop + iOS Rust library ---
 
-echo "Step 1: Building desktop..."
+echo "Step 1: Building desktop + iOS Rust library..."
 cd "$PROJECT_DIR"
 yarn build
-echo "  Build complete"
+echo "  Desktop build complete"
+yarn mobile:ios:build --force
+echo "  iOS Rust library build complete"
 
 # --- Step 2: Find and wipe iOS simulator data ---
 
@@ -863,19 +865,507 @@ else
 fi
 echo ""
 echo "  NOTE: Content matching removed. Each device creates its own items."
-echo "  NOTE: Delete sync not tested (known limitation — deleted items resurrect from server)"
+echo "  NOTE: Delete propagation tested in Phase 4."
+echo "=========================================="
+echo ""
+
+# ==========================================================================
+#  PHASE 3: One-Time Dedup Cleanup Testing
+# ==========================================================================
+#
+# Tests the dedup_cleanup_v1 migration that removes pre-existing duplicate
+# items on each platform at startup. Seeds explicit duplicates into each
+# database, clears the dedup flag, restarts each platform, and verifies
+# duplicates were removed and the flag was set.
+
+echo ""
+echo "=========================================="
+echo "  Phase 3: One-Time Dedup Cleanup"
+echo "=========================================="
+echo ""
+
+PHASE3_PASS=true
+SERVER_DB="$SERVER_TEMP_DIR/default/profiles/$SERVER_PROFILE_ID/datastore.sqlite"
+
+# --- Step 19: Stop server and desktop ---
+
+echo "Step 19: Stopping server and desktop for dedup seeding..."
+kill "$DESKTOP_PID" 2>/dev/null || true
+wait "$DESKTOP_PID" 2>/dev/null || true
+DESKTOP_PID=""
+kill "$SERVER_PID" 2>/dev/null || true
+wait "$SERVER_PID" 2>/dev/null || true
+SERVER_PID=""
+echo "  Stopped."
+
+# --- Step 20: Record counts and seed duplicates ---
+
+echo ""
+echo "Step 20: Seeding duplicate items into all three databases..."
+
+SERVER_PRE=$(sqlite3 "$SERVER_DB" "SELECT COUNT(*) FROM items WHERE deletedAt = 0;")
+DESKTOP_PRE=$(sqlite3 "$DESKTOP_DB" "SELECT COUNT(*) FROM items WHERE deletedAt = 0;")
+IOS_PRE=$(sqlite3 "$IOS_DB" "SELECT COUNT(*) FROM items WHERE deleted_at IS NULL;")
+echo "  Pre-seed counts: Server=$SERVER_PRE Desktop=$DESKTOP_PRE iOS=$IOS_PRE"
+
+# SERVER duplicates (camelCase schema, content column for url+text)
+sqlite3 "$SERVER_DB" << 'SQLEOF'
+INSERT INTO items (id, type, content, metadata, syncId, syncSource, syncedAt, createdAt, updatedAt, deletedAt)
+VALUES
+  ('dup-srv-url-1', 'url', 'https://example.com/server-origin-1', '', '', '', 0, 1000000, 1000000, 0),
+  ('dup-srv-text-1', 'text', 'Note created on server', '', '', '', 0, 1000000, 1000000, 0);
+
+-- Duplicate tagset: same tags as cross-device tagset (shared, tagset)
+INSERT INTO items (id, type, content, metadata, syncId, syncSource, syncedAt, createdAt, updatedAt, deletedAt)
+VALUES ('dup-srv-tagset-1', 'tagset', NULL, '', '', '', 0, 1000000, 1000000, 0);
+
+INSERT INTO item_tags (itemId, tagId, createdAt)
+SELECT 'dup-srv-tagset-1', id, 1000000 FROM tags WHERE name IN ('shared', 'tagset');
+SQLEOF
+echo "  Seeded 3 duplicates into server DB"
+
+# DESKTOP duplicates (camelCase schema, item_tags has id column)
+sqlite3 "$DESKTOP_DB" << 'SQLEOF'
+INSERT INTO items (id, type, content, metadata, syncId, syncSource, syncedAt, createdAt, updatedAt, deletedAt)
+VALUES
+  ('dup-desk-url-1', 'url', 'https://example.com/desktop-origin-1', '{}', '', '', 0, 1000000, 1000000, 0),
+  ('dup-desk-text-1', 'text', 'Note created on desktop', '{}', '', '', 0, 1000000, 1000000, 0);
+
+-- Duplicate tagset
+INSERT INTO items (id, type, content, metadata, syncId, syncSource, syncedAt, createdAt, updatedAt, deletedAt)
+VALUES ('dup-desk-tagset-1', 'tagset', '', '{}', '', '', 0, 1000000, 1000000, 0);
+
+INSERT INTO item_tags (id, itemId, tagId, createdAt)
+SELECT 'it-dup-' || hex(randomblob(4)), 'dup-desk-tagset-1', id, 1000000
+FROM tags WHERE name IN ('shared', 'tagset');
+SQLEOF
+echo "  Seeded 3 duplicates into desktop DB"
+
+# iOS duplicates (snake_case schema, url column for url-type, content for text-type)
+sqlite3 "$IOS_DB" << 'SQLEOF'
+INSERT INTO items (id, type, url, content, metadata, sync_source, created_at, updated_at)
+VALUES
+  ('dup-ios-url-1', 'url', 'https://example.com/ios-origin-1', '', '', '', datetime('now'), datetime('now', '-1 day')),
+  ('dup-ios-text-1', 'text', '', 'Note created on iOS', '', '', datetime('now'), datetime('now', '-1 day'));
+
+-- Duplicate tagset
+INSERT INTO items (id, type, url, content, metadata, sync_source, created_at, updated_at)
+VALUES ('dup-ios-tagset-1', 'tagset', '', '', '', '', datetime('now'), datetime('now', '-1 day'));
+
+INSERT INTO item_tags (item_id, tag_id, created_at)
+SELECT 'dup-ios-tagset-1', id, datetime('now') FROM tags WHERE name IN ('shared', 'tagset');
+SQLEOF
+echo "  Seeded 3 duplicates into iOS DB"
+
+# Verify counts went up
+SERVER_SEEDED=$(sqlite3 "$SERVER_DB" "SELECT COUNT(*) FROM items WHERE deletedAt = 0;")
+DESKTOP_SEEDED=$(sqlite3 "$DESKTOP_DB" "SELECT COUNT(*) FROM items WHERE deletedAt = 0;")
+IOS_SEEDED=$(sqlite3 "$IOS_DB" "SELECT COUNT(*) FROM items WHERE deleted_at IS NULL;")
+echo "  Post-seed counts: Server=$SERVER_SEEDED Desktop=$DESKTOP_SEEDED iOS=$IOS_SEEDED"
+
+# --- Step 21: Clear dedup flags ---
+
+echo ""
+echo "Step 21: Clearing dedup_cleanup_v1 flags..."
+sqlite3 "$SERVER_DB" "DELETE FROM settings WHERE key = 'dedup_cleanup_v1';"
+sqlite3 "$DESKTOP_DB" "DELETE FROM settings WHERE key = 'dedup_cleanup_v1';"
+sqlite3 "$IOS_DB" "DELETE FROM settings WHERE key = 'dedup_cleanup_v1';"
+echo "  Cleared all dedup flags"
+
+# --- Step 22: Restart server (triggers deduplicateAllUsers at startup) ---
+
+echo ""
+echo "Step 22: Restarting server (triggers dedup cleanup)..."
+DATA_DIR="$SERVER_TEMP_DIR" PORT="$PORT" API_KEY="$API_KEY" node "$SERVER_DIR/index.js" &
+SERVER_PID=$!
+
+for i in {1..30}; do
+    if curl -sf "http://localhost:$PORT/" > /dev/null 2>&1; then
+        echo "  Server restarted (PID $SERVER_PID)"
+        break
+    fi
+    if [ "$i" -eq 30 ]; then
+        echo "  ERROR: Server failed to restart"
+        exit 1
+    fi
+    sleep 0.5
+done
+
+# Verify server dedup
+SERVER_POST=$(sqlite3 "$SERVER_DB" "SELECT COUNT(*) FROM items WHERE deletedAt = 0;")
+SERVER_URL_TEXT_DUPS=$(sqlite3 "$SERVER_DB" "SELECT COUNT(*) FROM (SELECT type, content FROM items WHERE deletedAt = 0 AND type IN ('url','text') AND content IS NOT NULL AND content != '' GROUP BY type, content HAVING COUNT(*) > 1);")
+
+echo "  Server after dedup: $SERVER_POST items (was $SERVER_SEEDED), $SERVER_URL_TEXT_DUPS url/text dup groups"
+if [ "$SERVER_POST" -lt "$SERVER_SEEDED" ] && [ "$SERVER_URL_TEXT_DUPS" -eq 0 ]; then
+    echo "    PASS: Server dedup removed duplicates ($SERVER_SEEDED -> $SERVER_POST)"
+else
+    echo "    FAIL: Server dedup issue (seeded=$SERVER_SEEDED now=$SERVER_POST dups=$SERVER_URL_TEXT_DUPS)"
+    PHASE3_PASS=false
+fi
+
+# Verify flag is set
+SERVER_FLAG=$(sqlite3 "$SERVER_DB" "SELECT value FROM settings WHERE key = 'dedup_cleanup_v1';")
+if [ "$SERVER_FLAG" = "1" ]; then
+    echo "    PASS: dedup_cleanup_v1 flag set on server"
+else
+    echo "    FAIL: dedup_cleanup_v1 flag not set on server (got '$SERVER_FLAG')"
+    PHASE3_PASS=false
+fi
+
+# --- Step 23: Re-launch desktop headless (triggers migrateDeduplicateItems) ---
+
+echo ""
+echo "Step 23: Re-launching desktop (triggers dedup cleanup)..."
+cd "$PROJECT_DIR"
+PROFILE="$DESKTOP_PROFILE" PEEK_HEADLESS=1 DEBUG=1 electron . &
+DESKTOP_PID=$!
+sleep 3
+
+DESKTOP_POST=$(sqlite3 "$DESKTOP_DB" "SELECT COUNT(*) FROM items WHERE deletedAt = 0;")
+DESKTOP_URL_TEXT_DUPS=$(sqlite3 "$DESKTOP_DB" "SELECT COUNT(*) FROM (SELECT type, content FROM items WHERE deletedAt = 0 AND type IN ('url','text') AND content IS NOT NULL AND content != '' GROUP BY type, content HAVING COUNT(*) > 1);")
+
+echo "  Desktop after dedup: $DESKTOP_POST items (was $DESKTOP_SEEDED), $DESKTOP_URL_TEXT_DUPS url/text dup groups"
+if [ "$DESKTOP_POST" -lt "$DESKTOP_SEEDED" ] && [ "$DESKTOP_URL_TEXT_DUPS" -eq 0 ]; then
+    echo "    PASS: Desktop dedup removed duplicates ($DESKTOP_SEEDED -> $DESKTOP_POST)"
+else
+    echo "    FAIL: Desktop dedup issue (seeded=$DESKTOP_SEEDED now=$DESKTOP_POST dups=$DESKTOP_URL_TEXT_DUPS)"
+    PHASE3_PASS=false
+fi
+
+DESKTOP_FLAG=$(sqlite3 "$DESKTOP_DB" "SELECT value FROM settings WHERE key = 'dedup_cleanup_v1';")
+if [ "$DESKTOP_FLAG" = "1" ]; then
+    echo "    PASS: dedup_cleanup_v1 flag set on desktop"
+else
+    echo "    FAIL: dedup_cleanup_v1 flag not set on desktop (got '$DESKTOP_FLAG')"
+    PHASE3_PASS=false
+fi
+
+# --- Step 24: iOS dedup (semi-automated — user must relaunch app) ---
+
+echo ""
+echo "Step 24: iOS dedup verification..."
+echo "  Please force-quit and relaunch the iOS app in the simulator."
+echo "  The dedup migration runs in ensure_database_initialized() on startup."
+echo "  Polling iOS database for dedup_cleanup_v1 flag..."
+
+IOS_POLL_TIMEOUT=120
+IOS_POLL_INTERVAL=3
+IOS_POLL_ELAPSED=0
+
+while [ "$IOS_POLL_ELAPSED" -lt "$IOS_POLL_TIMEOUT" ]; do
+    IOS_FLAG=$(sqlite3 "$IOS_DB" "SELECT value FROM settings WHERE key = 'dedup_cleanup_v1';" 2>/dev/null || echo "")
+    if [ "$IOS_FLAG" = "1" ]; then
+        echo "  iOS dedup flag detected!"
+        break
+    fi
+    echo "  ... waiting for iOS app restart (${IOS_POLL_ELAPSED}s elapsed)"
+    sleep "$IOS_POLL_INTERVAL"
+    IOS_POLL_ELAPSED=$(($IOS_POLL_ELAPSED + $IOS_POLL_INTERVAL))
+done
+
+if [ "$IOS_POLL_ELAPSED" -ge "$IOS_POLL_TIMEOUT" ]; then
+    echo "  TIMEOUT: iOS dedup flag not detected after ${IOS_POLL_TIMEOUT}s"
+fi
+
+IOS_POST=$(sqlite3 "$IOS_DB" "SELECT COUNT(*) FROM items WHERE deleted_at IS NULL;")
+IOS_URL_DUPS=$(sqlite3 "$IOS_DB" "SELECT COUNT(*) FROM (SELECT type, url FROM items WHERE deleted_at IS NULL AND type = 'url' AND url IS NOT NULL AND url != '' GROUP BY type, url HAVING COUNT(*) > 1);")
+IOS_TEXT_DUPS=$(sqlite3 "$IOS_DB" "SELECT COUNT(*) FROM (SELECT type, content FROM items WHERE deleted_at IS NULL AND type = 'text' AND content IS NOT NULL AND content != '' GROUP BY type, content HAVING COUNT(*) > 1);")
+
+echo "  iOS after dedup: $IOS_POST items (was $IOS_SEEDED), $IOS_URL_DUPS url dup groups, $IOS_TEXT_DUPS text dup groups"
+if [ "$IOS_POST" -lt "$IOS_SEEDED" ] && [ "$IOS_URL_DUPS" -eq 0 ] && [ "$IOS_TEXT_DUPS" -eq 0 ]; then
+    echo "    PASS: iOS dedup removed duplicates ($IOS_SEEDED -> $IOS_POST)"
+else
+    echo "    FAIL: iOS dedup issue (seeded=$IOS_SEEDED now=$IOS_POST url_dups=$IOS_URL_DUPS text_dups=$IOS_TEXT_DUPS)"
+    PHASE3_PASS=false
+fi
+
+# --- Step 25: Idempotency — restart server again, verify no further changes ---
+
+echo ""
+echo "Step 25: Idempotency check (restart server, verify stable)..."
+kill "$SERVER_PID" 2>/dev/null || true
+wait "$SERVER_PID" 2>/dev/null || true
+
+DATA_DIR="$SERVER_TEMP_DIR" PORT="$PORT" API_KEY="$API_KEY" node "$SERVER_DIR/index.js" &
+SERVER_PID=$!
+
+for i in {1..30}; do
+    if curl -sf "http://localhost:$PORT/" > /dev/null 2>&1; then break; fi
+    if [ "$i" -eq 30 ]; then echo "  ERROR: Server failed to restart"; exit 1; fi
+    sleep 0.5
+done
+
+SERVER_IDEM=$(sqlite3 "$SERVER_DB" "SELECT COUNT(*) FROM items WHERE deletedAt = 0;")
+echo "  Server after second restart: $SERVER_IDEM items"
+if [ "$SERVER_IDEM" -eq "$SERVER_POST" ]; then
+    echo "    PASS: Idempotent (still $SERVER_IDEM items, flag prevented re-run)"
+else
+    echo "    FAIL: Not idempotent ($SERVER_POST -> $SERVER_IDEM after second restart)"
+    PHASE3_PASS=false
+fi
+
+# --- Phase 3 Final Result ---
+
+echo ""
+echo "=========================================="
+if [ "$PHASE3_PASS" = true ]; then
+    echo "  PHASE 3 PASS: Dedup cleanup verified on all platforms"
+    echo "    Server:  $SERVER_SEEDED -> $SERVER_POST items (duplicates removed)"
+    echo "    Desktop: $DESKTOP_SEEDED -> $DESKTOP_POST items (duplicates removed)"
+    echo "    iOS:     $IOS_SEEDED -> $IOS_POST items (duplicates removed)"
+    echo "    Idempotency: confirmed (flag prevents re-run)"
+else
+    echo "  PHASE 3 FAIL (see above)"
+fi
+echo "=========================================="
+echo ""
+
+# ==========================================================================
+#  PHASE 4: Delete Propagation Testing (Tombstone Sync)
+# ==========================================================================
+#
+# Tests that deleting an item on one platform propagates to all others:
+# 1. Delete an item on desktop → sync → verify server has tombstone
+# 2. iOS pulls tombstone → verify item soft-deleted on iOS
+# 3. Delete a different item on iOS → sync → verify server has tombstone
+# 4. Desktop pulls tombstone → verify item soft-deleted on desktop
+
+echo ""
+echo "=========================================="
+echo "  Phase 4: Delete Propagation (Tombstone Sync)"
+echo "=========================================="
+echo ""
+
+PHASE4_PASS=true
+
+# Record pre-delete counts
+SERVER_PRE_DEL=$(curl -sf "http://localhost:$PORT/items?$PROFILE_PARAM" \
+    -H "Authorization: Bearer $API_KEY" \
+    -H "X-Peek-Datastore-Version: 1" \
+    -H "X-Peek-Protocol-Version: 1" | python3 -c "import sys,json; print(len(json.load(sys.stdin)['items']))")
+DESKTOP_PRE_DEL=$(sqlite3 "$DESKTOP_DB" "SELECT COUNT(*) FROM items WHERE deletedAt = 0;")
+echo "  Pre-delete counts: Server=$SERVER_PRE_DEL Desktop=$DESKTOP_PRE_DEL"
+
+# --- Step 26: Delete an item on desktop ---
+
+echo ""
+echo "Step 26: Deleting an item on desktop..."
+
+# Pick a desktop-origin item to delete
+DEL_DESKTOP_ID=$(sqlite3 "$DESKTOP_DB" "SELECT id FROM items WHERE deletedAt = 0 AND content LIKE '%desktop-origin%' LIMIT 1;")
+DEL_DESKTOP_CONTENT=$(sqlite3 "$DESKTOP_DB" "SELECT content FROM items WHERE id = '$DEL_DESKTOP_ID';")
+echo "  Deleting desktop item: $DEL_DESKTOP_ID ($DEL_DESKTOP_CONTENT)"
+
+# Soft-delete it
+DESKTOP_DEL_TS=$(python3 -c "import time; print(int(time.time() * 1000))")
+sqlite3 "$DESKTOP_DB" "UPDATE items SET deletedAt = $DESKTOP_DEL_TS, updatedAt = $DESKTOP_DEL_TS WHERE id = '$DEL_DESKTOP_ID';"
+
+DESKTOP_AFTER_DEL=$(sqlite3 "$DESKTOP_DB" "SELECT COUNT(*) FROM items WHERE deletedAt = 0;")
+echo "  Desktop items after delete: $DESKTOP_AFTER_DEL (was $DESKTOP_PRE_DEL)"
+
+# --- Step 27: Desktop sync pushes tombstone to server ---
+
+echo ""
+echo "Step 27: Desktop sync (pushes tombstone to server)..."
+cd "$PROJECT_DIR"
+PROFILE="$DESKTOP_PROFILE" SERVER_URL="$SERVER_URL" API_KEY="$API_KEY" SERVER_PROFILE_ID="$SERVER_PROFILE_ID" SYNC_MODE=full electron scripts/preconfigure-sync.mjs 2>&1 | grep -E "(Full sync|Pulled|Pushed|sync)" || true
+
+# Verify server has the tombstone
+SERVER_AFTER_DESKTOP_DEL=$(curl -sf "http://localhost:$PORT/items?$PROFILE_PARAM" \
+    -H "Authorization: Bearer $API_KEY" \
+    -H "X-Peek-Datastore-Version: 1" \
+    -H "X-Peek-Protocol-Version: 1" | python3 -c "import sys,json; print(len(json.load(sys.stdin)['items']))")
+
+echo "  Server active items after desktop delete: $SERVER_AFTER_DESKTOP_DEL (was $SERVER_PRE_DEL)"
+
+# Check that server has the deleted item with deleted_at > 0
+SERVER_DEL_SYNC_ID=$(sqlite3 "$DESKTOP_DB" "SELECT syncId FROM items WHERE id = '$DEL_DESKTOP_ID';")
+echo "  Looking for tombstone with sync_id: $SERVER_DEL_SYNC_ID (or item ID: $DEL_DESKTOP_ID)"
+
+# Check server DB for the tombstone
+SERVER_TOMBSTONE=$(curl -sf "http://localhost:$PORT/items?$PROFILE_PARAM&includeDeleted=true" \
+    -H "Authorization: Bearer $API_KEY" \
+    -H "X-Peek-Datastore-Version: 1" \
+    -H "X-Peek-Protocol-Version: 1" | python3 -c "
+import sys, json
+items = json.load(sys.stdin)['items']
+tombstones = [i for i in items if i.get('deleted_at', 0) > 0]
+print(len(tombstones))
+")
+echo "  Server tombstones: $SERVER_TOMBSTONE"
+
+if [ "$SERVER_AFTER_DESKTOP_DEL" -lt "$SERVER_PRE_DEL" ] || [ "$SERVER_TOMBSTONE" -gt 0 ]; then
+    echo "    PASS: Server received desktop deletion"
+else
+    echo "    FAIL: Server did not register desktop deletion"
+    PHASE4_PASS=false
+fi
+
+# --- Step 28: iOS pulls tombstone ---
+
+echo ""
+echo "=========================================="
+echo "  Please tap 'Sync All' in the iOS simulator to pull the tombstone."
+echo "  Polling iOS database for the deleted item..."
+echo "=========================================="
+
+IOS_DEL_POLL_TIMEOUT=120
+IOS_DEL_POLL_INTERVAL=5
+IOS_DEL_POLL_ELAPSED=0
+
+# Look for the desktop-deleted item appearing as deleted on iOS
+while [ "$IOS_DEL_POLL_ELAPSED" -lt "$IOS_DEL_POLL_TIMEOUT" ]; do
+    IOS_DEL_COUNT=$(sqlite3 "$IOS_DB" "SELECT COUNT(*) FROM items WHERE deleted_at IS NOT NULL;" 2>/dev/null || echo "0")
+    if [ "$IOS_DEL_COUNT" -gt 0 ] 2>/dev/null; then
+        echo "  iOS has $IOS_DEL_COUNT soft-deleted items — tombstone received!"
+        break
+    fi
+    echo "  ... iOS has $IOS_DEL_COUNT soft-deleted items (${IOS_DEL_POLL_ELAPSED}s elapsed)"
+    sleep "$IOS_DEL_POLL_INTERVAL"
+    IOS_DEL_POLL_ELAPSED=$(($IOS_DEL_POLL_ELAPSED + $IOS_DEL_POLL_INTERVAL))
+done
+
+if [ "$IOS_DEL_POLL_ELAPSED" -ge "$IOS_DEL_POLL_TIMEOUT" ]; then
+    echo "  TIMEOUT: iOS did not receive tombstone after ${IOS_DEL_POLL_TIMEOUT}s"
+    PHASE4_PASS=false
+else
+    echo "    PASS: iOS received desktop deletion tombstone"
+fi
+
+# --- Step 29: Delete an item on iOS ---
+#
+# We must terminate the iOS app BEFORE modifying the database externally.
+# The running app has its own SQLite connection (WAL mode) and won't see
+# external writes. After modifying, we checkpoint the WAL and ask the
+# user to relaunch.
+
+echo ""
+echo "Step 29: Terminating iOS app before modifying database..."
+xcrun simctl terminate booted com.dietrich.peek-mobile 2>/dev/null || true
+sleep 2
+
+# Pick an iOS-origin item to delete
+IOS_DEL_ID=$(sqlite3 "$IOS_DB" "SELECT id FROM items WHERE deleted_at IS NULL AND id LIKE 'ios-e2e%' LIMIT 1;" 2>/dev/null)
+IOS_DEL_CONTENT=$(sqlite3 "$IOS_DB" "SELECT COALESCE(url, content) FROM items WHERE id = '$IOS_DEL_ID';" 2>/dev/null)
+echo "  Deleting iOS item: $IOS_DEL_ID ($IOS_DEL_CONTENT)"
+
+# Use RFC 3339 timestamp (same format the iOS app uses: Utc::now().to_rfc3339())
+# SQLite's datetime('now') produces 'YYYY-MM-DD HH:MM:SS' which parse_from_rfc3339() rejects
+IOS_RFC3339_NOW=$(python3 -c "from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())")
+sqlite3 "$IOS_DB" "UPDATE items SET deleted_at = '$IOS_RFC3339_NOW', updated_at = '$IOS_RFC3339_NOW' WHERE id = '$IOS_DEL_ID';"
+
+# Checkpoint WAL to ensure data is in the main DB file for next app launch
+sqlite3 "$IOS_DB" "PRAGMA wal_checkpoint(TRUNCATE);" 2>/dev/null || true
+
+IOS_ACTIVE=$(sqlite3 "$IOS_DB" "SELECT COUNT(*) FROM items WHERE deleted_at IS NULL;")
+IOS_DELETED=$(sqlite3 "$IOS_DB" "SELECT COUNT(*) FROM items WHERE deleted_at IS NOT NULL;")
+echo "  iOS items: $IOS_ACTIVE active, $IOS_DELETED deleted"
+
+# --- Step 30: iOS sync pushes tombstone to server ---
+
+echo ""
+echo "=========================================="
+echo "  Please relaunch the iOS app in the simulator and tap 'Sync All'"
+echo "  to push the tombstone. (App was terminated to pick up DB changes.)"
+echo "  Polling server for updated deletion count..."
+echo "=========================================="
+
+SERVER_TOMB_POLL_TIMEOUT=120
+SERVER_TOMB_POLL_INTERVAL=5
+SERVER_TOMB_POLL_ELAPSED=0
+EXPECTED_TOMBSTONES=2  # One from desktop + one from iOS
+
+while [ "$SERVER_TOMB_POLL_ELAPSED" -lt "$SERVER_TOMB_POLL_TIMEOUT" ]; do
+    CURRENT_TOMBS=$(curl -sf "http://localhost:$PORT/items?$PROFILE_PARAM&includeDeleted=true" \
+        -H "Authorization: Bearer $API_KEY" \
+        -H "X-Peek-Datastore-Version: 1" \
+        -H "X-Peek-Protocol-Version: 1" 2>/dev/null | python3 -c "
+import sys, json
+items = json.load(sys.stdin)['items']
+tombstones = [i for i in items if i.get('deleted_at', 0) > 0]
+print(len(tombstones))
+" 2>/dev/null || echo "0")
+    if [ "$CURRENT_TOMBS" -ge "$EXPECTED_TOMBSTONES" ] 2>/dev/null; then
+        echo "  Server has $CURRENT_TOMBS tombstones — iOS push detected!"
+        break
+    fi
+    echo "  ... $CURRENT_TOMBS / $EXPECTED_TOMBSTONES tombstones (${SERVER_TOMB_POLL_ELAPSED}s elapsed)"
+    sleep "$SERVER_TOMB_POLL_INTERVAL"
+    SERVER_TOMB_POLL_ELAPSED=$(($SERVER_TOMB_POLL_ELAPSED + $SERVER_TOMB_POLL_INTERVAL))
+done
+
+if [ "$SERVER_TOMB_POLL_ELAPSED" -ge "$SERVER_TOMB_POLL_TIMEOUT" ]; then
+    echo "  TIMEOUT: Server did not receive iOS tombstone after ${SERVER_TOMB_POLL_TIMEOUT}s"
+    PHASE4_PASS=false
+else
+    echo "    PASS: Server received iOS deletion tombstone"
+fi
+
+# --- Step 31: Desktop pulls iOS tombstone ---
+
+echo ""
+echo "Step 31: Desktop sync (pulls iOS tombstone)..."
+cd "$PROJECT_DIR"
+PROFILE="$DESKTOP_PROFILE" SERVER_URL="$SERVER_URL" API_KEY="$API_KEY" SERVER_PROFILE_ID="$SERVER_PROFILE_ID" SYNC_MODE=full electron scripts/preconfigure-sync.mjs 2>&1 | grep -E "(Full sync|Pulled|Pushed|sync)" || true
+
+DESKTOP_FINAL_ACTIVE=$(sqlite3 "$DESKTOP_DB" "SELECT COUNT(*) FROM items WHERE deletedAt = 0;")
+DESKTOP_FINAL_DELETED=$(sqlite3 "$DESKTOP_DB" "SELECT COUNT(*) FROM items WHERE deletedAt > 0;")
+echo "  Desktop items: $DESKTOP_FINAL_ACTIVE active, $DESKTOP_FINAL_DELETED deleted"
+
+if [ "$DESKTOP_FINAL_DELETED" -ge 2 ]; then
+    echo "    PASS: Desktop received both tombstones"
+else
+    echo "    FAIL: Desktop should have at least 2 deleted items (got $DESKTOP_FINAL_DELETED)"
+    PHASE4_PASS=false
+fi
+
+# --- Step 32: Verify final counts match across platforms ---
+
+echo ""
+echo "Step 32: Final cross-platform verification..."
+
+SERVER_FINAL_ALL=$(curl -sf "http://localhost:$PORT/items?$PROFILE_PARAM&includeDeleted=true" \
+    -H "Authorization: Bearer $API_KEY" \
+    -H "X-Peek-Datastore-Version: 1" \
+    -H "X-Peek-Protocol-Version: 1" | python3 -c "
+import sys, json
+items = json.load(sys.stdin)['items']
+active = len([i for i in items if i.get('deleted_at', 0) == 0])
+deleted = len([i for i in items if i.get('deleted_at', 0) > 0])
+print(f'{active} active, {deleted} deleted')
+")
+echo "  Server: $SERVER_FINAL_ALL"
+echo "  Desktop: $DESKTOP_FINAL_ACTIVE active, $DESKTOP_FINAL_DELETED deleted"
+
+IOS_FINAL_ACTIVE=$(sqlite3 "$IOS_DB" "SELECT COUNT(*) FROM items WHERE deleted_at IS NULL;")
+IOS_FINAL_DELETED=$(sqlite3 "$IOS_DB" "SELECT COUNT(*) FROM items WHERE deleted_at IS NOT NULL;")
+echo "  iOS: $IOS_FINAL_ACTIVE active, $IOS_FINAL_DELETED deleted"
+
+# --- Phase 4 Final Result ---
+
+echo ""
+echo "=========================================="
+if [ "$PHASE4_PASS" = true ]; then
+    echo "  PHASE 4 PASS: Delete propagation verified"
+    echo "    Desktop delete → Server tombstone → iOS soft-delete"
+    echo "    iOS delete → Server tombstone → Desktop soft-delete"
+else
+    echo "  PHASE 4 FAIL (see above)"
+fi
 echo "=========================================="
 echo ""
 
 # --- Overall result ---
 echo ""
 echo "=========================================="
-if [ "$PASS" = true ] && [ "$PHASE2_PASS" = true ]; then
-    echo "  OVERALL RESULT: PASS (Phase 1 + Phase 2)"
+if [ "$PASS" = true ] && [ "$PHASE2_PASS" = true ] && [ "$PHASE3_PASS" = true ] && [ "$PHASE4_PASS" = true ]; then
+    echo "  OVERALL RESULT: PASS (Phase 1 + Phase 2 + Phase 3 + Phase 4)"
 else
     echo "  OVERALL RESULT: FAIL"
     [ "$PASS" != true ] && echo "    Phase 1: FAIL"
     [ "$PHASE2_PASS" != true ] && echo "    Phase 2: FAIL"
+    [ "$PHASE3_PASS" != true ] && echo "    Phase 3: FAIL"
+    [ "$PHASE4_PASS" != true ] && echo "    Phase 4: FAIL"
 fi
 echo "=========================================="
 echo ""

@@ -146,6 +146,12 @@ button.primary:hover {
   font-weight: 400;
 }
 
+.feature-description {
+  font-size: 12px;
+  color: #888;
+  margin-top: 8px;
+}
+
 @media (prefers-color-scheme: dark) {
   body {
     background: #1a1a1a;
@@ -187,5 +193,9 @@ button.primary:hover {
 
   .diag-grid dt {
     color: #999;
+  }
+
+  .feature-description {
+    color: #777;
   }
 }

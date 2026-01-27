@@ -14,14 +14,14 @@ Peek is a web user agent application that provides alternative ways to interact 
 
 ## Requirements
 
-- **Node.js 22** - Pinned to match Electron 40's embedded Node version (see `.nvmrc`)
-- Install via `nvm install 22` or download from nodejs.org
+- **Node.js 24+** - Required for both desktop (Electron 40) and server
+- Install via `nvm install 24` or download from nodejs.org
 
 ## Key Commands
 
 ### Development
 ```bash
-nvm use 22                # Ensure Node 22 is active (matches Electron)
+nvm use 24                # Ensure Node 24 is active
 yarn install              # Install dependencies
 yarn debug                # Run in development mode (with devtools)
 yarn start                # Start normally
@@ -103,6 +103,14 @@ backend/
 ├── tauri-mobile/      # Tauri mobile app (iOS/Android)
 │   ├── src/           # React frontend
 │   └── src-tauri/     # Rust backend
+├── extension/         # MV3 browser extension (Firefox/Chrome)
+│   ├── background.js  # Service worker: alarms, message handling, sync init
+│   ├── datastore.js   # IndexedDB adapter (mirrors SQLite schema)
+│   ├── bookmarks.js   # Bookmark sync (one-way import)
+│   ├── tabs.js        # Tab sync (one-way import)
+│   ├── history.js     # History sync (one-way import, update-on-revisit)
+│   ├── options.js     # Options page logic
+│   └── tests/         # Node.js unit tests (node --test)
 └── server/            # Webhook API server for mobile sync
     ├── index.js       # Hono HTTP server
     ├── db.js          # SQLite via better-sqlite3
@@ -437,33 +445,42 @@ All endpoints except `/` require `Authorization: Bearer <api_key>` header.
 Railway project: `amusing-courtesy`, service: `peek-node`
 URL: `https://peek-node.up.railway.app`
 
+**Important:** The server uses **npm** (not yarn). Railway's Nixpacks builder auto-detects `package-lock.json` and uses npm. Do not add `yarn.lock` to `backend/server/` — it will cause Nixpacks to use yarn and fail with frozen lockfile errors.
+
+**How it works:** The deploy script (`yarn server:deploy`) uses `git subtree split` to extract `backend/server/` into a standalone `deploy/server` branch, then pushes to GitHub. Railway watches this branch.
+
+```bash
+# Run tests first
+yarn server:test
+
+# Deploy (from repo root)
+yarn server:deploy
+```
+
+This runs `scripts/deploy-server.sh` which:
+1. Exports jj state to git (`jj git export`)
+2. Splits `backend/server/` into branch `deploy/server` via `git subtree split`
+3. Removes `yarn.lock` from the deploy branch if present
+4. Pushes `deploy/server` to GitHub (`git push github deploy/server`)
+
+Railway auto-deploys from the `deploy/server` branch on GitHub (`git@github.com:autonome/peek`).
+
+**Manual Railway commands** (run `railway link -p amusing-courtesy` once first):
+```bash
+railway deployment list --service peek-node --limit 5   # Check deploy status
+railway logs --service peek-node -n 50                   # View recent logs
+railway logs --service peek-node --build -n 50           # View build logs
+curl https://peek-node.up.railway.app/                   # Health check
+```
+
 **Initial Setup:**
-1. Connect Railway to `backend/server/` subdirectory
+1. Connect Railway to GitHub repo, `deploy/server` branch
 2. Attach a persistent volume, set `DATA_DIR` env var to mount path
 3. Create users via the `users.js` module
-
-**Deploying Updates:**
-```bash
-# Link to project (one-time, from backend/server/)
-railway link -p amusing-courtesy
-
-# Always run tests first
-npm test
-
-# Deploy
-railway up -d
-
-# Check logs
-railway logs -n 50
-
-# Health check
-curl https://peek-node.up.railway.app/
-```
 
 **Deployment Order (Server + Mobile):**
 1. **Server first** - stateless, has auto-migrations that run on first request
 2. **Mobile second** - works offline, adapts to server changes
-3. One-way sync only: mobile → server (no pull/download sync yet)
 
 **Migration Gotcha:**
 When adding database columns via migration, ensure indexes on those columns are created AFTER the column migration runs, not in the initial CREATE TABLE statement.
@@ -476,6 +493,32 @@ Different from desktop datastore - optimized for mobile sync:
 - `settings` - Key-value config
 
 Images stored on disk in `./data/{userId}/images/` with content-hash deduplication.
+
+## Browser Extension (`backend/extension/`)
+
+MV3 browser extension for Firefox and Chrome. Provides sync, profile management, and one-way browser data import behind test feature toggles.
+
+### Running
+```bash
+yarn extension:firefox     # Launch Firefox with extension (web-ext)
+yarn test:extension        # Run unit tests (node --test)
+```
+
+### Browser Data Import
+
+Three sync modules import browser data as Peek URL items. All are one-way (browser → Peek), behind toggles in the options page Test Features section, and tag items with their source.
+
+| Module | Toggle key | Tag | Behavior |
+|--------|-----------|-----|----------|
+| `bookmarks.js` | `peek_bookmarks_enabled` | `from:bookmark` | Add-and-skip: new bookmarks imported, existing URLs tagged |
+| `tabs.js` | `peek_tabs_enabled` | `from:tab` | Add-and-skip: open tabs imported, listens for `onUpdated` |
+| `history.js` | `peek_history_enabled` | `from:history` | **Update-on-revisit**: existing items get fresh visit metadata via `updateItem()` |
+
+**Cross-source tagging**: When a URL already exists in Peek (from any source), each sync module still adds its own source tag to the existing item. Stats count by tag, not `syncSource`. This means an item imported via bookmarks and later visited in history will have both `from:bookmark` and `from:history` tags.
+
+**Diagnostics**: Stats are fetched from the background script via message passing (`get-bookmark-stats`, `get-tab-stats`, `get-history-stats`), not queried directly from the options page, due to Firefox IndexedDB isolation between extension contexts.
+
+**Firefox note**: `chrome.history.search()` with `maxResults: 0` returns zero results in Firefox (unlike Chrome where 0 means unlimited). Use a large number instead.
 
 ## Sync Version Compatibility
 
@@ -509,4 +552,32 @@ Two integer version numbers gate sync compatibility between desktop, server, and
 ```bash
 yarn test:version-compat       # 15 automated tests (HTTP + DB logic)
 yarn test:version-compat:e2e   # Full E2E with optional iOS simulator steps
+```
+
+## One-Time Dedup Cleanup
+
+A one-time migration that removes pre-existing duplicate items on all platforms. Each platform runs the cleanup on startup, gated by a `dedup_cleanup_v1` settings flag so it only executes once.
+
+### What counts as a duplicate
+
+Items with the same `type` + matching content (non-deleted items only):
+- **url**: same `content` value (server/desktop) or same `url` value (mobile)
+- **text**: same `content` value
+- **tagset**: same sorted set of tag names
+- **image**: skipped (binary data)
+
+### Strategy
+
+For each group of duplicates: keep the item with the most recent `updatedAt`, preferring items that have a `syncId`. Hard-delete the rest from `items` and `item_tags`.
+
+### Implementation
+
+- **Server** (`backend/server/db.js`): `deduplicateItems(userId, profileId)` — called at startup via `deduplicateAllUsers()` in `index.js`
+- **Desktop** (`backend/electron/datastore.ts`): `migrateDeduplicateItems()` — called from `initDatabase()` after existing migrations
+- **Mobile** (`backend/tauri-mobile/src-tauri/src/lib.rs`): dedup block in `ensure_database_initialized()` — runs after existing migrations
+
+### Testing
+
+```bash
+yarn test:e2e:full-sync   # Phase 3 tests dedup on all platforms (seeds duplicates, restarts, verifies removal)
 ```

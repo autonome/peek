@@ -52,6 +52,123 @@ const chromeAlarms = {
   },
 };
 
+// Configurable bookmark tree for tests
+let bookmarkTree = [
+  {
+    id: '0',
+    title: '',
+    children: [
+      {
+        id: '1',
+        title: 'Bookmarks Toolbar',
+        children: [],
+      },
+    ],
+  },
+];
+
+const chromeBookmarks = {
+  getTree: () => Promise.resolve(bookmarkTree),
+  onCreated: {
+    _listeners: [],
+    addListener: (cb) => {
+      chromeBookmarks.onCreated._listeners.push(cb);
+    },
+    removeListener: (cb) => {
+      const idx = chromeBookmarks.onCreated._listeners.indexOf(cb);
+      if (idx !== -1) chromeBookmarks.onCreated._listeners.splice(idx, 1);
+    },
+  },
+};
+
+export function setBookmarkTree(tree) {
+  bookmarkTree = tree;
+}
+
+export function simulateBookmarkCreated(id, bookmark) {
+  for (const cb of chromeBookmarks.onCreated._listeners) {
+    cb(id, bookmark);
+  }
+}
+
+// Configurable tab list for tests
+let mockTabs = [];
+let mockTabGroups = {};
+
+const chromeTabs = {
+  query: () => Promise.resolve([...mockTabs]),
+  onUpdated: {
+    _listeners: [],
+    addListener: (cb) => {
+      chromeTabs.onUpdated._listeners.push(cb);
+    },
+    removeListener: (cb) => {
+      const idx = chromeTabs.onUpdated._listeners.indexOf(cb);
+      if (idx !== -1) chromeTabs.onUpdated._listeners.splice(idx, 1);
+    },
+  },
+};
+
+const chromeTabGroups = {
+  TAB_GROUP_ID_NONE: -1,
+  get: (groupId) => {
+    return new Promise((resolve, reject) => {
+      if (groupId in mockTabGroups) {
+        resolve(mockTabGroups[groupId]);
+      } else {
+        reject(new Error(`No group with id: ${groupId}`));
+      }
+    });
+  },
+};
+
+export function setMockTabs(tabs) {
+  mockTabs = tabs;
+}
+
+export function setMockTabGroups(groups) {
+  mockTabGroups = groups;
+}
+
+export function simulateTabUpdated(tabId, changeInfo, tab) {
+  for (const cb of chromeTabs.onUpdated._listeners) {
+    cb(tabId, changeInfo, tab);
+  }
+}
+
+// Configurable history data for tests
+let mockHistoryItems = [];
+let mockVisitsByUrl = {};
+
+const chromeHistory = {
+  search: () => Promise.resolve([...mockHistoryItems]),
+  getVisits: ({ url }) => Promise.resolve(mockVisitsByUrl[url] || []),
+  onVisited: {
+    _listeners: [],
+    addListener: (cb) => {
+      chromeHistory.onVisited._listeners.push(cb);
+    },
+    removeListener: (cb) => {
+      const idx = chromeHistory.onVisited._listeners.indexOf(cb);
+      if (idx !== -1) chromeHistory.onVisited._listeners.splice(idx, 1);
+    },
+  },
+};
+
+export function setMockHistoryItems(items) {
+  mockHistoryItems = items;
+}
+
+export function setMockVisitsByUrl(visits) {
+  mockVisitsByUrl = visits;
+}
+
+export function simulateHistoryVisited(historyItem) {
+  for (const cb of chromeHistory.onVisited._listeners) {
+    cb(historyItem);
+  }
+}
+
 const chromeRuntime = {
   onInstalled: {
     _listeners: [],
@@ -74,6 +191,10 @@ globalThis.chrome = {
   storage: { local: chromeStorageLocal },
   alarms: chromeAlarms,
   runtime: chromeRuntime,
+  bookmarks: chromeBookmarks,
+  tabs: chromeTabs,
+  tabGroups: chromeTabGroups,
+  history: chromeHistory,
 };
 
 // Mock navigator.userAgent for environment detection tests
@@ -92,6 +213,26 @@ export function resetMocks() {
   chromeAlarms.onAlarm._listeners.length = 0;
   chromeRuntime.onInstalled._listeners.length = 0;
   chromeRuntime.onMessage._listeners.length = 0;
+  chromeBookmarks.onCreated._listeners.length = 0;
+  chromeTabs.onUpdated._listeners.length = 0;
+  chromeHistory.onVisited._listeners.length = 0;
+  mockTabs = [];
+  mockTabGroups = {};
+  mockHistoryItems = [];
+  mockVisitsByUrl = {};
+  bookmarkTree = [
+    {
+      id: '0',
+      title: '',
+      children: [
+        {
+          id: '1',
+          title: 'Bookmarks Toolbar',
+          children: [],
+        },
+      ],
+    },
+  ];
 
   // Reset IndexedDB
   const req = indexedDB.deleteDatabase('peek-datastore');

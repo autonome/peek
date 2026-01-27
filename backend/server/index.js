@@ -378,7 +378,9 @@ app.post("/items", async (c) => {
   const userId = c.get("userId");
   const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
   const body = await c.req.json();
-  const { type, content, tags = [], metadata = null, sync_id = null } = body;
+  const { type, content, tags = [], metadata = null, sync_id = null, deleted_at } = body;
+
+  if (deleted_at) console.log(`[sync] Received tombstone push: sync_id=${sync_id} deleted_at=${deleted_at}`);
 
   // Sync logging for e2e test verification
   console.log("=== Sync Item Received ===");
@@ -432,7 +434,7 @@ app.post("/items", async (c) => {
     }
   }
 
-  const id = db.saveItem(userId, type, content || null, tags, metadata, sync_id, profileId);
+  const id = db.saveItem(userId, type, content || null, tags, metadata, sync_id, profileId, deleted_at);
   return c.json({ id, type, created: true });
 });
 
@@ -440,10 +442,11 @@ app.get("/items", (c) => {
   const userId = c.get("userId");
   const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
   const type = c.req.query("type");
+  const includeDeleted = c.req.query("includeDeleted") === "true";
   if (type && !["url", "text", "tagset", "image"].includes(type)) {
     return c.json({ error: "type must be 'url', 'text', 'tagset', or 'image'" }, 400);
   }
-  const items = db.getItems(userId, type || null, profileId);
+  const items = db.getItems(userId, type || null, profileId, includeDeleted);
   return c.json({ items });
 });
 
@@ -728,9 +731,31 @@ function migrateUserDataToProfiles() {
   }
 }
 
+// One-time deduplication of all users' items
+function deduplicateAllUsers() {
+  const allUsers = users.listUsers();
+  for (const user of allUsers) {
+    const profiles = users.listProfiles(user.id);
+    for (const profile of profiles) {
+      const flag = db.getSetting(user.id, "dedup_cleanup_v1", profile.id);
+      if (flag) continue;
+
+      console.log(`[dedup] Running dedup for user=${user.id} profile=${profile.id}`);
+      try {
+        db.deduplicateItems(user.id, profile.id);
+        db.setSetting(user.id, "dedup_cleanup_v1", "1", profile.id);
+        console.log(`[dedup] Completed for user=${user.id} profile=${profile.id}`);
+      } catch (err) {
+        console.error(`[dedup] Failed for user=${user.id} profile=${profile.id}:`, err.message);
+      }
+    }
+  }
+}
+
 migrateFromLegacyApiKey();
 migrateUserDataToProfiles();
 users.migrateProfileFoldersToUuid();
+deduplicateAllUsers();
 
 // Force backup of all users on every deploy/restart (before serving requests)
 backup.createAllBackups().then(() => {

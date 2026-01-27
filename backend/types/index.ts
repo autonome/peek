@@ -300,6 +300,7 @@ export interface ServerItem {
   tags: string[];
   created_at: string;
   updated_at: string;
+  deleted_at?: number;
 }
 
 // ==================== Backup Types ====================

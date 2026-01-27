@@ -133,6 +133,8 @@ struct ServerItem {
     created_at: i64,
     #[serde(deserialize_with = "deserialize_flexible_timestamp")]
     updated_at: i64,
+    #[serde(default)]
+    deleted_at: i64,
 }
 
 // Server response for GET /items
@@ -972,6 +974,181 @@ fn ensure_database_initialized() -> Result<(), String> {
         ) {
             init_result = Err(format!("Failed to ensure auxiliary tables: {}", e));
             return;
+        }
+
+        // One-time dedup migration: remove duplicate items
+        let dedup_done: bool = conn
+            .query_row(
+                "SELECT COUNT(*) FROM settings WHERE key = 'dedup_cleanup_v1'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap_or(0) > 0;
+
+        if !dedup_done {
+            println!("[Rust] Running one-time dedup cleanup...");
+            let mut total_removed: i64 = 0;
+
+            // --- Deduplicate url items by (type, url) ---
+            {
+                let mut dup_stmt = conn
+                    .prepare(
+                        "SELECT type, url, COUNT(*) as cnt FROM items \
+                         WHERE deleted_at IS NULL AND type = 'url' AND url IS NOT NULL AND url != '' \
+                         GROUP BY type, url HAVING cnt > 1",
+                    )
+                    .unwrap();
+                let dup_groups: Vec<(String, String)> = dup_stmt
+                    .query_map([], |row| {
+                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                    })
+                    .unwrap()
+                    .filter_map(|r| r.ok())
+                    .collect();
+
+                for (item_type, url_val) in &dup_groups {
+                    let mut item_stmt = conn
+                        .prepare(
+                            "SELECT id, sync_id, updated_at FROM items \
+                             WHERE type = ?1 AND url = ?2 AND deleted_at IS NULL \
+                             ORDER BY \
+                               CASE WHEN sync_id IS NOT NULL AND sync_id != '' THEN 0 ELSE 1 END, \
+                               updated_at DESC",
+                        )
+                        .unwrap();
+                    let items: Vec<String> = item_stmt
+                        .query_map(params![item_type, url_val], |row| row.get::<_, String>(0))
+                        .unwrap()
+                        .filter_map(|r| r.ok())
+                        .collect();
+
+                    for id in items.iter().skip(1) {
+                        let _ = conn.execute("DELETE FROM item_tags WHERE item_id = ?1", params![id]);
+                        let _ = conn.execute("DELETE FROM items WHERE id = ?1", params![id]);
+                        total_removed += 1;
+                    }
+                }
+            }
+
+            // --- Deduplicate text items by (type, content) ---
+            {
+                let mut dup_stmt = conn
+                    .prepare(
+                        "SELECT type, content, COUNT(*) as cnt FROM items \
+                         WHERE deleted_at IS NULL AND type = 'text' AND content IS NOT NULL AND content != '' \
+                         GROUP BY type, content HAVING cnt > 1",
+                    )
+                    .unwrap();
+                let dup_groups: Vec<(String, String)> = dup_stmt
+                    .query_map([], |row| {
+                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                    })
+                    .unwrap()
+                    .filter_map(|r| r.ok())
+                    .collect();
+
+                for (item_type, content_val) in &dup_groups {
+                    let mut item_stmt = conn
+                        .prepare(
+                            "SELECT id, sync_id, updated_at FROM items \
+                             WHERE type = ?1 AND content = ?2 AND deleted_at IS NULL \
+                             ORDER BY \
+                               CASE WHEN sync_id IS NOT NULL AND sync_id != '' THEN 0 ELSE 1 END, \
+                               updated_at DESC",
+                        )
+                        .unwrap();
+                    let items: Vec<String> = item_stmt
+                        .query_map(params![item_type, content_val], |row| row.get::<_, String>(0))
+                        .unwrap()
+                        .filter_map(|r| r.ok())
+                        .collect();
+
+                    for id in items.iter().skip(1) {
+                        let _ = conn.execute("DELETE FROM item_tags WHERE item_id = ?1", params![id]);
+                        let _ = conn.execute("DELETE FROM items WHERE id = ?1", params![id]);
+                        total_removed += 1;
+                    }
+                }
+            }
+
+            // --- Deduplicate tagsets by sorted tag names ---
+            {
+                let mut ts_stmt = conn
+                    .prepare(
+                        "SELECT id, sync_id, updated_at FROM items \
+                         WHERE type = 'tagset' AND deleted_at IS NULL",
+                    )
+                    .unwrap();
+                let tagsets: Vec<(String, String, String)> = ts_stmt
+                    .query_map([], |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1).unwrap_or_default(),
+                            row.get::<_, String>(2)?,
+                        ))
+                    })
+                    .unwrap()
+                    .filter_map(|r| r.ok())
+                    .collect();
+
+                let mut groups: std::collections::HashMap<String, Vec<(String, String, String)>> =
+                    std::collections::HashMap::new();
+
+                for (id, sync_id, updated_at) in &tagsets {
+                    let mut tag_stmt = conn
+                        .prepare(
+                            "SELECT t.name FROM tags t \
+                             JOIN item_tags it ON t.id = it.tag_id \
+                             WHERE it.item_id = ?1 \
+                             ORDER BY t.name",
+                        )
+                        .unwrap();
+                    let tag_names: Vec<String> = tag_stmt
+                        .query_map(params![id], |row| row.get::<_, String>(0))
+                        .unwrap()
+                        .filter_map(|r| r.ok())
+                        .collect();
+                    let key = tag_names.join("\0");
+                    groups
+                        .entry(key)
+                        .or_default()
+                        .push((id.clone(), sync_id.clone(), updated_at.clone()));
+                }
+
+                for items in groups.values_mut() {
+                    if items.len() <= 1 {
+                        continue;
+                    }
+
+                    // Sort: prefer sync_id, then newest updated_at
+                    items.sort_by(|a, b| {
+                        let a_has_sync = if !a.1.is_empty() { 0 } else { 1 };
+                        let b_has_sync = if !b.1.is_empty() { 0 } else { 1 };
+                        if a_has_sync != b_has_sync {
+                            return a_has_sync.cmp(&b_has_sync);
+                        }
+                        b.2.cmp(&a.2)
+                    });
+
+                    for item in items.iter().skip(1) {
+                        let _ = conn.execute("DELETE FROM item_tags WHERE item_id = ?1", params![item.0]);
+                        let _ = conn.execute("DELETE FROM items WHERE id = ?1", params![item.0]);
+                        total_removed += 1;
+                    }
+                }
+            }
+
+            // Set flag
+            let _ = conn.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES ('dedup_cleanup_v1', '1')",
+                [],
+            );
+
+            if total_removed > 0 {
+                println!("[Rust] Dedup cleanup: removed {} duplicate items", total_removed);
+            } else {
+                println!("[Rust] Dedup cleanup: no duplicates found");
+            }
         }
 
         println!("[Rust] Database initialized successfully");
@@ -3265,22 +3442,24 @@ fn check_response_version_headers(headers: &reqwest::header::HeaderMap) -> Resul
 }
 
 /// Get items that need to be pushed (never synced or locally modified after their last sync)
-fn get_items_to_push(conn: &Connection) -> Result<Vec<(String, String, Option<String>, Option<String>, String, String, String)>, String> {
-    // Returns: (id, type, url, content, metadata, updated_at, sync_id)
+fn get_items_to_push(conn: &Connection) -> Result<Vec<(String, String, Option<String>, Option<String>, String, String, String, Option<String>)>, String> {
+    // Returns: (id, type, url, content, metadata, updated_at, sync_id, deleted_at)
     // Push items that:
     // 1. Have never been synced (sync_source = '' or NULL), OR
     // 2. Have been locally modified after their last sync (updated_at > synced_at)
+    // 3. Have been soft-deleted locally with a sync_id (need to propagate delete to server)
     // This prevents re-pushing items that were just pulled from the server
     let mut stmt = conn
         .prepare(
-            "SELECT id, type, url, content, COALESCE(metadata, ''), updated_at, COALESCE(sync_id, '') FROM items
-             WHERE deleted_at IS NULL AND (sync_source = '' OR sync_source IS NULL OR (synced_at IS NOT NULL AND updated_at > synced_at))"
+            "SELECT id, type, url, content, COALESCE(metadata, ''), updated_at, COALESCE(sync_id, ''), deleted_at FROM items
+             WHERE (deleted_at IS NULL AND (sync_source = '' OR sync_source IS NULL OR (synced_at IS NOT NULL AND updated_at > synced_at)))
+             OR (deleted_at IS NOT NULL AND sync_id IS NOT NULL AND sync_id != '' AND synced_at IS NOT NULL AND updated_at > synced_at)"
         )
         .map_err(|e| format!("Failed to prepare query: {}", e))?;
 
-    let items: Vec<(String, String, Option<String>, Option<String>, String, String, String)> = stmt
+    let items: Vec<(String, String, Option<String>, Option<String>, String, String, String, Option<String>)> = stmt
         .query_map([], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?))
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?, row.get(7)?))
         })
         .map_err(|e| format!("Failed to query items: {}", e))?
         .filter_map(|r| r.ok())
@@ -3315,30 +3494,76 @@ fn merge_server_item(conn: &Connection, server_item: &ServerItem) -> Result<&'st
     let server_updated = unix_ms_to_datetime(server_item.updated_at)
         .ok_or("Invalid server updated_at timestamp")?;
 
-    // Check if this item was soft-deleted locally - if so, skip the import
-    let was_deleted: bool = conn
+    // Find local item by sync_id matching server id (include deleted items)
+    let local_item: Option<(String, String, Option<String>)> = conn
         .query_row(
-            "SELECT 1 FROM items WHERE sync_id = ? AND deleted_at IS NOT NULL",
+            "SELECT id, updated_at, deleted_at FROM items WHERE sync_id = ?1",
             params![&server_item.id],
-            |_| Ok(true)
-        )
-        .unwrap_or(false);
-
-    if was_deleted {
-        println!("[Rust] Sync: Skipping deleted item from server: {}", server_item.id);
-        return Ok("skipped");
-    }
-
-    // Find local item by sync_id matching server id
-    let local_item: Option<(String, String)> = conn
-        .query_row(
-            "SELECT id, updated_at FROM items WHERE sync_id = ? AND deleted_at IS NULL",
-            params![&server_item.id],
-            |row| Ok((row.get(0)?, row.get(1)?))
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))
         )
         .ok();
 
-    if let Some((local_id, local_updated_str)) = local_item {
+    // Handle server-side deletes
+    if server_item.deleted_at > 0 {
+        if local_item.is_none() {
+            // No local item to delete
+            println!("[Rust] Sync: Server deleted item {} but no local copy, skipping", server_item.id);
+            return Ok("skipped");
+        }
+        let (local_id, _local_updated_str, local_deleted_at) = local_item.unwrap();
+        if local_deleted_at.is_some() {
+            // Already deleted locally, just update synced_at
+            println!("[Rust] Sync: Item {} already deleted locally, updating synced_at", server_item.id);
+            conn.execute(
+                "UPDATE items SET synced_at = ? WHERE id = ?",
+                params![&now, &local_id],
+            ).map_err(|e| format!("Failed to update synced_at: {}", e))?;
+            return Ok("pulled");
+        }
+        // Soft-delete the local item
+        println!("[Rust] Sync: Soft-deleting local item {} from server delete", server_item.id);
+        conn.execute(
+            "UPDATE items SET deleted_at = ?, updated_at = ?, synced_at = ? WHERE id = ?",
+            params![&now, &now, &now, &local_id],
+        ).map_err(|e| format!("Failed to soft-delete item: {}", e))?;
+        return Ok("pulled");
+    }
+
+    // Handle locally deleted items when server sends a non-deleted update
+    if let Some((ref local_id, ref local_updated_str, ref local_deleted_at)) = local_item {
+        if local_deleted_at.is_some() {
+            // Local item is deleted but server has it alive - compare timestamps
+            let local_updated = parse_iso_datetime(local_updated_str);
+            if let Some(local_dt) = local_updated {
+                if server_updated > local_dt {
+                    // Server is newer - undelete local item and update content
+                    println!("[Rust] Sync: Undeleting local item {} - server is newer", server_item.id);
+
+                    let metadata_json = server_item.metadata.as_ref()
+                        .map(|m| serde_json::to_string(m).unwrap_or_default());
+                    let item_type = &server_item.item_type;
+                    let (url_val, content_val): (Option<&str>, Option<&str>) = match item_type.as_str() {
+                        "url" | "page" => (server_item.content.as_deref(), None),
+                        _ => (None, server_item.content.as_deref()),
+                    };
+
+                    conn.execute(
+                        "UPDATE items SET deleted_at = NULL, type = ?, url = ?, content = ?, metadata = ?, updated_at = ?, synced_at = ? WHERE id = ?",
+                        params![item_type, url_val, content_val, &metadata_json, &unix_ms_to_iso(server_item.updated_at), &now, local_id],
+                    ).map_err(|e| format!("Failed to undelete item: {}", e))?;
+
+                    update_item_tags_from_server(conn, local_id, &server_item.tags)?;
+                    return Ok("pulled");
+                } else {
+                    // Local delete is newer - conflict, local wins
+                    println!("[Rust] Sync: Conflict - local delete is newer for {}, keeping deleted", server_item.id);
+                    return Ok("conflict");
+                }
+            }
+        }
+    }
+
+    if let Some((local_id, local_updated_str, _local_deleted_at)) = local_item {
         // Item exists locally - check timestamps for conflict resolution
         let local_updated = parse_iso_datetime(&local_updated_str);
 
@@ -3515,6 +3740,8 @@ async fn pull_from_server() -> Result<BidirectionalSyncResult, String> {
         format!("{}/items", server_url.trim_end_matches('/'))
     };
     let items_url = append_profile_to_url(&base_url)?;
+    // Always include deleted items so tombstones propagate during sync
+    let items_url = format!("{}&includeDeleted=true", items_url);
 
     println!("[Rust] Pulling from: {}", items_url);
 
@@ -3622,7 +3849,7 @@ async fn push_to_server() -> Result<BidirectionalSyncResult, String> {
     let mut pushed = 0;
     let mut failed = 0;
 
-    for (item_id, item_type, url_opt, content_opt, metadata_str, _updated_at, sync_id) in &items {
+    for (item_id, item_type, url_opt, content_opt, metadata_str, _updated_at, sync_id, deleted_at_opt) in &items {
         // Get tags for this item
         let tags = get_item_tags(&conn, item_id)?;
 
@@ -3646,13 +3873,20 @@ async fn push_to_server() -> Result<BidirectionalSyncResult, String> {
         let sync_id_to_send = if !sync_id.is_empty() { sync_id } else { item_id };
 
         // Build request body
-        let body = serde_json::json!({
+        let mut body = serde_json::json!({
             "type": server_type,
             "content": content,
             "tags": tags,
             "metadata": metadata,
             "sync_id": sync_id_to_send,
         });
+
+        // Include deleted_at if the item was soft-deleted locally
+        if let Some(ref deleted_at_str) = deleted_at_opt {
+            if let Some(dt) = parse_iso_datetime(deleted_at_str) {
+                body["deleted_at"] = serde_json::json!(dt.timestamp_millis());
+            }
+        }
 
         let mut request = client.post(&post_url).json(&body)
             .header("X-Peek-Datastore-Version", DATASTORE_VERSION.to_string())
@@ -3771,9 +4005,9 @@ fn get_sync_status() -> Result<SyncStatus, String> {
         )
         .ok();
 
-    // Count pending items (never synced or locally modified after their last sync)
+    // Count pending items (never synced, locally modified after last sync, or locally deleted needing push)
     let pending_count: usize = conn.query_row(
-        "SELECT COUNT(*) FROM items WHERE deleted_at IS NULL AND (sync_source = '' OR sync_source IS NULL OR (synced_at IS NOT NULL AND updated_at > synced_at))",
+        "SELECT COUNT(*) FROM items WHERE (deleted_at IS NULL AND (sync_source = '' OR sync_source IS NULL OR (synced_at IS NOT NULL AND updated_at > synced_at))) OR (deleted_at IS NOT NULL AND sync_id IS NOT NULL AND sync_id != '' AND synced_at IS NOT NULL AND updated_at > synced_at)",
         [],
         |row| row.get::<_, i64>(0),
     )

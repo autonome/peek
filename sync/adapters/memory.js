@@ -164,11 +164,11 @@ export function createMemoryAdapter() {
     async findItemBySyncId(syncId) {
       // Check by direct ID first (device re-pushes with server-assigned ID)
       const byId = items.get(syncId);
-      if (byId && !byId.deletedAt) return { ...byId };
+      if (byId) return { ...byId };
 
       // Check by syncId field
       for (const item of items.values()) {
-        if (!item.deletedAt && item.syncId === syncId) {
+        if (item.syncId === syncId) {
           return { ...item };
         }
       }

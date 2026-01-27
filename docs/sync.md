@@ -32,7 +32,9 @@ All platforms use the same unified types:
 ### Pull (Server → Client)
 
 1. Fetch: `GET /items` (full) or `GET /items/since/:timestamp` (incremental)
+   - All pull requests include `includeDeleted=true` so tombstones propagate
 2. For each server item:
+   - If `deleted_at` is set: mark local item as soft-deleted (tombstone)
    - Find local item by `syncId` matching server `id`
    - If not found: insert new item
    - If found and server is newer: update local
@@ -41,7 +43,9 @@ All platforms use the same unified types:
 ### Push (Client → Server)
 
 1. Query items where `syncSource = ''` OR `updatedAt > lastSyncTime`
+   - Includes soft-deleted items (those with `deleted_at` set) so tombstones propagate
 2. For each item: `POST /items` with type, content, tags
+   - If item has `deleted_at`: include it in the push payload so the server records the tombstone
 3. On success: update local `syncId` and `syncSource`
 
 ### Conflict Resolution
@@ -55,13 +59,15 @@ All platforms use the same unified types:
 All endpoints accept a `?profile={uuid}` parameter (defaults to `default`):
 
 ```
-GET  /items?profile=<uuid>                    # All items in profile
-GET  /items/since/:timestamp?profile=<uuid>   # Items modified after timestamp
-GET  /items/:id?profile=<uuid>               # Single item
-POST /items?profile=<uuid>                   # Create item in profile
-PATCH /items/:id/tags?profile=<uuid>         # Update tags
-DELETE /items/:id?profile=<uuid>             # Delete item
+GET  /items?profile=<uuid>&includeDeleted=true  # All items (with tombstones)
+GET  /items/since/:timestamp?profile=<uuid>     # Items modified after timestamp (always includes tombstones)
+GET  /items/:id?profile=<uuid>                  # Single item
+POST /items?profile=<uuid>                      # Create/update item (supports deleted_at for tombstones)
+PATCH /items/:id/tags?profile=<uuid>            # Update tags
+DELETE /items/:id?profile=<uuid>                # Hard delete item
 ```
+
+The `includeDeleted=true` parameter on `GET /items` returns soft-deleted items (those with `deleted_at` set). The `/items/since/:timestamp` endpoint always includes tombstones so incremental sync propagates deletions.
 
 The `profile` parameter is a server-side profile UUID. The server uses the UUID directly as the folder name on disk. Legacy slugs are resolved to UUIDs for backward compatibility.
 
@@ -113,6 +119,33 @@ Sync configuration is stored in `profiles.json` in the App Group container:
 - `profiles[].server_url` / `profiles[].api_key` - Per-profile sync config
 
 The mobile sends `?profile=<server_profile_id>` on sync requests. If `server_profile_id` is not set, falls back to the local profile UUID.
+
+## Delete Propagation
+
+Deletions propagate across platforms via **tombstones** (soft-deletes with a `deleted_at` timestamp).
+
+### Flow
+
+1. **Delete locally**: Item gets `deleted_at` timestamp instead of being hard-deleted
+2. **Push tombstone**: Next sync pushes the item with `deleted_at` to the server
+3. **Server stores tombstone**: Server records `deleted_at` on the item
+4. **Pull tombstone**: Other clients pull items with `includeDeleted=true`, see `deleted_at`, and soft-delete locally
+
+### Implementation by platform
+
+| Platform | Push tombstones | Pull tombstones | Query param |
+|----------|----------------|-----------------|-------------|
+| JS engine (`sync/sync.js`) | `getItemsForPush()` includes deleted | `applyPulledItems()` checks `deleted_at` | `includeDeleted=true` |
+| Electron (`backend/electron/sync.ts`) | Push query includes `deleted_at IS NOT NULL` | Pull applies `deleted_at` to local items | `&includeDeleted=true` |
+| Tauri desktop (`backend/tauri/src-tauri/src/sync.rs`) | Push includes soft-deleted items | Pull handles `deleted_at` field | `&includeDeleted=true` |
+| Tauri mobile (`backend/tauri-mobile/src-tauri/src/lib.rs`) | Push includes soft-deleted items | Pull handles `deleted_at` field | `&includeDeleted=true` |
+| Server (`backend/server/db.js`) | N/A | `getItems()` respects `includeDeleted` param; `getItemsSince()` always includes tombstones | N/A |
+
+### Tombstone lifecycle
+
+- Tombstones are permanent — they are never hard-deleted by sync
+- The `deleted_at` field is a Unix millisecond timestamp
+- Items with `deleted_at` are excluded from normal UI queries but included in sync queries
 
 ## Server-Change Detection
 
@@ -172,21 +205,29 @@ The server returns integer timestamps (Unix ms). The `fromISOString()` helper in
 12. Verifies 10 items on all platforms (no content dedup in sync path)
 13. Re-sync stability check: 0 pulled, 0 pushed (no growth)
 
+**Phase 3 — One-time dedup cleanup:**
+14. Seeds 3 duplicate items into each platform's database
+15. Restarts server → dedup migration runs, removes duplicates
+16. Restarts desktop → dedup migration runs
+17. Force-quit/relaunch iOS (manual step) → dedup migration runs
+18. Verifies all platforms removed duplicates and set `dedup_cleanup_v1` flag
+19. Idempotency check: restart server again, verify flag prevents re-run
+
+**Phase 4 — Delete propagation (tombstone sync):**
+20. Deletes a desktop item → desktop sync pushes tombstone to server
+21. iOS syncs (manual step) → pulls tombstone, soft-deletes locally
+22. Deletes an iOS item (via direct DB write after app termination)
+23. iOS relaunches and syncs (manual step) → pushes tombstone to server
+24. Desktop sync pulls iOS tombstone
+25. Verifies tombstone counts on all platforms
+
 All data is temporary and cleaned up on exit (including iOS simulator backup/restore).
 
 ## Known Limitations
 
-### Deletes Not Synced (HIGH)
+### ~~Deletes Not Synced~~ (FIXED)
 
-Deleted items are local-only. Items may "resurrect" on other devices after sync.
-
-**Current behavior:**
-1. Delete on desktop sets `deletedAt` locally
-2. Deleted items excluded from push query
-3. Server never learns about deletion
-4. Other devices still see the item
-
-**Workaround:** Delete on all devices manually.
+Deletions now propagate via tombstones. See [Delete Propagation](#delete-propagation) above.
 
 ### Push Failures Not Retried (HIGH)
 

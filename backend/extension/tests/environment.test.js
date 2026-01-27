@@ -1,22 +1,21 @@
 import { describe, it, before, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { resetMocks } from './helpers/mocks.js';
-import { openDatabase, getRawDb } from '../datastore.js';
+import { initialize, close } from '../engine.js';
 import { getDeviceId, getEnvironment, _resetCache } from '../environment.js';
 
 describe('environment', () => {
   before(async () => {
     await resetMocks();
-    await openDatabase();
+    await initialize();
   });
 
   afterEach(async () => {
     _resetCache();
-    // Clear extension_settings between tests
-    const db = getRawDb();
-    const tx = db.transaction('extension_settings', 'readwrite');
-    tx.objectStore('extension_settings').clear();
-    await new Promise(r => { tx.oncomplete = r; });
+    // Reset by closing and reopening
+    await close();
+    await resetMocks();
+    await initialize();
   });
 
   // ==================== getDeviceId ====================

@@ -30,9 +30,11 @@ function createSyncTestEngine(serverItems = [], pushResponses = []) {
   };
 
   let pushIndex = 0;
+  const fetchedUrls = [];
 
   // Mock fetch
   const mockFetch = async (url, options) => {
+    fetchedUrls.push(url);
     const method = options?.method || 'GET';
 
     if (method === 'GET') {
@@ -83,7 +85,7 @@ function createSyncTestEngine(serverItems = [], pushResponses = []) {
     fetch: mockFetch,
   });
 
-  return { adapter, data, sync, getConfig: () => syncConfig };
+  return { adapter, data, sync, getConfig: () => syncConfig, fetchedUrls };
 }
 
 // Small delay to ensure different timestamps
@@ -777,6 +779,30 @@ describe('SyncEngine: Pull', () => {
     const items = await data.queryItems();
     assert.strictEqual(items.length, 2);
   });
+
+  it('should include includeDeleted=true in pull URL', async () => {
+    const { adapter, sync, fetchedUrls } = createSyncTestEngine();
+    await adapter.open();
+
+    await sync.pullFromServer();
+    const pullUrl = fetchedUrls.find(u => u.includes('/items'));
+    assert.ok(pullUrl, 'should have fetched items URL');
+    assert.ok(pullUrl.includes('includeDeleted=true'), 'pull URL should include includeDeleted=true');
+  });
+
+  it('should use correct query param separators with profile', async () => {
+    const { adapter, sync, fetchedUrls } = createSyncTestEngine();
+    await adapter.open();
+
+    await sync.pullFromServer();
+    const pullUrl = fetchedUrls.find(u => u.includes('/items'));
+    assert.ok(pullUrl, 'should have fetched items URL');
+    // Should have ?profile=...&includeDeleted=true (not ??profile or ?&profile)
+    assert.ok(!pullUrl.includes('??'), 'should not have double question marks');
+    assert.ok(!pullUrl.includes('?&'), 'should not have ?& sequence');
+    const qCount = (pullUrl.match(/\?/g) || []).length;
+    assert.strictEqual(qCount, 1, 'should have exactly one ? in query string');
+  });
 });
 
 // ==================== Sync Engine: Push ====================
@@ -912,6 +938,271 @@ describe('SyncEngine: Status', () => {
   });
 });
 
+// ==================== Sync Engine: Delete Propagation ====================
+
+describe('SyncEngine: Delete Propagation', () => {
+  it('should pull a deleted item (tombstone) and soft-delete locally', async () => {
+    const serverItems = [
+      {
+        id: 'server-del-1',
+        type: 'url',
+        content: 'https://deleted-on-server.com',
+        tags: ['old'],
+        metadata: null,
+        created_at: new Date(1000).toISOString(),
+        updated_at: new Date(Date.now() + 10000).toISOString(),
+        deleted_at: Date.now() + 5000,
+      },
+    ];
+    const { adapter, data, sync } = createSyncTestEngine(serverItems);
+    await adapter.open();
+
+    // Insert local item with matching syncId (not deleted locally)
+    await adapter.insertItem({
+      id: 'local-del-1',
+      type: 'url',
+      content: 'https://deleted-on-server.com',
+      metadata: null,
+      syncId: 'server-del-1',
+      syncSource: 'server',
+      syncedAt: 1000,
+      createdAt: 1000,
+      updatedAt: 2000,
+      deletedAt: 0,
+    });
+
+    const result = await sync.pullFromServer();
+    assert.strictEqual(result.pulled, 1);
+
+    // Item should now be soft-deleted locally
+    const item = await data.getItem('local-del-1');
+    assert.strictEqual(item, null, 'soft-deleted item should not appear in getItem');
+
+    // But should still exist when querying with includeDeleted
+    const allItems = await data.queryItems({ includeDeleted: true });
+    const deletedItem = allItems.find(i => i.id === 'local-del-1');
+    assert.ok(deletedItem, 'deleted item should exist with includeDeleted');
+    assert.ok(deletedItem.deletedAt > 0, 'deletedAt should be set');
+  });
+
+  it('should skip pulling a tombstone when no local item exists', async () => {
+    const serverItems = [
+      {
+        id: 'server-del-orphan',
+        type: 'url',
+        content: 'https://never-existed-locally.com',
+        tags: [],
+        metadata: null,
+        created_at: new Date(1000).toISOString(),
+        updated_at: new Date(2000).toISOString(),
+        deleted_at: 3000,
+      },
+    ];
+    const { adapter, data, sync } = createSyncTestEngine(serverItems);
+    await adapter.open();
+
+    const result = await sync.pullFromServer();
+    // Should skip (no local item to delete)
+    assert.strictEqual(result.pulled, 0);
+
+    const items = await data.queryItems({ includeDeleted: true });
+    assert.strictEqual(items.length, 0);
+  });
+
+  it('should undelete local item when server item is active and newer', async () => {
+    const serverItems = [
+      {
+        id: 'server-undelete-1',
+        type: 'url',
+        content: 'https://undeleted.com',
+        tags: ['restored'],
+        metadata: null,
+        created_at: new Date(1000).toISOString(),
+        updated_at: new Date(Date.now() + 10000).toISOString(), // future = newer
+      },
+    ];
+    const { adapter, data, sync } = createSyncTestEngine(serverItems);
+    await adapter.open();
+
+    // Insert locally deleted item with matching syncId
+    await adapter.insertItem({
+      id: 'local-undelete-1',
+      type: 'url',
+      content: 'https://undeleted.com',
+      metadata: null,
+      syncId: 'server-undelete-1',
+      syncSource: 'server',
+      syncedAt: 1000,
+      createdAt: 1000,
+      updatedAt: 2000,
+      deletedAt: 3000,
+    });
+
+    const result = await sync.pullFromServer();
+    assert.strictEqual(result.pulled, 1);
+
+    // Item should be undeleted
+    const item = await data.getItem('local-undelete-1');
+    assert.ok(item, 'item should be undeleted');
+    assert.strictEqual(item.deletedAt, 0);
+    assert.strictEqual(item.content, 'https://undeleted.com');
+  });
+
+  it('should report conflict when local delete is newer than server active item', async () => {
+    const serverItems = [
+      {
+        id: 'server-conflict-1',
+        type: 'url',
+        content: 'https://conflict.com',
+        tags: [],
+        metadata: null,
+        created_at: new Date(1000).toISOString(),
+        updated_at: new Date(1000).toISOString(), // very old
+      },
+    ];
+    const { adapter, data, sync } = createSyncTestEngine(serverItems);
+    await adapter.open();
+
+    // Local item deleted recently (much newer)
+    await adapter.insertItem({
+      id: 'local-conflict-1',
+      type: 'url',
+      content: 'https://conflict.com',
+      metadata: null,
+      syncId: 'server-conflict-1',
+      syncSource: 'server',
+      syncedAt: 500,
+      createdAt: 500,
+      updatedAt: Date.now() + 5000, // much newer
+      deletedAt: Date.now() + 5000,
+    });
+
+    const result = await sync.pullFromServer();
+    assert.strictEqual(result.conflicts, 1);
+    assert.strictEqual(result.pulled, 0);
+
+    // Local item should still be deleted (local is newer)
+    const items = await data.queryItems({ includeDeleted: true });
+    const item = items.find(i => i.id === 'local-conflict-1');
+    assert.ok(item.deletedAt > 0, 'local delete should be preserved');
+  });
+
+  it('should push deleted items with syncId as tombstones', async () => {
+    let pushedBodies = [];
+    const adapter = createMemoryAdapter();
+    let syncConfig = {
+      serverUrl: 'http://test-server.local',
+      apiKey: 'test-api-key',
+      serverProfileId: 'test-profile',
+      lastSyncTime: 0,
+    };
+
+    const mockFetch = async (url, options) => {
+      const method = options?.method || 'GET';
+      if (method === 'GET') {
+        return {
+          ok: true, status: 200,
+          headers: new Map([
+            ['X-Peek-Datastore-Version', String(DATASTORE_VERSION)],
+            ['X-Peek-Protocol-Version', String(PROTOCOL_VERSION)],
+          ]),
+          text: async () => '',
+          json: async () => ({ items: [] }),
+        };
+      }
+      if (method === 'POST') {
+        const body = JSON.parse(options.body);
+        pushedBodies.push(body);
+        return {
+          ok: true, status: 200,
+          headers: new Map([
+            ['X-Peek-Datastore-Version', String(DATASTORE_VERSION)],
+            ['X-Peek-Protocol-Version', String(PROTOCOL_VERSION)],
+          ]),
+          text: async () => '',
+          json: async () => ({ id: `server-${body.sync_id}`, created: true }),
+        };
+      }
+      return { ok: false, status: 404, text: async () => 'Not found' };
+    };
+    mockFetch._patchHeaders = true;
+
+    const { data, sync } = createEngine(adapter, {
+      getConfig: () => syncConfig,
+      setConfig: (updates) => { syncConfig = { ...syncConfig, ...updates }; },
+      fetch: mockFetch,
+    });
+
+    await adapter.open();
+
+    // Insert a previously-synced item that is now deleted
+    await adapter.insertItem({
+      id: 'deleted-local-1',
+      type: 'url',
+      content: 'https://was-deleted.com',
+      metadata: null,
+      syncId: 'server-id-123',
+      syncSource: 'server',
+      syncedAt: 1000,
+      createdAt: 1000,
+      updatedAt: 2000,
+      deletedAt: 2000,
+    });
+
+    const result = await sync.pushToServer();
+    assert.strictEqual(result.pushed, 1);
+    assert.strictEqual(pushedBodies.length, 1);
+    assert.ok(pushedBodies[0].deleted_at > 0, 'should include deleted_at in push body');
+  });
+
+  it('should not push deleted items without syncId (never synced)', async () => {
+    const { adapter, data, sync } = createSyncTestEngine();
+    await adapter.open();
+
+    // Insert a deleted item that was never synced (no syncId)
+    await adapter.insertItem({
+      id: 'never-synced-del',
+      type: 'url',
+      content: 'https://never-synced.com',
+      metadata: null,
+      syncId: '',
+      syncSource: '',
+      syncedAt: 0,
+      createdAt: 1000,
+      updatedAt: 2000,
+      deletedAt: 2000,
+    });
+
+    const result = await sync.pushToServer();
+    assert.strictEqual(result.pushed, 0);
+  });
+
+  it('should include deleted tombstones in pending count', async () => {
+    const { adapter, data, sync } = createSyncTestEngine();
+    await adapter.open();
+
+    // Add a regular unsynced item
+    await data.saveItem('url', 'https://local.com');
+
+    // Add a deleted item with syncId (pending tombstone)
+    await adapter.insertItem({
+      id: 'pending-tombstone',
+      type: 'url',
+      content: 'https://pending-delete.com',
+      metadata: null,
+      syncId: 'server-xyz',
+      syncSource: 'server',
+      syncedAt: 1000,
+      createdAt: 1000,
+      updatedAt: 2000,
+      deletedAt: 2000,
+    });
+
+    const status = await sync.getSyncStatus();
+    assert.strictEqual(status.pendingCount, 2, 'should count both regular and tombstone items');
+  });
+});
+
 // ==================== Sync Engine: Server Change Detection ====================
 
 describe('SyncEngine: Server Change Detection', () => {
@@ -959,7 +1250,7 @@ describe('SyncEngine: Server Change Detection', () => {
     assert.strictEqual(reset, false);
   });
 
-  it('should reset when items synced to unknown server', async () => {
+  it('should not reset on first run with no stored config', async () => {
     const { adapter, data, sync } = createSyncTestEngine();
     await adapter.open();
 
@@ -977,11 +1268,13 @@ describe('SyncEngine: Server Change Detection', () => {
       deletedAt: 0,
     });
 
+    // First run — no stored config means we haven't tracked the server yet.
+    // Don't reset items that may have been pulled in a prior pull-only sync.
     const reset = await sync.resetSyncStateIfServerChanged('http://test-server.local');
-    assert.strictEqual(reset, true);
+    assert.strictEqual(reset, false);
 
     const item = await data.getItem('orphan');
-    assert.strictEqual(item.syncSource, '');
+    assert.strictEqual(item.syncSource, 'server');
   });
 });
 
@@ -1045,7 +1338,7 @@ describe('Memory Adapter', () => {
     assert.strictEqual(byId.id, 'local-id');
   });
 
-  it('should not find deleted items by sync_id', async () => {
+  it('should find deleted items by sync_id (needed for tombstone matching)', async () => {
     const adapter = createMemoryAdapter();
     await adapter.open();
 
@@ -1056,7 +1349,9 @@ describe('Memory Adapter', () => {
     });
 
     const result = await adapter.findItemBySyncId('del-sync');
-    assert.strictEqual(result, null);
+    assert.ok(result, 'should find deleted items for tombstone matching');
+    assert.strictEqual(result.id, 'del');
+    assert.strictEqual(result.deletedAt, 2000);
   });
 });
 
@@ -1304,15 +1599,21 @@ if (betterSqliteWorks) {
       assert.strictEqual(missing, null);
     });
 
-    it('should not find deleted items by syncId', async () => {
+    it('should find deleted items by syncId (needed for tombstone matching)', async () => {
       await adapter.open();
       await adapter.insertItem({
         id: 'del-sync', type: 'url', content: 'https://deleted.com',
         metadata: null, syncId: 'del-remote', syncSource: '', syncedAt: 0,
         createdAt: 1000, updatedAt: 1000, deletedAt: 2000,
       });
-      assert.strictEqual(await adapter.findItemBySyncId('del-remote'), null);
-      assert.strictEqual(await adapter.findItemBySyncId('del-sync'), null);
+      const bySyncId = await adapter.findItemBySyncId('del-remote');
+      assert.ok(bySyncId, 'should find deleted items by syncId field');
+      assert.strictEqual(bySyncId.id, 'del-sync');
+      assert.strictEqual(bySyncId.deletedAt, 2000);
+
+      const byId = await adapter.findItemBySyncId('del-sync');
+      assert.ok(byId, 'should find deleted items by direct ID');
+      assert.strictEqual(byId.id, 'del-sync');
     });
 
     it('should filter items by type and since', async () => {

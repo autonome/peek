@@ -73,6 +73,8 @@ pub struct ServerItem {
     pub metadata: Option<serde_json::Value>,
     pub created_at: String,
     pub updated_at: String,
+    #[serde(default)]
+    pub deleted_at: i64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -96,6 +98,8 @@ struct PushBody {
     #[serde(skip_serializing_if = "Option::is_none")]
     metadata: Option<serde_json::Value>,
     sync_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    deleted_at: Option<i64>,
 }
 
 /// Data extracted from an item for pushing (avoids holding Connection across await)
@@ -406,6 +410,8 @@ pub async fn pull_from_server(
 
     // Add profile query parameters
     path.push_str(&profile_query_string(&profile_ctx));
+    // Always include deleted items so tombstones propagate during sync
+    path.push_str("&includeDeleted=true");
 
     println!("[sync] Fetching from: {}{}", server_url, path);
 
@@ -444,10 +450,10 @@ pub async fn pull_from_server(
 
 /// Merge a single server item into the local database
 fn merge_server_item(conn: &Connection, server_item: &ServerItem) -> Result<String, String> {
-    // Find local item by syncId matching server id
+    // Find local item by syncId matching server id (include deleted items)
     let local_item: Option<Item> = conn
         .query_row(
-            "SELECT id, type, content, mimeType, metadata, syncId, syncSource, createdAt, updatedAt, deletedAt, starred, archived, syncedAt, visitCount, lastVisitAt FROM items WHERE syncId = ?1 AND deletedAt = 0",
+            "SELECT id, type, content, mimeType, metadata, syncId, syncSource, createdAt, updatedAt, deletedAt, starred, archived, syncedAt, visitCount, lastVisitAt FROM items WHERE syncId = ?1",
             params![server_item.id],
             |row| {
                 Ok(Item {
@@ -472,6 +478,34 @@ fn merge_server_item(conn: &Connection, server_item: &ServerItem) -> Result<Stri
         .ok();
 
     let server_updated_at = from_iso_string(&server_item.updated_at);
+
+    // Handle server-deleted items
+    if server_item.deleted_at > 0 {
+        if local_item.is_none() {
+            // Server deleted an item we don't have - skip
+            return Ok("skipped".to_string());
+        }
+        let local = local_item.unwrap();
+        if local.deleted_at > 0 {
+            // Both deleted - just update syncedAt
+            let now_ts = datastore::now();
+            conn.execute(
+                "UPDATE items SET syncedAt = ?1 WHERE id = ?2",
+                params![now_ts, local.id],
+            )
+            .map_err(|e| format!("Failed to update syncedAt: {}", e))?;
+            return Ok("pulled".to_string());
+        } else {
+            // Server deleted but local is alive - soft-delete local
+            let now_ts = datastore::now();
+            conn.execute(
+                "UPDATE items SET deletedAt = ?1, updatedAt = ?1, syncedAt = ?2 WHERE id = ?3",
+                params![server_item.deleted_at, now_ts, local.id],
+            )
+            .map_err(|e| format!("Failed to soft-delete item: {}", e))?;
+            return Ok("pulled".to_string());
+        }
+    }
 
     if local_item.is_none() {
         // Item doesn't exist locally - insert it
@@ -506,7 +540,38 @@ fn merge_server_item(conn: &Connection, server_item: &ServerItem) -> Result<Stri
 
     let local = local_item.unwrap();
 
-    // Item exists - check timestamps for conflict resolution
+    // Handle locally-deleted items that server still has alive
+    if local.deleted_at > 0 {
+        if server_updated_at > local.updated_at {
+            // Server is newer - undelete local item
+            let now_ts = datastore::now();
+            let metadata_str = server_item
+                .metadata
+                .as_ref()
+                .map(|m| serde_json::to_string(m).unwrap_or_else(|_| "{}".to_string()));
+            conn.execute(
+                "UPDATE items SET deletedAt = 0, content = ?1, metadata = COALESCE(?2, metadata), updatedAt = ?3, syncedAt = ?4 WHERE id = ?5",
+                params![
+                    server_item.content,
+                    metadata_str,
+                    server_updated_at,
+                    now_ts,
+                    local.id
+                ],
+            )
+            .map_err(|e| format!("Failed to undelete item: {}", e))?;
+
+            // Update tags
+            sync_tags_to_item(conn, &local.id, &server_item.tags);
+
+            return Ok("pulled".to_string());
+        } else {
+            // Local delete is newer - conflict, local wins (will push delete)
+            return Ok("conflict".to_string());
+        }
+    }
+
+    // Both items are alive - check timestamps for conflict resolution
     if server_updated_at > local.updated_at {
         // Server is newer - update local
         let options = ItemOptions {
@@ -565,7 +630,7 @@ fn query_items_to_push(conn: &Connection, last_sync_time: i64) -> Result<Vec<Ite
         // Incremental: items modified locally after their last sync, or never synced
         let mut stmt = conn
             .prepare(
-                "SELECT id, type, content, mimeType, metadata, syncId, syncSource, createdAt, updatedAt, deletedAt, starred, archived, syncedAt, visitCount, lastVisitAt FROM items WHERE deletedAt = 0 AND (syncSource = '' OR (syncedAt > 0 AND updatedAt > syncedAt))",
+                "SELECT id, type, content, mimeType, metadata, syncId, syncSource, createdAt, updatedAt, deletedAt, starred, archived, syncedAt, visitCount, lastVisitAt FROM items WHERE (deletedAt = 0 AND (syncSource = '' OR (syncedAt > 0 AND updatedAt > syncedAt))) OR (deletedAt > 0 AND syncId != '' AND syncedAt > 0 AND updatedAt > syncedAt)",
             )
             .map_err(|e| format!("Query error: {}", e))?;
         let result: Vec<Item> = stmt
@@ -596,7 +661,7 @@ fn query_items_to_push(conn: &Connection, last_sync_time: i64) -> Result<Vec<Ite
         // Full: all items that haven't been synced
         let mut stmt = conn
             .prepare(
-                "SELECT id, type, content, mimeType, metadata, syncId, syncSource, createdAt, updatedAt, deletedAt, starred, archived, syncedAt, visitCount, lastVisitAt FROM items WHERE deletedAt = 0 AND syncSource = ''",
+                "SELECT id, type, content, mimeType, metadata, syncId, syncSource, createdAt, updatedAt, deletedAt, starred, archived, syncedAt, visitCount, lastVisitAt FROM items WHERE (deletedAt = 0 AND syncSource = '') OR (deletedAt > 0 AND syncId != '' AND syncedAt > 0 AND updatedAt > syncedAt)",
             )
             .map_err(|e| format!("Query error: {}", e))?;
         let result: Vec<Item> = stmt
@@ -651,6 +716,7 @@ fn query_items_to_push(conn: &Connection, last_sync_time: i64) -> Result<Vec<Ite
                 } else {
                     item.sync_id.clone()
                 },
+                deleted_at: if item.deleted_at > 0 { Some(item.deleted_at) } else { None },
             },
         });
     }
@@ -824,7 +890,7 @@ pub fn get_sync_status(datastore_conn: &Connection, profiles_conn: &Connection) 
     // Count items that need to be synced
     let pending_count: i64 = datastore_conn
         .query_row(
-            "SELECT COUNT(*) FROM items WHERE deletedAt = 0 AND (syncSource = '' OR (syncedAt > 0 AND updatedAt > syncedAt))",
+            "SELECT COUNT(*) FROM items WHERE (deletedAt = 0 AND (syncSource = '' OR (syncedAt > 0 AND updatedAt > syncedAt))) OR (deletedAt > 0 AND syncId != '' AND syncedAt > 0 AND updatedAt > syncedAt)",
             [],
             |row| row.get(0),
         )

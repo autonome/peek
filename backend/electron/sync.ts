@@ -325,6 +325,8 @@ export async function pullFromServer(
     path = `/items/since/${toISOString(since)}`;
   }
   path += `?profile=${encodeURIComponent(profileSyncConfig.serverProfileId || activeProfile.id)}`;
+  // Always include deleted items so tombstones propagate during sync
+  path += '&includeDeleted=true';
 
   DEBUG && console.log(`[sync] Fetching from: ${serverUrl}${path}`);
 
@@ -358,12 +360,27 @@ export async function pullFromServer(
 function mergeServerItem(serverItem: ServerItem): 'pulled' | 'conflict' | 'skipped' {
   const db = getDb();
 
-  // Find local item by syncId matching server id
+  // Find local item by syncId matching server id (include deleted items)
   const localItem = db.prepare(
-    'SELECT * FROM items WHERE syncId = ? AND deletedAt = 0'
+    'SELECT * FROM items WHERE syncId = ?'
   ).get(serverItem.id) as Item | undefined;
 
   const serverUpdatedAt = fromISOString(serverItem.updated_at);
+  const serverDeletedAt = typeof serverItem.deleted_at === 'number' ? serverItem.deleted_at : 0;
+
+  if (serverDeletedAt > 0) {
+    // Server says item is deleted
+    if (!localItem) return 'skipped'; // No local copy, skip
+    if (localItem.deletedAt > 0) {
+      // Both deleted — just update syncedAt
+      db.prepare('UPDATE items SET syncedAt = ? WHERE id = ?').run(Date.now(), localItem.id);
+      return 'pulled';
+    }
+    // Local is alive, server is deleted — soft-delete locally
+    db.prepare('UPDATE items SET deletedAt = ?, updatedAt = ?, syncedAt = ? WHERE id = ?')
+      .run(serverDeletedAt, serverDeletedAt, Date.now(), localItem.id);
+    return 'pulled';
+  }
 
   if (!localItem) {
     // Item doesn't exist locally - insert it
@@ -386,6 +403,27 @@ function mergeServerItem(serverItem: ServerItem): 'pulled' | 'conflict' | 'skipp
     syncTagsToItem(localId, serverItem.tags);
 
     return 'pulled';
+  }
+
+  // Handle undelete: local is deleted but server item is active
+  if (localItem.deletedAt > 0) {
+    if (serverUpdatedAt > localItem.updatedAt) {
+      // Server is newer — undelete locally and update content
+      DEBUG && console.log(`[sync] Undeleting local item from server: ${serverItem.id}`);
+      updateItem(localItem.id, {
+        content: serverItem.content || undefined,
+        metadata: serverItem.metadata ? JSON.stringify(serverItem.metadata) : undefined,
+      });
+      const now = Date.now();
+      db.prepare(`
+        UPDATE items SET deletedAt = 0, updatedAt = ?, syncedAt = ? WHERE id = ?
+      `).run(serverUpdatedAt, now, localItem.id);
+      syncTagsToItem(localItem.id, serverItem.tags);
+      return 'pulled';
+    }
+    // Local delete is newer — conflict, local wins
+    DEBUG && console.log(`[sync] Conflict: local delete is newer for ${serverItem.id}, keeping local`);
+    return 'conflict';
   }
 
   // Item exists - check timestamps for conflict resolution
@@ -473,9 +511,11 @@ export async function pushToServer(
   let items: Item[];
   if (lastSyncTime > 0) {
     // Incremental: items modified locally after their last sync, or never synced
+    // Also include deleted tombstones that need to be pushed
     items = db.prepare(`
       SELECT * FROM items
-      WHERE deletedAt = 0 AND (syncSource = '' OR (syncedAt > 0 AND updatedAt > syncedAt))
+      WHERE (deletedAt = 0 AND (syncSource = '' OR (syncedAt > 0 AND updatedAt > syncedAt)))
+         OR (deletedAt > 0 AND syncId != '' AND syncedAt > 0 AND updatedAt > syncedAt)
     `).all() as Item[];
   } else {
     // Full: all items that haven't been synced
@@ -544,6 +584,7 @@ async function pushSingleItem(
     tags: string[];
     metadata?: Record<string, unknown>;
     sync_id?: string;
+    deleted_at?: number;
   } = {
     type: item.type,
     content: item.content,
@@ -553,6 +594,10 @@ async function pushSingleItem(
 
   if (metadata) {
     body.metadata = metadata;
+  }
+
+  if (item.deletedAt > 0) {
+    body.deleted_at = item.deletedAt;
   }
 
   // POST to server with profile parameter
@@ -719,9 +764,11 @@ export function getSyncStatus(): {
 
   // Count items that need to be synced
   // Same logic as push: never synced OR locally modified after last sync
+  // Also count deleted tombstones that need to be pushed
   const pendingCount = (db.prepare(`
     SELECT COUNT(*) as count FROM items
-    WHERE deletedAt = 0 AND (syncSource = '' OR (syncedAt > 0 AND updatedAt > syncedAt))
+    WHERE (deletedAt = 0 AND (syncSource = '' OR (syncedAt > 0 AND updatedAt > syncedAt)))
+       OR (deletedAt > 0 AND syncId != '' AND syncedAt > 0 AND updatedAt > syncedAt)
   `).get() as { count: number }).count;
 
   return {

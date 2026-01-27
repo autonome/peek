@@ -1,20 +1,8 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { resetMocks } from './helpers/mocks.js';
-import { openDatabase, closeDatabase, addItem, getItem, queryItems, getRawDb, getRow } from '../datastore.js';
+import { initialize, close, data, sync, getConfig, setConfig } from '../engine.js';
 import { ensureDefaultProfile, getCurrentProfile, enableSync } from '../profiles.js';
-import { getSyncConfig, setSyncConfig, pullFromServer, pushToServer, syncAll, getSyncStatus, resetSyncStateIfServerChanged, saveSyncServerConfig } from '../sync.js';
-
-// Save and restore original fetch
-const originalFetch = globalThis.fetch;
-
-function mockFetch(handler) {
-  globalThis.fetch = handler;
-}
-
-function restoreFetch() {
-  globalThis.fetch = originalFetch;
-}
 
 // Helper to build a mock Response
 function jsonResponse(body, status = 200, headers = {}) {
@@ -30,45 +18,52 @@ function jsonResponse(body, status = 200, headers = {}) {
 }
 
 describe('sync', () => {
+  let mockFetchHandler;
+
   beforeEach(async () => {
     await resetMocks();
-    await openDatabase();
+    await initialize();
     await ensureDefaultProfile();
 
     // Configure sync for default profile
     const profile = (await getCurrentProfile()).data;
     await enableSync(profile.id, 'test-api-key', 'default');
-    await setSyncConfig({ serverUrl: 'https://test-server.example.com', autoSync: false });
+    await setConfig({ serverUrl: 'https://test-server.example.com', autoSync: false });
+
+    // Install custom fetch on the SyncEngine instance
+    mockFetchHandler = null;
+    sync._fetch = async (...args) => {
+      if (mockFetchHandler) return mockFetchHandler(...args);
+      return jsonResponse({ items: [] });
+    };
   });
 
-  afterEach(() => {
-    restoreFetch();
-    closeDatabase();
+  afterEach(async () => {
+    await close();
   });
 
   // ==================== Config ====================
 
-  describe('getSyncConfig', () => {
+  describe('getConfig', () => {
     it('should return configured sync settings', async () => {
-      const result = await getSyncConfig();
-      assert.equal(result.success, true);
-      assert.equal(result.data.serverUrl, 'https://test-server.example.com');
-      assert.equal(result.data.apiKey, 'test-api-key');
-      assert.equal(result.data.autoSync, false);
+      const config = await getConfig();
+      assert.equal(config.serverUrl, 'https://test-server.example.com');
+      assert.equal(config.apiKey, 'test-api-key');
+      assert.equal(config.autoSync, false);
     });
   });
 
-  describe('setSyncConfig', () => {
+  describe('setConfig', () => {
     it('should persist server URL', async () => {
-      await setSyncConfig({ serverUrl: 'https://new-server.com' });
-      const result = await getSyncConfig();
-      assert.equal(result.data.serverUrl, 'https://new-server.com');
+      await setConfig({ serverUrl: 'https://new-server.com' });
+      const config = await getConfig();
+      assert.equal(config.serverUrl, 'https://new-server.com');
     });
 
     it('should persist autoSync setting', async () => {
-      await setSyncConfig({ autoSync: true });
-      const result = await getSyncConfig();
-      assert.equal(result.data.autoSync, true);
+      await setConfig({ autoSync: true });
+      const config = await getConfig();
+      assert.equal(config.autoSync, true);
     });
   });
 
@@ -86,14 +81,13 @@ describe('sync', () => {
         updated_at: '2024-01-01T00:00:00.000Z',
       };
 
-      mockFetch(async () => jsonResponse({ items: [serverItem] }));
+      mockFetchHandler = async () => jsonResponse({ items: [serverItem] });
 
-      const result = await pullFromServer();
-      assert.equal(result.success, true);
-      assert.equal(result.data.pulled, 1);
+      const result = await sync.pullFromServer();
+      assert.equal(result.pulled, 1);
 
       // Verify item was created locally
-      const items = (await queryItems()).data;
+      const items = await data.queryItems();
       assert.equal(items.length, 1);
       assert.equal(items[0].content, 'From server');
       assert.equal(items[0].syncId, 'server-1');
@@ -102,7 +96,7 @@ describe('sync', () => {
 
     it('should update local when server is newer', async () => {
       // Add local item synced from server
-      const { data: { id: localId } } = await addItem('text', {
+      const { id: localId } = await data.addItem('text', {
         content: 'Old content',
         syncId: 'server-2',
         syncSource: 'server',
@@ -120,18 +114,18 @@ describe('sync', () => {
         updated_at: futureDate,
       };
 
-      mockFetch(async () => jsonResponse({ items: [serverItem] }));
+      mockFetchHandler = async () => jsonResponse({ items: [serverItem] });
 
-      const result = await pullFromServer();
-      assert.equal(result.data.pulled, 1);
+      const result = await sync.pullFromServer();
+      assert.equal(result.pulled, 1);
 
-      const item = (await getItem(localId)).data;
+      const item = await data.getItem(localId);
       assert.equal(item.content, 'Updated content');
     });
 
     it('should skip when local is newer (conflict)', async () => {
       // Add local item that's been modified recently
-      const { data: { id: localId } } = await addItem('text', {
+      const { id: localId } = await data.addItem('text', {
         content: 'Local content',
         syncId: 'server-3',
         syncSource: 'server',
@@ -148,22 +142,21 @@ describe('sync', () => {
         updated_at: '2020-01-01T00:00:00.000Z',
       };
 
-      mockFetch(async () => jsonResponse({ items: [serverItem] }));
+      mockFetchHandler = async () => jsonResponse({ items: [serverItem] });
 
-      const result = await pullFromServer();
-      assert.equal(result.data.conflicts, 1);
+      const result = await sync.pullFromServer();
+      assert.equal(result.conflicts, 1);
 
       // Local content should be unchanged
-      const item = (await getItem(localId)).data;
+      const item = await data.getItem(localId);
       assert.equal(item.content, 'Local content');
     });
 
     it('should handle empty response', async () => {
-      mockFetch(async () => jsonResponse({ items: [] }));
+      mockFetchHandler = async () => jsonResponse({ items: [] });
 
-      const result = await pullFromServer();
-      assert.equal(result.success, true);
-      assert.equal(result.data.pulled, 0);
+      const result = await sync.pullFromServer();
+      assert.equal(result.pulled, 0);
     });
   });
 
@@ -171,57 +164,56 @@ describe('sync', () => {
 
   describe('pushToServer', () => {
     it('should push unsynced items', async () => {
-      await addItem('text', { content: 'To push' });
+      await data.addItem('text', { content: 'To push' });
 
       const pushedItems = [];
-      mockFetch(async (url, opts) => {
+      mockFetchHandler = async (url, opts) => {
         if (opts && opts.method === 'POST') {
           const body = JSON.parse(opts.body);
           pushedItems.push(body);
           return jsonResponse({ id: 'server-new-1', created: true });
         }
         return jsonResponse({ items: [] });
-      });
+      };
 
-      const result = await pushToServer();
-      assert.equal(result.success, true);
-      assert.equal(result.data.pushed, 1);
+      const result = await sync.pushToServer();
+      assert.equal(result.pushed, 1);
       assert.equal(pushedItems[0].content, 'To push');
       assert.equal(pushedItems[0].type, 'text');
     });
 
     it('should not push server-synced items', async () => {
       // Item from server (syncSource set)
-      await addItem('text', {
+      await data.addItem('text', {
         content: 'From server',
         syncId: 'server-x',
         syncSource: 'server',
       });
 
       let pushCount = 0;
-      mockFetch(async (url, opts) => {
+      mockFetchHandler = async (url, opts) => {
         if (opts && opts.method === 'POST') {
           pushCount++;
           return jsonResponse({ id: 'server-x', created: false });
         }
         return jsonResponse({ items: [] });
-      });
+      };
 
-      await pushToServer();
+      await sync.pushToServer();
       assert.equal(pushCount, 0);
     });
 
     it('should send version headers', async () => {
-      await addItem('text', { content: 'Header test' });
+      await data.addItem('text', { content: 'Header test' });
 
       let capturedHeaders = {};
-      mockFetch(async (url, opts) => {
+      mockFetchHandler = async (url, opts) => {
         capturedHeaders = opts.headers;
         return jsonResponse({ id: 'server-h', created: true });
-      });
+      };
 
-      await pushToServer();
-      assert.equal(capturedHeaders['X-Peek-Client'], 'extension');
+      await sync.pushToServer();
+      assert.equal(capturedHeaders['X-Peek-Client'], 'sync-engine');
       assert.equal(capturedHeaders['X-Peek-Datastore-Version'], '1');
       assert.equal(capturedHeaders['X-Peek-Protocol-Version'], '1');
     });
@@ -231,7 +223,7 @@ describe('sync', () => {
 
   describe('syncAll', () => {
     it('should pull then push and update lastSyncTime', async () => {
-      await addItem('text', { content: 'Local item' });
+      await data.addItem('text', { content: 'Local item' });
 
       const serverItem = {
         id: 'server-sync-1',
@@ -244,19 +236,18 @@ describe('sync', () => {
       };
 
       let requestLog = [];
-      mockFetch(async (url, opts) => {
+      mockFetchHandler = async (url, opts) => {
         requestLog.push({ url, method: opts?.method || 'GET' });
         if (opts && opts.method === 'POST') {
           return jsonResponse({ id: 'pushed-1', created: true });
         }
         return jsonResponse({ items: [serverItem] });
-      });
+      };
 
-      const result = await syncAll();
-      assert.equal(result.success, true);
-      assert.equal(result.data.pulled, 1);
-      assert.equal(result.data.pushed, 1);
-      assert.ok(result.data.lastSyncTime > 0);
+      const result = await sync.syncAll();
+      assert.equal(result.pulled, 1);
+      assert.equal(result.pushed, 1);
+      assert.ok(result.lastSyncTime > 0);
 
       // Verify pull happened before push (GET before POST)
       const getIdx = requestLog.findIndex(r => r.method === 'GET');
@@ -269,16 +260,16 @@ describe('sync', () => {
 
   describe('getSyncStatus', () => {
     it('should report configured status', async () => {
-      const result = await getSyncStatus();
-      assert.equal(result.data.configured, true);
+      const status = await sync.getSyncStatus();
+      assert.equal(status.configured, true);
     });
 
     it('should count pending items', async () => {
-      await addItem('text', { content: 'pending' });
-      await addItem('text', { content: 'pending too' });
+      await data.addItem('text', { content: 'pending' });
+      await data.addItem('text', { content: 'pending too' });
 
-      const result = await getSyncStatus();
-      assert.equal(result.data.pendingCount, 2);
+      const status = await sync.getSyncStatus();
+      assert.equal(status.pendingCount, 2);
     });
   });
 
@@ -287,26 +278,26 @@ describe('sync', () => {
   describe('resetSyncStateIfServerChanged', () => {
     it('should reset sync markers when server URL changes', async () => {
       // Add an item synced from server
-      await addItem('text', {
+      await data.addItem('text', {
         content: 'Synced item',
         syncId: 'server-sc-1',
         syncSource: 'server',
       });
 
       // Save current server config
-      await saveSyncServerConfig('https://test-server.example.com');
+      await sync.saveSyncServerConfig('https://test-server.example.com');
 
       // Verify the saved config
-      const urlRow = await getRow('extension_settings', 'sync-lastSyncServerUrl');
-      assert.equal(JSON.parse(urlRow.data.value), 'https://test-server.example.com');
+      const savedUrl = await data.getSetting('sync_lastSyncServerUrl');
+      assert.equal(JSON.parse(savedUrl), 'https://test-server.example.com');
 
       // Change server URL and detect the change
-      await setSyncConfig({ serverUrl: 'https://new-server.example.com' });
-      const changed = await resetSyncStateIfServerChanged('https://new-server.example.com');
+      await setConfig({ serverUrl: 'https://new-server.example.com' });
+      const changed = await sync.resetSyncStateIfServerChanged('https://new-server.example.com');
       assert.equal(changed, true);
 
       // Verify sync markers were reset
-      const items = (await queryItems()).data;
+      const items = await data.queryItems();
       const syncedItem = items.find(i => i.content === 'Synced item');
       assert.equal(syncedItem.syncSource, '');
       assert.equal(syncedItem.syncedAt, 0);
@@ -314,42 +305,43 @@ describe('sync', () => {
     });
 
     it('should not reset when server URL is unchanged', async () => {
-      await addItem('text', {
+      await data.addItem('text', {
         content: 'Stable item',
         syncId: 'server-sc-2',
         syncSource: 'server',
       });
 
       // Save config with same URL
-      await saveSyncServerConfig('https://test-server.example.com');
+      await sync.saveSyncServerConfig('https://test-server.example.com');
 
       // Check with same URL
-      const changed = await resetSyncStateIfServerChanged('https://test-server.example.com');
+      const changed = await sync.resetSyncStateIfServerChanged('https://test-server.example.com');
       assert.equal(changed, false);
 
       // Verify sync markers are intact
-      const items = (await queryItems()).data;
+      const items = await data.queryItems();
       const item = items.find(i => i.content === 'Stable item');
       assert.equal(item.syncSource, 'server');
       assert.equal(item.syncId, 'server-sc-2');
     });
 
-    it('should reset items synced to unknown server on first run', async () => {
+    it('should not reset on first run (no stored config)', async () => {
       // Add server-synced items without any stored config (simulates upgrade)
-      await addItem('text', {
+      await data.addItem('text', {
         content: 'Legacy item',
         syncId: 'server-legacy-1',
         syncSource: 'server',
       });
 
-      // No stored config yet — should detect orphaned server items and reset
-      const changed = await resetSyncStateIfServerChanged('https://test-server.example.com');
-      assert.equal(changed, true);
+      // No stored config yet — unified engine does NOT reset on first run
+      const changed = await sync.resetSyncStateIfServerChanged('https://test-server.example.com');
+      assert.equal(changed, false);
 
-      const items = (await queryItems()).data;
+      // Sync markers should be intact
+      const items = await data.queryItems();
       const item = items.find(i => i.content === 'Legacy item');
-      assert.equal(item.syncSource, '');
-      assert.equal(item.syncId, '');
+      assert.equal(item.syncSource, 'server');
+      assert.equal(item.syncId, 'server-legacy-1');
     });
   });
 });

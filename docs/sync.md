@@ -63,7 +63,7 @@ PATCH /items/:id/tags?profile=<uuid>         # Update tags
 DELETE /items/:id?profile=<uuid>             # Delete item
 ```
 
-The `profile` parameter is a server-side profile UUID. The server resolves UUIDs to internal slugs for storage. Slug fallback has been removed — clients must send valid server profile UUIDs.
+The `profile` parameter is a server-side profile UUID. The server uses the UUID directly as the folder name on disk. Legacy slugs are resolved to UUIDs for backward compatibility.
 
 **Profile Management:**
 ```
@@ -88,7 +88,7 @@ await window.app.sync.full()          // Full bidirectional sync
 
 Sync configuration is **per-profile** and stored in `profiles.db`:
 - `api_key` - API key (authenticates with server user)
-- `server_profile_slug` - Which server profile to sync to
+- `server_profile_slug` (mapped to `serverProfileId` in code) - Server profile UUID to sync to
 - `last_sync_at` - Last sync timestamp
 - `sync_enabled` - Enable sync for this profile
 
@@ -113,6 +113,34 @@ Sync configuration is stored in `profiles.json` in the App Group container:
 - `profiles[].server_url` / `profiles[].api_key` - Per-profile sync config
 
 The mobile sends `?profile=<server_profile_id>` on sync requests. If `server_profile_id` is not set, falls back to the local profile UUID.
+
+## Server-Change Detection
+
+When a user changes sync servers (or configures sync for the first time after having synced previously), per-item sync markers (`syncSource`, `syncedAt`, `syncId`) from the old server would prevent items from being pushed to the new server. Both desktop and mobile detect this:
+
+1. After every pull or full sync, the current server URL and profile ID are saved to a `settings` table (`lastSyncServerUrl`, `lastSyncProfileId`).
+2. Before `syncAll()`, the stored values are compared to the current config.
+3. If they differ (server changed), all per-item sync markers are reset — making every item eligible for push.
+4. If no stored values exist but items have `syncSource = 'server'` (upgrade/first-time tracking), those items are reset too.
+
+This ensures no data loss when switching servers.
+
+**Files:**
+- `backend/electron/sync.ts`: `resetSyncStateIfServerChanged()`, `saveSyncServerConfig()`
+- `backend/tauri-mobile/src-tauri/src/lib.rs`: `reset_sync_state_if_server_changed()`, `save_sync_server_config()`
+
+## E2E Full Sync Test
+
+`scripts/e2e-full-sync-test.sh` (`yarn e2e:full-sync`) runs a clean-room three-way sync test:
+
+1. Starts a fresh temp server with 2 seeded items
+2. Configures a desktop profile and seeds 2 items, pushes to server
+3. Creates a fresh iOS simulator database with 2 items
+4. Polls the server waiting for iOS to push (manual step: build in Xcode, sync in simulator)
+5. Triggers desktop re-sync to pull iOS items
+6. Verifies all three platforms have 6 items
+
+All data is temporary and cleaned up on exit (including iOS simulator backup/restore).
 
 ## Known Limitations
 

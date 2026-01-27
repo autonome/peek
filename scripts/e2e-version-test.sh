@@ -303,25 +303,25 @@ log "$PHASE" "Creating profiles for account-a..."
 RESP="$(curl -sf -X POST "http://localhost:$PORT/profiles" \
   -H "Authorization: Bearer $USER_A_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"slug":"default","name":"Default"}')"
+  -d '{"name":"Default"}')"
 PROFILE_A_DEFAULT_ID="$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['profile']['id'])")"
-log "$PHASE" "Created profile default for account-a → id=$PROFILE_A_DEFAULT_ID"
+log "$PHASE" "Created profile Default for account-a → id=$PROFILE_A_DEFAULT_ID"
 
 RESP="$(curl -sf -X POST "http://localhost:$PORT/profiles" \
   -H "Authorization: Bearer $USER_A_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"slug":"work","name":"Work"}')"
+  -d '{"name":"Work"}')"
 PROFILE_A_WORK_ID="$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['profile']['id'])")"
-log "$PHASE" "Created profile work for account-a → id=$PROFILE_A_WORK_ID"
+log "$PHASE" "Created profile Work for account-a → id=$PROFILE_A_WORK_ID"
 
 # Create profile for account-b
 log "$PHASE" "Creating profile for account-b..."
 RESP="$(curl -sf -X POST "http://localhost:$PORT/profiles" \
   -H "Authorization: Bearer $USER_B_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"slug":"default","name":"Default"}')"
+  -d '{"name":"Default"}')"
 PROFILE_B_DEFAULT_ID="$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['profile']['id'])")"
-log "$PHASE" "Created profile default for account-b → id=$PROFILE_B_DEFAULT_ID"
+log "$PHASE" "Created profile Default for account-b → id=$PROFILE_B_DEFAULT_ID"
 
 # Seed test data
 log "$PHASE" "Seeding test data..."
@@ -363,12 +363,12 @@ log "$PHASE" "=== Phase 2: Desktop Sync Tests ==="
 run_desktop_sync() {
   local PROFILE_NAME="$1" API_KEY="$2" SERVER_SLUG="$3" EXPECTED_COUNT="$4" LABEL="$5"
 
-  log "$PHASE" "Syncing profile $PROFILE_NAME (slug=$SERVER_SLUG)..."
+  log "$PHASE" "Syncing profile $PROFILE_NAME (serverProfileId=$SERVER_SLUG)..."
 
   PROFILE="$PROFILE_NAME" \
   SERVER_URL="http://localhost:$PORT" \
   API_KEY="$API_KEY" \
-  SERVER_PROFILE_SLUG="$SERVER_SLUG" \
+  SERVER_PROFILE_ID="$SERVER_SLUG" \
     electron "$SCRIPT_DIR/preconfigure-sync.mjs" 2>&1 | while IFS= read -r line; do
       log "$PHASE" "  [electron] $line"
     done
@@ -395,9 +395,9 @@ run_desktop_sync() {
   fi
 }
 
-run_desktop_sync "$DESKTOP_PROFILE_A_DEFAULT" "$USER_A_KEY" "default" 2 "Account A default"
-run_desktop_sync "$DESKTOP_PROFILE_A_WORK"    "$USER_A_KEY" "work"    2 "Account A work"
-run_desktop_sync "$DESKTOP_PROFILE_B_DEFAULT"  "$USER_B_KEY" "default" 2 "Account B default"
+run_desktop_sync "$DESKTOP_PROFILE_A_DEFAULT" "$USER_A_KEY" "$PROFILE_A_DEFAULT_ID" 2 "Account A default"
+run_desktop_sync "$DESKTOP_PROFILE_A_WORK"    "$USER_A_KEY" "$PROFILE_A_WORK_ID"    2 "Account A work"
+run_desktop_sync "$DESKTOP_PROFILE_B_DEFAULT"  "$USER_B_KEY" "$PROFILE_B_DEFAULT_ID" 2 "Account B default"
 
 else
   log "desktop" "=== Phase 2: SKIPPED ==="

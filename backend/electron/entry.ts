@@ -168,7 +168,7 @@ if (profileIsLegit(process.env.PROFILE)) {
   // Production packaged build - use active profile from profiles.db
   try {
     const activeProfile = getActiveProfile();
-    PROFILE = activeProfile.slug;
+    PROFILE = activeProfile.folder;
     DEBUG && console.log('[profiles] Using active profile from profiles.db:', PROFILE);
   } catch (error) {
     // Fallback to default if profiles.db fails

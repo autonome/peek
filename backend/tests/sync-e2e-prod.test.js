@@ -25,7 +25,11 @@ import * as sync from '../../dist/backend/electron/sync.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Configuration from environment
-const PROD_URL = process.env.PEEK_PROD_URL || 'https://peek-node.up.railway.app';
+const PROD_URL = process.env.PEEK_PROD_URL;
+if (!PROD_URL) {
+  console.error('ERROR: PEEK_PROD_URL environment variable is required');
+  process.exit(1);
+}
 const PROD_KEY = process.env.PEEK_PROD_KEY;
 
 // Test marker for this run - used for identification and cleanup

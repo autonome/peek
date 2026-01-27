@@ -24,7 +24,11 @@ if (isLocal) {
   BASE_URL = "http://localhost:3000";
   API_KEY = process.env.PEEK_LOCAL_KEY;
 } else if (isProd) {
-  BASE_URL = process.env.PEEK_PROD_URL || "https://peek-node.up.railway.app";
+  BASE_URL = process.env.PEEK_PROD_URL;
+  if (!BASE_URL) {
+    console.error("ERROR: PEEK_PROD_URL environment variable is required for prod mode");
+    process.exit(1);
+  }
   API_KEY = process.env.PEEK_PROD_KEY;
 } else {
   // Fallback to legacy env vars for backwards compatibility

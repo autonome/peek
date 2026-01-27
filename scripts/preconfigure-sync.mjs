@@ -57,7 +57,7 @@ app.whenReady().then(async () => {
 
   // Create the test profile if it doesn't exist
   try {
-    const existingProfile = profiles.getProfile(PROFILE);
+    const existingProfile = profiles.getProfileByFolder(PROFILE);
     if (!existingProfile) {
       profiles.createProfile(PROFILE);
       console.log('  Created test profile in profiles.db');
@@ -81,7 +81,7 @@ app.whenReady().then(async () => {
 
   // Enable sync for this profile
   const activeProfile = profiles.getActiveProfile();
-  profiles.enableSync(activeProfile.id, API_KEY, process.env.SERVER_PROFILE_SLUG || 'default');
+  profiles.enableSync(activeProfile.id, API_KEY, process.env.SERVER_PROFILE_ID || 'default');
 
   // Set server URL globally
   sync.setSyncConfig({
@@ -92,10 +92,15 @@ app.whenReady().then(async () => {
   });
   console.log('  Sync configured');
 
-  // Run initial sync (pull from server)
+  // Run sync (full bidirectional if SYNC_MODE=full, otherwise pull-only)
   try {
-    const result = await sync.pullFromServer(SERVER_URL, API_KEY);
-    console.log(`  Pulled ${result.pulled} items from server`);
+    if (process.env.SYNC_MODE === 'full') {
+      const result = await sync.syncAll(SERVER_URL, API_KEY);
+      console.log(`  Full sync: ${result.pulled} pulled, ${result.pushed} pushed`);
+    } else {
+      const result = await sync.pullFromServer(SERVER_URL, API_KEY);
+      console.log(`  Pulled ${result.pulled} items from server`);
+    }
   } catch (error) {
     console.error('  Sync failed:', error.message);
     datastore.closeDatabase();

@@ -17,12 +17,12 @@ import crypto from 'node:crypto';
 export interface Profile {
   id: string;                   // UUID
   name: string;                 // User-visible name (e.g., "Work")
-  slug: string;                 // Filesystem-safe slug (e.g., "work")
+  folder: string;               // Filesystem-safe folder name (e.g., "work")
 
   // Sync configuration (optional)
   syncEnabled: boolean;
   apiKey: string | null;        // Server user API key
-  serverProfileSlug: string | null;  // Which server profile to sync to
+  serverProfileId: string | null;  // Which server profile UUID to sync to
   lastSyncAt: number | null;    // Unix ms
 
   createdAt: number;            // Unix ms
@@ -32,7 +32,7 @@ export interface Profile {
 
 export interface SyncConfig {
   apiKey: string;
-  serverProfileSlug: string;
+  serverProfileId: string;
 }
 
 let profilesDb: Database.Database | null = null;
@@ -93,10 +93,10 @@ function rowToProfile(row: any): Profile {
   return {
     id: row.id,
     name: row.name,
-    slug: row.slug,
+    folder: row.slug,
     syncEnabled: row.sync_enabled === 1,
     apiKey: row.api_key || null,
-    serverProfileSlug: row.server_profile_slug || null,
+    serverProfileId: row.server_profile_slug || null,
     lastSyncAt: row.last_sync_at || null,
     createdAt: row.created_at,
     lastUsedAt: row.last_used_at,
@@ -123,15 +123,15 @@ export function listProfiles(): Profile[] {
 export function createProfile(name: string): Profile {
   const db = getProfilesDb();
 
-  // Generate slug from name (lowercase, replace spaces with hyphens, remove special chars)
-  const slug = name.toLowerCase()
+  // Generate folder name from name (lowercase, replace spaces with hyphens, remove special chars)
+  const folder = name.toLowerCase()
     .replace(/\s+/g, '-')
     .replace(/[^a-z0-9-]/g, '');
 
-  // Check if slug already exists
-  const existing = db.prepare('SELECT id FROM profiles WHERE slug = ?').get(slug);
+  // Check if folder already exists
+  const existing = db.prepare('SELECT id FROM profiles WHERE slug = ?').get(folder);
   if (existing) {
-    throw new Error(`Profile with slug '${slug}' already exists`);
+    throw new Error(`Profile with folder '${folder}' already exists`);
   }
 
   const id = crypto.randomUUID();
@@ -140,25 +140,25 @@ export function createProfile(name: string): Profile {
   db.prepare(`
     INSERT INTO profiles (id, name, slug, sync_enabled, created_at, last_used_at, is_default)
     VALUES (?, ?, ?, 0, ?, ?, 0)
-  `).run(id, name, slug, timestamp, timestamp);
+  `).run(id, name, folder, timestamp, timestamp);
 
   // Create profile directory
   if (userDataPath) {
-    const profileDir = path.join(userDataPath, slug);
+    const profileDir = path.join(userDataPath, folder);
     if (!fs.existsSync(profileDir)) {
       fs.mkdirSync(profileDir, { recursive: true });
     }
   }
 
-  return getProfile(slug)!;
+  return getProfileByFolder(folder)!;
 }
 
 /**
- * Get a specific profile by slug
+ * Get a specific profile by folder name
  */
-export function getProfile(slug: string): Profile | null {
+export function getProfileByFolder(folder: string): Profile | null {
   const db = getProfilesDb();
-  const row = db.prepare('SELECT * FROM profiles WHERE slug = ?').get(slug);
+  const row = db.prepare('SELECT * FROM profiles WHERE slug = ?').get(folder);
   return row ? rowToProfile(row) : null;
 }
 
@@ -236,7 +236,7 @@ export function getActiveProfile(): Profile {
   const activeRow = db.prepare('SELECT profile_slug FROM active_profile WHERE id = 1').get() as { profile_slug: string } | undefined;
 
   if (activeRow) {
-    const profile = getProfile(activeRow.profile_slug);
+    const profile = getProfileByFolder(activeRow.profile_slug);
     if (profile) {
       return profile;
     }
@@ -260,19 +260,19 @@ export function getActiveProfile(): Profile {
 /**
  * Set the active profile (persists across app restarts)
  */
-export function setActiveProfile(slug: string): void {
+export function setActiveProfile(folder: string): void {
   const db = getProfilesDb();
 
-  const profile = getProfile(slug);
+  const profile = getProfileByFolder(folder);
   if (!profile) {
-    throw new Error(`Profile '${slug}' not found`);
+    throw new Error(`Profile '${folder}' not found`);
   }
 
   // Update active profile
   db.prepare(`
     INSERT OR REPLACE INTO active_profile (id, profile_slug)
     VALUES (1, ?)
-  `).run(slug);
+  `).run(folder);
 
   // Update last_used_at
   updateProfile(profile.id, { lastUsedAt: Date.now() });
@@ -355,7 +355,7 @@ export function migrateExistingProfiles(): void {
 /**
  * Enable sync for a profile
  */
-export function enableSync(profileId: string, apiKey: string, serverProfileSlug: string): void {
+export function enableSync(profileId: string, apiKey: string, serverProfileId: string): void {
   const db = getProfilesDb();
 
   const profile = getProfileById(profileId);
@@ -367,7 +367,7 @@ export function enableSync(profileId: string, apiKey: string, serverProfileSlug:
     UPDATE profiles
     SET sync_enabled = 1, api_key = ?, server_profile_slug = ?
     WHERE id = ?
-  `).run(apiKey, serverProfileSlug, profileId);
+  `).run(apiKey, serverProfileId, profileId);
 }
 
 /**
@@ -388,13 +388,13 @@ export function disableSync(profileId: string): void {
  */
 export function getSyncConfig(profileId: string): SyncConfig | null {
   const profile = getProfileById(profileId);
-  if (!profile || !profile.syncEnabled || !profile.apiKey || !profile.serverProfileSlug) {
+  if (!profile || !profile.syncEnabled || !profile.apiKey || !profile.serverProfileId) {
     return null;
   }
 
   return {
     apiKey: profile.apiKey,
-    serverProfileSlug: profile.serverProfileSlug,
+    serverProfileId: profile.serverProfileId,
   };
 }
 

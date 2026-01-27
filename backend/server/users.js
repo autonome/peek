@@ -168,11 +168,10 @@ function closeSystemDb() {
 /**
  * Create a new profile for a user.
  * @param {string} userId - The user ID
- * @param {string} slug - Filesystem-safe profile name (e.g., "work", "personal")
  * @param {string} name - User-visible profile name (e.g., "Work", "Personal")
  * @returns {object} Profile object with id, userId, slug, name
  */
-function createProfile(userId, slug, name) {
+function createProfile(userId, name) {
   const db = getSystemDb();
 
   // Check if user exists
@@ -180,6 +179,9 @@ function createProfile(userId, slug, name) {
   if (!user) {
     throw new Error(`User '${userId}' does not exist`);
   }
+
+  // Derive slug from name for backward compat (stored in DB but not used for folders)
+  const slug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
 
   // Check if profile already exists
   const existing = db.prepare(
@@ -259,34 +261,58 @@ function getProfileById(userId, profileId) {
 }
 
 /**
- * Resolve a profile identifier to a folder slug.
- * Handles both UUIDs (new clients) and slugs (backwards compatibility).
+ * Resolve a profile identifier to a UUID for folder paths.
+ * The UUID becomes the folder name on disk.
  *
- * Priority:
- * 1. If profileIdentifier is a UUID and found in profiles table → use its slug
- * 2. If fallbackSlug provided → use it (client knows expected folder)
- * 3. Use profileIdentifier as-is (backwards compatible or new profile)
+ * Handles both UUIDs (new clients) and slugs (legacy backwards compatibility).
  *
  * @param {string} userId - The user ID
- * @param {string} profileIdentifier - Either a UUID or a slug
- * @returns {string} The slug to use for folder paths
+ * @param {string} profileIdentifier - Either a UUID or a legacy slug
+ * @returns {string} The UUID to use for folder paths
  */
-function resolveProfileSlug(userId, profileIdentifier) {
-  // If it looks like a UUID (36 chars with dashes), try to look it up
+function resolveProfileId(userId, profileIdentifier) {
   const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
   if (uuidPattern.test(profileIdentifier)) {
     // Look up by UUID
     const profile = getProfileById(userId, profileIdentifier);
     if (profile) {
-      return profile.slug;
+      return profile.id;
     }
 
-    // UUID not found - use as-is (truly new profile)
+    // UUID not found - fall back to "default" profile's UUID
+    console.log(`[profiles] UUID ${profileIdentifier} not found for user ${userId}, falling back to default profile`);
+    const defaultProfile = getProfile(userId, "default");
+    if (defaultProfile) {
+      return defaultProfile.id;
+    }
+
+    // No default profile exists yet - create one
+    const newDefault = createProfile(userId, "Default");
+    return newDefault.id;
   }
 
-  // Not a UUID or not found - use as-is (backwards compatible)
-  return profileIdentifier;
+  // Not a UUID - legacy slug (e.g. "default", "work")
+  // Look up profile by slug, return its UUID
+  const profile = getProfile(userId, profileIdentifier);
+  if (profile) {
+    return profile.id;
+  }
+
+  // Legacy slug not found - create "default" profile
+  if (profileIdentifier === "default") {
+    const newDefault = createProfile(userId, "Default");
+    return newDefault.id;
+  }
+
+  // Unknown legacy slug - fall back to default
+  console.log(`[profiles] Legacy slug '${profileIdentifier}' not found for user ${userId}, falling back to default`);
+  const defaultProfile = getProfile(userId, "default");
+  if (defaultProfile) {
+    return defaultProfile.id;
+  }
+  const newDefault = createProfile(userId, "Default");
+  return newDefault.id;
 }
 
 /**
@@ -313,6 +339,64 @@ function deleteProfile(userId, profileId) {
   // Client should handle profile data cleanup if desired
 }
 
+/**
+ * Migrate profile folders from slug-based to UUID-based naming.
+ * For each user's profiles, renames DATA_DIR/{userId}/profiles/{slug} to
+ * DATA_DIR/{userId}/profiles/{uuid}.
+ *
+ * Safe to call multiple times (idempotent).
+ */
+function migrateProfileFoldersToUuid() {
+  if (!fs.existsSync(DATA_DIR)) {
+    return;
+  }
+
+  const userDirs = fs.readdirSync(DATA_DIR, { withFileTypes: true })
+    .filter(dirent => dirent.isDirectory() && dirent.name !== 'system.db')
+    .map(dirent => dirent.name);
+
+  for (const userId of userDirs) {
+    const profilesDir = path.join(DATA_DIR, userId, "profiles");
+    if (!fs.existsSync(profilesDir)) {
+      continue;
+    }
+
+    const db = getSystemDb();
+    const profiles = db.prepare(`
+      SELECT id, slug FROM profiles WHERE user_id = ?
+    `).all(userId);
+
+    // Handle orphan "default" folder (exists but no profile record)
+    const defaultFolder = path.join(profilesDir, "default");
+    if (fs.existsSync(defaultFolder)) {
+      const hasDefaultRecord = profiles.some(p => p.slug === "default");
+      if (!hasDefaultRecord) {
+        try {
+          const newProfile = createProfile(userId, "Default");
+          profiles.push({ id: newProfile.id, slug: "default" });
+          console.log(`[migration] Created default profile record for user ${userId}`);
+        } catch (e) {
+          console.log(`[migration] Could not create default profile for ${userId}: ${e.message}`);
+        }
+      }
+    }
+
+    for (const profile of profiles) {
+      const oldFolder = path.join(profilesDir, profile.slug);
+      const newFolder = path.join(profilesDir, profile.id);
+
+      if (fs.existsSync(oldFolder) && !fs.existsSync(newFolder)) {
+        try {
+          fs.renameSync(oldFolder, newFolder);
+          console.log(`[migration] Renamed ${userId}/profiles/${profile.slug} → ${profile.id}`);
+        } catch (e) {
+          console.error(`[migration] Failed to rename ${userId}/profiles/${profile.slug}: ${e.message}`);
+        }
+      }
+    }
+  }
+}
+
 module.exports = {
   createUser,
   createUserWithKey,
@@ -326,9 +410,10 @@ module.exports = {
   listProfiles,
   getProfile,
   getProfileById,
-  resolveProfileSlug,
+  resolveProfileId,
   updateProfileLastUsed,
   deleteProfile,
+  migrateProfileFoldersToUuid,
   // Exposed for testing
   hashApiKey,
   getSystemDb,

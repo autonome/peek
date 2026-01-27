@@ -1683,7 +1683,7 @@ const renderProfilesSettings = async () => {
     radio.style.cursor = 'pointer';
     radio.addEventListener('change', () => {
       if (radio.checked) {
-        console.log(`[profiles] Switching to profile: ${profile.name} (slug: ${profile.slug})`);
+        console.log(`[profiles] Switching to profile: ${profile.name} (folder: ${profile.folder})`);
 
         // Double check we're not already on this profile
         if (isCurrentProfile) {
@@ -1693,7 +1693,7 @@ const renderProfilesSettings = async () => {
 
         if (confirm(`Switch to "${profile.name}"?\n\nThe app will restart to apply the change.`)) {
           console.log('[profiles] User confirmed switch');
-          api.profiles.switch(profile.slug).then(result => {
+          api.profiles.switch(profile.folder).then(result => {
             if (!result.success) {
               console.error('[profiles] Switch failed:', result.error);
               alert(`Failed to switch profile: ${result.error}`);
@@ -1778,7 +1778,7 @@ const renderProfilesSettings = async () => {
       syncDetails.style.cssText = 'font-size: 12px; color: var(--text-secondary);';
       syncDetails.innerHTML = `
         <div>✓ Sync enabled</div>
-        <div>Server profile: <strong>${syncConfig.serverProfileSlug}</strong></div>
+        <div>Server profile: <strong>${syncConfig.serverProfileId}</strong></div>
       `;
       syncSection.appendChild(syncDetails);
 
@@ -1972,7 +1972,7 @@ const showEnableSyncDialog = async (profile, parentContainer) => {
   content.appendChild(title);
 
   const description = document.createElement('p');
-  description.textContent = 'Enter your server API key and the server profile slug to sync to.';
+  description.textContent = 'Enter your server API key and the server profile ID (UUID) to sync to.';
   description.style.cssText = 'margin: 0 0 16px 0; font-size: 13px; color: var(--text-secondary);';
   content.appendChild(description);
 
@@ -1991,10 +1991,10 @@ const showEnableSyncDialog = async (profile, parentContainer) => {
   `;
   content.appendChild(apiKeyInput);
 
-  const slugInput = document.createElement('input');
-  slugInput.type = 'text';
-  slugInput.placeholder = 'Server profile slug (e.g., default, work, personal)';
-  slugInput.style.cssText = `
+  const profileIdInput = document.createElement('input');
+  profileIdInput.type = 'text';
+  profileIdInput.placeholder = 'Server profile ID (UUID from server)';
+  profileIdInput.style.cssText = `
     width: 100%;
     padding: 8px;
     border: 1px solid var(--border-primary);
@@ -2004,7 +2004,7 @@ const showEnableSyncDialog = async (profile, parentContainer) => {
     font-size: 14px;
     margin-bottom: 16px;
   `;
-  content.appendChild(slugInput);
+  content.appendChild(profileIdInput);
 
   const buttons = document.createElement('div');
   buttons.style.cssText = 'display: flex; gap: 8px; justify-content: flex-end;';
@@ -2036,19 +2036,19 @@ const showEnableSyncDialog = async (profile, parentContainer) => {
   `;
   enableBtn.addEventListener('click', async () => {
     const apiKey = apiKeyInput.value.trim();
-    const serverProfileSlug = slugInput.value.trim();
+    const serverProfileId = profileIdInput.value.trim();
 
     if (!apiKey) {
       alert('Please enter an API key');
       return;
     }
 
-    if (!serverProfileSlug) {
-      alert('Please enter a server profile slug');
+    if (!serverProfileId) {
+      alert('Please enter a server profile ID');
       return;
     }
 
-    const result = await api.profiles.enableSync(profile.id, apiKey, serverProfileSlug);
+    const result = await api.profiles.enableSync(profile.id, apiKey, serverProfileId);
     if (result.success) {
       dialog.remove();
       // Refresh the profiles section

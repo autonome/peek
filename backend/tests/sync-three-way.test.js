@@ -3,15 +3,16 @@
  *
  * This test verifies that all three platforms sync correctly using UUIDs:
  * 1. Starts local server with temp data
- * 2. Simulates mobile sync (API calls with profile UUID + slug fallback)
- * 3. Simulates desktop sync (API calls with profile UUID + slug fallback)
- * 4. Verifies profile isolation and slug fallback work correctly
+ * 2. Creates server profiles (returns UUIDs used as folder names)
+ * 3. Simulates mobile sync (API calls with profile UUID)
+ * 4. Simulates desktop sync (API calls with profile UUID)
+ * 5. Verifies profile isolation works correctly
  *
  * Note: Uses HTTP requests to simulate clients (avoids native module issues)
  *
- * Tests the profile parameter migration:
- * - New clients send: ?profile={uuid}&slug={fallback}
- * - Server resolves UUID to folder path, falls back to slug if UUID unknown
+ * Profile parameter: ?profile={uuid}
+ * - Server resolves UUID to folder path
+ * - Legacy slugs still work for backward compat
  */
 
 import { spawn } from 'child_process';
@@ -30,26 +31,9 @@ let serverProcess = null;
 let serverTempDir = null;
 let apiKey = null;
 
-// Simulated mobile profile (like what iOS would have)
-const mobileProfile = {
-  id: crypto.randomUUID(),
-  slug: 'default',
-  name: 'Default',
-};
-
-// Simulated desktop profile
-const desktopProfile = {
-  id: crypto.randomUUID(),
-  slug: 'default',
-  name: 'Default',
-};
-
-// Second profile for isolation tests
-const devProfile = {
-  id: crypto.randomUUID(),
-  slug: 'dev',
-  name: 'Development',
-};
+// Server-assigned profile UUIDs (set after profile creation)
+let defaultProfileId = null;
+let devProfileId = null;
 
 // ==================== Helpers ====================
 
@@ -128,12 +112,11 @@ async function stopServer() {
 // ==================== API Helpers ====================
 
 /**
- * Make API request with profile parameters (simulates mobile or desktop client)
- * Sends: ?profile={uuid}&slug={fallback}
+ * Make API request with profile UUID parameter
  */
-async function clientRequest(profile, method, path, body = null) {
+async function clientRequest(profileId, method, path, body = null) {
   const separator = path.includes('?') ? '&' : '?';
-  const url = `${BASE_URL}${path}${separator}profile=${profile.id}&slug=${profile.slug}`;
+  const url = `${BASE_URL}${path}${separator}profile=${profileId}`;
 
   const options = {
     method,
@@ -147,7 +130,7 @@ async function clientRequest(profile, method, path, body = null) {
     options.body = JSON.stringify(body);
   }
 
-  log(`[${profile.name}] ${method} ${url}`);
+  log(`${method} ${url}`);
   const res = await fetch(url, options);
   const data = await res.json();
 
@@ -159,7 +142,7 @@ async function clientRequest(profile, method, path, body = null) {
 }
 
 /**
- * Make API request with slug only (simulates legacy client)
+ * Make API request with legacy slug (simulates old client)
  */
 async function legacyRequest(slug, method, path, body = null) {
   const separator = path.includes('?') ? '&' : '?';
@@ -188,25 +171,75 @@ async function legacyRequest(slug, method, path, body = null) {
   return data;
 }
 
+/**
+ * Create a server profile and return its UUID
+ */
+async function createServerProfile(name) {
+  const res = await fetch(`${BASE_URL}/profiles`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ name }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(`Failed to create profile: ${JSON.stringify(data)}`);
+  }
+  return data.profile.id;
+}
+
 // ==================== Test Functions ====================
+
+async function testProfileCreation() {
+  console.log('\n--- Test: Server Profile Creation ---');
+
+  // Create profiles on server
+  defaultProfileId = await createServerProfile('Default');
+  console.log(`  Created default profile: ${defaultProfileId}`);
+
+  devProfileId = await createServerProfile('Development');
+  console.log(`  Created dev profile: ${devProfileId}`);
+
+  // Verify both are UUIDs
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidPattern.test(defaultProfileId)) {
+    throw new Error(`Default profile ID is not a UUID: ${defaultProfileId}`);
+  }
+  if (!uuidPattern.test(devProfileId)) {
+    throw new Error(`Dev profile ID is not a UUID: ${devProfileId}`);
+  }
+
+  // List profiles and verify
+  const res = await fetch(`${BASE_URL}/profiles`, {
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+  });
+  const data = await res.json();
+  if (data.profiles.length !== 2) {
+    throw new Error(`Expected 2 profiles, got ${data.profiles.length}`);
+  }
+
+  console.log('  PASSED');
+}
 
 async function testMobileToServerSync() {
   console.log('\n--- Test: Mobile → Server Sync ---');
 
-  // Mobile creates items
+  // Mobile creates items using profile UUID
   const mobileItems = [
     { type: 'url', content: 'https://mobile-created.example.com', tags: ['mobile', 'test'] },
     { type: 'text', content: 'Text created on mobile device', tags: ['mobile', 'note'] },
   ];
 
   for (const item of mobileItems) {
-    const result = await clientRequest(mobileProfile, 'POST', '/items', item);
+    const result = await clientRequest(defaultProfileId, 'POST', '/items', item);
     console.log(`  Mobile created: ${result.id}`);
   }
 
   // Verify items exist on server
-  const serverItems = await clientRequest(mobileProfile, 'GET', '/items');
-  console.log(`  Server has ${serverItems.items.length} items for mobile profile`);
+  const serverItems = await clientRequest(defaultProfileId, 'GET', '/items');
+  console.log(`  Server has ${serverItems.items.length} items for default profile`);
 
   for (const item of mobileItems) {
     const found = serverItems.items.find(i => i.content === item.content);
@@ -221,20 +254,20 @@ async function testMobileToServerSync() {
 async function testDesktopToServerSync() {
   console.log('\n--- Test: Desktop → Server Sync ---');
 
-  // Desktop creates items
+  // Desktop creates items using same profile UUID
   const desktopItems = [
     { type: 'url', content: 'https://desktop-created.example.com', tags: ['desktop', 'test'] },
     { type: 'text', content: 'Text created on desktop app', tags: ['desktop', 'note'] },
   ];
 
   for (const item of desktopItems) {
-    const result = await clientRequest(desktopProfile, 'POST', '/items', item);
+    const result = await clientRequest(defaultProfileId, 'POST', '/items', item);
     console.log(`  Desktop created: ${result.id}`);
   }
 
   // Verify items exist on server
-  const serverItems = await clientRequest(desktopProfile, 'GET', '/items');
-  console.log(`  Server has ${serverItems.items.length} items for desktop profile`);
+  const serverItems = await clientRequest(defaultProfileId, 'GET', '/items');
+  console.log(`  Server has ${serverItems.items.length} items for default profile`);
 
   for (const item of desktopItems) {
     const found = serverItems.items.find(i => i.content === item.content);
@@ -249,45 +282,45 @@ async function testDesktopToServerSync() {
 async function testProfileIsolation() {
   console.log('\n--- Test: Profile Isolation ---');
 
-  // Mobile creates item in default profile
-  const mobileOnlyItem = {
+  // Create item in default profile
+  const defaultOnlyItem = {
     type: 'url',
-    content: 'https://mobile-only-isolation-' + Date.now() + '.example.com',
-    tags: ['mobile-only']
+    content: 'https://default-only-isolation-' + Date.now() + '.example.com',
+    tags: ['default-only']
   };
-  await clientRequest(mobileProfile, 'POST', '/items', mobileOnlyItem);
-  console.log('  Mobile created item in default profile');
+  await clientRequest(defaultProfileId, 'POST', '/items', defaultOnlyItem);
+  console.log('  Created item in default profile');
 
-  // Dev profile creates item (different profile)
+  // Create item in dev profile
   const devOnlyItem = {
     type: 'url',
     content: 'https://dev-only-isolation-' + Date.now() + '.example.com',
     tags: ['dev-only']
   };
-  await clientRequest(devProfile, 'POST', '/items', devOnlyItem);
-  console.log('  Dev profile created item in dev profile');
+  await clientRequest(devProfileId, 'POST', '/items', devOnlyItem);
+  console.log('  Created item in dev profile');
 
-  // Verify mobile profile doesn't see dev's item
-  const mobileItems = await clientRequest(mobileProfile, 'GET', '/items');
-  const mobileSeesDev = mobileItems.items.some(i => i.content === devOnlyItem.content);
-  if (mobileSeesDev) {
-    throw new Error('Mobile should NOT see dev-only item (profile isolation failed)');
+  // Verify default profile doesn't see dev's item
+  const defaultItems = await clientRequest(defaultProfileId, 'GET', '/items');
+  const defaultSeesDev = defaultItems.items.some(i => i.content === devOnlyItem.content);
+  if (defaultSeesDev) {
+    throw new Error('Default should NOT see dev-only item (profile isolation failed)');
   }
-  console.log('  Verified: Mobile does NOT see dev-only items');
+  console.log('  Verified: Default does NOT see dev-only items');
 
-  // Verify dev profile doesn't see mobile's item
-  const devItems = await clientRequest(devProfile, 'GET', '/items');
-  const devSeesMobile = devItems.items.some(i => i.content === mobileOnlyItem.content);
-  if (devSeesMobile) {
-    throw new Error('Dev should NOT see mobile-only item (profile isolation failed)');
+  // Verify dev profile doesn't see default's item
+  const devItems = await clientRequest(devProfileId, 'GET', '/items');
+  const devSeesDefault = devItems.items.some(i => i.content === defaultOnlyItem.content);
+  if (devSeesDefault) {
+    throw new Error('Dev should NOT see default-only item (profile isolation failed)');
   }
-  console.log('  Verified: Dev does NOT see mobile-only items');
+  console.log('  Verified: Dev does NOT see default-only items');
 
   console.log('  PASSED');
 }
 
-async function testSlugFallback() {
-  console.log('\n--- Test: Slug Fallback for Unknown UUID ---');
+async function testLegacySlugBackwardCompat() {
+  console.log('\n--- Test: Legacy Slug Backward Compatibility ---');
 
   // Create an item using legacy slug-only request
   const legacyItem = {
@@ -298,88 +331,21 @@ async function testSlugFallback() {
   const legacyRes = await legacyRequest('default', 'POST', '/items', legacyItem);
   console.log(`  Legacy client created item: ${legacyRes.id}`);
 
-  // Create item with unknown UUID but same slug fallback
-  const unknownProfile = {
-    id: crypto.randomUUID(),
-    slug: 'default',
-    name: 'Unknown',
-  };
-  const newClientItem = {
-    type: 'url',
-    content: 'https://new-client-unknown-uuid-' + Date.now() + '.example.com',
-    tags: ['new-client']
-  };
-  const newClientRes = await clientRequest(unknownProfile, 'POST', '/items', newClientItem);
-  console.log(`  New client (unknown UUID) created item: ${newClientRes.id}`);
-
-  // Both should be in the same profile folder (slug fallback worked)
-  const allItems = await legacyRequest('default', 'GET', '/items');
-
-  const hasLegacy = allItems.items.some(i => i.content === legacyItem.content);
-  const hasNewClient = allItems.items.some(i => i.content === newClientItem.content);
-
-  if (!hasLegacy) {
-    throw new Error('Legacy item not found in profile');
-  }
-  if (!hasNewClient) {
-    throw new Error('New client item not found in profile (slug fallback failed)');
+  // Verify item is accessible via the UUID profile
+  const uuidItems = await clientRequest(defaultProfileId, 'GET', '/items');
+  const found = uuidItems.items.some(i => i.content === legacyItem.content);
+  if (!found) {
+    throw new Error('Legacy item not found via UUID profile (backward compat failed)');
   }
 
-  console.log('  Verified: Both legacy and new client items in same profile via slug fallback');
-  console.log('  PASSED');
-}
-
-async function testSameSlugDifferentUUIDs() {
-  console.log('\n--- Test: Same Slug, Different UUIDs ---');
-
-  // Two different UUIDs with same slug should use same folder (via fallback)
-  const client1 = {
-    id: crypto.randomUUID(),
-    slug: 'shared-slug',
-    name: 'Client1',
-  };
-  const client2 = {
-    id: crypto.randomUUID(),
-    slug: 'shared-slug',
-    name: 'Client2',
-  };
-
-  const item1 = { type: 'text', content: 'Item from client 1 - ' + Date.now(), tags: ['client1'] };
-  const item2 = { type: 'text', content: 'Item from client 2 - ' + Date.now(), tags: ['client2'] };
-
-  await clientRequest(client1, 'POST', '/items', item1);
-  console.log('  Client 1 created item');
-
-  await clientRequest(client2, 'POST', '/items', item2);
-  console.log('  Client 2 created item');
-
-  // Client 1 should see client 2's item (same profile via slug fallback)
-  const client1Items = await clientRequest(client1, 'GET', '/items');
-  const client1SeesItem2 = client1Items.items.some(i => i.content === item2.content);
-
-  if (!client1SeesItem2) {
-    throw new Error('Client 1 should see Client 2 item (same slug fallback folder)');
-  }
-
-  console.log('  Verified: Different UUIDs with same slug share data');
+  console.log('  Verified: Legacy slug items accessible via UUID profile');
   console.log('  PASSED');
 }
 
 async function testMobileDesktopRoundTrip() {
-  console.log('\n--- Test: Mobile ↔ Desktop Round Trip (Same Profile) ---');
+  console.log('\n--- Test: Mobile ↔ Desktop Round Trip (Same Profile UUID) ---');
 
-  // Use same slug for both (simulating same user on both devices)
-  const sharedSlug = 'roundtrip-test';
-  const mobileClient = {
-    id: crypto.randomUUID(),
-    slug: sharedSlug,
-    name: 'Mobile',
-  };
-  const desktopClient = {
-    id: crypto.randomUUID(),
-    slug: sharedSlug,
-    name: 'Desktop',
-  };
+  // Both mobile and desktop use the same server profile UUID
 
   // Mobile creates item
   const mobileItem = {
@@ -387,14 +353,14 @@ async function testMobileDesktopRoundTrip() {
     content: 'https://mobile-roundtrip-' + Date.now() + '.example.com',
     tags: ['mobile', 'roundtrip']
   };
-  await clientRequest(mobileClient, 'POST', '/items', mobileItem);
+  await clientRequest(defaultProfileId, 'POST', '/items', mobileItem);
   console.log('  Mobile created item');
 
   // Desktop fetches and should see mobile's item
-  const desktopFetch = await clientRequest(desktopClient, 'GET', '/items');
+  const desktopFetch = await clientRequest(defaultProfileId, 'GET', '/items');
   const desktopSeesMobile = desktopFetch.items.some(i => i.content === mobileItem.content);
   if (!desktopSeesMobile) {
-    throw new Error('Desktop should see mobile item (same profile slug)');
+    throw new Error('Desktop should see mobile item (same profile UUID)');
   }
   console.log('  Desktop sees mobile item');
 
@@ -404,14 +370,14 @@ async function testMobileDesktopRoundTrip() {
     content: 'https://desktop-roundtrip-' + Date.now() + '.example.com',
     tags: ['desktop', 'roundtrip']
   };
-  await clientRequest(desktopClient, 'POST', '/items', desktopItem);
+  await clientRequest(defaultProfileId, 'POST', '/items', desktopItem);
   console.log('  Desktop created item');
 
   // Mobile fetches and should see desktop's item
-  const mobileFetch = await clientRequest(mobileClient, 'GET', '/items');
+  const mobileFetch = await clientRequest(defaultProfileId, 'GET', '/items');
   const mobileSeesDesktop = mobileFetch.items.some(i => i.content === desktopItem.content);
   if (!mobileSeesDesktop) {
-    throw new Error('Mobile should see desktop item (same profile slug)');
+    throw new Error('Mobile should see desktop item (same profile UUID)');
   }
   console.log('  Mobile sees desktop item');
 
@@ -419,9 +385,9 @@ async function testMobileDesktopRoundTrip() {
 }
 
 async function testWebhookWithProfile() {
-  console.log('\n--- Test: Webhook with Profile Parameter ---');
+  console.log('\n--- Test: Webhook with Profile UUID Parameter ---');
 
-  // Simulate iOS webhook call with profile params
+  // Simulate iOS webhook call with profile UUID
   const webhookPayload = {
     urls: [
       {
@@ -433,8 +399,7 @@ async function testWebhookWithProfile() {
     ],
   };
 
-  const separator = '?';
-  const webhookUrl = `${BASE_URL}/webhook${separator}profile=${mobileProfile.id}&slug=${mobileProfile.slug}`;
+  const webhookUrl = `${BASE_URL}/webhook?profile=${defaultProfileId}`;
 
   const res = await fetch(webhookUrl, {
     method: 'POST',
@@ -453,7 +418,7 @@ async function testWebhookWithProfile() {
   }
 
   // Verify item is in correct profile
-  const items = await clientRequest(mobileProfile, 'GET', '/items');
+  const items = await clientRequest(defaultProfileId, 'GET', '/items');
   const found = items.items.some(i => i.content === webhookPayload.urls[0].url);
   if (!found) {
     throw new Error('Webhook item not found in profile');
@@ -463,15 +428,36 @@ async function testWebhookWithProfile() {
   console.log('  PASSED');
 }
 
+async function testUnknownUuidFallsBackToDefault() {
+  console.log('\n--- Test: Unknown UUID Falls Back to Default ---');
+
+  // Send request with a UUID that doesn't exist on the server
+  const unknownUuid = crypto.randomUUID();
+  const item = {
+    type: 'text',
+    content: 'unknown-uuid-fallback-' + Date.now(),
+    tags: ['fallback-test']
+  };
+  await clientRequest(unknownUuid, 'POST', '/items', item);
+  console.log('  Created item with unknown UUID');
+
+  // Item should land in the default profile
+  const defaultItems = await clientRequest(defaultProfileId, 'GET', '/items');
+  const found = defaultItems.items.some(i => i.content === item.content);
+  if (!found) {
+    throw new Error('Item with unknown UUID not found in default profile (fallback failed)');
+  }
+
+  console.log('  Verified: Unknown UUID falls back to default profile');
+  console.log('  PASSED');
+}
+
 // ==================== Test Runner ====================
 
 async function runTests() {
   console.log('='.repeat(60));
   console.log('Three-Way Sync Tests: Mobile, Desktop, Server');
   console.log('='.repeat(60));
-  console.log(`Mobile profile: ${mobileProfile.id} (slug: ${mobileProfile.slug})`);
-  console.log(`Desktop profile: ${desktopProfile.id} (slug: ${desktopProfile.slug})`);
-  console.log(`Dev profile: ${devProfile.id} (slug: ${devProfile.slug})`);
 
   let passed = 0;
   let failed = 0;
@@ -481,13 +467,14 @@ async function runTests() {
     await startServer();
 
     const tests = [
+      ['Profile Creation', testProfileCreation],
       ['Mobile → Server Sync', testMobileToServerSync],
       ['Desktop → Server Sync', testDesktopToServerSync],
       ['Profile Isolation', testProfileIsolation],
-      ['Slug Fallback for Unknown UUID', testSlugFallback],
-      ['Same Slug Different UUIDs', testSameSlugDifferentUUIDs],
+      ['Legacy Slug Backward Compat', testLegacySlugBackwardCompat],
       ['Mobile ↔ Desktop Round Trip', testMobileDesktopRoundTrip],
-      ['Webhook with Profile Parameter', testWebhookWithProfile],
+      ['Webhook with Profile UUID', testWebhookWithProfile],
+      ['Unknown UUID Falls Back to Default', testUnknownUuidFallsBackToDefault],
     ];
 
     for (const [name, testFn] of tests) {

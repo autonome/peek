@@ -104,8 +104,8 @@ function getServerUrl(): string {
     // If query fails, fall through to defaults
   }
 
-  // Fall back to env var or default
-  return process.env.SYNC_SERVER_URL || 'https://peek-node.up.railway.app';
+  // Fall back to env var (empty string means sync disabled)
+  return process.env.SYNC_SERVER_URL || '';
 }
 
 /**
@@ -166,7 +166,7 @@ function setAutoSync(enabled: boolean): void {
 /**
  * Save sync configuration to active profile
  * Note: This is a compatibility wrapper for the Sync UI.
- * Saves serverUrl (global), apiKey, and serverProfileSlug (per-profile).
+ * Saves serverUrl (global), apiKey, and serverProfileId (per-profile).
  */
 export function setSyncConfig(config: Partial<SyncConfig>): void {
   try {
@@ -179,15 +179,15 @@ export function setSyncConfig(config: Partial<SyncConfig>): void {
     }
 
     // Update apiKey if provided
-    // For now, assume serverProfileSlug is "default" when set from Sync UI
+    // For now, assume serverProfileId is "default" when set from Sync UI
     // (Users can customize via Profiles UI for advanced per-profile mapping)
     if (config.apiKey !== undefined && config.apiKey !== '') {
       const currentConfig = getProfileSyncConfig(activeProfile.id);
-      const serverProfileSlug = currentConfig?.serverProfileSlug || 'default';
+      const serverProfileId = currentConfig?.serverProfileId || 'default';
 
       // Enable sync with the provided apiKey
-      enableSync(activeProfile.id, config.apiKey, serverProfileSlug);
-      DEBUG && console.log(`[sync] Updated sync config for profile ${activeProfile.slug}`);
+      enableSync(activeProfile.id, config.apiKey, serverProfileId);
+      DEBUG && console.log(`[sync] Updated sync config for profile ${activeProfile.folder}`);
     }
 
     // Update lastSyncTime if provided
@@ -302,6 +302,11 @@ export async function pullFromServer(
   apiKey: string,
   since?: number
 ): Promise<PullResult> {
+  if (!serverUrl) {
+    DEBUG && console.log('[sync] No server URL configured, sync disabled');
+    return { pulled: 0, conflicts: 0 };
+  }
+
   DEBUG && console.log('[sync] Pulling from server...', since ? `since ${toISOString(since)}` : 'full');
 
   // Get active profile to determine which server profile to sync with
@@ -313,13 +318,12 @@ export async function pullFromServer(
   }
 
   // Fetch items from server with profile parameter
-  // Use profile UUID on the wire - immutable even if profile is renamed
-  // Include slug as fallback for migration (server may not have UUID registered yet)
+  // Use server profile ID (UUID) - the identifier the server uses for this profile
   let path = '/items';
   if (since && since > 0) {
     path = `/items/since/${toISOString(since)}`;
   }
-  path += `?profile=${encodeURIComponent(activeProfile.id)}&slug=${encodeURIComponent(profileSyncConfig.serverProfileSlug || activeProfile.slug)}`;
+  path += `?profile=${encodeURIComponent(profileSyncConfig.serverProfileId || activeProfile.id)}`;
 
   DEBUG && console.log(`[sync] Fetching from: ${serverUrl}${path}`);
 
@@ -340,6 +344,9 @@ export async function pullFromServer(
   }
 
   DEBUG && console.log(`[sync] Pull complete: ${pulled} pulled, ${conflicts} conflicts, ${skipped} skipped`);
+
+  // Save server config so resetSyncStateIfServerChanged() knows we've synced with this server
+  saveSyncServerConfig(serverUrl);
 
   return { pulled, conflicts };
 }
@@ -448,6 +455,11 @@ export async function pushToServer(
   apiKey: string,
   lastSyncTime: number
 ): Promise<PushResult> {
+  if (!serverUrl) {
+    DEBUG && console.log('[sync] No server URL configured, sync disabled');
+    return { pushed: 0, failed: 0 };
+  }
+
   DEBUG && console.log('[sync] Pushing to server...', lastSyncTime > 0 ? `since ${toISOString(lastSyncTime)}` : 'all unsynced');
 
   const db = getDb();
@@ -543,9 +555,8 @@ async function pushSingleItem(
   }
 
   // POST to server with profile parameter
-  // Use profile UUID on the wire - immutable even if profile is renamed
-  // Include slug as fallback for migration (server may not have UUID registered yet)
-  const path = `/items?profile=${encodeURIComponent(activeProfile.id)}&slug=${encodeURIComponent(profileSyncConfig.serverProfileSlug || activeProfile.slug)}`;
+  // Use server profile ID (UUID) - the identifier the server uses for this profile
+  const path = `/items?profile=${encodeURIComponent(profileSyncConfig.serverProfileId || activeProfile.id)}`;
   const response = await serverFetch<{ id: string; created: boolean }>(
     serverUrl,
     apiKey,
@@ -562,6 +573,87 @@ async function pushSingleItem(
   DEBUG && console.log(`[sync] Pushed item ${item.id} → ${response.id}`);
 }
 
+// ==================== Server Change Detection ====================
+
+/**
+ * Detect if the sync server config has changed and reset per-item sync markers if so.
+ * This ensures all items are pushed when a user changes servers or configures sync for the first time.
+ */
+function resetSyncStateIfServerChanged(serverUrl: string): boolean {
+  const db = getDb();
+  const activeProfile = getActiveProfile();
+  const profileConfig = getProfileSyncConfig(activeProfile.id);
+  const currentProfileId = profileConfig?.serverProfileId || '';
+
+  let storedUrl = '';
+  let storedProfileId = '';
+  try {
+    const urlRow = db.prepare(`
+      SELECT value FROM extension_settings
+      WHERE extensionId = 'sync' AND key = 'lastSyncServerUrl'
+    `).get() as { value: string } | undefined;
+    if (urlRow?.value) storedUrl = JSON.parse(urlRow.value);
+  } catch { /* first sync */ }
+
+  try {
+    const pidRow = db.prepare(`
+      SELECT value FROM extension_settings
+      WHERE extensionId = 'sync' AND key = 'lastSyncProfileId'
+    `).get() as { value: string } | undefined;
+    if (pidRow?.value) storedProfileId = JSON.parse(pidRow.value);
+  } catch { /* first sync */ }
+
+  // No stored values: check if items were synced to an unknown previous server
+  if (!storedUrl && !storedProfileId) {
+    const row = db.prepare(`
+      SELECT COUNT(*) as cnt FROM items WHERE deletedAt = 0 AND syncSource = 'server'
+    `).get() as { cnt: number };
+    if (row.cnt > 0) {
+      DEBUG && console.log(`[sync] Found ${row.cnt} items synced to unknown previous server — resetting for current server`);
+      db.prepare(`
+        UPDATE items SET syncSource = '', syncedAt = 0, syncId = '' WHERE deletedAt = 0 AND syncSource = 'server'
+      `).run();
+      updateLastSyncTime(activeProfile.id, 0);
+      return true;
+    }
+    return false;
+  }
+
+  const urlChanged = storedUrl && storedUrl !== serverUrl;
+  const profileChanged = storedProfileId && storedProfileId !== currentProfileId;
+
+  if (urlChanged || profileChanged) {
+    DEBUG && console.log(`[sync] Server changed (url: '${storedUrl}' -> '${serverUrl}', profile: '${storedProfileId}' -> '${currentProfileId}') — resetting per-item sync state`);
+    db.prepare(`
+      UPDATE items SET syncSource = '', syncedAt = 0, syncId = '' WHERE deletedAt = 0
+    `).run();
+    updateLastSyncTime(activeProfile.id, 0);
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Save current server config so we can detect changes on next sync
+ */
+function saveSyncServerConfig(serverUrl: string): void {
+  const db = getDb();
+  const activeProfile = getActiveProfile();
+  const profileConfig = getProfileSyncConfig(activeProfile.id);
+  const currentProfileId = profileConfig?.serverProfileId || '';
+
+  db.prepare(`
+    INSERT OR REPLACE INTO extension_settings (id, extensionId, key, value, updatedAt)
+    VALUES (?, 'sync', 'lastSyncServerUrl', ?, ?)
+  `).run('sync-lastSyncServerUrl', JSON.stringify(serverUrl), Date.now());
+
+  db.prepare(`
+    INSERT OR REPLACE INTO extension_settings (id, extensionId, key, value, updatedAt)
+    VALUES (?, 'sync', 'lastSyncProfileId', ?, ?)
+  `).run('sync-lastSyncProfileId', JSON.stringify(currentProfileId), Date.now());
+}
+
 // ==================== Full Bidirectional Sync ====================
 
 /**
@@ -572,6 +664,17 @@ async function pushSingleItem(
  * 3. Update lastSyncTime in profile
  */
 export async function syncAll(serverUrl: string, apiKey: string): Promise<SyncResult> {
+  if (!serverUrl) {
+    DEBUG && console.log('[sync] No server URL configured, sync disabled');
+    return { pulled: 0, pushed: 0, conflicts: 0, lastSyncTime: 0 };
+  }
+
+  // Check if server config changed — reset per-item sync markers if so
+  const wasReset = resetSyncStateIfServerChanged(serverUrl);
+  if (wasReset) {
+    DEBUG && console.log('[sync] Sync state reset due to server config change — all items will be synced');
+  }
+
   const config = getSyncConfig();
   const startTime = Date.now();
 
@@ -591,9 +694,10 @@ export async function syncAll(serverUrl: string, apiKey: string): Promise<SyncRe
     const pushResult = await pushToServer(serverUrl, apiKey, config.lastSyncTime);
     pushed = pushResult.pushed;
 
-    // Update last sync time in active profile
+    // Update last sync time and remember current server config
     const activeProfile = getActiveProfile();
     updateLastSyncTime(activeProfile.id, startTime);
+    saveSyncServerConfig(serverUrl);
 
     DEBUG && console.log(`[sync] Sync complete: ${pulled} pulled, ${pushed} pushed, ${conflicts} conflicts`);
 

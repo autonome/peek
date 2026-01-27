@@ -1777,6 +1777,7 @@ body.dark .add-input-save:disabled {
 
 .input-row-input {
   flex: 1;
+  min-width: 0;
   padding: 0.6rem 0.85rem;
   border: none;
   border-radius: 12px;
@@ -1784,6 +1785,8 @@ body.dark .add-input-save:disabled {
   font-family: inherit;
   background: transparent;
   box-sizing: border-box;
+  text-overflow: ellipsis;
+  overflow: hidden;
 }
 
 .input-row-input:focus {
@@ -1800,13 +1803,10 @@ body.dark .input-row-input {
 
 /* Filter Tags Container */
 .filter-tags-container {
-  height: 14.3vh;
   min-height: 71px;
-  max-height: 116px;
   background: white;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  margin-bottom: 0.5rem;
   padding: 0.5rem 0.75rem;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
@@ -2358,6 +2358,10 @@ body.dark .captured-image-preview {
   padding-top: calc(env(safe-area-inset-top, 0px) + 3.5rem);
 }
 
+.edit-overlay.transition-padding {
+  transition: padding-bottom 0.3s ease-out;
+}
+
 .edit-overlay .expandable-card {
   width: 100%;
   max-width: 600px;
@@ -2580,7 +2584,6 @@ body.dark .clear-btn {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid #e0e0e0;
 }
 
 .resizable-input-textarea {
@@ -2602,41 +2605,51 @@ body.dark .clear-btn {
   outline: none;
 }
 
-.resizable-input-handle {
+/* Drag handle wrapper — wraps a container + its drag handle.
+   The handle is positioned centered on the container's bottom edge. */
+.drag-handle-wrapper {
+  position: relative;
+  margin-bottom: 0.5rem;
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+.drag-handle {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
-  height: 24px;
+  height: 20px;
+  transform: translateY(calc(50% + 0.5px));
   cursor: ns-resize;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.03));
   touch-action: none;
 }
 
 .drag-handle-bar {
-  width: 40px;
-  height: 4px;
-  background: #ccc;
-  border-radius: 2px;
+  width: 32px;
+  height: 3px;
+  background: #c0c0c0;
+  border-radius: 1.5px;
 }
 
-body.dark .resizable-input-wrapper {
-  border-bottom-color: #444;
+/* Editor drag handle: in-flow (not absolute) to avoid overflow:hidden clipping */
+.resizable-input-wrapper .drag-handle {
+  position: relative;
+  bottom: auto;
+  transform: none;
+  height: auto;
+  padding: 5px 0;
 }
 
 body.dark .resizable-input-textarea {
   color: #f6f6f6;
 }
 
-body.dark .resizable-input-handle {
-  background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.03));
-}
-
 body.dark .drag-handle-bar {
-  background: #666;
+  background: #555;
 }
 
 /* Tags Section - scrollable tag area */

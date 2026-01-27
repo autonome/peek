@@ -140,17 +140,22 @@ interface EditorOverlayProps {
   className?: string;
 }
 
-const EditorOverlay: React.FC<EditorOverlayProps> = ({ children, onDismiss, keyboardHeight, className = '' }) => (
-  <div
-    className={`edit-overlay ${className}`}
-    style={{ paddingBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : undefined }}
-    onClick={(e) => e.target === e.currentTarget && onDismiss()}
-  >
-    <div className="expandable-card expanded editor-card">
-      {children}
+const EditorOverlay: React.FC<EditorOverlayProps> = ({ children, onDismiss, keyboardHeight, className = '' }) => {
+  const keyboardAppearedRef = useRef(false);
+  if (keyboardHeight > 0) keyboardAppearedRef.current = true;
+
+  return (
+    <div
+      className={`edit-overlay ${keyboardAppearedRef.current ? 'transition-padding' : ''} ${className}`}
+      style={{ paddingBottom: keyboardHeight > 0 ? `${keyboardHeight}px` : undefined }}
+      onClick={(e) => e.target === e.currentTarget && onDismiss()}
+    >
+      <div className="expandable-card expanded editor-card">
+        {children}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 interface TagsSectionProps {
   selectedTags: Set<string>;
@@ -182,7 +187,7 @@ const TagsSection: React.FC<TagsSectionProps> = ({
       {selectedTags.size > 0 && (
         <div className="expandable-card-section">
           <div className="editing-tags">
-            {Array.from(selectedTags).sort().map((tag) => (
+            {Array.from(selectedTags).map((tag) => (
               <span key={tag} className="editing-tag">
                 {tag}
                 <button onClick={() => onToggleTag(tag)}>&times;</button>
@@ -276,6 +281,7 @@ interface ResizableInputProps {
   placeholder?: string;
   minHeightPercent?: number;
   keyboardHeight: number;
+  autoFocus?: boolean;
 }
 
 const ResizableInput: React.FC<ResizableInputProps> = ({
@@ -283,20 +289,23 @@ const ResizableInput: React.FC<ResizableInputProps> = ({
   onChange,
   placeholder = "Enter text...",
   minHeightPercent = 0.5,
-  keyboardHeight
+  keyboardHeight,
+  autoFocus = false
 }) => {
   const [height, setHeight] = useState<number | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isDraggingRef = useRef(false);
   const dragStartYRef = useRef(0);
   const dragStartHeightRef = useRef(0);
 
-  // Calculate minimum height: percentage of available space
+  // Calculate default height (initial size) and min height (resize floor)
   const headerHeight = 56;
   const buttonsHeight = 70;
   const availableHeight = window.innerHeight - headerHeight - keyboardHeight - buttonsHeight - 32;
-  const minHeight = Math.max(80, availableHeight * minHeightPercent);
-  const currentHeight = height ?? minHeight;
+  const defaultHeight = Math.max(80, availableHeight * minHeightPercent);
+  const minHeight = 60;
+  const currentHeight = height ?? defaultHeight;
 
   const handleDragStart = (clientY: number) => {
     if (!wrapperRef.current) return;
@@ -320,6 +329,64 @@ const ResizableInput: React.FC<ResizableInputProps> = ({
     document.body.style.cursor = '';
   };
 
+  // Auto markdown list continuation on Enter
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key !== 'Enter') return;
+
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const { selectionStart } = textarea;
+    const textBefore = value.substring(0, selectionStart);
+    const textAfter = value.substring(selectionStart);
+
+    // Find current line
+    const lastNewline = textBefore.lastIndexOf('\n');
+    const currentLine = textBefore.substring(lastNewline + 1);
+
+    // Match list marker: optional whitespace + marker (-, *, +, or number.) + space
+    const listMatch = currentLine.match(/^(\s*)([-*+]|\d+\.)\s/);
+    if (!listMatch) return; // Not a list line, let default Enter happen
+
+    e.preventDefault();
+
+    const indent = listMatch[1];
+    const marker = listMatch[2];
+    const contentAfterMarker = currentLine.substring(listMatch[0].length);
+
+    if (contentAfterMarker.trim() === '') {
+      // Empty list item — remove the marker (end the list)
+      const lineStart = lastNewline + 1;
+      const newValue = value.substring(0, lineStart) + '\n' + textAfter;
+      onChange(newValue);
+      // Set cursor after the newline
+      requestAnimationFrame(() => {
+        if (textareaRef.current) {
+          const pos = lineStart + 1;
+          textareaRef.current.selectionStart = pos;
+          textareaRef.current.selectionEnd = pos;
+        }
+      });
+    } else {
+      // Continue the list
+      let nextMarker = marker;
+      const numMatch = marker.match(/^(\d+)\.$/);
+      if (numMatch) {
+        nextMarker = `${parseInt(numMatch[1], 10) + 1}.`;
+      }
+      const insertion = `\n${indent}${nextMarker} `;
+      const newValue = textBefore + insertion + textAfter;
+      onChange(newValue);
+      requestAnimationFrame(() => {
+        if (textareaRef.current) {
+          const pos = selectionStart + insertion.length;
+          textareaRef.current.selectionStart = pos;
+          textareaRef.current.selectionEnd = pos;
+        }
+      });
+    }
+  };
+
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => handleDragMove(e.clientY);
     const handleTouchMove = (e: TouchEvent) => {
@@ -340,6 +407,22 @@ const ResizableInput: React.FC<ResizableInputProps> = ({
     };
   }, [minHeight]);
 
+  // Auto-focus textarea on mount to transfer keyboard from trigger input
+  useEffect(() => {
+    if (!autoFocus) return;
+    // Short delay lets layout settle before focusing
+    const timer = setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        // Place cursor at end of text
+        const len = textareaRef.current.value.length;
+        textareaRef.current.selectionStart = len;
+        textareaRef.current.selectionEnd = len;
+      }
+    }, 50);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <div
       className="resizable-input-wrapper"
@@ -347,9 +430,11 @@ const ResizableInput: React.FC<ResizableInputProps> = ({
       style={{ height: `${currentHeight}px`, minHeight: `${minHeight}px` }}
     >
       <textarea
+        ref={textareaRef}
         className="resizable-input-textarea"
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onKeyDown={handleKeyDown}
         placeholder={placeholder}
         autoCapitalize="none"
         autoCorrect="off"
@@ -358,7 +443,7 @@ const ResizableInput: React.FC<ResizableInputProps> = ({
       />
       <ClearButton show={value.length > 0} onClear={() => onChange('')} className="textarea-clear" />
       <div
-        className="resizable-input-handle"
+        className="drag-handle"
         onMouseDown={(e) => { e.preventDefault(); handleDragStart(e.clientY); }}
         onTouchStart={(e) => { handleDragStart(e.touches[0].clientY); }}
       >
@@ -454,6 +539,16 @@ function App() {
   const [searchText, setSearchText] = useState("");
   const [selectedFilterTags, setSelectedFilterTags] = useState<Set<string>>(new Set());
 
+  // Filter tags resizable state
+  const [filterTagsHeight, setFilterTagsHeight] = useState<number>(() => {
+    const saved = localStorage.getItem('filterTagsHeight');
+    return saved ? parseInt(saved, 10) : 116;
+  });
+  const filterTagsRef = useRef<HTMLDivElement>(null);
+  const filterTagsDraggingRef = useRef(false);
+  const filterTagsDragStartYRef = useRef(0);
+  const filterTagsDragStartHeightRef = useRef(0);
+
   // Toast notification state
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -497,6 +592,47 @@ function App() {
   // Pull-to-refresh state
   const pullStartY = useRef<number | null>(null);
   const PULL_THRESHOLD = 80;
+
+  // Filter tags drag-to-resize handlers
+  const handleFilterTagsDragStart = (clientY: number) => {
+    filterTagsDraggingRef.current = true;
+    filterTagsDragStartYRef.current = clientY;
+    filterTagsDragStartHeightRef.current = filterTagsRef.current?.offsetHeight ?? filterTagsHeight;
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'ns-resize';
+  };
+
+  useEffect(() => {
+    const handleMove = (clientY: number) => {
+      if (!filterTagsDraggingRef.current) return;
+      const delta = clientY - filterTagsDragStartYRef.current;
+      const newHeight = Math.max(71, filterTagsDragStartHeightRef.current + delta);
+      setFilterTagsHeight(newHeight);
+    };
+    const handleMouseMove = (e: MouseEvent) => handleMove(e.clientY);
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 1) handleMove(e.touches[0].clientY);
+    };
+    const handleEnd = () => {
+      if (!filterTagsDraggingRef.current) return;
+      filterTagsDraggingRef.current = false;
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      // Persist to localStorage
+      localStorage.setItem('filterTagsHeight', String(Math.round(filterTagsHeight)));
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleEnd);
+    document.addEventListener('touchmove', handleTouchMove, { passive: true });
+    document.addEventListener('touchend', handleEnd);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleEnd);
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleEnd);
+    };
+  }, [filterTagsHeight]);
 
   // DEV: random background tint on every load to verify page refreshed
   useEffect(() => {
@@ -1634,6 +1770,7 @@ function App() {
             onChange={setEditingTextContent}
             placeholder="Note text..."
             keyboardHeight={keyboardHeight}
+            autoFocus
           />
           <TagsSection
             selectedTags={editingTextTags}
@@ -2757,7 +2894,6 @@ function App() {
                 autoComplete="off"
                 spellCheck={false}
               />
-              <ClearButton show={addInputText.length > 0} onClear={() => setAddInputText('')} />
             </div>
             <button className="camera-btn" onClick={openCamera} title="Take photo">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -2768,23 +2904,36 @@ function App() {
           </div>
         </div>
 
-        {/* Tag chips - always visible, filterable */}
-        <div className="filter-tags-container">
-          {getFilteredTags().length === 0 ? (
-            <div className="filter-tags-empty">No matching tags</div>
-          ) : (
-            <div className="filter-tags">
-              {getFilteredTags().map((tag) => (
-                <span
-                  key={tag.name}
-                  className={`tag-chip ${selectedFilterTags.has(tag.name) ? "selected" : ""}`}
-                  onClick={() => toggleFilterTag(tag.name)}
-                >
-                  {tag.name}
-                </span>
-              ))}
-            </div>
-          )}
+        {/* Tag chips - always visible, filterable, resizable */}
+        <div className="drag-handle-wrapper">
+          <div
+            className="filter-tags-container"
+            ref={filterTagsRef}
+            style={{ height: `${filterTagsHeight}px` }}
+          >
+            {getFilteredTags().length === 0 ? (
+              <div className="filter-tags-empty">No matching tags</div>
+            ) : (
+              <div className="filter-tags">
+                {getFilteredTags().map((tag) => (
+                  <span
+                    key={tag.name}
+                    className={`tag-chip ${selectedFilterTags.has(tag.name) ? "selected" : ""}`}
+                    onClick={() => toggleFilterTag(tag.name)}
+                  >
+                    {tag.name}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+          <div
+            className="drag-handle"
+            onMouseDown={(e) => { e.preventDefault(); handleFilterTagsDragStart(e.clientY); }}
+            onTouchStart={(e) => { handleFilterTagsDragStart(e.touches[0].clientY); }}
+          >
+            <div className="drag-handle-bar" />
+          </div>
         </div>
 
         {/* Item list */}
@@ -2816,6 +2965,7 @@ function App() {
             onChange={setAddInputText}
             placeholder="Enter text, URL, or just select tags..."
             keyboardHeight={keyboardHeight}
+            autoFocus
           />
           <TagsSection
             selectedTags={addInputTags}

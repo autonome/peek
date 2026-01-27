@@ -231,7 +231,7 @@ const TagsSection: React.FC<TagsSectionProps> = ({
               <span
                 key={tag.name}
                 className="tag-chip"
-                onClick={() => onToggleTag(tag.name)}
+                onClick={() => { onToggleTag(tag.name); onTagInputChange(''); }}
               >
                 {tag.name}
               </span>
@@ -484,6 +484,13 @@ const useKeyboardHeight = () => {
 };
 
 function App() {
+  // DEV: random background tint on each load so we can tell if assets are fresh
+  useEffect(() => {
+    const hue = Math.floor(Math.random() * 360);
+    document.documentElement.style.setProperty('--dev-bg-light', `hsl(${hue}, 80%, 85%)`);
+    document.documentElement.style.setProperty('--dev-bg-dark', `hsl(${hue}, 15%, 12%)`);
+  }, []);
+
   // Filter state: "all" shows everything, or a single type
   const [activeFilter, setActiveFilter] = useState<ItemType | "all">("all");
 
@@ -2877,7 +2884,7 @@ function App() {
                 autoComplete="off"
                 spellCheck={false}
               />
-              <ClearButton show={searchText.length > 0} onClear={() => { setSearchText(''); setSelectedFilterTags(new Set()); }} />
+              <ClearButton show={searchText.length > 0 || selectedFilterTags.size > 0} onClear={() => { setSearchText(''); setSelectedFilterTags(new Set()); }} />
             </div>
           </div>
           <div className="input-row-card">

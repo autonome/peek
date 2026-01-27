@@ -297,7 +297,7 @@ describe("Database Tests", () => {
   });
 
   describe("deleteItem", () => {
-    it("should delete any item type", () => {
+    it("should soft-delete any item type", () => {
       const urlId = db.saveUrl(TEST_USER_ID, "https://example.com");
       const textId = db.saveText(TEST_USER_ID, "Note");
       const tagsetId = db.saveTagset(TEST_USER_ID, ["tag"]);
@@ -312,6 +312,19 @@ describe("Database Tests", () => {
 
       db.deleteItem(TEST_USER_ID, tagsetId);
       assert.strictEqual(db.getItems(TEST_USER_ID).length, 0);
+    });
+
+    it("should retain soft-deleted items in database with includeDeleted", () => {
+      const urlId = db.saveUrl(TEST_USER_ID, "https://example.com");
+      db.deleteItem(TEST_USER_ID, urlId);
+
+      // Default query excludes deleted items
+      assert.strictEqual(db.getItems(TEST_USER_ID).length, 0);
+
+      // includeDeleted should show them
+      const allItems = db.getItems(TEST_USER_ID, null, "default", true);
+      assert.strictEqual(allItems.length, 1);
+      assert.ok(allItems[0].deleted_at > 0, "deleted_at should be set");
     });
   });
 
@@ -506,35 +519,33 @@ describe("Database Tests", () => {
       0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
     ]);
 
-    it("should delete image record", () => {
+    it("should soft-delete image record", () => {
       const id = db.saveImage(TEST_USER_ID, "del.png", testPngBuffer, "image/png");
       assert.strictEqual(db.getImages(TEST_USER_ID).length, 1);
 
       db.deleteImage(TEST_USER_ID, id);
+      // Image should not appear in default query (soft-deleted)
       assert.strictEqual(db.getImages(TEST_USER_ID).length, 0);
     });
 
-    it("should delete file when no other references", () => {
+    it("should keep file on disk after soft-delete (tombstone for sync)", () => {
       const id = db.saveImage(TEST_USER_ID, "single.png", testPngBuffer, "image/png");
       const imagePath = db.getImagePath(TEST_USER_ID, id);
       assert.ok(fs.existsSync(imagePath));
 
       db.deleteImage(TEST_USER_ID, id);
-      assert.ok(!fs.existsSync(imagePath));
+      // File stays on disk — soft-delete preserves the row and file
+      assert.ok(fs.existsSync(imagePath), "file should remain after soft-delete");
     });
 
-    it("should keep file when other items reference it", () => {
-      const id1 = db.saveImage(TEST_USER_ID, "shared1.png", testPngBuffer, "image/png");
-      const id2 = db.saveImage(TEST_USER_ID, "shared2.png", testPngBuffer, "image/png");
-      const imagePath = db.getImagePath(TEST_USER_ID, id1);
+    it("should retain soft-deleted image in database", () => {
+      const id = db.saveImage(TEST_USER_ID, "retained.png", testPngBuffer, "image/png");
+      db.deleteImage(TEST_USER_ID, id);
 
-      db.deleteImage(TEST_USER_ID, id1);
-      // File should still exist because id2 references it
-      assert.ok(fs.existsSync(imagePath));
-
-      db.deleteImage(TEST_USER_ID, id2);
-      // Now file should be deleted
-      assert.ok(!fs.existsSync(imagePath));
+      // Should still exist with includeDeleted
+      const allItems = db.getItems(TEST_USER_ID, "image", "default", true);
+      assert.strictEqual(allItems.length, 1);
+      assert.ok(allItems[0].deleted_at > 0, "deleted_at should be set");
     });
   });
 
@@ -686,16 +697,38 @@ describe("Database Tests", () => {
       assert.strictEqual(items.length, 2);
     });
 
-    it("should not match deleted items by sync_id", () => {
+    it("should match deleted items by sync_id and undelete them", () => {
       // Create and delete an item
       const id1 = db.saveItem(TEST_USER_ID, "url", "https://example.com", [], null, "deleted-sync-id");
       db.deleteItem(TEST_USER_ID, id1);
 
-      // Create new item with same sync_id
+      // Push new content with same sync_id — should match and undelete
       const id2 = db.saveItem(TEST_USER_ID, "url", "https://example.com", [], null, "deleted-sync-id");
 
-      // Should create new item (deleted items should not match)
-      assert.notStrictEqual(id1, id2);
+      // Should match the existing (deleted) item and undelete it
+      assert.strictEqual(id1, id2, "should match deleted item by sync_id");
+
+      // Item should be undeleted
+      const items = db.getItems(TEST_USER_ID);
+      assert.strictEqual(items.length, 1);
+      assert.strictEqual(items[0].id, id1);
+    });
+
+    it("should accept tombstone push via sync_id with deleted_at", () => {
+      // Create an item
+      const id = db.saveItem(TEST_USER_ID, "url", "https://example.com", [], null, "tomb-sync-id");
+      assert.strictEqual(db.getItems(TEST_USER_ID).length, 1);
+
+      // Push tombstone with deleted_at
+      const deletedAt = Date.now();
+      const id2 = db.saveItem(TEST_USER_ID, "url", "https://example.com", [], null, "tomb-sync-id", "default", deletedAt);
+      assert.strictEqual(id, id2, "should match by sync_id");
+
+      // Item should be soft-deleted
+      assert.strictEqual(db.getItems(TEST_USER_ID).length, 0);
+      const allItems = db.getItems(TEST_USER_ID, null, "default", true);
+      assert.strictEqual(allItems.length, 1);
+      assert.ok(allItems[0].deleted_at > 0);
     });
 
     it("should match when device re-pushes with server ID as sync_id", () => {

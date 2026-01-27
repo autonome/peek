@@ -88,12 +88,17 @@ API keys are hashed with SHA-256 and stored in the system database.
 
 ## Deployment
 
-Configured for Railway (`railway.json`) using Nixpacks builder with automatic restart on failure.
+Configured for Railway (`railway.json`) using Nixpacks builder with npm. **Do not add `yarn.lock`** to this directory — Nixpacks will switch to yarn and fail.
 
-> **For detailed Railway deployment guide** including step-by-step workflow, user/API key management, production testing, and troubleshooting, see `AGENTS.md` in the project root.
+Deploy from the project root:
+```bash
+yarn server:deploy    # Subtree-splits backend/server/ and pushes to GitHub
+```
+
+Railway auto-deploys from the `deploy/server` branch on GitHub.
 
 **Quick setup:**
-1. Connect your Railway project to this subdirectory (`backend/server/`)
+1. Connect Railway to the `deploy/server` branch on GitHub
 2. Attach a volume and set `DATA_DIR` to the mount path for persistent storage
 3. Create users and their API keys (see AGENTS.md for commands)
 

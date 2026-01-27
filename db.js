@@ -52,6 +52,26 @@ function initializeSchema(db) {
       deletedAt INTEGER DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
+  `);
+
+  // Migrate existing tables: add columns that may not exist yet.
+  // CREATE TABLE IF NOT EXISTS skips when the table exists, so new columns
+  // must be added via ALTER TABLE. Indexes on new columns go after the migration.
+  const cols = db.prepare("PRAGMA table_info(items)").all().map(c => c.name);
+  if (!cols.includes("syncId")) {
+    db.exec("ALTER TABLE items ADD COLUMN syncId TEXT DEFAULT ''");
+  }
+  if (!cols.includes("syncSource")) {
+    db.exec("ALTER TABLE items ADD COLUMN syncSource TEXT DEFAULT ''");
+  }
+  if (!cols.includes("syncedAt")) {
+    db.exec("ALTER TABLE items ADD COLUMN syncedAt INTEGER DEFAULT 0");
+  }
+  if (!cols.includes("deletedAt")) {
+    db.exec("ALTER TABLE items ADD COLUMN deletedAt INTEGER DEFAULT 0");
+  }
+
+  db.exec(`
     CREATE INDEX IF NOT EXISTS idx_items_syncId ON items(syncId);
     CREATE INDEX IF NOT EXISTS idx_items_deletedAt ON items(deletedAt);
   `);
@@ -133,7 +153,7 @@ function getOrCreateTagWithConn(conn, name, timestamp) {
 }
 
 // Unified save function for all item types
-function saveItem(userId, type, content, tags = [], metadata = null, syncId = null, profileId = "default") {
+function saveItem(userId, type, content, tags = [], metadata = null, syncId = null, profileId = "default", deletedAt = null) {
   const conn = getConnection(userId, profileId);
   const timestamp = now();
   const metadataJson = metadata ? JSON.stringify(metadata) : null;
@@ -145,7 +165,7 @@ function saveItem(userId, type, content, tags = [], metadata = null, syncId = nu
 
     // Check if syncId matches a server item by its own ID (client sends server ID on re-push)
     const existingById = conn.prepare(
-      "SELECT id FROM items WHERE id = ? AND deletedAt = 0"
+      "SELECT id, deletedAt FROM items WHERE id = ?"
     ).get(syncId);
 
     if (existingById) {
@@ -155,7 +175,7 @@ function saveItem(userId, type, content, tags = [], metadata = null, syncId = nu
     // Check syncId column (client's local ID from first push)
     if (!itemId) {
       const existingBySyncId = conn.prepare(
-        "SELECT id FROM items WHERE syncId = ? AND deletedAt = 0"
+        "SELECT id, deletedAt FROM items WHERE syncId = ?"
       ).get(syncId);
 
       if (existingBySyncId) {
@@ -165,10 +185,18 @@ function saveItem(userId, type, content, tags = [], metadata = null, syncId = nu
 
     // Update matched item with full content from client
     if (itemId) {
-      conn.prepare(
-        "UPDATE items SET type = ?, content = ?, metadata = COALESCE(?, metadata), updatedAt = ? WHERE id = ?"
-      ).run(type, content, metadataJson, timestamp, itemId);
-      conn.prepare("DELETE FROM item_tags WHERE itemId = ?").run(itemId);
+      if (deletedAt) {
+        // Push a tombstone
+        conn.prepare(
+          "UPDATE items SET deletedAt = ?, updatedAt = ? WHERE id = ?"
+        ).run(deletedAt, timestamp, itemId);
+      } else {
+        // Push live content and ensure item is not deleted (undelete case)
+        conn.prepare(
+          "UPDATE items SET type = ?, content = ?, metadata = COALESCE(?, metadata), deletedAt = 0, updatedAt = ? WHERE id = ?"
+        ).run(type, content, metadataJson, timestamp, itemId);
+        conn.prepare("DELETE FROM item_tags WHERE itemId = ?").run(itemId);
+      }
     }
   }
 
@@ -209,8 +237,8 @@ function saveItem(userId, type, content, tags = [], metadata = null, syncId = nu
     itemId = generateUUID();
     conn.prepare(`
       INSERT INTO items (id, type, content, metadata, syncId, syncSource, syncedAt, createdAt, updatedAt, deletedAt)
-      VALUES (?, ?, ?, ?, ?, '', 0, ?, ?, 0)
-    `).run(itemId, type, content, metadataJson, syncId || '', timestamp, timestamp);
+      VALUES (?, ?, ?, ?, ?, '', 0, ?, ?, ?)
+    `).run(itemId, type, content, metadataJson, syncId || '', timestamp, timestamp, deletedAt || 0);
   }
 
   for (const tagName of tags) {
@@ -236,15 +264,19 @@ function saveTagset(userId, tags = [], metadata = null, profileId = "default") {
   return saveItem(userId, "tagset", null, tags, metadata, null, profileId);
 }
 
-function getItems(userId, type = null, profileId = "default") {
+function getItems(userId, type = null, profileId = "default", includeDeleted = false) {
   const conn = getConnection(userId, profileId);
 
   let query = `
-    SELECT id, type, content, metadata, createdAt, updatedAt
+    SELECT id, type, content, metadata, createdAt, updatedAt, deletedAt
     FROM items
-    WHERE deletedAt = 0
+    WHERE 1=1
   `;
   const params = [];
+
+  if (!includeDeleted) {
+    query += " AND deletedAt = 0";
+  }
 
   if (type) {
     query += " AND type = ?";
@@ -269,6 +301,7 @@ function getItems(userId, type = null, profileId = "default") {
       content: row.content,
       created_at: row.createdAt,
       updated_at: row.updatedAt,
+      deleted_at: row.deletedAt || 0,
       tags: getTagsStmt.all(row.id).map((t) => t.name),
     };
     if (row.metadata) {
@@ -330,7 +363,10 @@ function getTagsByFrecency(userId, profileId = "default") {
 
 function deleteItem(userId, id, profileId = "default") {
   const conn = getConnection(userId, profileId);
-  conn.prepare("DELETE FROM items WHERE id = ?").run(id);
+  const timestamp = now();
+  conn.prepare(
+    "UPDATE items SET deletedAt = ?, updatedAt = ? WHERE id = ? AND deletedAt = 0"
+  ).run(timestamp, timestamp, id);
 }
 
 function deleteUrl(userId, id, profileId = "default") {
@@ -530,32 +566,11 @@ function getImagePath(userId, itemId, profileId = "default") {
 function deleteImage(userId, itemId, profileId = "default") {
   const conn = getConnection(userId, profileId);
 
-  // Get image metadata before deleting
-  const image = getImageById(userId, itemId, profileId);
-  if (!image) return;
-
-  const hash = image.metadata?.hash;
-  const ext = image.metadata?.ext;
-
-  // Delete the item record
-  conn.prepare("DELETE FROM items WHERE id = ?").run(itemId);
-
-  // Check if any other items reference the same file
-  if (hash) {
-    const othersWithSameHash = conn.prepare(`
-      SELECT id FROM items
-      WHERE type = 'image' AND metadata LIKE ? AND deletedAt = 0
-    `).get(`%"hash":"${hash}"%`);
-
-    // Only delete file if no other items reference it
-    if (!othersWithSameHash) {
-      const imagesDir = getUserImagesDir(userId, profileId);
-      const imagePath = path.join(imagesDir, `${hash}.${ext}`);
-      if (fs.existsSync(imagePath)) {
-        fs.unlinkSync(imagePath);
-      }
-    }
-  }
+  // Soft-delete the item record (same as deleteItem)
+  const timestamp = now();
+  conn.prepare(
+    "UPDATE items SET deletedAt = ?, updatedAt = ? WHERE id = ? AND deletedAt = 0"
+  ).run(timestamp, timestamp, itemId);
 }
 
 /**
@@ -566,9 +581,9 @@ function getItemsSince(userId, timestamp, type = null, profileId = "default") {
   const conn = getConnection(userId, profileId);
 
   let query = `
-    SELECT id, type, content, metadata, createdAt, updatedAt
+    SELECT id, type, content, metadata, createdAt, updatedAt, deletedAt
     FROM items
-    WHERE deletedAt = 0 AND updatedAt > ?
+    WHERE updatedAt > ?
   `;
   const params = [timestamp];
 
@@ -595,6 +610,7 @@ function getItemsSince(userId, timestamp, type = null, profileId = "default") {
       content: row.content,
       created_at: row.createdAt,
       updated_at: row.updatedAt,
+      deleted_at: row.deletedAt || 0,
       tags: getTagsStmt.all(row.id).map((t) => t.name),
     };
     if (row.metadata) {
@@ -639,6 +655,93 @@ function getItemById(userId, itemId, profileId = "default") {
   return result;
 }
 
+/**
+ * One-time deduplication of items for a user/profile.
+ * Removes duplicate url/text items (same type+content) and duplicate tagsets (same sorted tag names).
+ * Keeps the item with the most recent updatedAt; prefers items with a syncId.
+ * Hard-deletes the rest from items and item_tags.
+ */
+function deduplicateItems(userId, profileId = "default") {
+  const conn = getConnection(userId, profileId);
+  let totalRemoved = 0;
+
+  // --- Deduplicate url/text items by (type, content) ---
+  const dupGroups = conn.prepare(`
+    SELECT type, content, COUNT(*) as cnt
+    FROM items
+    WHERE deletedAt = 0 AND type IN ('url', 'text') AND content IS NOT NULL AND content != ''
+    GROUP BY type, content
+    HAVING cnt > 1
+  `).all();
+
+  for (const group of dupGroups) {
+    const items = conn.prepare(`
+      SELECT id, syncId, updatedAt
+      FROM items
+      WHERE type = ? AND content = ? AND deletedAt = 0
+      ORDER BY
+        CASE WHEN syncId IS NOT NULL AND syncId != '' THEN 0 ELSE 1 END,
+        updatedAt DESC
+    `).all(group.type, group.content);
+
+    // Keep first (best), delete the rest
+    for (let i = 1; i < items.length; i++) {
+      conn.prepare("DELETE FROM item_tags WHERE itemId = ?").run(items[i].id);
+      conn.prepare("DELETE FROM items WHERE id = ?").run(items[i].id);
+      totalRemoved++;
+    }
+  }
+
+  // --- Deduplicate tagsets by sorted tag names ---
+  const tagsets = conn.prepare(`
+    SELECT id, syncId, updatedAt
+    FROM items
+    WHERE type = 'tagset' AND deletedAt = 0
+  `).all();
+
+  const getTagNamesStmt = conn.prepare(`
+    SELECT t.name FROM tags t
+    JOIN item_tags it ON t.id = it.tagId
+    WHERE it.itemId = ?
+    ORDER BY t.name
+  `);
+
+  // Group tagsets by their sorted tag string
+  const tagsetGroups = new Map();
+  for (const ts of tagsets) {
+    const tagNames = getTagNamesStmt.all(ts.id).map(t => t.name).join('\0');
+    if (!tagsetGroups.has(tagNames)) {
+      tagsetGroups.set(tagNames, []);
+    }
+    tagsetGroups.get(tagNames).push(ts);
+  }
+
+  for (const [, items] of tagsetGroups) {
+    if (items.length <= 1) continue;
+
+    // Sort: prefer syncId, then newest updatedAt
+    items.sort((a, b) => {
+      const aHasSync = a.syncId && a.syncId !== '' ? 0 : 1;
+      const bHasSync = b.syncId && b.syncId !== '' ? 0 : 1;
+      if (aHasSync !== bHasSync) return aHasSync - bHasSync;
+      return b.updatedAt - a.updatedAt;
+    });
+
+    // Keep first, delete rest
+    for (let i = 1; i < items.length; i++) {
+      conn.prepare("DELETE FROM item_tags WHERE itemId = ?").run(items[i].id);
+      conn.prepare("DELETE FROM items WHERE id = ?").run(items[i].id);
+      totalRemoved++;
+    }
+  }
+
+  if (totalRemoved > 0) {
+    console.log(`[dedup] Removed ${totalRemoved} duplicate items for user=${userId} profile=${profileId}`);
+  }
+
+  return totalRemoved;
+}
+
 module.exports = {
   getConnection,
   closeAllConnections,
@@ -671,4 +774,5 @@ module.exports = {
   getTagsByFrecency,
   getSetting,
   setSetting,
+  deduplicateItems,
 };

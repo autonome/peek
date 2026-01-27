@@ -247,15 +247,15 @@ describe("Database Tests", () => {
       assert.match(id, /^[0-9a-f-]{36}$/, "id should be a UUID");
     });
 
-    it("should create multiple tagsets with same tags", () => {
+    it("should deduplicate tagsets with same tags", () => {
       const id1 = db.saveTagset(TEST_USER_ID, ["pushups", "10"]);
       const id2 = db.saveTagset(TEST_USER_ID, ["pushups", "10"]);
 
-      // Tagsets are not deduplicated - each is a unique entry
-      assert.notStrictEqual(id1, id2);
+      // Tagsets with identical tag sets are deduplicated
+      assert.strictEqual(id1, id2);
 
       const tagsets = db.getTagsets(TEST_USER_ID);
-      assert.strictEqual(tagsets.length, 2);
+      assert.strictEqual(tagsets.length, 1);
     });
 
     it("should retrieve tagsets with their tags", () => {
@@ -674,20 +674,16 @@ describe("Database Tests", () => {
       assert.strictEqual(items.length, 2);
     });
 
-    it("should update sync_id when matching by content", () => {
-      // First save without sync_id
-      const id1 = db.saveItem(TEST_USER_ID, "url", "https://example.com", []);
+    it("should not use content dedup when sync_id is provided", () => {
+      // Sync path: two different sync_ids with same content are separate items
+      const id1 = db.saveItem(TEST_USER_ID, "url", "https://example.com", [], null, "device-a-id");
+      const id2 = db.saveItem(TEST_USER_ID, "url", "https://example.com", [], null, "device-b-id");
 
-      // Second save with sync_id but same content
-      const id2 = db.saveItem(TEST_USER_ID, "url", "https://example.com", [], null, "new-sync-id");
+      // Different sync_ids → different server items (no content-based fallback in sync path)
+      assert.notStrictEqual(id1, id2);
 
-      // Should return same server ID
-      assert.strictEqual(id1, id2);
-
-      // Check that sync_id was updated
-      const conn = db.getConnection(TEST_USER_ID);
-      const item = conn.prepare("SELECT sync_id FROM items WHERE id = ?").get(id1);
-      assert.strictEqual(item.sync_id, "new-sync-id");
+      const items = db.getItems(TEST_USER_ID);
+      assert.strictEqual(items.length, 2);
     });
 
     it("should not match deleted items by sync_id", () => {
@@ -702,20 +698,19 @@ describe("Database Tests", () => {
       assert.notStrictEqual(id1, id2);
     });
 
-    it("should handle two devices pushing same content with different sync_ids", () => {
-      // Device 1 pushes first
-      const id1 = db.saveItem(TEST_USER_ID, "url", "https://shared.com", ["from-device-1"], null, "device-1-id");
+    it("should match when device re-pushes with server ID as sync_id", () => {
+      // Device pushes first time with local ID
+      const id1 = db.saveItem(TEST_USER_ID, "url", "https://shared.com", ["v1"], null, "device-local-id");
 
-      // Device 2 pushes same content with different sync_id
-      // This should match by content and return same server ID
-      const id2 = db.saveItem(TEST_USER_ID, "url", "https://shared.com", ["from-device-2"], null, "device-2-id");
+      // Device stores server id (id1) as sync_id, re-pushes with it after local edit
+      const id2 = db.saveItem(TEST_USER_ID, "url", "https://shared.com/updated", ["v2"], null, id1);
 
-      // Should return same server ID (content-based dedup kicks in after sync_id misses)
-      assert.strictEqual(id1, id2, "should return same id when content matches");
+      // Should match by server ID and return same item
+      assert.strictEqual(id1, id2);
 
-      // Should only have one item
       const items = db.getItems(TEST_USER_ID);
       assert.strictEqual(items.length, 1);
+      assert.strictEqual(items[0].content, "https://shared.com/updated");
     });
   });
 });

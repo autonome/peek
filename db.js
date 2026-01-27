@@ -318,49 +318,78 @@ function saveItem(userId, type, content, tags = [], metadata = null, syncId = nu
 
   let itemId;
 
-  // FIRST: Check for existing item by sync_id (if provided)
   if (syncId) {
-    const existingBySyncId = conn.prepare(
-      "SELECT id FROM items WHERE sync_id = ? AND deleted_at IS NULL"
+    // Sync path: match by sync_id only. No content-based fallback — sync_id is canonical.
+
+    // Check if syncId matches a server item by its own ID (client sends server ID on re-push)
+    const existingById = conn.prepare(
+      "SELECT id FROM items WHERE id = ? AND deleted_at IS NULL"
     ).get(syncId);
 
-    if (existingBySyncId) {
-      itemId = existingBySyncId.id;
-      // Update existing item
-      if (metadataJson) {
-        conn.prepare("UPDATE items SET updated_at = ?, metadata = ? WHERE id = ?")
-          .run(timestamp, metadataJson, itemId);
-      } else {
-        conn.prepare("UPDATE items SET updated_at = ? WHERE id = ?")
-          .run(timestamp, itemId);
+    if (existingById) {
+      itemId = existingById.id;
+    }
+
+    // Check sync_id column (client's local ID from first push)
+    if (!itemId) {
+      const existingBySyncId = conn.prepare(
+        "SELECT id FROM items WHERE sync_id = ? AND deleted_at IS NULL"
+      ).get(syncId);
+
+      if (existingBySyncId) {
+        itemId = existingBySyncId.id;
       }
+    }
+
+    // Update matched item with full content from client
+    if (itemId) {
+      conn.prepare(
+        "UPDATE items SET type = ?, content = ?, metadata = COALESCE(?, metadata), updated_at = ? WHERE id = ?"
+      ).run(type, content, metadataJson, timestamp, itemId);
       conn.prepare("DELETE FROM item_tags WHERE item_id = ?").run(itemId);
+    }
+  } else {
+    // Non-sync path (direct saves from UI/webhook): use content-based dedup
+
+    if (type !== "tagset" && content) {
+      const existing = conn.prepare(
+        "SELECT id FROM items WHERE type = ? AND content = ? AND deleted_at IS NULL"
+      ).get(type, content);
+
+      if (existing) {
+        itemId = existing.id;
+        conn.prepare(
+          "UPDATE items SET metadata = COALESCE(?, metadata), updated_at = ? WHERE id = ?"
+        ).run(metadataJson, timestamp, itemId);
+        conn.prepare("DELETE FROM item_tags WHERE item_id = ?").run(itemId);
+      }
+    }
+
+    // Tagset dedup by comparing tag sets
+    if (!itemId && type === "tagset" && tags.length > 0) {
+      const sortedNewTags = [...tags].sort().join('\t');
+      const tagsets = conn.prepare(
+        "SELECT id FROM items WHERE type = 'tagset' AND deleted_at IS NULL"
+      ).all();
+
+      for (const ts of tagsets) {
+        const existingTags = conn.prepare(
+          "SELECT t.name FROM tags t JOIN item_tags it ON t.id = it.tag_id WHERE it.item_id = ? ORDER BY t.name"
+        ).all(ts.id).map(r => r.name).join('\t');
+
+        if (existingTags === sortedNewTags) {
+          itemId = ts.id;
+          conn.prepare(
+            "UPDATE items SET metadata = COALESCE(?, metadata), updated_at = ? WHERE id = ?"
+          ).run(metadataJson, timestamp, itemId);
+          conn.prepare("DELETE FROM item_tags WHERE item_id = ?").run(itemId);
+          break;
+        }
+      }
     }
   }
 
-  // SECOND: Content-based deduplication (existing logic)
-  if (!itemId && type !== "tagset" && content) {
-    const existing = conn.prepare(
-      "SELECT id FROM items WHERE type = ? AND content = ? AND deleted_at IS NULL"
-    ).get(type, content);
-
-    if (existing) {
-      itemId = existing.id;
-      // Update metadata if provided, otherwise keep existing
-      if (metadataJson) {
-        conn.prepare("UPDATE items SET updated_at = ?, metadata = ? WHERE id = ?").run(timestamp, metadataJson, itemId);
-      } else {
-        conn.prepare("UPDATE items SET updated_at = ? WHERE id = ?").run(timestamp, itemId);
-      }
-      conn.prepare("DELETE FROM item_tags WHERE item_id = ?").run(itemId);
-      // Also update sync_id if we're matching by content but have a new syncId
-      if (syncId) {
-        conn.prepare("UPDATE items SET sync_id = ? WHERE id = ?").run(syncId, itemId);
-      }
-    }
-  }
-
-  // THIRD: Create new item with sync_id stored
+  // Create new item if no match found
   if (!itemId) {
     itemId = generateUUID();
     conn.prepare(`
@@ -795,6 +824,74 @@ function getItemById(userId, itemId, profileId = "default") {
   return result;
 }
 
+/**
+ * Remove duplicate items from the database.
+ * - For non-tagset items: groups by (type, content), keeps earliest created_at, hard-deletes rest
+ * - For tagsets: groups by sorted tag set, keeps earliest created_at, hard-deletes rest
+ * Returns { removedContent, removedTagsets } counts.
+ */
+function deduplicateItems(userId, profileId = "default") {
+  const conn = getConnection(userId, profileId);
+  let removedContent = 0;
+  let removedTagsets = 0;
+
+  // 1. Deduplicate content-based items (url, text, image)
+  const contentDupes = conn.prepare(`
+    SELECT type, content, GROUP_CONCAT(id, '|') AS ids, COUNT(*) AS cnt
+    FROM items
+    WHERE deleted_at IS NULL AND type != 'tagset' AND content IS NOT NULL AND content != ''
+    GROUP BY type, content
+    HAVING cnt > 1
+  `).all();
+
+  for (const group of contentDupes) {
+    const ids = group.ids.split('|');
+    // Find the earliest-created item to keep
+    const rows = conn.prepare(
+      `SELECT id, created_at FROM items WHERE id IN (${ids.map(() => '?').join(',')}) ORDER BY created_at ASC`
+    ).all(...ids);
+
+    const keepId = rows[0].id;
+    for (let i = 1; i < rows.length; i++) {
+      conn.prepare("DELETE FROM item_tags WHERE item_id = ?").run(rows[i].id);
+      conn.prepare("DELETE FROM items WHERE id = ?").run(rows[i].id);
+      removedContent++;
+    }
+    console.log(`[dedup] Kept ${keepId}, removed ${rows.length - 1} dupes for ${group.type}: ${(group.content || '').substring(0, 60)}`);
+  }
+
+  // 2. Deduplicate tagsets by comparing sorted tag names
+  const tagsets = conn.prepare(
+    "SELECT id, created_at FROM items WHERE type = 'tagset' AND deleted_at IS NULL ORDER BY created_at ASC"
+  ).all();
+
+  const getTagsStmt = conn.prepare(
+    "SELECT t.name FROM tags t JOIN item_tags it ON t.id = it.tag_id WHERE it.item_id = ? ORDER BY t.name"
+  );
+
+  const tagsetGroups = new Map(); // sorted tags string → [{ id, created_at }]
+  for (const ts of tagsets) {
+    const key = getTagsStmt.all(ts.id).map(r => r.name).join('\t');
+    if (!tagsetGroups.has(key)) {
+      tagsetGroups.set(key, []);
+    }
+    tagsetGroups.get(key).push(ts);
+  }
+
+  for (const [key, group] of tagsetGroups) {
+    if (group.length <= 1) continue;
+    const keepId = group[0].id;
+    for (let i = 1; i < group.length; i++) {
+      conn.prepare("DELETE FROM item_tags WHERE item_id = ?").run(group[i].id);
+      conn.prepare("DELETE FROM items WHERE id = ?").run(group[i].id);
+      removedTagsets++;
+    }
+    console.log(`[dedup] Kept ${keepId}, removed ${group.length - 1} dupe tagsets: ${key}`);
+  }
+
+  return { removedContent, removedTagsets };
+}
+
 module.exports = {
   getConnection,
   closeAllConnections,
@@ -806,6 +903,7 @@ module.exports = {
   getItemById,
   deleteItem,
   updateItemTags,
+  deduplicateItems,
   // Type-specific helpers
   saveText,
   saveTagset,

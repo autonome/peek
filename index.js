@@ -501,6 +501,16 @@ app.get("/items/:id", (c) => {
   return c.json({ item });
 });
 
+// === Admin endpoints ===
+
+// POST /admin/dedup - Remove duplicate items from the database
+app.post("/admin/dedup", (c) => {
+  const userId = c.get("userId");
+  const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
+  const result = db.deduplicateItems(userId, profileId);
+  return c.json({ success: true, ...result });
+});
+
 // === Backup endpoints ===
 
 // GET /backups - List backups for authenticated user

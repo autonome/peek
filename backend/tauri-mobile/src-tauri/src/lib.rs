@@ -3233,22 +3233,22 @@ fn check_response_version_headers(headers: &reqwest::header::HeaderMap) -> Resul
 }
 
 /// Get items that need to be pushed (never synced or locally modified after their last sync)
-fn get_items_to_push(conn: &Connection) -> Result<Vec<(String, String, Option<String>, Option<String>, String, String)>, String> {
-    // Returns: (id, type, url, content, metadata, updated_at)
+fn get_items_to_push(conn: &Connection) -> Result<Vec<(String, String, Option<String>, Option<String>, String, String, String)>, String> {
+    // Returns: (id, type, url, content, metadata, updated_at, sync_id)
     // Push items that:
     // 1. Have never been synced (sync_source = '' or NULL), OR
     // 2. Have been locally modified after their last sync (updated_at > synced_at)
     // This prevents re-pushing items that were just pulled from the server
     let mut stmt = conn
         .prepare(
-            "SELECT id, type, url, content, COALESCE(metadata, ''), updated_at FROM items
+            "SELECT id, type, url, content, COALESCE(metadata, ''), updated_at, COALESCE(sync_id, '') FROM items
              WHERE deleted_at IS NULL AND (sync_source = '' OR sync_source IS NULL OR (synced_at IS NOT NULL AND updated_at > synced_at))"
         )
         .map_err(|e| format!("Failed to prepare query: {}", e))?;
 
-    let items: Vec<(String, String, Option<String>, Option<String>, String, String)> = stmt
+    let items: Vec<(String, String, Option<String>, Option<String>, String, String, String)> = stmt
         .query_map([], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?))
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?))
         })
         .map_err(|e| format!("Failed to query items: {}", e))?
         .filter_map(|r| r.ok())
@@ -3590,7 +3590,7 @@ async fn push_to_server() -> Result<BidirectionalSyncResult, String> {
     let mut pushed = 0;
     let mut failed = 0;
 
-    for (item_id, item_type, url_opt, content_opt, metadata_str, _updated_at) in &items {
+    for (item_id, item_type, url_opt, content_opt, metadata_str, _updated_at, sync_id) in &items {
         // Get tags for this item
         let tags = get_item_tags(&conn, item_id)?;
 
@@ -3610,13 +3610,16 @@ async fn push_to_server() -> Result<BidirectionalSyncResult, String> {
             None
         };
 
+        // Use server ID (sync_id) when available for dedup, otherwise local ID for first push
+        let sync_id_to_send = if !sync_id.is_empty() { sync_id } else { item_id };
+
         // Build request body
         let body = serde_json::json!({
             "type": server_type,
             "content": content,
             "tags": tags,
             "metadata": metadata,
-            "sync_id": item_id,  // Send local id as sync_id for deduplication
+            "sync_id": sync_id_to_send,
         });
 
         let mut request = client.post(&post_url).json(&body)

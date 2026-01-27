@@ -9,19 +9,19 @@ const DATA_DIR = process.env.DATA_DIR || "./data";
 // Connection pool - one connection per user:profile
 const connections = new Map();
 
-function getConnection(userId, profileSlug = "default") {
+function getConnection(userId, profileId = "default") {
   if (!userId) {
     throw new Error("userId is required");
   }
 
-  const connectionKey = `${userId}:${profileSlug}`;
+  const connectionKey = `${userId}:${profileId}`;
 
   if (connections.has(connectionKey)) {
     return connections.get(connectionKey);
   }
 
   // Create user's profile directory
-  const profileDir = path.join(DATA_DIR, userId, "profiles", profileSlug);
+  const profileDir = path.join(DATA_DIR, userId, "profiles", profileId);
   if (!fs.existsSync(profileDir)) {
     fs.mkdirSync(profileDir, { recursive: true });
   }
@@ -311,8 +311,8 @@ function getOrCreateTagWithConn(conn, name, timestamp) {
 }
 
 // Unified save function for all item types
-function saveItem(userId, type, content, tags = [], metadata = null, syncId = null, profileSlug = "default") {
-  const conn = getConnection(userId, profileSlug);
+function saveItem(userId, type, content, tags = [], metadata = null, syncId = null, profileId = "default") {
+  const conn = getConnection(userId, profileId);
   const timestamp = now();
   const metadataJson = metadata ? JSON.stringify(metadata) : null;
 
@@ -380,20 +380,20 @@ function saveItem(userId, type, content, tags = [], metadata = null, syncId = nu
   return itemId;
 }
 
-function saveUrl(userId, url, tags = [], metadata = null, profileSlug = "default") {
-  return saveItem(userId, "url", url, tags, metadata, null, profileSlug);
+function saveUrl(userId, url, tags = [], metadata = null, profileId = "default") {
+  return saveItem(userId, "url", url, tags, metadata, null, profileId);
 }
 
-function saveText(userId, content, tags = [], metadata = null, profileSlug = "default") {
-  return saveItem(userId, "text", content, tags, metadata, null, profileSlug);
+function saveText(userId, content, tags = [], metadata = null, profileId = "default") {
+  return saveItem(userId, "text", content, tags, metadata, null, profileId);
 }
 
-function saveTagset(userId, tags = [], metadata = null, profileSlug = "default") {
-  return saveItem(userId, "tagset", null, tags, metadata, null, profileSlug);
+function saveTagset(userId, tags = [], metadata = null, profileId = "default") {
+  return saveItem(userId, "tagset", null, tags, metadata, null, profileId);
 }
 
-function getItems(userId, type = null, profileSlug = "default") {
-  const conn = getConnection(userId, profileSlug);
+function getItems(userId, type = null, profileId = "default") {
+  const conn = getConnection(userId, profileId);
 
   let query = `
     SELECT id, type, content, metadata, created_at, updated_at
@@ -434,8 +434,8 @@ function getItems(userId, type = null, profileSlug = "default") {
   });
 }
 
-function getSavedUrls(userId, profileSlug = "default") {
-  return getItems(userId, "url", profileSlug).map((item) => {
+function getSavedUrls(userId, profileId = "default") {
+  return getItems(userId, "url", profileId).map((item) => {
     const result = {
       id: item.id,
       url: item.content,
@@ -447,8 +447,8 @@ function getSavedUrls(userId, profileSlug = "default") {
   });
 }
 
-function getTexts(userId, profileSlug = "default") {
-  return getItems(userId, "text", profileSlug).map((item) => {
+function getTexts(userId, profileId = "default") {
+  return getItems(userId, "text", profileId).map((item) => {
     const result = {
       id: item.id,
       content: item.content,
@@ -461,8 +461,8 @@ function getTexts(userId, profileSlug = "default") {
   });
 }
 
-function getTagsets(userId, profileSlug = "default") {
-  return getItems(userId, "tagset", profileSlug).map((item) => {
+function getTagsets(userId, profileId = "default") {
+  return getItems(userId, "tagset", profileId).map((item) => {
     const result = {
       id: item.id,
       created_at: item.created_at,
@@ -474,8 +474,8 @@ function getTagsets(userId, profileSlug = "default") {
   });
 }
 
-function getTagsByFrecency(userId, profileSlug = "default") {
-  const conn = getConnection(userId, profileSlug);
+function getTagsByFrecency(userId, profileId = "default") {
+  const conn = getConnection(userId, profileId);
 
   return conn.prepare(`
     SELECT name, frequency, last_used, frecency_score
@@ -484,17 +484,17 @@ function getTagsByFrecency(userId, profileSlug = "default") {
   `).all();
 }
 
-function deleteItem(userId, id, profileSlug = "default") {
-  const conn = getConnection(userId, profileSlug);
+function deleteItem(userId, id, profileId = "default") {
+  const conn = getConnection(userId, profileId);
   conn.prepare("DELETE FROM items WHERE id = ?").run(id);
 }
 
-function deleteUrl(userId, id, profileSlug = "default") {
-  return deleteItem(userId, id, profileSlug);
+function deleteUrl(userId, id, profileId = "default") {
+  return deleteItem(userId, id, profileId);
 }
 
-function updateItemTags(userId, id, tags, profileSlug = "default") {
-  const conn = getConnection(userId, profileSlug);
+function updateItemTags(userId, id, tags, profileId = "default") {
+  const conn = getConnection(userId, profileId);
   const timestamp = now();
 
   conn.prepare("DELETE FROM item_tags WHERE item_id = ?").run(id);
@@ -510,18 +510,18 @@ function updateItemTags(userId, id, tags, profileSlug = "default") {
   conn.prepare("UPDATE items SET updated_at = ? WHERE id = ?").run(timestamp, id);
 }
 
-function updateUrlTags(userId, id, tags, profileSlug = "default") {
-  return updateItemTags(userId, id, tags, profileSlug);
+function updateUrlTags(userId, id, tags, profileId = "default") {
+  return updateItemTags(userId, id, tags, profileId);
 }
 
-function getSetting(userId, key, profileSlug = "default") {
-  const conn = getConnection(userId, profileSlug);
+function getSetting(userId, key, profileId = "default") {
+  const conn = getConnection(userId, profileId);
   const row = conn.prepare("SELECT value FROM settings WHERE key = ?").get(key);
   return row ? row.value : null;
 }
 
-function setSetting(userId, key, value, profileSlug = "default") {
-  const conn = getConnection(userId, profileSlug);
+function setSetting(userId, key, value, profileId = "default") {
+  const conn = getConnection(userId, profileId);
   conn.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(key, value);
 }
 
@@ -532,8 +532,8 @@ function closeAllConnections() {
   connections.clear();
 }
 
-function closeConnection(userId, profileSlug = "default") {
-  const connectionKey = `${userId}:${profileSlug}`;
+function closeConnection(userId, profileId = "default") {
+  const connectionKey = `${userId}:${profileId}`;
   if (connections.has(connectionKey)) {
     connections.get(connectionKey).close();
     connections.delete(connectionKey);
@@ -544,8 +544,8 @@ function closeConnection(userId, profileSlug = "default") {
 
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10 MB
 
-function getUserImagesDir(userId, profileSlug = "default") {
-  const profileDir = path.join(DATA_DIR, userId, "profiles", profileSlug);
+function getUserImagesDir(userId, profileId = "default") {
+  const profileDir = path.join(DATA_DIR, userId, "profiles", profileId);
   return path.join(profileDir, "images");
 }
 
@@ -569,7 +569,7 @@ function getExtensionFromMime(mimeType) {
   return mimeToExt[mimeType] || "bin";
 }
 
-function saveImage(userId, filename, buffer, mimeType, tags = [], profileSlug = "default") {
+function saveImage(userId, filename, buffer, mimeType, tags = [], profileId = "default") {
   if (buffer.length > MAX_IMAGE_SIZE) {
     throw new Error(`Image exceeds maximum size of ${MAX_IMAGE_SIZE / 1024 / 1024} MB`);
   }
@@ -578,7 +578,7 @@ function saveImage(userId, filename, buffer, mimeType, tags = [], profileSlug = 
     throw new Error("Invalid MIME type: must be an image");
   }
 
-  const conn = getConnection(userId, profileSlug);
+  const conn = getConnection(userId, profileId);
   const timestamp = now();
 
   // Compute hash for deduplication
@@ -587,7 +587,7 @@ function saveImage(userId, filename, buffer, mimeType, tags = [], profileSlug = 
   const imageFilename = `${hash}.${ext}`;
 
   // Ensure images directory exists
-  const imagesDir = getUserImagesDir(userId, profileSlug);
+  const imagesDir = getUserImagesDir(userId, profileId);
   if (!fs.existsSync(imagesDir)) {
     fs.mkdirSync(imagesDir, { recursive: true });
   }
@@ -625,8 +625,8 @@ function saveImage(userId, filename, buffer, mimeType, tags = [], profileSlug = 
   return itemId;
 }
 
-function getImages(userId, profileSlug = "default") {
-  const conn = getConnection(userId, profileSlug);
+function getImages(userId, profileId = "default") {
+  const conn = getConnection(userId, profileId);
 
   const items = conn.prepare(`
     SELECT id, content, metadata, created_at, updated_at
@@ -656,8 +656,8 @@ function getImages(userId, profileSlug = "default") {
   });
 }
 
-function getImageById(userId, itemId, profileSlug = "default") {
-  const conn = getConnection(userId, profileSlug);
+function getImageById(userId, itemId, profileId = "default") {
+  const conn = getConnection(userId, profileId);
 
   const row = conn.prepare(`
     SELECT id, content, metadata, created_at, updated_at
@@ -675,19 +675,19 @@ function getImageById(userId, itemId, profileSlug = "default") {
   };
 }
 
-function getImagePath(userId, itemId, profileSlug = "default") {
-  const image = getImageById(userId, itemId, profileSlug);
+function getImagePath(userId, itemId, profileId = "default") {
+  const image = getImageById(userId, itemId, profileId);
   if (!image || !image.metadata.hash) return null;
 
-  const imagesDir = getUserImagesDir(userId, profileSlug);
+  const imagesDir = getUserImagesDir(userId, profileId);
   return path.join(imagesDir, `${image.metadata.hash}.${image.metadata.ext}`);
 }
 
-function deleteImage(userId, itemId, profileSlug = "default") {
-  const conn = getConnection(userId, profileSlug);
+function deleteImage(userId, itemId, profileId = "default") {
+  const conn = getConnection(userId, profileId);
 
   // Get image metadata before deleting
-  const image = getImageById(userId, itemId, profileSlug);
+  const image = getImageById(userId, itemId, profileId);
   if (!image) return;
 
   const hash = image.metadata?.hash;
@@ -705,7 +705,7 @@ function deleteImage(userId, itemId, profileSlug = "default") {
 
     // Only delete file if no other items reference it
     if (!othersWithSameHash) {
-      const imagesDir = getUserImagesDir(userId, profileSlug);
+      const imagesDir = getUserImagesDir(userId, profileId);
       const imagePath = path.join(imagesDir, `${hash}.${ext}`);
       if (fs.existsSync(imagePath)) {
         fs.unlinkSync(imagePath);
@@ -718,8 +718,8 @@ function deleteImage(userId, itemId, profileSlug = "default") {
  * Get items modified since a given timestamp
  * Used for incremental sync - returns items where updated_at > timestamp
  */
-function getItemsSince(userId, timestamp, type = null, profileSlug = "default") {
-  const conn = getConnection(userId, profileSlug);
+function getItemsSince(userId, timestamp, type = null, profileId = "default") {
+  const conn = getConnection(userId, profileId);
 
   let query = `
     SELECT id, type, content, metadata, created_at, updated_at
@@ -763,8 +763,8 @@ function getItemsSince(userId, timestamp, type = null, profileSlug = "default") 
 /**
  * Get a single item by ID
  */
-function getItemById(userId, itemId, profileSlug = "default") {
-  const conn = getConnection(userId, profileSlug);
+function getItemById(userId, itemId, profileId = "default") {
+  const conn = getConnection(userId, profileId);
 
   const row = conn.prepare(`
     SELECT id, type, content, metadata, created_at, updated_at

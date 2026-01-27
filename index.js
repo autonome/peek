@@ -98,12 +98,12 @@ app.get("/", (c) => {
 // Receive items from iOS app
 app.post("/webhook", async (c) => {
   const userId = c.get("userId");
-  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default");
+  const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
   const body = await c.req.json();
 
   console.log("=== Webhook Received ===");
   console.log("User:", userId);
-  console.log("Profile:", profileSlug);
+  console.log("Profile:", profileId);
   console.log("Timestamp:", new Date().toISOString());
   console.log("URLs:", body.urls?.length || 0);
   console.log("Texts:", body.texts?.length || 0);
@@ -115,7 +115,7 @@ app.post("/webhook", async (c) => {
   if (body.urls && Array.isArray(body.urls)) {
     for (const item of body.urls) {
       if (item.url) {
-        const id = db.saveUrl(userId, item.url, item.tags || [], item.metadata || null, profileSlug);
+        const id = db.saveUrl(userId, item.url, item.tags || [], item.metadata || null, profileId);
         saved.push({ id, type: "url", url: item.url });
         console.log(`Saved URL: ${item.url}`);
       }
@@ -126,7 +126,7 @@ app.post("/webhook", async (c) => {
   if (body.texts && Array.isArray(body.texts)) {
     for (const item of body.texts) {
       if (item.content) {
-        const id = db.saveText(userId, item.content, item.tags || [], item.metadata || null, profileSlug);
+        const id = db.saveText(userId, item.content, item.tags || [], item.metadata || null, profileId);
         saved.push({ id, type: "text" });
         console.log(`Saved text: ${item.content.substring(0, 50)}...`);
       }
@@ -137,7 +137,7 @@ app.post("/webhook", async (c) => {
   if (body.tagsets && Array.isArray(body.tagsets)) {
     for (const item of body.tagsets) {
       if (item.tags && item.tags.length > 0) {
-        const id = db.saveTagset(userId, item.tags, item.metadata || null, profileSlug);
+        const id = db.saveTagset(userId, item.tags, item.metadata || null, profileId);
         saved.push({ id, type: "tagset" });
         console.log(`Saved tagset: ${item.tags.join(", ")}`);
       }
@@ -152,35 +152,35 @@ app.post("/webhook", async (c) => {
 // Get all saved URLs
 app.get("/urls", (c) => {
   const userId = c.get("userId");
-  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default");
-  const urls = db.getSavedUrls(userId, profileSlug);
+  const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
+  const urls = db.getSavedUrls(userId, profileId);
   return c.json({ urls });
 });
 
 // Get tags sorted by frecency
 app.get("/tags", (c) => {
   const userId = c.get("userId");
-  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default");
-  const tags = db.getTagsByFrecency(userId, profileSlug);
+  const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
+  const tags = db.getTagsByFrecency(userId, profileId);
   return c.json({ tags });
 });
 
 // Delete a URL
 app.delete("/urls/:id", (c) => {
   const userId = c.get("userId");
-  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default");
+  const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
   const id = c.req.param("id");
-  db.deleteUrl(userId, id, profileSlug);
+  db.deleteUrl(userId, id, profileId);
   return c.json({ deleted: true });
 });
 
 // Update tags for a URL
 app.patch("/urls/:id/tags", async (c) => {
   const userId = c.get("userId");
-  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default");
+  const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
   const id = c.req.param("id");
   const body = await c.req.json();
-  db.updateUrlTags(userId, id, body.tags || [], profileSlug);
+  db.updateUrlTags(userId, id, body.tags || [], profileId);
   return c.json({ updated: true });
 });
 
@@ -188,36 +188,36 @@ app.patch("/urls/:id/tags", async (c) => {
 
 app.post("/texts", async (c) => {
   const userId = c.get("userId");
-  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default");
+  const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
   const body = await c.req.json();
   if (!body.content) {
     return c.json({ error: "content is required" }, 400);
   }
-  const id = db.saveText(userId, body.content, body.tags || [], body.metadata || null, profileSlug);
+  const id = db.saveText(userId, body.content, body.tags || [], body.metadata || null, profileId);
   return c.json({ id, created: true });
 });
 
 app.get("/texts", (c) => {
   const userId = c.get("userId");
-  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default");
-  const texts = db.getTexts(userId, profileSlug);
+  const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
+  const texts = db.getTexts(userId, profileId);
   return c.json({ texts });
 });
 
 app.delete("/texts/:id", (c) => {
   const userId = c.get("userId");
-  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default");
+  const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
   const id = c.req.param("id");
-  db.deleteItem(userId, id, profileSlug);
+  db.deleteItem(userId, id, profileId);
   return c.json({ deleted: true });
 });
 
 app.patch("/texts/:id/tags", async (c) => {
   const userId = c.get("userId");
-  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default");
+  const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
   const id = c.req.param("id");
   const body = await c.req.json();
-  db.updateItemTags(userId, id, body.tags || [], profileSlug);
+  db.updateItemTags(userId, id, body.tags || [], profileId);
   return c.json({ updated: true });
 });
 
@@ -225,36 +225,36 @@ app.patch("/texts/:id/tags", async (c) => {
 
 app.post("/tagsets", async (c) => {
   const userId = c.get("userId");
-  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default");
+  const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
   const body = await c.req.json();
   if (!body.tags || !Array.isArray(body.tags) || body.tags.length === 0) {
     return c.json({ error: "tags array is required and must not be empty" }, 400);
   }
-  const id = db.saveTagset(userId, body.tags, body.metadata || null, profileSlug);
+  const id = db.saveTagset(userId, body.tags, body.metadata || null, profileId);
   return c.json({ id, created: true });
 });
 
 app.get("/tagsets", (c) => {
   const userId = c.get("userId");
-  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default");
-  const tagsets = db.getTagsets(userId, profileSlug);
+  const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
+  const tagsets = db.getTagsets(userId, profileId);
   return c.json({ tagsets });
 });
 
 app.delete("/tagsets/:id", (c) => {
   const userId = c.get("userId");
-  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default");
+  const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
   const id = c.req.param("id");
-  db.deleteItem(userId, id, profileSlug);
+  db.deleteItem(userId, id, profileId);
   return c.json({ deleted: true });
 });
 
 app.patch("/tagsets/:id/tags", async (c) => {
   const userId = c.get("userId");
-  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default");
+  const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
   const id = c.req.param("id");
   const body = await c.req.json();
-  db.updateItemTags(userId, id, body.tags || [], profileSlug);
+  db.updateItemTags(userId, id, body.tags || [], profileId);
   return c.json({ updated: true });
 });
 
@@ -262,7 +262,7 @@ app.patch("/tagsets/:id/tags", async (c) => {
 
 app.post("/images", async (c) => {
   const userId = c.get("userId");
-  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default");
+  const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
   const contentType = c.req.header("Content-Type") || "";
 
   let filename, buffer, mimeType, tags = [];
@@ -316,7 +316,7 @@ app.post("/images", async (c) => {
   }
 
   try {
-    const id = db.saveImage(userId, filename, buffer, mimeType, tags, profileSlug);
+    const id = db.saveImage(userId, filename, buffer, mimeType, tags, profileId);
     return c.json({ id, type: "image", created: true });
   } catch (e) {
     return c.json({ error: e.message }, 400);
@@ -325,22 +325,22 @@ app.post("/images", async (c) => {
 
 app.get("/images", (c) => {
   const userId = c.get("userId");
-  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default");
-  const images = db.getImages(userId, profileSlug);
+  const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
+  const images = db.getImages(userId, profileId);
   return c.json({ images });
 });
 
 app.get("/images/:id", (c) => {
   const userId = c.get("userId");
-  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default");
+  const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
   const id = c.req.param("id");
 
-  const image = db.getImageById(userId, id, profileSlug);
+  const image = db.getImageById(userId, id, profileId);
   if (!image) {
     return c.json({ error: "image not found" }, 404);
   }
 
-  const imagePath = db.getImagePath(userId, id, profileSlug);
+  const imagePath = db.getImagePath(userId, id, profileId);
   if (!imagePath || !fs.existsSync(imagePath)) {
     return c.json({ error: "image file not found" }, 404);
   }
@@ -357,18 +357,18 @@ app.get("/images/:id", (c) => {
 
 app.delete("/images/:id", (c) => {
   const userId = c.get("userId");
-  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default");
+  const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
   const id = c.req.param("id");
-  db.deleteImage(userId, id, profileSlug);
+  db.deleteImage(userId, id, profileId);
   return c.json({ deleted: true });
 });
 
 app.patch("/images/:id/tags", async (c) => {
   const userId = c.get("userId");
-  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default");
+  const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
   const id = c.req.param("id");
   const body = await c.req.json();
-  db.updateItemTags(userId, id, body.tags || [], profileSlug);
+  db.updateItemTags(userId, id, body.tags || [], profileId);
   return c.json({ updated: true });
 });
 
@@ -376,14 +376,14 @@ app.patch("/images/:id/tags", async (c) => {
 
 app.post("/items", async (c) => {
   const userId = c.get("userId");
-  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default");
+  const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
   const body = await c.req.json();
   const { type, content, tags = [], metadata = null, sync_id = null } = body;
 
   // Sync logging for e2e test verification
   console.log("=== Sync Item Received ===");
   console.log("User:", userId);
-  console.log("Profile:", profileSlug);
+  console.log("Profile:", profileId);
   console.log("Timestamp:", new Date().toISOString());
   console.log("Type:", type);
   console.log("sync_id:", sync_id || "(none)");
@@ -425,42 +425,42 @@ app.post("/items", async (c) => {
     }
 
     try {
-      const id = db.saveImage(userId, body.filename, buffer, body.mime, tags, profileSlug);
+      const id = db.saveImage(userId, body.filename, buffer, body.mime, tags, profileId);
       return c.json({ id, type, created: true });
     } catch (e) {
       return c.json({ error: e.message }, 400);
     }
   }
 
-  const id = db.saveItem(userId, type, content || null, tags, metadata, sync_id, profileSlug);
+  const id = db.saveItem(userId, type, content || null, tags, metadata, sync_id, profileId);
   return c.json({ id, type, created: true });
 });
 
 app.get("/items", (c) => {
   const userId = c.get("userId");
-  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default");
+  const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
   const type = c.req.query("type");
   if (type && !["url", "text", "tagset", "image"].includes(type)) {
     return c.json({ error: "type must be 'url', 'text', 'tagset', or 'image'" }, 400);
   }
-  const items = db.getItems(userId, type || null, profileSlug);
+  const items = db.getItems(userId, type || null, profileId);
   return c.json({ items });
 });
 
 app.delete("/items/:id", (c) => {
   const userId = c.get("userId");
-  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default");
+  const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
   const id = c.req.param("id");
-  db.deleteItem(userId, id, profileSlug);
+  db.deleteItem(userId, id, profileId);
   return c.json({ deleted: true });
 });
 
 app.patch("/items/:id/tags", async (c) => {
   const userId = c.get("userId");
-  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default");
+  const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
   const id = c.req.param("id");
   const body = await c.req.json();
-  db.updateItemTags(userId, id, body.tags || [], profileSlug);
+  db.updateItemTags(userId, id, body.tags || [], profileId);
   return c.json({ updated: true });
 });
 
@@ -469,7 +469,7 @@ app.patch("/items/:id/tags", async (c) => {
 // Get items modified since a timestamp (for incremental sync)
 app.get("/items/since/:timestamp", (c) => {
   const userId = c.get("userId");
-  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default");
+  const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
   const timestamp = c.req.param("timestamp");
   const type = c.req.query("type");
 
@@ -483,17 +483,17 @@ app.get("/items/since/:timestamp", (c) => {
     return c.json({ error: "type must be 'url', 'text', 'tagset', or 'image'" }, 400);
   }
 
-  const items = db.getItemsSince(userId, timestamp, type || null, profileSlug);
+  const items = db.getItemsSince(userId, timestamp, type || null, profileId);
   return c.json({ items, since: timestamp });
 });
 
 // Get a single item by ID
 app.get("/items/:id", (c) => {
   const userId = c.get("userId");
-  const profileSlug = users.resolveProfileSlug(userId, c.req.query("profile") || "default");
+  const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
   const id = c.req.param("id");
 
-  const item = db.getItemById(userId, id, profileSlug);
+  const item = db.getItemById(userId, id, profileId);
   if (!item) {
     return c.json({ error: "item not found" }, 404);
   }
@@ -531,24 +531,24 @@ app.post("/profiles", async (c) => {
   const userId = c.get("userId");
   const body = await c.req.json();
 
-  if (!body.slug || !body.name) {
-    return c.json({ error: "slug and name are required" }, 400);
+  if (!body.name) {
+    return c.json({ error: "name is required" }, 400);
   }
 
   try {
-    const profile = users.createProfile(userId, body.slug, body.name);
+    const profile = users.createProfile(userId, body.name);
     return c.json({ profile, created: true });
   } catch (e) {
     return c.json({ error: e.message }, 400);
   }
 });
 
-// GET /profiles/:slug - Get a specific profile
-app.get("/profiles/:slug", (c) => {
+// GET /profiles/:id - Get a specific profile by UUID
+app.get("/profiles/:id", (c) => {
   const userId = c.get("userId");
-  const slug = c.req.param("slug");
+  const id = c.req.param("id");
 
-  const profile = users.getProfile(userId, slug);
+  const profile = users.getProfileById(userId, id);
   if (!profile) {
     return c.json({ error: "profile not found" }, 404);
   }
@@ -668,7 +668,7 @@ function migrateUserDataToProfiles() {
       // Create profile record
       const existingProfile = users.getProfile(userId, "default");
       if (!existingProfile) {
-        users.createProfile(userId, "default", "Default");
+        users.createProfile(userId, "Default");
         console.log(`[migration] Created default profile for user ${userId}`);
       }
 
@@ -724,6 +724,7 @@ function migrateUserDataToProfiles() {
 
 migrateFromLegacyApiKey();
 migrateUserDataToProfiles();
+users.migrateProfileFoldersToUuid();
 
 // Run initial backup check on startup
 backup.checkAndRunDailyBackups();

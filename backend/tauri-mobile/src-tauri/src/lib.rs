@@ -102,6 +102,24 @@ struct BidirectionalSyncResult {
     message: String,
 }
 
+/// Deserialize a timestamp that may be an integer (Unix ms) or ISO 8601 string.
+/// Handles both the new server format (integer) and legacy format (string).
+fn deserialize_flexible_timestamp<'de, D>(deserializer: D) -> Result<i64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    match &value {
+        serde_json::Value::Number(n) => n
+            .as_i64()
+            .ok_or_else(|| serde::de::Error::custom("timestamp number out of i64 range")),
+        serde_json::Value::String(s) => chrono::DateTime::parse_from_rfc3339(s)
+            .map(|dt| dt.timestamp_millis())
+            .map_err(|_| serde::de::Error::custom("invalid ISO 8601 timestamp")),
+        _ => Err(serde::de::Error::custom("expected number or string for timestamp")),
+    }
+}
+
 // Server item format (from GET /items)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ServerItem {
@@ -111,8 +129,10 @@ struct ServerItem {
     content: Option<String>,
     tags: Vec<String>,
     metadata: Option<serde_json::Value>,
-    created_at: String,
-    updated_at: String,
+    #[serde(deserialize_with = "deserialize_flexible_timestamp")]
+    created_at: i64,
+    #[serde(deserialize_with = "deserialize_flexible_timestamp")]
+    updated_at: i64,
 }
 
 // Server response for GET /items
@@ -3201,6 +3221,18 @@ fn parse_iso_datetime(iso: &str) -> Option<chrono::DateTime<Utc>> {
         .map(|dt| dt.with_timezone(&Utc))
 }
 
+/// Convert Unix milliseconds to an ISO 8601 string for local DB storage.
+fn unix_ms_to_iso(ms: i64) -> String {
+    chrono::DateTime::from_timestamp_millis(ms)
+        .map(|dt| dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
+        .unwrap_or_else(|| Utc::now().to_rfc3339())
+}
+
+/// Convert Unix milliseconds to a DateTime<Utc> for timestamp comparison.
+fn unix_ms_to_datetime(ms: i64) -> Option<chrono::DateTime<Utc>> {
+    chrono::DateTime::from_timestamp_millis(ms)
+}
+
 /// Check server version headers in a response.
 /// If the server includes version headers that don't match ours, return an error.
 /// If the server includes no version headers (legacy), skip the check.
@@ -3280,7 +3312,7 @@ fn get_item_tags(conn: &Connection, item_id: &str) -> Result<Vec<String>, String
 /// Merge a server item into the local database
 fn merge_server_item(conn: &Connection, server_item: &ServerItem) -> Result<&'static str, String> {
     let now = Utc::now().to_rfc3339();
-    let server_updated = parse_iso_datetime(&server_item.updated_at)
+    let server_updated = unix_ms_to_datetime(server_item.updated_at)
         .ok_or("Invalid server updated_at timestamp")?;
 
     // Check if this item was soft-deleted locally - if so, skip the import
@@ -3329,7 +3361,7 @@ fn merge_server_item(conn: &Connection, server_item: &ServerItem) -> Result<&'st
 
                 conn.execute(
                     "UPDATE items SET type = ?, url = ?, content = ?, metadata = ?, updated_at = ?, synced_at = ? WHERE id = ?",
-                    params![item_type, url_val, content_val, &metadata_json, &server_item.updated_at, &now, &local_id],
+                    params![item_type, url_val, content_val, &metadata_json, &unix_ms_to_iso(server_item.updated_at), &now, &local_id],
                 )
                 .map_err(|e| format!("Failed to update item: {}", e))?;
 
@@ -3375,8 +3407,8 @@ fn merge_server_item(conn: &Connection, server_item: &ServerItem) -> Result<&'st
             &metadata_json,
             &server_item.id,
             &now,
-            &server_item.created_at,
-            &server_item.updated_at
+            &unix_ms_to_iso(server_item.created_at),
+            &unix_ms_to_iso(server_item.updated_at)
         ],
     )
     .map_err(|e| format!("Failed to insert item: {}", e))?;

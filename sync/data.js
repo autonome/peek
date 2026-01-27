@@ -1,7 +1,7 @@
 /**
  * Data Engine
  *
- * All business logic for items, tags, deduplication, and frecency.
+ * All business logic for items, tags, and frecency.
  * Runtime-agnostic — operates through a StorageAdapter.
  * No SQL, no IndexedDB, no platform APIs.
  */
@@ -202,73 +202,13 @@ export class DataEngine {
     return tags.sort((a, b) => b.frecencyScore - a.frecencyScore);
   }
 
-  // ==================== Dedup ====================
+  // ==================== Save with Sync Dedup ====================
 
   /**
-   * Remove duplicate items.
-   * - Content items (url, text, image): groups by type+content, keeps earliest
-   * - Tagsets: groups by sorted tag names, keeps earliest
-   * @returns {Promise<{removedContent: number, removedTagsets: number}>}
-   */
-  async deduplicateItems() {
-    let removedContent = 0;
-    let removedTagsets = 0;
-
-    const allItems = await this.adapter.getItems({ includeDeleted: false });
-
-    // 1. Content-based dedup (non-tagset items)
-    const contentGroups = new Map();
-    for (const item of allItems) {
-      if (item.type === 'tagset' || !item.content) continue;
-      const key = `${item.type}|${item.content}`;
-      if (!contentGroups.has(key)) contentGroups.set(key, []);
-      contentGroups.get(key).push(item);
-    }
-
-    for (const group of contentGroups.values()) {
-      if (group.length <= 1) continue;
-      group.sort((a, b) => a.createdAt - b.createdAt);
-      for (let i = 1; i < group.length; i++) {
-        await this.adapter.clearItemTags(group[i].id);
-        await this.adapter.hardDeleteItem(group[i].id);
-        removedContent++;
-      }
-    }
-
-    // 2. Tagset dedup by sorted tag names
-    const tagsets = allItems.filter(i => i.type === 'tagset');
-    const tagsetGroups = new Map();
-
-    for (const item of tagsets) {
-      const tags = await this.adapter.getItemTags(item.id);
-      const key = tags
-        .map(t => t.name)
-        .sort()
-        .join('\t');
-      if (!tagsetGroups.has(key)) tagsetGroups.set(key, []);
-      tagsetGroups.get(key).push(item);
-    }
-
-    for (const group of tagsetGroups.values()) {
-      if (group.length <= 1) continue;
-      group.sort((a, b) => a.createdAt - b.createdAt);
-      for (let i = 1; i < group.length; i++) {
-        await this.adapter.clearItemTags(group[i].id);
-        await this.adapter.hardDeleteItem(group[i].id);
-        removedTagsets++;
-      }
-    }
-
-    return { removedContent, removedTagsets };
-  }
-
-  // ==================== Save with Dedup ====================
-
-  /**
-   * Save an item with deduplication logic.
+   * Save an item with sync-based deduplication.
    *
-   * Sync path (syncId provided): match by syncId only, no content fallback.
-   * Non-sync path: content-based dedup for non-tagsets, tag-set dedup for tagsets.
+   * Sync path (syncId provided): match by syncId only, update if found.
+   * Non-sync path: always create a new item (no content matching).
    *
    * @param {string} type
    * @param {string|null} content
@@ -295,33 +235,6 @@ export class DataEngine {
           updatedAt: timestamp,
         });
         await this.adapter.clearItemTags(itemId);
-      }
-    } else {
-      // Non-sync path: content-based dedup
-      if (type !== 'tagset' && content) {
-        const existing = await this.adapter.findItemByContent(type, content);
-        if (existing) {
-          itemId = existing.id;
-          await this.adapter.updateItem(itemId, {
-            metadata: metadataStr !== null ? metadataStr : undefined,
-            updatedAt: timestamp,
-          });
-          await this.adapter.clearItemTags(itemId);
-        }
-      }
-
-      // Tagset dedup by comparing sorted tag names
-      if (!itemId && type === 'tagset' && tags.length > 0) {
-        const sortedTagNames = [...tags].sort().join('\t');
-        const existing = await this.adapter.findTagsetByTags(sortedTagNames);
-        if (existing) {
-          itemId = existing.id;
-          await this.adapter.updateItem(itemId, {
-            metadata: metadataStr !== null ? metadataStr : undefined,
-            updatedAt: timestamp,
-          });
-          await this.adapter.clearItemTags(itemId);
-        }
       }
     }
 

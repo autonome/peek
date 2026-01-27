@@ -532,14 +532,350 @@ else
 fi
 sqlite3 "$IOS_DB" "SELECT '    - ' || type || ': ' || substr(COALESCE(url, content), 1, 60) FROM items WHERE deleted_at IS NULL;"
 
-# --- Final result ---
+# --- Final result (Phase 1) ---
 echo ""
 echo "=========================================="
 if [ "$PASS" = true ]; then
-    echo "  ALL PLATFORMS VERIFIED: $EXPECTED items each"
-    echo "  RESULT: PASS"
+    echo "  PHASE 1 PASS: ALL PLATFORMS VERIFIED: $EXPECTED items each"
 else
-    echo "  RESULT: FAIL (see above)"
+    echo "  PHASE 1 FAIL (see above)"
+    echo "  Skipping Phase 2 (sync dedup testing requires Phase 1 pass)"
+    echo "=========================================="
+    echo ""
+    exit 1
+fi
+echo "=========================================="
+echo ""
+
+# ==========================================================================
+#  PHASE 2: Sync Dedup Testing (syncId only — no content matching)
+# ==========================================================================
+
+echo ""
+echo "=========================================="
+echo "  Phase 2: Sync Dedup Testing"
+echo "=========================================="
+echo ""
+
+PHASE2_PASS=true
+
+# --- Step 11: sync_id re-push dedup (automated) ---
+
+echo "Step 11: sync_id re-push dedup..."
+
+# Get a server item's ID and push it back with sync_id set to that ID
+ITEM_ID=$(curl -sf "http://localhost:$PORT/items?$PROFILE_PARAM" \
+    -H "Authorization: Bearer $API_KEY" \
+    -H "X-Peek-Datastore-Version: 1" \
+    -H "X-Peek-Protocol-Version: 1" | python3 -c "import sys,json; print(json.load(sys.stdin)['items'][0]['id'])")
+
+echo "  Re-pushing item $ITEM_ID with sync_id set to its own server ID..."
+curl -sf -X POST "http://localhost:$PORT/items?$PROFILE_PARAM" \
+    -H "Authorization: Bearer $API_KEY" \
+    -H "Content-Type: application/json" \
+    -H "X-Peek-Datastore-Version: 1" \
+    -H "X-Peek-Protocol-Version: 1" \
+    -d "{\"type\":\"url\",\"content\":\"https://example.com/server-origin-1\",\"tags\":[\"dedup-test\"],\"sync_id\":\"$ITEM_ID\"}" > /dev/null
+
+STEP11_COUNT=$(curl -sf "http://localhost:$PORT/items?$PROFILE_PARAM" \
+    -H "Authorization: Bearer $API_KEY" \
+    -H "X-Peek-Datastore-Version: 1" \
+    -H "X-Peek-Protocol-Version: 1" | python3 -c "import sys,json; print(len(json.load(sys.stdin)['items']))")
+
+echo "  Server item count after sync_id re-push: $STEP11_COUNT"
+if [ "$STEP11_COUNT" -eq 6 ]; then
+    echo "    PASS: sync_id dedup working (still 6 items)"
+else
+    echo "    FAIL: Expected 6 items, got $STEP11_COUNT (sync_id dedup broken)"
+    PHASE2_PASS=false
+fi
+
+# --- Step 12: Seed cross-device URL into desktop + iOS ---
+
+echo ""
+echo "Step 12: Seeding cross-device identical URL..."
+
+CROSS_URL="https://example.com/cross-device-url"
+
+# Seed into desktop SQLite (no syncId, no syncSource — appears as local-only)
+sqlite3 "$DESKTOP_DB" << SQLEOF
+INSERT INTO items (id, type, content, metadata, syncId, syncSource, syncedAt, createdAt, updatedAt, deletedAt)
+VALUES
+  (lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-' || hex(randomblob(2)) || '-' || hex(randomblob(2)) || '-' || hex(randomblob(6))),
+   'url', '$CROSS_URL', '{}', '', '', 0,
+   strftime('%s','now') * 1000, strftime('%s','now') * 1000, 0);
+SQLEOF
+
+# Tag desktop cross-device item
+sqlite3 "$DESKTOP_DB" << 'SQLEOF'
+INSERT OR IGNORE INTO tags (id, name, slug, createdAt) VALUES ('tag-crossdev', 'cross-device', 'cross-device', strftime('%s','now') * 1000);
+INSERT INTO item_tags (id, itemId, tagId, createdAt)
+SELECT 'it-' || hex(randomblob(8)), id, 'tag-crossdev', strftime('%s','now') * 1000
+FROM items WHERE content = 'https://example.com/cross-device-url' AND syncSource = '';
+SQLEOF
+
+echo "  Seeded cross-device URL into desktop"
+
+# Seed into iOS SQLite (no sync_id — appears as local-only)
+sqlite3 "$IOS_DB" << SQLEOF
+INSERT INTO items (id, type, url, content, metadata, sync_source, created_at, updated_at)
+VALUES
+  ('ios-crossdev-1', 'url', '$CROSS_URL', '', '', '', datetime('now'), datetime('now'));
+
+INSERT OR IGNORE INTO tags (name, frequency, last_used, frecency_score, created_at, updated_at)
+VALUES ('cross-device', 1, datetime('now'), 1.0, datetime('now'), datetime('now'));
+
+INSERT INTO item_tags (item_id, tag_id, created_at)
+SELECT 'ios-crossdev-1', id, datetime('now') FROM tags WHERE name = 'cross-device';
+SQLEOF
+
+echo "  Seeded cross-device URL into iOS"
+
+# --- Step 13: Seed cross-device tagset into desktop + iOS ---
+
+echo ""
+echo "Step 13: Seeding cross-device identical tagset..."
+
+# Seed into desktop SQLite
+sqlite3 "$DESKTOP_DB" << 'SQLEOF'
+INSERT INTO items (id, type, content, metadata, syncId, syncSource, syncedAt, createdAt, updatedAt, deletedAt)
+VALUES
+  (lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-' || hex(randomblob(2)) || '-' || hex(randomblob(2)) || '-' || hex(randomblob(6))),
+   'tagset', '', '{}', '', '', 0,
+   strftime('%s','now') * 1000, strftime('%s','now') * 1000, 0);
+
+INSERT OR IGNORE INTO tags (id, name, slug, createdAt) VALUES ('tag-shared', 'shared', 'shared', strftime('%s','now') * 1000);
+INSERT OR IGNORE INTO tags (id, name, slug, createdAt) VALUES ('tag-tagset', 'tagset', 'tagset', strftime('%s','now') * 1000);
+
+INSERT INTO item_tags (id, itemId, tagId, createdAt)
+SELECT 'it-' || hex(randomblob(8)), id, 'tag-shared', strftime('%s','now') * 1000
+FROM items WHERE type = 'tagset' AND content = '' AND syncSource = '' AND deletedAt = 0
+ORDER BY createdAt DESC LIMIT 1;
+
+INSERT INTO item_tags (id, itemId, tagId, createdAt)
+SELECT 'it-' || hex(randomblob(8)), id, 'tag-tagset', strftime('%s','now') * 1000
+FROM items WHERE type = 'tagset' AND content = '' AND syncSource = '' AND deletedAt = 0
+ORDER BY createdAt DESC LIMIT 1;
+SQLEOF
+
+echo "  Seeded cross-device tagset into desktop"
+
+# Seed into iOS SQLite
+sqlite3 "$IOS_DB" << 'SQLEOF'
+INSERT INTO items (id, type, url, content, metadata, sync_source, created_at, updated_at)
+VALUES ('ios-tagset-1', 'tagset', '', '', '', '', datetime('now'), datetime('now'));
+
+INSERT OR IGNORE INTO tags (name, frequency, last_used, frecency_score, created_at, updated_at)
+VALUES
+  ('shared', 1, datetime('now'), 1.0, datetime('now'), datetime('now')),
+  ('tagset', 1, datetime('now'), 1.0, datetime('now'), datetime('now'));
+
+INSERT INTO item_tags (item_id, tag_id, created_at)
+SELECT 'ios-tagset-1', id, datetime('now') FROM tags WHERE name = 'shared';
+INSERT INTO item_tags (item_id, tag_id, created_at)
+SELECT 'ios-tagset-1', id, datetime('now') FROM tags WHERE name = 'tagset';
+SQLEOF
+
+echo "  Seeded cross-device tagset into iOS"
+
+# --- Step 14: Trigger desktop sync to push new items ---
+
+echo ""
+echo "Step 14: Triggering desktop sync to push new items..."
+cd "$PROJECT_DIR"
+PROFILE="$DESKTOP_PROFILE" SERVER_URL="$SERVER_URL" API_KEY="$API_KEY" SERVER_PROFILE_ID="$SERVER_PROFILE_ID" SYNC_MODE=full electron scripts/preconfigure-sync.mjs 2>&1 | grep -E "(Full sync|Pulled|Pushed|sync)"
+
+echo ""
+
+# --- Step 15: Prompt iOS sync, poll for expected items ---
+
+echo ""
+echo "=========================================="
+echo "  Phase 2: Cross-Device Data Seeded"
+echo "=========================================="
+echo ""
+echo "  New items seeded (no content matching — each device creates its own copy):"
+echo "    - Cross-device URL (desktop + iOS): $CROSS_URL"
+echo "    - Cross-device tagset (desktop + iOS): shared, tagset"
+echo ""
+echo "  Expected after all syncs: 10 items total"
+echo "    6 original + 2 cross-device URLs + 2 cross-device tagsets"
+echo "    (No content dedup — each device's copy is a separate item)"
+echo ""
+echo "  Please tap 'Sync All' in the iOS simulator."
+echo "  Polling server for 10 items..."
+echo "=========================================="
+echo ""
+
+PHASE2_EXPECTED=10
+POLL_TIMEOUT=300
+POLL_INTERVAL=5
+POLL_ELAPSED=0
+
+echo "Waiting for server to have $PHASE2_EXPECTED items (polling every ${POLL_INTERVAL}s, timeout ${POLL_TIMEOUT}s)..."
+while [ "$POLL_ELAPSED" -lt "$POLL_TIMEOUT" ]; do
+    CURRENT=$(curl -sf "http://localhost:$PORT/items?$PROFILE_PARAM" \
+        -H "Authorization: Bearer $API_KEY" \
+        -H "X-Peek-Datastore-Version: 1" \
+        -H "X-Peek-Protocol-Version: 1" 2>/dev/null | python3 -c "import sys,json; print(len(json.load(sys.stdin)['items']))" 2>/dev/null || echo "0")
+    if [ "$CURRENT" -ge "$PHASE2_EXPECTED" ] 2>/dev/null; then
+        echo "  Server has $CURRENT items — Phase 2 sync detected!"
+        break
+    fi
+    echo "  ... $CURRENT / $PHASE2_EXPECTED items (${POLL_ELAPSED}s elapsed)"
+    sleep "$POLL_INTERVAL"
+    POLL_ELAPSED=$(($POLL_ELAPSED + $POLL_INTERVAL))
+done
+
+if [ "$POLL_ELAPSED" -ge "$POLL_TIMEOUT" ]; then
+    echo "  TIMEOUT: Server still has $CURRENT items after ${POLL_TIMEOUT}s"
+    echo "  Proceeding with verification anyway..."
+fi
+
+sleep 2
+
+# --- Step 16: Trigger desktop re-sync (automated) ---
+
+echo ""
+echo "Step 16: Triggering desktop re-sync..."
+cd "$PROJECT_DIR"
+PROFILE="$DESKTOP_PROFILE" SERVER_URL="$SERVER_URL" API_KEY="$API_KEY" SERVER_PROFILE_ID="$SERVER_PROFILE_ID" SYNC_MODE=full electron scripts/preconfigure-sync.mjs 2>&1 | grep -E "(Full sync|Pulled|Pushed|sync)"
+
+# --- Step 17: Verify 10 items on all platforms ---
+
+echo ""
+echo "=========================================="
+echo "  Phase 2 Verification"
+echo "=========================================="
+
+# --- 17a: Server item count ---
+SERVER_P2=$(curl -sf "http://localhost:$PORT/items?$PROFILE_PARAM" \
+    -H "Authorization: Bearer $API_KEY" \
+    -H "X-Peek-Datastore-Version: 1" \
+    -H "X-Peek-Protocol-Version: 1")
+
+SERVER_P2_COUNT=$(echo "$SERVER_P2" | python3 -c "import sys,json; print(len(json.load(sys.stdin)['items']))")
+echo ""
+echo "  SERVER: $SERVER_P2_COUNT / $PHASE2_EXPECTED items"
+if [ "$SERVER_P2_COUNT" -eq "$PHASE2_EXPECTED" ]; then
+    echo "    PASS"
+else
+    echo "    FAIL (expected $PHASE2_EXPECTED)"
+    PHASE2_PASS=false
+fi
+
+# --- 17b: Desktop item count ---
+DESKTOP_P2_COUNT=$(sqlite3 "$DESKTOP_DB" "SELECT COUNT(*) FROM items WHERE deletedAt = 0;")
+echo ""
+echo "  DESKTOP: $DESKTOP_P2_COUNT / $PHASE2_EXPECTED items"
+if [ "$DESKTOP_P2_COUNT" -eq "$PHASE2_EXPECTED" ]; then
+    echo "    PASS"
+else
+    echo "    FAIL (expected $PHASE2_EXPECTED)"
+    PHASE2_PASS=false
+fi
+
+# --- 17c: iOS item count ---
+IOS_P2_COUNT=$(sqlite3 "$IOS_DB" "SELECT COUNT(*) FROM items WHERE deleted_at IS NULL;")
+echo ""
+echo "  iOS: $IOS_P2_COUNT / $PHASE2_EXPECTED items"
+if [ "$IOS_P2_COUNT" -eq "$PHASE2_EXPECTED" ]; then
+    echo "    PASS"
+else
+    echo "    FAIL (expected $PHASE2_EXPECTED)"
+    PHASE2_PASS=false
+fi
+
+# --- 17d: Cross-device URL appears twice (one from each device, no content dedup) ---
+echo ""
+echo "  Checking cross-device URL count..."
+echo "$SERVER_P2" | python3 -c "
+import sys, json
+items = json.load(sys.stdin)['items']
+cross_dev = [i for i in items if (i.get('content','') or '') == 'https://example.com/cross-device-url']
+if len(cross_dev) == 2:
+    print('    PASS: cross-device URL appears twice (one per device, no content dedup)')
+else:
+    print(f'    FAIL: cross-device URL appears {len(cross_dev)} times (expected 2)')
+    sys.exit(1)
+" || PHASE2_PASS=false
+
+# --- 17e: Cross-device tagsets appear twice (no content dedup) ---
+echo ""
+echo "  Checking cross-device tagset count..."
+echo "$SERVER_P2" | python3 -c "
+import sys, json
+items = json.load(sys.stdin)['items']
+tagsets = [i for i in items if i.get('type') == 'tagset']
+shared_tagsets = []
+for ts in tagsets:
+    raw_tags = ts.get('tags', [])
+    tag_names = sorted(t if isinstance(t, str) else (t.get('name','') or t.get('slug','')) for t in raw_tags)
+    if tag_names == ['shared', 'tagset']:
+        shared_tagsets.append(ts)
+if len(shared_tagsets) == 2:
+    print('    PASS: shared/tagset tagsets appear twice (one per device, no content dedup)')
+else:
+    print(f'    FAIL: shared/tagset tagsets appear {len(shared_tagsets)} times (expected 2)')
+    sys.exit(1)
+" || PHASE2_PASS=false
+
+# --- List all server items for debugging ---
+echo ""
+echo "  All server items:"
+echo "$SERVER_P2" | python3 -c "
+import sys, json
+items = json.load(sys.stdin)['items']
+for item in items:
+    c = item.get('content','') or item.get('url','') or ''
+    raw_tags = item.get('tags', [])
+    tags = ', '.join(t if isinstance(t, str) else (t.get('name','') or t.get('slug','')) for t in raw_tags)
+    print(f'    - {item[\"type\"]}: {c[:60]}  [{tags}]')
+"
+
+# --- Step 18: Re-sync stability (automated) ---
+
+echo ""
+echo "Step 18: Re-sync stability check..."
+cd "$PROJECT_DIR"
+RESYNC_OUTPUT=$(PROFILE="$DESKTOP_PROFILE" SERVER_URL="$SERVER_URL" API_KEY="$API_KEY" SERVER_PROFILE_ID="$SERVER_PROFILE_ID" SYNC_MODE=full electron scripts/preconfigure-sync.mjs 2>&1)
+echo "$RESYNC_OUTPUT" | grep -E "(Full sync|Pulled|Pushed|sync)" || true
+
+# Verify counts unchanged
+DESKTOP_RESYNC=$(sqlite3 "$DESKTOP_DB" "SELECT COUNT(*) FROM items WHERE deletedAt = 0;")
+echo "  Desktop items after re-sync: $DESKTOP_RESYNC"
+if [ "$DESKTOP_RESYNC" -eq "$PHASE2_EXPECTED" ]; then
+    echo "    PASS: Stable (no growth)"
+else
+    echo "    FAIL: Item count changed after re-sync (got $DESKTOP_RESYNC, expected $PHASE2_EXPECTED)"
+    PHASE2_PASS=false
+fi
+
+# --- Phase 2 Final Result ---
+
+echo ""
+echo "=========================================="
+if [ "$PHASE2_PASS" = true ]; then
+    echo "  PHASE 2 PASS: All sync dedup scenarios verified"
+    echo "  Total items: $PHASE2_EXPECTED (6 original + 2 cross-device URLs + 2 cross-device tagsets)"
+else
+    echo "  PHASE 2 FAIL (see above)"
+fi
+echo ""
+echo "  NOTE: Content matching removed. Each device creates its own items."
+echo "  NOTE: Delete sync not tested (known limitation — deleted items resurrect from server)"
+echo "=========================================="
+echo ""
+
+# --- Overall result ---
+echo ""
+echo "=========================================="
+if [ "$PASS" = true ] && [ "$PHASE2_PASS" = true ]; then
+    echo "  OVERALL RESULT: PASS (Phase 1 + Phase 2)"
+else
+    echo "  OVERALL RESULT: FAIL"
+    [ "$PASS" != true ] && echo "    Phase 1: FAIL"
+    [ "$PHASE2_PASS" != true ] && echo "    Phase 2: FAIL"
 fi
 echo "=========================================="
 echo ""

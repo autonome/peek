@@ -278,6 +278,11 @@ const createTableStatements = `
   CREATE INDEX IF NOT EXISTS idx_item_tags_itemId ON item_tags(itemId);
   CREATE INDEX IF NOT EXISTS idx_item_tags_tagId ON item_tags(tagId);
   CREATE UNIQUE INDEX IF NOT EXISTS idx_item_tags_unique ON item_tags(itemId, tagId);
+
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+  );
 `;
 
 // Module state

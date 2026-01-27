@@ -175,33 +175,6 @@ export function createMemoryAdapter() {
       return null;
     },
 
-    async findItemByContent(type, content) {
-      for (const item of items.values()) {
-        if (!item.deletedAt && item.type === type && item.content === content) {
-          return { ...item };
-        }
-      }
-      return null;
-    },
-
-    async findTagsetByTags(sortedTagNames) {
-      for (const item of items.values()) {
-        if (item.type !== 'tagset' || item.deletedAt) continue;
-        const tagIds = itemTags
-          .filter(l => l.itemId === item.id)
-          .map(l => l.tagId);
-        const names = tagIds
-          .map(id => tags.get(id)?.name)
-          .filter(Boolean)
-          .sort()
-          .join('\t');
-        if (names === sortedTagNames) {
-          return { ...item };
-        }
-      }
-      return null;
-    },
-
     async getAllTags() {
       return [...tags.values()].map(t => ({ ...t }));
     },

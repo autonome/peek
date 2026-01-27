@@ -331,7 +331,7 @@ describe('DataEngine: Tags', () => {
   });
 });
 
-// ==================== Data Engine: saveItem (Dedup) ====================
+// ==================== Data Engine: saveItem ====================
 
 describe('DataEngine: saveItem', () => {
   let adapter, data;
@@ -360,22 +360,17 @@ describe('DataEngine: saveItem', () => {
     assert.deepStrictEqual(names, ['demo', 'test']);
   });
 
-  it('should deduplicate URLs by content', async () => {
+  it('should create separate items for same URL content (no content dedup)', async () => {
     const { id: id1 } = await data.saveItem('url', 'https://example.com', [
       'tag1',
     ]);
     const { id: id2 } = await data.saveItem('url', 'https://example.com', [
       'tag2',
     ]);
-    assert.strictEqual(id1, id2, 'should return same id for duplicate content');
+    assert.notStrictEqual(id1, id2, 'should create separate items without syncId');
 
     const items = await data.queryItems({ type: 'url' });
-    assert.strictEqual(items.length, 1);
-
-    // Tags should be replaced
-    const tags = await data.getItemTags(id1);
-    assert.strictEqual(tags.length, 1);
-    assert.strictEqual(tags[0].name, 'tag2');
+    assert.strictEqual(items.length, 2);
   });
 
   it('should save multiple different URLs', async () => {
@@ -396,13 +391,13 @@ describe('DataEngine: saveItem', () => {
     assert.strictEqual(tags.length, 2);
   });
 
-  it('should deduplicate texts by content', async () => {
+  it('should create separate items for same text content (no content dedup)', async () => {
     const { id: id1 } = await data.saveItem('text', 'Same content', ['tag1']);
     const { id: id2 } = await data.saveItem('text', 'Same content', ['tag2']);
-    assert.strictEqual(id1, id2);
+    assert.notStrictEqual(id1, id2);
 
     const items = await data.queryItems({ type: 'text' });
-    assert.strictEqual(items.length, 1);
+    assert.strictEqual(items.length, 2);
   });
 
   // --- Tagset saves ---
@@ -413,13 +408,13 @@ describe('DataEngine: saveItem', () => {
     assert.match(id, /^[0-9a-f-]{36}$/);
   });
 
-  it('should deduplicate tagsets with same tags', async () => {
+  it('should create separate items for tagsets with same tags (no content dedup)', async () => {
     const { id: id1 } = await data.saveItem('tagset', null, ['pushups', '10']);
     const { id: id2 } = await data.saveItem('tagset', null, ['pushups', '10']);
-    assert.strictEqual(id1, id2);
+    assert.notStrictEqual(id1, id2);
 
     const items = await data.queryItems({ type: 'tagset' });
-    assert.strictEqual(items.length, 1);
+    assert.strictEqual(items.length, 2);
   });
 
   it('should not deduplicate tagsets with different tags', async () => {
@@ -459,10 +454,10 @@ describe('DataEngine: saveItem', () => {
     assert.strictEqual(created, true);
   });
 
-  it('should report created=false for deduplicated items', async () => {
+  it('should report created=true for same content without syncId', async () => {
     await data.saveItem('url', 'https://example.com');
     const { created } = await data.saveItem('url', 'https://example.com');
-    assert.strictEqual(created, false);
+    assert.strictEqual(created, true);
   });
 });
 
@@ -511,10 +506,10 @@ describe('DataEngine: syncId Deduplication', () => {
     assert.strictEqual(items[0].content, 'https://new-url.com');
   });
 
-  it('should use content dedup when no sync_id', async () => {
+  it('should create separate items when no sync_id (no content dedup)', async () => {
     const { id: id1 } = await data.saveItem('url', 'https://example.com', ['tag1']);
     const { id: id2 } = await data.saveItem('url', 'https://example.com', ['tag2']);
-    assert.strictEqual(id1, id2);
+    assert.notStrictEqual(id1, id2);
   });
 
   it('should create new items for different sync_ids', async () => {
@@ -573,75 +568,6 @@ describe('DataEngine: syncId Deduplication', () => {
   });
 });
 
-// ==================== Data Engine: Deduplication ====================
-
-describe('DataEngine: deduplicateItems', () => {
-  let adapter, data;
-
-  beforeEach(async () => {
-    ({ adapter, data } = createTestEngine());
-    await adapter.open();
-  });
-
-  it('should remove duplicate content items', async () => {
-    // Bypass dedup by inserting directly
-    await adapter.insertItem({
-      id: 'item-1', type: 'url', content: 'https://dup.com',
-      metadata: null, syncId: '', syncSource: '', syncedAt: 0,
-      createdAt: 1000, updatedAt: 1000, deletedAt: 0,
-    });
-    await adapter.insertItem({
-      id: 'item-2', type: 'url', content: 'https://dup.com',
-      metadata: null, syncId: '', syncSource: '', syncedAt: 0,
-      createdAt: 2000, updatedAt: 2000, deletedAt: 0,
-    });
-
-    const result = await data.deduplicateItems();
-    assert.strictEqual(result.removedContent, 1);
-
-    const items = await data.queryItems();
-    assert.strictEqual(items.length, 1);
-    assert.strictEqual(items[0].id, 'item-1'); // kept earliest
-  });
-
-  it('should remove duplicate tagsets', async () => {
-    // Create two tagsets with same tags via direct insertion
-    const { tag: tag1 } = await data.getOrCreateTag('pushups');
-    const { tag: tag2 } = await data.getOrCreateTag('10');
-
-    await adapter.insertItem({
-      id: 'ts-1', type: 'tagset', content: null,
-      metadata: null, syncId: '', syncSource: '', syncedAt: 0,
-      createdAt: 1000, updatedAt: 1000, deletedAt: 0,
-    });
-    await adapter.tagItem('ts-1', tag1.id);
-    await adapter.tagItem('ts-1', tag2.id);
-
-    await adapter.insertItem({
-      id: 'ts-2', type: 'tagset', content: null,
-      metadata: null, syncId: '', syncSource: '', syncedAt: 0,
-      createdAt: 2000, updatedAt: 2000, deletedAt: 0,
-    });
-    await adapter.tagItem('ts-2', tag1.id);
-    await adapter.tagItem('ts-2', tag2.id);
-
-    const result = await data.deduplicateItems();
-    assert.strictEqual(result.removedTagsets, 1);
-
-    const items = await data.queryItems();
-    assert.strictEqual(items.length, 1);
-    assert.strictEqual(items[0].id, 'ts-1');
-  });
-
-  it('should return zero counts when no duplicates', async () => {
-    await data.saveItem('url', 'https://unique1.com');
-    await data.saveItem('url', 'https://unique2.com');
-
-    const result = await data.deduplicateItems();
-    assert.strictEqual(result.removedContent, 0);
-    assert.strictEqual(result.removedTagsets, 0);
-  });
-});
 
 // ==================== Data Engine: Settings ====================
 
@@ -1137,7 +1063,7 @@ describe('Memory Adapter', () => {
 // ==================== Integration: Full Workflow ====================
 
 describe('Integration: Full Workflow', () => {
-  it('should handle save → tag → query → dedup → sync lifecycle', async () => {
+  it('should handle save → tag → query → sync lifecycle', async () => {
     const serverItems = [];
     const { adapter, data, sync } = createSyncTestEngine(serverItems);
     await adapter.open();
@@ -1175,3 +1101,259 @@ describe('Integration: Full Workflow', () => {
     assert.strictEqual(status.pendingCount, 0);
   });
 });
+
+// ==================== better-sqlite3 Adapter ====================
+
+// Only run if better-sqlite3 is available (skip gracefully in environments without it)
+let Database;
+let betterSqliteWorks = false;
+try {
+  Database = (await import('better-sqlite3')).default;
+  // Test that the native module actually loads (may fail if compiled for Electron)
+  const testDb = new Database(':memory:');
+  testDb.close();
+  betterSqliteWorks = true;
+} catch {
+  Database = null;
+}
+
+if (betterSqliteWorks) {
+  const { createBetterSqliteAdapter } = await import('./adapters/better-sqlite3.js');
+
+  describe('BetterSqlite3 Adapter', () => {
+    let db, adapter;
+
+    beforeEach(() => {
+      db = new Database(':memory:');
+      adapter = createBetterSqliteAdapter(db);
+    });
+
+    it('should open and create schema', async () => {
+      await adapter.open();
+      const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
+      const tableNames = tables.map(t => t.name);
+      assert.ok(tableNames.includes('items'));
+      assert.ok(tableNames.includes('tags'));
+      assert.ok(tableNames.includes('item_tags'));
+      assert.ok(tableNames.includes('settings'));
+    });
+
+    it('should insert and get an item', async () => {
+      await adapter.open();
+      const item = {
+        id: 'test-1', type: 'url', content: 'https://example.com',
+        metadata: null, syncId: '', syncSource: '', syncedAt: 0,
+        createdAt: 1000, updatedAt: 1000, deletedAt: 0,
+      };
+      await adapter.insertItem(item);
+      const retrieved = await adapter.getItem('test-1');
+      assert.ok(retrieved);
+      assert.strictEqual(retrieved.content, 'https://example.com');
+    });
+
+    it('should not return soft-deleted items', async () => {
+      await adapter.open();
+      await adapter.insertItem({
+        id: 'del-1', type: 'url', content: 'https://deleted.com',
+        metadata: null, syncId: '', syncSource: '', syncedAt: 0,
+        createdAt: 1000, updatedAt: 1000, deletedAt: 2000,
+      });
+      const item = await adapter.getItem('del-1');
+      assert.strictEqual(item, null);
+    });
+
+    it('should update item fields', async () => {
+      await adapter.open();
+      await adapter.insertItem({
+        id: 'upd-1', type: 'text', content: 'original',
+        metadata: null, syncId: '', syncSource: '', syncedAt: 0,
+        createdAt: 1000, updatedAt: 1000, deletedAt: 0,
+      });
+      await adapter.updateItem('upd-1', { content: 'updated', updatedAt: 2000 });
+      const item = await adapter.getItem('upd-1');
+      assert.strictEqual(item.content, 'updated');
+      assert.strictEqual(item.updatedAt, 2000);
+    });
+
+    it('should soft-delete an item', async () => {
+      await adapter.open();
+      await adapter.insertItem({
+        id: 'sd-1', type: 'url', content: 'https://test.com',
+        metadata: null, syncId: '', syncSource: '', syncedAt: 0,
+        createdAt: 1000, updatedAt: 1000, deletedAt: 0,
+      });
+      await adapter.deleteItem('sd-1');
+      assert.strictEqual(await adapter.getItem('sd-1'), null);
+    });
+
+    it('should hard-delete an item and its tags', async () => {
+      await adapter.open();
+      await adapter.insertItem({
+        id: 'hd-1', type: 'url', content: 'https://test.com',
+        metadata: null, syncId: '', syncSource: '', syncedAt: 0,
+        createdAt: 1000, updatedAt: 1000, deletedAt: 0,
+      });
+      await adapter.insertTag({
+        id: 'tag-1', name: 'test', frequency: 1, lastUsedAt: 1000,
+        frecencyScore: 10, createdAt: 1000, updatedAt: 1000,
+      });
+      await adapter.tagItem('hd-1', 'tag-1');
+      await adapter.hardDeleteItem('hd-1');
+
+      // Item gone
+      const items = await adapter.getItems({ includeDeleted: true });
+      assert.strictEqual(items.length, 0);
+      // Tag links gone
+      const tags = await adapter.getItemTags('hd-1');
+      assert.strictEqual(tags.length, 0);
+    });
+
+    it('should manage tags', async () => {
+      await adapter.open();
+      await adapter.insertTag({
+        id: 'tag-a', name: 'Alpha', frequency: 1, lastUsedAt: 1000,
+        frecencyScore: 10, createdAt: 1000, updatedAt: 1000,
+      });
+      const byName = await adapter.getTagByName('alpha');
+      assert.ok(byName);
+      assert.strictEqual(byName.name, 'Alpha');
+
+      await adapter.updateTag('tag-a', { frequency: 5, updatedAt: 2000 });
+      const updated = await adapter.getTag('tag-a');
+      assert.strictEqual(updated.frequency, 5);
+    });
+
+    it('should manage item-tag associations', async () => {
+      await adapter.open();
+      await adapter.insertItem({
+        id: 'it-1', type: 'url', content: 'https://test.com',
+        metadata: null, syncId: '', syncSource: '', syncedAt: 0,
+        createdAt: 1000, updatedAt: 1000, deletedAt: 0,
+      });
+      await adapter.insertTag({
+        id: 'tag-b', name: 'Beta', frequency: 1, lastUsedAt: 1000,
+        frecencyScore: 10, createdAt: 1000, updatedAt: 1000,
+      });
+
+      await adapter.tagItem('it-1', 'tag-b');
+      let tags = await adapter.getItemTags('it-1');
+      assert.strictEqual(tags.length, 1);
+      assert.strictEqual(tags[0].name, 'Beta');
+
+      // Duplicate tagItem should be ignored
+      await adapter.tagItem('it-1', 'tag-b');
+      tags = await adapter.getItemTags('it-1');
+      assert.strictEqual(tags.length, 1);
+
+      await adapter.untagItem('it-1', 'tag-b');
+      tags = await adapter.getItemTags('it-1');
+      assert.strictEqual(tags.length, 0);
+    });
+
+    it('should clear all tags for an item', async () => {
+      await adapter.open();
+      await adapter.insertItem({
+        id: 'ct-1', type: 'url', content: 'https://test.com',
+        metadata: null, syncId: '', syncSource: '', syncedAt: 0,
+        createdAt: 1000, updatedAt: 1000, deletedAt: 0,
+      });
+      await adapter.insertTag({
+        id: 'tag-c1', name: 'C1', frequency: 1, lastUsedAt: 1000,
+        frecencyScore: 10, createdAt: 1000, updatedAt: 1000,
+      });
+      await adapter.insertTag({
+        id: 'tag-c2', name: 'C2', frequency: 1, lastUsedAt: 1000,
+        frecencyScore: 10, createdAt: 1000, updatedAt: 1000,
+      });
+      await adapter.tagItem('ct-1', 'tag-c1');
+      await adapter.tagItem('ct-1', 'tag-c2');
+      await adapter.clearItemTags('ct-1');
+      const tags = await adapter.getItemTags('ct-1');
+      assert.strictEqual(tags.length, 0);
+    });
+
+    it('should manage settings', async () => {
+      await adapter.open();
+      assert.strictEqual(await adapter.getSetting('missing'), null);
+      await adapter.setSetting('key1', 'value1');
+      assert.strictEqual(await adapter.getSetting('key1'), 'value1');
+      await adapter.setSetting('key1', 'value2');
+      assert.strictEqual(await adapter.getSetting('key1'), 'value2');
+    });
+
+    it('should find items by syncId', async () => {
+      await adapter.open();
+      await adapter.insertItem({
+        id: 'local-1', type: 'url', content: 'https://test.com',
+        metadata: null, syncId: 'remote-1', syncSource: 'server', syncedAt: 1000,
+        createdAt: 1000, updatedAt: 1000, deletedAt: 0,
+      });
+
+      // By syncId field
+      const bySync = await adapter.findItemBySyncId('remote-1');
+      assert.ok(bySync);
+      assert.strictEqual(bySync.id, 'local-1');
+
+      // By direct ID
+      const byId = await adapter.findItemBySyncId('local-1');
+      assert.ok(byId);
+      assert.strictEqual(byId.id, 'local-1');
+
+      // Not found
+      const missing = await adapter.findItemBySyncId('nonexistent');
+      assert.strictEqual(missing, null);
+    });
+
+    it('should not find deleted items by syncId', async () => {
+      await adapter.open();
+      await adapter.insertItem({
+        id: 'del-sync', type: 'url', content: 'https://deleted.com',
+        metadata: null, syncId: 'del-remote', syncSource: '', syncedAt: 0,
+        createdAt: 1000, updatedAt: 1000, deletedAt: 2000,
+      });
+      assert.strictEqual(await adapter.findItemBySyncId('del-remote'), null);
+      assert.strictEqual(await adapter.findItemBySyncId('del-sync'), null);
+    });
+
+    it('should filter items by type and since', async () => {
+      await adapter.open();
+      await adapter.insertItem({
+        id: 'f-1', type: 'url', content: 'https://a.com',
+        metadata: null, syncId: '', syncSource: '', syncedAt: 0,
+        createdAt: 1000, updatedAt: 1000, deletedAt: 0,
+      });
+      await adapter.insertItem({
+        id: 'f-2', type: 'text', content: 'note',
+        metadata: null, syncId: '', syncSource: '', syncedAt: 0,
+        createdAt: 2000, updatedAt: 2000, deletedAt: 0,
+      });
+      await adapter.insertItem({
+        id: 'f-3', type: 'url', content: 'https://b.com',
+        metadata: null, syncId: '', syncSource: '', syncedAt: 0,
+        createdAt: 3000, updatedAt: 3000, deletedAt: 0,
+      });
+
+      const urls = await adapter.getItems({ type: 'url' });
+      assert.strictEqual(urls.length, 2);
+
+      const since = await adapter.getItems({ since: 1500 });
+      assert.strictEqual(since.length, 2);
+    });
+
+    it('should work with DataEngine for full workflow', async () => {
+      await adapter.open();
+      const { createEngine } = await import('./index.js');
+      const { data } = createEngine(adapter);
+
+      const { id } = await data.saveItem('url', 'https://example.com', ['test']);
+      assert.ok(id);
+
+      const item = await data.getItem(id);
+      assert.strictEqual(item.content, 'https://example.com');
+
+      const tags = await data.getItemTags(id);
+      assert.strictEqual(tags.length, 1);
+      assert.strictEqual(tags[0].name, 'test');
+    });
+  });
+}

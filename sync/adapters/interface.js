@@ -171,19 +171,6 @@
  */
 
 /**
- * @method findItemByContent
- * @param {string} type
- * @param {string} content
- * @returns {Promise<Item|null>} - First non-deleted match
- */
-
-/**
- * @method findTagsetByTags
- * @param {string} sortedTagNames - Tab-separated sorted tag names
- * @returns {Promise<Item|null>} - First tagset item with matching tag set
- */
-
-/**
  * @method getAllTags
  * @returns {Promise<Tag[]>}
  */

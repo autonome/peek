@@ -470,21 +470,27 @@ app.patch("/items/:id/tags", async (c) => {
 app.get("/items/since/:timestamp", (c) => {
   const userId = c.get("userId");
   const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
-  const timestamp = c.req.param("timestamp");
+  const rawTimestamp = c.req.param("timestamp");
   const type = c.req.query("type");
 
-  // Validate timestamp format (ISO string)
-  const date = new Date(timestamp);
-  if (isNaN(date.getTime())) {
-    return c.json({ error: "Invalid timestamp format. Use ISO 8601 format." }, 400);
+  // Accept ISO 8601 string or Unix ms integer, convert to Unix ms for DB query
+  let unixMs;
+  if (/^\d+$/.test(rawTimestamp)) {
+    unixMs = parseInt(rawTimestamp, 10);
+  } else {
+    const date = new Date(rawTimestamp);
+    if (isNaN(date.getTime())) {
+      return c.json({ error: "Invalid timestamp format. Use ISO 8601 or Unix ms." }, 400);
+    }
+    unixMs = date.getTime();
   }
 
   if (type && !["url", "text", "tagset", "image"].includes(type)) {
     return c.json({ error: "type must be 'url', 'text', 'tagset', or 'image'" }, 400);
   }
 
-  const items = db.getItemsSince(userId, timestamp, type || null, profileId);
-  return c.json({ items, since: timestamp });
+  const items = db.getItemsSince(userId, unixMs, type || null, profileId);
+  return c.json({ items, since: rawTimestamp });
 });
 
 // Get a single item by ID
@@ -499,16 +505,6 @@ app.get("/items/:id", (c) => {
   }
 
   return c.json({ item });
-});
-
-// === Admin endpoints ===
-
-// POST /admin/dedup - Remove duplicate items from the database
-app.post("/admin/dedup", (c) => {
-  const userId = c.get("userId");
-  const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
-  const result = db.deduplicateItems(userId, profileId);
-  return c.json({ success: true, ...result });
 });
 
 // === Backup endpoints ===

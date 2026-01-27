@@ -32,8 +32,10 @@ if (!PROFILE || !SERVER_URL || !API_KEY) {
 app.whenReady().then(async () => {
   // Import compiled modules (after app is ready)
   const datastore = await import('../dist/backend/electron/datastore.js');
-  const sync = await import('../dist/backend/electron/sync.js');
   const profiles = await import('../dist/backend/electron/profiles.js');
+
+  // Import sync engine
+  const { createEngine, createBetterSqliteAdapter } = await import('../sync/index.js');
 
   // Paths
   const userDataPath = join(homedir(), 'Library', 'Application Support', 'Peek');
@@ -75,30 +77,45 @@ app.whenReady().then(async () => {
     console.log(`  Could not set active profile: ${error.message}`);
   }
 
-  // Initialize datastore
-  datastore.initDatabase(dbPath);
+  // Initialize datastore (creates schema including settings table)
+  const dbInstance = datastore.initDatabase(dbPath);
   console.log('  Database initialized');
 
   // Enable sync for this profile
   const activeProfile = profiles.getActiveProfile();
   profiles.enableSync(activeProfile.id, API_KEY, process.env.SERVER_PROFILE_ID || 'default');
 
-  // Set server URL globally
-  sync.setSyncConfig({
-    serverUrl: SERVER_URL,
-    apiKey: API_KEY,
-    lastSyncTime: 0,
-    autoSync: false,
+  // Create sync engine with better-sqlite3 adapter on the same db instance
+  const adapter = createBetterSqliteAdapter(dbInstance);
+  await adapter.open();
+
+  const { sync } = createEngine(adapter, {
+    getConfig: () => ({
+      serverUrl: SERVER_URL,
+      apiKey: API_KEY,
+      serverProfileId: process.env.SERVER_PROFILE_ID || 'default',
+      lastSyncTime: 0,
+    }),
+    setConfig: async (updates) => {
+      if (updates.lastSyncTime !== undefined) {
+        try {
+          profiles.updateLastSyncTime(activeProfile.id, updates.lastSyncTime);
+        } catch (error) {
+          console.log(`  Could not update lastSyncTime: ${error.message}`);
+        }
+      }
+    },
   });
-  console.log('  Sync configured');
+
+  console.log('  Sync engine configured');
 
   // Run sync (full bidirectional if SYNC_MODE=full, otherwise pull-only)
   try {
     if (process.env.SYNC_MODE === 'full') {
-      const result = await sync.syncAll(SERVER_URL, API_KEY);
+      const result = await sync.syncAll();
       console.log(`  Full sync: ${result.pulled} pulled, ${result.pushed} pushed`);
     } else {
-      const result = await sync.pullFromServer(SERVER_URL, API_KEY);
+      const result = await sync.pullFromServer();
       console.log(`  Pulled ${result.pulled} items from server`);
     }
   } catch (error) {

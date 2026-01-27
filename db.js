@@ -172,7 +172,37 @@ function saveItem(userId, type, content, tags = [], metadata = null, syncId = nu
     }
   }
 
-  // No content-based dedup — always create new item if no syncId match
+  // Non-sync path: content-based dedup (when no syncId provided)
+  if (!syncId && !itemId) {
+    if (content) {
+      const existing = conn.prepare(
+        "SELECT id FROM items WHERE type = ? AND content = ? AND deletedAt = 0"
+      ).get(type, content);
+      if (existing) {
+        itemId = existing.id;
+        conn.prepare("UPDATE items SET metadata = COALESCE(?, metadata), updatedAt = ? WHERE id = ?")
+          .run(metadataJson, timestamp, itemId);
+        conn.prepare("DELETE FROM item_tags WHERE itemId = ?").run(itemId);
+      }
+    } else if (type === 'tagset' && tags.length > 0) {
+      const sortedNewTags = [...tags].sort().join('\0');
+      const existingTagsets = conn.prepare(
+        "SELECT id FROM items WHERE type = 'tagset' AND deletedAt = 0"
+      ).all();
+      for (const ts of existingTagsets) {
+        const existingTags = conn.prepare(
+          "SELECT t.name FROM tags t JOIN item_tags it ON t.id = it.tagId WHERE it.itemId = ?"
+        ).all(ts.id).map(t => t.name).sort().join('\0');
+        if (existingTags === sortedNewTags) {
+          itemId = ts.id;
+          conn.prepare("UPDATE items SET metadata = COALESCE(?, metadata), updatedAt = ? WHERE id = ?")
+            .run(metadataJson, timestamp, itemId);
+          conn.prepare("DELETE FROM item_tags WHERE itemId = ?").run(itemId);
+          break;
+        }
+      }
+    }
+  }
 
   // Create new item if no match found
   if (!itemId) {

@@ -732,8 +732,12 @@ migrateFromLegacyApiKey();
 migrateUserDataToProfiles();
 users.migrateProfileFoldersToUuid();
 
-// Run initial backup check on startup
-backup.checkAndRunDailyBackups();
+// Force backup of all users on every deploy/restart (before serving requests)
+backup.createAllBackups().then(() => {
+  console.log("Pre-deploy backup complete");
+}).catch((err) => {
+  console.error("Pre-deploy backup failed:", err);
+});
 
 // Set up hourly backup check (runs if >24h since last backup)
 setInterval(() => backup.checkAndRunDailyBackups(), 60 * 60 * 1000);

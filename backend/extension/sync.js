@@ -14,17 +14,18 @@ import {
   getOrCreateTag,
   tagItem,
   getRawDb,
+  getRow,
+  setRow,
 } from './datastore.js';
 import { getCurrentProfile, getSyncConfig as getProfileSyncConfig, updateLastSyncTime } from './profiles.js';
 
 const SERVER_URL_KEY = 'peek_sync_serverUrl';
 const AUTO_SYNC_KEY = 'peek_sync_autoSync';
-const DEFAULT_SERVER_URL = 'https://peek-node.up.railway.app';
 
 // ==================== Config ====================
 
 export async function getSyncConfig() {
-  const urlData = await chrome.storage.local.get({ [SERVER_URL_KEY]: DEFAULT_SERVER_URL });
+  const urlData = await chrome.storage.local.get({ [SERVER_URL_KEY]: '' });
   const autoData = await chrome.storage.local.get({ [AUTO_SYNC_KEY]: false });
   const serverUrl = urlData[SERVER_URL_KEY];
   const autoSync = autoData[AUTO_SYNC_KEY];
@@ -56,7 +57,7 @@ export async function setSyncConfig(config) {
   if (config.autoSync !== undefined) {
     await chrome.storage.local.set({ [AUTO_SYNC_KEY]: config.autoSync });
   }
-  // apiKey and serverProfileSlug are stored on the profile via profiles.enableSync
+  // apiKey and serverProfileId are stored on the profile via profiles.enableSync
   return { success: true };
 }
 
@@ -143,7 +144,7 @@ export async function pullFromServer(options = {}) {
   if (since && since > 0) {
     path = `/items/since/${toISOString(since)}`;
   }
-  path += `?profile=${encodeURIComponent(profile.id)}&slug=${encodeURIComponent(profileSyncConfig.serverProfileSlug || profile.slug)}`;
+  path += `?profile=${encodeURIComponent(profileSyncConfig.serverProfileId || profile.id)}`;
 
   const response = await serverFetch(config.serverUrl, config.apiKey, path);
   const serverItems = response.items || [];
@@ -333,7 +334,7 @@ export async function pushToServer(options = {}) {
       };
       if (metadata) body.metadata = metadata;
 
-      const path = `/items?profile=${encodeURIComponent(profile.id)}&slug=${encodeURIComponent(profileSyncConfig.serverProfileSlug || profile.slug)}`;
+      const path = `/items?profile=${encodeURIComponent(profileSyncConfig.serverProfileId || profile.id)}`;
       const response = await serverFetch(
         config.serverUrl,
         config.apiKey,
@@ -369,14 +370,140 @@ export async function pushToServer(options = {}) {
   return { success: true, data: { pushed, failed } };
 }
 
+// ==================== Server-Change Detection ====================
+
+export async function resetSyncStateIfServerChanged(serverUrl) {
+  const profileResult = await getCurrentProfile();
+  if (!profileResult.success || !profileResult.data) return false;
+
+  const profile = profileResult.data;
+  const syncConfigResult = await getProfileSyncConfig(profile.id);
+  const currentProfileId = syncConfigResult.data?.serverProfileId || '';
+
+  let storedUrl = '';
+  let storedProfileId = '';
+
+  try {
+    const urlRow = await getRow('extension_settings', 'sync-lastSyncServerUrl');
+    if (urlRow.data?.value) storedUrl = JSON.parse(urlRow.data.value);
+  } catch { /* first sync */ }
+
+  try {
+    const pidRow = await getRow('extension_settings', 'sync-lastSyncProfileId');
+    if (pidRow.data?.value) storedProfileId = JSON.parse(pidRow.data.value);
+  } catch { /* first sync */ }
+
+  // No stored values: check if items were synced to an unknown previous server
+  if (!storedUrl && !storedProfileId) {
+    const allItemsResult = await queryItems({ includeDeleted: false });
+    const allItems = allItemsResult.data || [];
+    const serverItems = allItems.filter(i => i.syncSource === 'server');
+
+    if (serverItems.length > 0) {
+      // Reset sync markers on all server-synced items
+      const db = getRawDb();
+      const txn = db.transaction('items', 'readwrite');
+      const store = txn.objectStore('items');
+      for (const item of serverItems) {
+        const req = store.get(item.id);
+        req.onsuccess = () => {
+          const row = req.result;
+          if (row) {
+            row.syncSource = '';
+            row.syncedAt = 0;
+            row.syncId = '';
+            store.put(row);
+          }
+        };
+      }
+      await new Promise((resolve, reject) => {
+        txn.oncomplete = resolve;
+        txn.onerror = () => reject(txn.error);
+      });
+      await updateLastSyncTime(profile.id, 0);
+      return true;
+    }
+    return false;
+  }
+
+  const urlChanged = storedUrl && storedUrl !== serverUrl;
+  const profileChanged = storedProfileId && storedProfileId !== currentProfileId;
+
+  if (urlChanged || profileChanged) {
+    // Reset sync markers on all items
+    const allItemsResult = await queryItems({ includeDeleted: false });
+    const allItems = allItemsResult.data || [];
+    const db = getRawDb();
+    const txn = db.transaction('items', 'readwrite');
+    const store = txn.objectStore('items');
+    for (const item of allItems) {
+      const req = store.get(item.id);
+      req.onsuccess = () => {
+        const row = req.result;
+        if (row) {
+          row.syncSource = '';
+          row.syncedAt = 0;
+          row.syncId = '';
+          store.put(row);
+        }
+      };
+    }
+    await new Promise((resolve, reject) => {
+      txn.oncomplete = resolve;
+      txn.onerror = () => reject(txn.error);
+    });
+    await updateLastSyncTime(profile.id, 0);
+    return true;
+  }
+
+  return false;
+}
+
+export async function saveSyncServerConfig(serverUrl) {
+  const profileResult = await getCurrentProfile();
+  if (!profileResult.success || !profileResult.data) return;
+
+  const profile = profileResult.data;
+  const syncConfigResult = await getProfileSyncConfig(profile.id);
+  const currentProfileId = syncConfigResult.data?.serverProfileId || '';
+
+  const now = Date.now();
+
+  await setRow('extension_settings', 'sync-lastSyncServerUrl', {
+    extensionId: 'sync',
+    key: 'lastSyncServerUrl',
+    value: JSON.stringify(serverUrl),
+    updatedAt: now,
+  });
+
+  await setRow('extension_settings', 'sync-lastSyncProfileId', {
+    extensionId: 'sync',
+    key: 'lastSyncProfileId',
+    value: JSON.stringify(currentProfileId),
+    updatedAt: now,
+  });
+}
+
 // ==================== Full Sync ====================
 
 export async function syncAll() {
+  const configResult = await getSyncConfig();
+  const config = configResult.data;
+
+  if (config.serverUrl) {
+    await resetSyncStateIfServerChanged(config.serverUrl);
+  }
+
   const startTime = Date.now();
 
   const pullResult = await pullFromServer();
   if (!pullResult.success) {
     return pullResult;
+  }
+
+  // Save server config after successful pull
+  if (config.serverUrl) {
+    await saveSyncServerConfig(config.serverUrl);
   }
 
   const pushResult = await pushToServer();

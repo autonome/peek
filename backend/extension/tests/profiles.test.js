@@ -171,7 +171,7 @@ describe('profiles', () => {
 
       const configResult = await getSyncConfig(profile.id);
       assert.equal(configResult.data.apiKey, 'my-api-key');
-      assert.equal(configResult.data.serverProfileSlug, 'default');
+      assert.equal(configResult.data.serverProfileId, 'default');
     });
   });
 

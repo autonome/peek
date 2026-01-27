@@ -46,7 +46,7 @@ export async function ensureDefaultProfile() {
       slug: 'default',
       syncEnabled: false,
       apiKey: null,
-      serverProfileSlug: null,
+      serverProfileId: null,
       lastSyncAt: null,
       createdAt: timestamp,
       lastUsedAt: timestamp,
@@ -80,7 +80,7 @@ export async function createProfile(name) {
     slug,
     syncEnabled: false,
     apiKey: null,
-    serverProfileSlug: null,
+    serverProfileId: null,
     lastSyncAt: null,
     createdAt: timestamp,
     lastUsedAt: timestamp,
@@ -164,7 +164,7 @@ export async function deleteProfile(id) {
   return { success: true };
 }
 
-export async function enableSync(profileId, apiKey, serverProfileSlug) {
+export async function enableSync(profileId, apiKey, serverProfileId) {
   const profiles = await getProfiles();
   const profile = profiles.find(p => p.id === profileId);
 
@@ -174,7 +174,7 @@ export async function enableSync(profileId, apiKey, serverProfileSlug) {
 
   profile.syncEnabled = true;
   profile.apiKey = apiKey;
-  profile.serverProfileSlug = serverProfileSlug;
+  profile.serverProfileId = serverProfileId;
   await saveProfiles(profiles);
 
   return { success: true };
@@ -190,7 +190,7 @@ export async function disableSync(profileId) {
 
   profile.syncEnabled = false;
   profile.apiKey = null;
-  profile.serverProfileSlug = null;
+  profile.serverProfileId = null;
   profile.lastSyncAt = null;
   await saveProfiles(profiles);
 
@@ -201,7 +201,7 @@ export async function getSyncConfig(profileId) {
   const profiles = await getProfiles();
   const profile = profiles.find(p => p.id === profileId);
 
-  if (!profile || !profile.syncEnabled || !profile.apiKey || !profile.serverProfileSlug) {
+  if (!profile || !profile.syncEnabled || !profile.apiKey || !profile.serverProfileId) {
     return { success: true, data: null };
   }
 
@@ -209,7 +209,7 @@ export async function getSyncConfig(profileId) {
     success: true,
     data: {
       apiKey: profile.apiKey,
-      serverProfileSlug: profile.serverProfileSlug,
+      serverProfileId: profile.serverProfileId,
     },
   };
 }

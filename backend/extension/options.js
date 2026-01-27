@@ -43,14 +43,14 @@ async function loadConfig() {
   if (profileResult.success && profileResult.data) {
     const profile = profileResult.data;
     document.getElementById('api-key').value = profile.apiKey || '';
-    document.getElementById('server-profile-slug').value = profile.serverProfileSlug || 'default';
+    document.getElementById('server-profile-id').value = profile.serverProfileId || '';
   }
 }
 
 async function saveConfig() {
   const serverUrl = document.getElementById('server-url').value.trim();
   const apiKey = document.getElementById('api-key').value.trim();
-  const serverProfileSlug = document.getElementById('server-profile-slug').value.trim() || 'default';
+  const serverProfileId = document.getElementById('server-profile-id').value.trim();
   const autoSync = document.getElementById('auto-sync').checked;
 
   const statusEl = document.getElementById('config-status');
@@ -64,7 +64,7 @@ async function saveConfig() {
     if (profileResult.success && profileResult.data) {
       const profile = profileResult.data;
       if (apiKey) {
-        await app.profiles.enableSync(profile.id, apiKey, serverProfileSlug);
+        await app.profiles.enableSync(profile.id, apiKey, serverProfileId);
       } else {
         await app.profiles.disableSync(profile.id);
       }

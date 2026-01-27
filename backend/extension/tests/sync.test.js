@@ -1,9 +1,9 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { resetMocks } from './helpers/mocks.js';
-import { openDatabase, closeDatabase, addItem, getItem, queryItems, getRawDb } from '../datastore.js';
+import { openDatabase, closeDatabase, addItem, getItem, queryItems, getRawDb, getRow } from '../datastore.js';
 import { ensureDefaultProfile, getCurrentProfile, enableSync } from '../profiles.js';
-import { getSyncConfig, setSyncConfig, pullFromServer, pushToServer, syncAll, getSyncStatus } from '../sync.js';
+import { getSyncConfig, setSyncConfig, pullFromServer, pushToServer, syncAll, getSyncStatus, resetSyncStateIfServerChanged, saveSyncServerConfig } from '../sync.js';
 
 // Save and restore original fetch
 const originalFetch = globalThis.fetch;
@@ -279,6 +279,77 @@ describe('sync', () => {
 
       const result = await getSyncStatus();
       assert.equal(result.data.pendingCount, 2);
+    });
+  });
+
+  // ==================== Server-Change Detection ====================
+
+  describe('resetSyncStateIfServerChanged', () => {
+    it('should reset sync markers when server URL changes', async () => {
+      // Add an item synced from server
+      await addItem('text', {
+        content: 'Synced item',
+        syncId: 'server-sc-1',
+        syncSource: 'server',
+      });
+
+      // Save current server config
+      await saveSyncServerConfig('https://test-server.example.com');
+
+      // Verify the saved config
+      const urlRow = await getRow('extension_settings', 'sync-lastSyncServerUrl');
+      assert.equal(JSON.parse(urlRow.data.value), 'https://test-server.example.com');
+
+      // Change server URL and detect the change
+      await setSyncConfig({ serverUrl: 'https://new-server.example.com' });
+      const changed = await resetSyncStateIfServerChanged('https://new-server.example.com');
+      assert.equal(changed, true);
+
+      // Verify sync markers were reset
+      const items = (await queryItems()).data;
+      const syncedItem = items.find(i => i.content === 'Synced item');
+      assert.equal(syncedItem.syncSource, '');
+      assert.equal(syncedItem.syncedAt, 0);
+      assert.equal(syncedItem.syncId, '');
+    });
+
+    it('should not reset when server URL is unchanged', async () => {
+      await addItem('text', {
+        content: 'Stable item',
+        syncId: 'server-sc-2',
+        syncSource: 'server',
+      });
+
+      // Save config with same URL
+      await saveSyncServerConfig('https://test-server.example.com');
+
+      // Check with same URL
+      const changed = await resetSyncStateIfServerChanged('https://test-server.example.com');
+      assert.equal(changed, false);
+
+      // Verify sync markers are intact
+      const items = (await queryItems()).data;
+      const item = items.find(i => i.content === 'Stable item');
+      assert.equal(item.syncSource, 'server');
+      assert.equal(item.syncId, 'server-sc-2');
+    });
+
+    it('should reset items synced to unknown server on first run', async () => {
+      // Add server-synced items without any stored config (simulates upgrade)
+      await addItem('text', {
+        content: 'Legacy item',
+        syncId: 'server-legacy-1',
+        syncSource: 'server',
+      });
+
+      // No stored config yet — should detect orphaned server items and reset
+      const changed = await resetSyncStateIfServerChanged('https://test-server.example.com');
+      assert.equal(changed, true);
+
+      const items = (await queryItems()).data;
+      const item = items.find(i => i.content === 'Legacy item');
+      assert.equal(item.syncSource, '');
+      assert.equal(item.syncId, '');
     });
   });
 });

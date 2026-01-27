@@ -107,6 +107,17 @@ async function refreshDiagnostics() {
 
     document.getElementById('diag-ds-version').textContent = app.version.datastore;
     document.getElementById('diag-proto-version').textContent = app.version.protocol;
+
+    const envResult = await app.environment.get();
+    if (envResult) {
+      document.getElementById('diag-device-id').textContent = envResult.deviceId || '--';
+      document.getElementById('diag-browser').textContent =
+        [envResult.browser, envResult.browserVersion].filter(Boolean).join(' ');
+      document.getElementById('diag-build-id').textContent = envResult.browserBuildId || '--';
+      document.getElementById('diag-os-arch').textContent =
+        [envResult.os, envResult.arch].filter(Boolean).join(' / ') || envResult.platform || '--';
+      document.getElementById('diag-ext-version').textContent = envResult.extensionVersion || '--';
+    }
   } catch (error) {
     console.error('[options] Diagnostics error:', error);
   }

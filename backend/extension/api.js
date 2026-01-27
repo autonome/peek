@@ -9,6 +9,7 @@ import * as datastore from './datastore.js';
 import * as sync from './sync.js';
 import * as profiles from './profiles.js';
 import { DATASTORE_VERSION, PROTOCOL_VERSION } from './version.js';
+import { getEnvironment } from './environment.js';
 
 // Simple pub/sub
 const subscribers = new Map();
@@ -71,6 +72,10 @@ const app = {
     disableSync: (id) => profiles.disableSync(id),
     getSyncConfig: (id) => profiles.getSyncConfig(id),
     updateLastSyncTime: (id, ts) => profiles.updateLastSyncTime(id, ts),
+  },
+
+  environment: {
+    get: () => getEnvironment(),
   },
 
   publish,

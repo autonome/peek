@@ -66,6 +66,8 @@ const chromeRuntime = {
     },
   },
   openOptionsPage: () => {},
+  getManifest: () => ({ version: '1.0.0' }),
+  getPlatformInfo: () => Promise.resolve({ os: 'mac', arch: 'arm64' }),
 };
 
 globalThis.chrome = {
@@ -73,6 +75,16 @@ globalThis.chrome = {
   alarms: chromeAlarms,
   runtime: chromeRuntime,
 };
+
+// Mock navigator.userAgent for environment detection tests
+// Node.js 24+ has a built-in navigator but with a Node UA string
+Object.defineProperty(globalThis, 'navigator', {
+  value: {
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  },
+  writable: true,
+  configurable: true,
+});
 
 export function resetMocks() {
   storageData = {};

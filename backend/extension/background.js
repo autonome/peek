@@ -5,9 +5,10 @@
  */
 
 import { openDatabase } from './datastore.js';
-import { ensureDefaultProfile, getCurrentProfile, getSyncConfig } from './profiles.js';
+import { ensureDefaultProfile, getCurrentProfile, getSyncConfig, updateProfileEnvironment } from './profiles.js';
 import { syncAll, getSyncConfig as getFullSyncConfig, getSyncStatus } from './sync.js';
 import { DATASTORE_VERSION, PROTOCOL_VERSION } from './version.js';
+import { getEnvironment } from './environment.js';
 
 const AUTO_SYNC_ALARM = 'peek-auto-sync';
 const SYNC_INTERVAL_MINUTES = 15;
@@ -20,6 +21,13 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   try {
     await openDatabase();
     await ensureDefaultProfile();
+
+    // Stamp active profile with environment info
+    const profile = await getCurrentProfile();
+    if (profile.success && profile.data) {
+      const env = await getEnvironment();
+      await updateProfileEnvironment(profile.data.id, env);
+    }
   } catch (error) {
     console.error('[peek:bg] Init error:', error);
   }
@@ -86,12 +94,14 @@ async function handleGetDiagnostics() {
     await openDatabase();
     const status = await getSyncStatus();
     const profile = await getCurrentProfile();
+    const environment = await getEnvironment();
 
     return {
       success: true,
       data: {
         syncStatus: status.data,
         activeProfile: profile.data,
+        environment,
         versions: {
           datastore: DATASTORE_VERSION,
           protocol: PROTOCOL_VERSION,

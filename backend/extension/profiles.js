@@ -51,6 +51,7 @@ export async function ensureDefaultProfile() {
       createdAt: timestamp,
       lastUsedAt: timestamp,
       isDefault: true,
+      environment: null,
     });
     await saveProfiles(profiles);
   }
@@ -85,6 +86,7 @@ export async function createProfile(name) {
     createdAt: timestamp,
     lastUsedAt: timestamp,
     isDefault: false,
+    environment: null,
   };
 
   profiles.push(profile);
@@ -223,6 +225,20 @@ export async function updateLastSyncTime(profileId, timestamp) {
   }
 
   profile.lastSyncAt = timestamp;
+  await saveProfiles(profiles);
+
+  return { success: true };
+}
+
+export async function updateProfileEnvironment(profileId, environment) {
+  const profiles = await getProfiles();
+  const profile = profiles.find(p => p.id === profileId);
+
+  if (!profile) {
+    return { success: false, error: 'Profile not found' };
+  }
+
+  profile.environment = environment;
   await saveProfiles(profiles);
 
   return { success: true };

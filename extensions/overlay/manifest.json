@@ -1,0 +1,9 @@
+{
+  "id": "overlay",
+  "shortname": "overlay",
+  "name": "Web Overlay",
+  "description": "Navigation bar overlay for web pages",
+  "version": "1.0.0",
+  "background": "background.html",
+  "builtin": true
+}

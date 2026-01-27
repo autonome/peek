@@ -320,6 +320,22 @@ api.window = {
       source: sourceAddress,
       id
     });
+  },
+  getBounds: (id = null) => {
+    DEBUG && console.log('window.getBounds', id);
+    return ipcRenderer.invoke('window-get-bounds', {
+      source: sourceAddress,
+      id
+    });
+  },
+  setIgnoreMouseEvents: (id, ignore, forward = false) => {
+    DEBUG && console.log('window.setIgnoreMouseEvents', id, ignore, forward);
+    return ipcRenderer.invoke('window-set-ignore-mouse-events', {
+      source: sourceAddress,
+      id,
+      ignore,
+      forward
+    });
   }
 };
 
@@ -1337,13 +1353,12 @@ api.files = {
   }
 };
 
-// Extension host specific API for receiving direct IPC messages
-const isExtensionHost = sourceAddress === 'peek://app/extension-host.html';
-if (isExtensionHost) {
+// IPC message receiving for core pages (peek://app/...)
+// Used by extension host for ext:load, overlay for nav state, etc.
+if (isCore) {
   api.ipc = {
     /**
      * Listen for IPC messages from main process
-     * Used by extension host to receive ext:load commands
      * @param {string} channel - IPC channel to listen on
      * @param {function} callback - Handler for incoming messages
      */
@@ -1372,6 +1387,35 @@ if (isCore) {
 
 contextBridge.exposeInMainWorld('app', api);
 DEBUG && console.log(src, 'api exposed in', Date.now() - preloadStart, 'ms');
+
+// Overlay mouse event publishing
+// Detects overlay windows and publishes cursor enter/leave events
+// so the overlay extension can orchestrate show/hide
+if (sourceAddress.includes('/overlay/')) {
+  window.addEventListener('DOMContentLoaded', () => {
+    ipcRenderer.invoke('get-window-id').then(windowId => {
+      if (!windowId) return;
+
+      document.addEventListener('mouseenter', () => {
+        ipcRenderer.send('publish', {
+          source: sourceAddress,
+          scope: 3, // GLOBAL
+          topic: 'overlay:cursor-enter',
+          data: { windowId }
+        });
+      });
+
+      document.addEventListener('mouseleave', () => {
+        ipcRenderer.send('publish', {
+          source: sourceAddress,
+          scope: 3, // GLOBAL
+          topic: 'overlay:cursor-leave',
+          data: { windowId }
+        });
+      });
+    });
+  });
+}
 
 window.addEventListener('load', () => {
   DEBUG && console.log(src, 'window.load in', Date.now() - preloadStart, 'ms');
@@ -1525,6 +1569,7 @@ window.addEventListener('load', () => {
     init();
   }
 })();
+
 
 /*
 const handleMainWindow = () => {

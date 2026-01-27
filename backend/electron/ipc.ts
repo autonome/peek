@@ -56,7 +56,7 @@ import type { Profile } from './profiles.js';
 import {
   listProfiles,
   createProfile,
-  getProfile,
+  getProfileByFolder,
   deleteProfile,
   getActiveProfile,
   setActiveProfile,
@@ -120,6 +120,7 @@ import {
 import {
   publish,
   subscribe,
+  scopes as PubSubScopes,
 } from './pubsub.js';
 
 import {
@@ -1404,6 +1405,45 @@ export function registerDarkModeHandlers(): void {
 /**
  * Register window management IPC handlers
  */
+/**
+ * Add keyboard shortcuts for web page navigation.
+ * Only called for http/https windows.
+ * Cmd+[ = back, Cmd+] = forward, Cmd+R = reload, Cmd+L = show navbar overlay
+ */
+function addWebNavShortcuts(bw: BrowserWindow): void {
+  bw.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown' || !input.meta) return;
+
+    const nav = bw.webContents.navigationHistory;
+    switch (input.key) {
+      case '[':
+        if (nav.canGoBack()) {
+          nav.goBack();
+        }
+        publish('peek://system/', PubSubScopes.GLOBAL, 'window:navigated', { id: bw.id });
+        event.preventDefault();
+        break;
+      case ']':
+        if (nav.canGoForward()) {
+          nav.goForward();
+        }
+        publish('peek://system/', PubSubScopes.GLOBAL, 'window:navigated', { id: bw.id });
+        event.preventDefault();
+        break;
+      case 'r':
+        bw.webContents.reload();
+        publish('peek://system/', PubSubScopes.GLOBAL, 'window:navigated', { id: bw.id });
+        event.preventDefault();
+        break;
+      case 'l':
+        publish('peek://system/', PubSubScopes.GLOBAL, 'overlay:show', { windowId: bw.id });
+        event.preventDefault();
+        break;
+    }
+  });
+  DEBUG && console.log('Added web nav shortcuts to window:', bw.id);
+}
+
 export function registerWindowHandlers(): void {
   ipcMain.handle('window-open', async (ev, msg) => {
     DEBUG && console.log('window-open', msg);
@@ -1484,6 +1524,14 @@ export function registerWindowHandlers(): void {
       }
     }
 
+    // Set parent window if parentId is provided
+    if (options.parentId) {
+      const parentWin = BrowserWindow.fromId(options.parentId);
+      if (parentWin && !parentWin.isDestroyed()) {
+        winOptions.parent = parentWin;
+      }
+    }
+
     DEBUG && console.log('Creating window with options:', winOptions);
 
     // Create new window
@@ -1561,6 +1609,33 @@ export function registerWindowHandlers(): void {
 
       // Add escape key handler to all windows
       addEscHandler(win);
+
+      // Add web navigation shortcuts for http/https windows
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        addWebNavShortcuts(win);
+
+        // Publish window:web-opened so the overlay extension can create an overlay
+        publish('peek://system/', PubSubScopes.GLOBAL, 'window:web-opened', { id: win.id, url });
+
+        // Publish window:navigated on in-page navigation
+        win.webContents.on('did-navigate', (_ev2: Electron.Event, navUrl: string) => {
+          publish('peek://system/', PubSubScopes.GLOBAL, 'window:navigated', { id: win.id, url: navUrl });
+        });
+
+        // Debounced bounds-change events for overlay repositioning
+        let boundsTimer: ReturnType<typeof setTimeout> | null = null;
+        const publishBounds = () => {
+          if (boundsTimer) clearTimeout(boundsTimer);
+          boundsTimer = setTimeout(() => {
+            if (!win.isDestroyed()) {
+              publish('peek://system/', PubSubScopes.GLOBAL, 'window:bounds-changed',
+                { id: win.id, ...win.getBounds() });
+            }
+          }, 50);
+        };
+        win.on('move', publishBounds);
+        win.on('resize', publishBounds);
+      }
 
       // Track content window focus for devtools command
       win.on('focus', () => {
@@ -1650,6 +1725,22 @@ export function registerWindowHandlers(): void {
       const message = error instanceof Error ? error.message : String(error);
       return { success: false, error: message };
     }
+  });
+
+  // Toggle click-through on transparent windows
+  ipcMain.handle('window-set-ignore-mouse-events', (ev, msg) => {
+    const win = msg?.id ? BrowserWindow.fromId(msg.id) : BrowserWindow.fromWebContents(ev.sender);
+    if (!win || win.isDestroyed()) return { success: false };
+    win.setIgnoreMouseEvents(msg.ignore, msg.forward ? { forward: true } : undefined);
+    return { success: true };
+  });
+
+  // Return full bounds (position + size) for any window
+  ipcMain.handle('window-get-bounds', (ev, msg) => {
+    const win = msg?.id ? BrowserWindow.fromId(msg.id) : BrowserWindow.fromWebContents(ev.sender);
+    if (!win || win.isDestroyed()) return { success: false };
+    const bounds = win.getBounds();
+    return { success: true, ...bounds };
   });
 
   ipcMain.handle('window-close', async (_ev, msg) => {
@@ -2211,6 +2302,61 @@ export function registerMiscHandlers(onQuit: () => void): void {
     }
   });
 
+  // Web navigation handlers - operate on the target http/https window
+  const resolveWebWindow = (windowId?: number): BrowserWindow | null => {
+    const id = windowId || lastFocusedVisibleWindowId;
+    if (!id) return null;
+    const win = BrowserWindow.fromId(id);
+    if (!win || win.isDestroyed()) return null;
+    const winUrl = win.webContents.getURL();
+    if (!winUrl.startsWith('http://') && !winUrl.startsWith('https://')) return null;
+    return win;
+  };
+
+  ipcMain.handle('web-nav-back', async (_ev, data?: { windowId?: number }) => {
+    const win = resolveWebWindow(data?.windowId);
+    if (!win) return { success: false, error: 'No web page window' };
+    const nav = win.webContents.navigationHistory;
+    if (nav.canGoBack()) {
+      nav.goBack();
+      return { success: true };
+    }
+    return { success: false, error: 'Cannot go back' };
+  });
+
+  ipcMain.handle('web-nav-forward', async (_ev, data?: { windowId?: number }) => {
+    const win = resolveWebWindow(data?.windowId);
+    if (!win) return { success: false, error: 'No web page window' };
+    const nav = win.webContents.navigationHistory;
+    if (nav.canGoForward()) {
+      nav.goForward();
+      return { success: true };
+    }
+    return { success: false, error: 'Cannot go forward' };
+  });
+
+  ipcMain.handle('web-nav-reload', async (_ev, data?: { windowId?: number }) => {
+    const win = resolveWebWindow(data?.windowId);
+    if (!win) return { success: false, error: 'No web page window' };
+    win.webContents.reload();
+    return { success: true };
+  });
+
+  ipcMain.handle('web-nav-state', async (_ev, data?: { windowId?: number }) => {
+    const win = resolveWebWindow(data?.windowId);
+    if (!win) return { success: false, error: 'No web page window' };
+    const nav = win.webContents.navigationHistory;
+    return {
+      success: true,
+      data: {
+        url: win.webContents.getURL(),
+        canGoBack: nav.canGoBack(),
+        canGoForward: nav.canGoForward(),
+        title: win.getTitle() || '',
+      }
+    };
+  });
+
   // Get last focused visible window ID (for per-window commands)
   // Returns the most recently focused window that isn't a background/internal window
   ipcMain.handle('get-focused-visible-window-id', () => {
@@ -2588,7 +2734,7 @@ export function registerProfileHandlers(): void {
   // Get a specific profile by slug
   ipcMain.handle('profiles:get', async (_ev, data: { slug: string }) => {
     try {
-      const profile = getProfile(data.slug);
+      const profile = getProfileByFolder(data.slug);
       if (!profile) {
         return { success: false, error: 'Profile not found' };
       }
@@ -2627,15 +2773,15 @@ export function registerProfileHandlers(): void {
       DEBUG && console.log(`[ipc:profiles] Switch requested to profile: ${data.slug}`);
 
       const currentProfile = getActiveProfile();
-      DEBUG && console.log(`[ipc:profiles] Current profile: ${currentProfile.slug}`);
+      DEBUG && console.log(`[ipc:profiles] Current profile: ${currentProfile.folder}`);
 
       // Check if already on this profile
-      if (currentProfile.slug === data.slug) {
+      if (currentProfile.folder === data.slug) {
         DEBUG && console.log('[ipc:profiles] Already on requested profile, no-op');
         return { success: true, message: 'Already on this profile' };
       }
 
-      const profile = getProfile(data.slug);
+      const profile = getProfileByFolder(data.slug);
       if (!profile) {
         return { success: false, error: 'Profile not found' };
       }

@@ -450,6 +450,37 @@ const registerExtensionCommands = () => {
     execute: () => api.restart()
   });
 
+  // ---- Web Navigation Commands ----
+
+  api.commands.register({
+    name: 'back',
+    description: 'Go back in web page history',
+    execute: () => api.invoke('web-nav-back')
+  });
+
+  api.commands.register({
+    name: 'forward',
+    description: 'Go forward in web page history',
+    execute: () => api.invoke('web-nav-forward')
+  });
+
+  api.commands.register({
+    name: 'reload',
+    description: 'Reload the current web page',
+    execute: () => api.invoke('web-nav-reload')
+  });
+
+  api.commands.register({
+    name: 'copy url',
+    description: 'Copy the current web page URL to clipboard',
+    execute: async () => {
+      const result = await api.invoke('web-nav-state');
+      if (result && result.success && result.data && result.data.url) {
+        await navigator.clipboard.writeText(result.data.url);
+      }
+    }
+  });
+
   log('core', 'Core commands registered');
 };
 

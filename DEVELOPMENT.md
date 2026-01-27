@@ -14,14 +14,14 @@ Peek is a web user agent application that provides alternative ways to interact 
 
 ## Requirements
 
-- **Node.js 24+** - Required for both desktop (Electron 40) and server
-- Install via `nvm install 24` or download from nodejs.org
+- **Node.js 22** - Pinned to match Electron 40's embedded Node version (see `.nvmrc`)
+- Install via `nvm install 22` or download from nodejs.org
 
 ## Key Commands
 
 ### Development
 ```bash
-nvm use 24                # Ensure Node 24 is active
+nvm use 22                # Ensure Node 22 is active (matches Electron)
 yarn install              # Install dependencies
 yarn debug                # Run in development mode (with devtools)
 yarn start                # Start normally

@@ -232,21 +232,9 @@ export class SyncEngine {
       /* first sync */
     }
 
-    // No stored values: check if items were synced to an unknown previous server
+    // First sync — no stored config means we haven't tracked the server yet.
+    // Don't reset items that may have been pulled in a prior pull-only sync.
     if (!storedUrl && !storedProfileId) {
-      const allItems = await this.data.queryItems({ includeDeleted: false });
-      const serverItems = allItems.filter(i => i.syncSource === 'server');
-      if (serverItems.length > 0) {
-        for (const item of serverItems) {
-          await this.data.adapter.updateItem(item.id, {
-            syncSource: '',
-            syncedAt: 0,
-            syncId: '',
-          });
-        }
-        await this.setConfig({ lastSyncTime: 0 });
-        return true;
-      }
       return false;
     }
 
@@ -415,7 +403,8 @@ function toISOString(unixMs) {
   return new Date(unixMs).toISOString();
 }
 
-/** Convert ISO string to Unix ms (from server API). */
-function fromISOString(isoString) {
-  return new Date(isoString).getTime();
+/** Convert ISO string or integer timestamp to Unix ms (from server API). */
+function fromISOString(value) {
+  if (typeof value === 'number') return value;
+  return new Date(value).getTime();
 }

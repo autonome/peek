@@ -85,6 +85,7 @@
     "test:e2e:version": "./scripts/e2e-version-test.sh",
     "test:e2e:version:phase": "./scripts/e2e-version-test.sh --phase",
     "test:e2e:server": "./scripts/e2e-server.sh",
+    "test:e2e:full-sync": "./scripts/e2e-full-sync-test.sh",
     "test:mobile": "cd backend/tauri-mobile && npm test",
     "test:extension": "node --test backend/extension/tests/*.test.js",
     "extension:chrome": "backend/extension/scripts/launch-chrome.sh",

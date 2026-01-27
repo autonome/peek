@@ -215,10 +215,11 @@ function toISOString(unixMs: number): string {
 }
 
 /**
- * Convert ISO string (server) to Unix milliseconds (desktop)
+ * Convert ISO string or integer timestamp (server) to Unix milliseconds (desktop)
  */
-function fromISOString(isoString: string): number {
-  return new Date(isoString).getTime();
+function fromISOString(value: string | number): number {
+  if (typeof value === 'number') return value;
+  return new Date(value).getTime();
 }
 
 // ==================== Server API Helpers ====================
@@ -603,19 +604,9 @@ function resetSyncStateIfServerChanged(serverUrl: string): boolean {
     if (pidRow?.value) storedProfileId = JSON.parse(pidRow.value);
   } catch { /* first sync */ }
 
-  // No stored values: check if items were synced to an unknown previous server
+  // First sync — no stored config means we haven't tracked the server yet.
+  // Don't reset items that may have been pulled in a prior sync.
   if (!storedUrl && !storedProfileId) {
-    const row = db.prepare(`
-      SELECT COUNT(*) as cnt FROM items WHERE deletedAt = 0 AND syncSource = 'server'
-    `).get() as { cnt: number };
-    if (row.cnt > 0) {
-      DEBUG && console.log(`[sync] Found ${row.cnt} items synced to unknown previous server — resetting for current server`);
-      db.prepare(`
-        UPDATE items SET syncSource = '', syncedAt = 0, syncId = '' WHERE deletedAt = 0 AND syncSource = 'server'
-      `).run();
-      updateLastSyncTime(activeProfile.id, 0);
-      return true;
-    }
     return false;
   }
 

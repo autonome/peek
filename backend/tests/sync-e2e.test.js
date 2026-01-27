@@ -19,6 +19,7 @@ import { fileURLToPath } from 'url';
 // Import compiled desktop modules (from dist/)
 import * as datastore from '../../dist/backend/electron/datastore.js';
 import * as sync from '../../dist/backend/electron/sync.js';
+import * as profiles from '../../dist/backend/electron/profiles.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SERVER_PATH = join(__dirname, '..', 'server');
@@ -112,11 +113,21 @@ async function initDesktopDatastore() {
 
   // Create temp directory for desktop
   desktopTempDir = await mkdtemp(join(tmpdir(), 'peek-e2e-desktop-'));
-  const dbPath = join(desktopTempDir, 'test.db');
+  const dbPath = join(desktopTempDir, 'default', 'datastore.sqlite');
+  await mkdir(join(desktopTempDir, 'default'), { recursive: true });
   log(`Desktop database: ${dbPath}`);
 
-  // Initialize database
+  // Initialize profiles database (required by sync module)
+  profiles.initProfilesDb(desktopTempDir);
+  profiles.ensureDefaultProfile();
+  profiles.setActiveProfile('default');
+
+  // Initialize datastore
   datastore.initDatabase(dbPath);
+
+  // Enable sync for the default profile
+  const activeProfile = profiles.getActiveProfile();
+  profiles.enableSync(activeProfile.id, apiKey, activeProfile.id);
 
   // Configure sync settings
   sync.setSyncConfig({
@@ -133,6 +144,7 @@ async function cleanupDesktop() {
   if (desktopTempDir) {
     log('Cleaning up desktop temp directory...');
     datastore.closeDatabase();
+    profiles.closeProfilesDb();
     await rm(desktopTempDir, { recursive: true, force: true });
     desktopTempDir = null;
   }
@@ -436,12 +448,13 @@ async function testIncrementalSync() {
 async function testSyncIdDuplicatePrevention() {
   console.log('\n--- Test: sync_id Duplicate Prevention ---');
 
-  // Simulate two devices pushing the same content with different sync_ids
-  // The server should deduplicate and return the same server ID
+  // When two devices push the same content with DIFFERENT sync_ids, the server
+  // treats them as separate items (sync_id is the canonical identifier, not content).
+  // Content-based dedup only applies when NO sync_id is provided (non-sync API path).
 
   const sharedContent = 'https://shared-between-devices.com/unique-' + Date.now();
 
-  // Device 1 pushes (simulated via direct API call with sync_id)
+  // Device 1 pushes with its own sync_id
   const device1SyncId = 'device-1-local-id-' + Math.random().toString(36).substring(2);
   const res1 = await serverRequest('POST', '/items', {
     type: 'url',
@@ -461,16 +474,22 @@ async function testSyncIdDuplicatePrevention() {
   });
   console.log(`  Device 2 pushed, got server id: ${res2.id}`);
 
-  // Both should get the same server ID (content-based dedup after sync_id miss)
-  if (res1.id !== res2.id) {
-    throw new Error(`Expected same server ID, but got ${res1.id} and ${res2.id}`);
+  // Different sync_ids = different server items (no content-based fallback in sync path)
+  if (res1.id === res2.id) {
+    throw new Error(`Expected different server IDs for different sync_ids, but both got ${res1.id}`);
   }
 
-  // Verify only one item exists on server
-  const serverItems = await serverRequest('GET', '/items');
-  const matchingItems = serverItems.items.filter(i => i.content === sharedContent);
-  if (matchingItems.length !== 1) {
-    throw new Error(`Expected 1 item on server, got ${matchingItems.length}`);
+  // Device 1 re-pushes with SAME sync_id — should get same server ID back
+  const res1b = await serverRequest('POST', '/items', {
+    type: 'url',
+    content: sharedContent,
+    tags: ['device-1-updated'],
+    sync_id: device1SyncId,
+  });
+  console.log(`  Device 1 re-pushed, got server id: ${res1b.id}`);
+
+  if (res1.id !== res1b.id) {
+    throw new Error(`Expected same server ID for same sync_id, but got ${res1.id} and ${res1b.id}`);
   }
 
   console.log('  PASSED');

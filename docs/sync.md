@@ -121,24 +121,56 @@ When a user changes sync servers (or configures sync for the first time after ha
 1. After every pull or full sync, the current server URL and profile ID are saved to a `settings` table (`lastSyncServerUrl`, `lastSyncProfileId`).
 2. Before `syncAll()`, the stored values are compared to the current config.
 3. If they differ (server changed), all per-item sync markers are reset — making every item eligible for push.
-4. If no stored values exist but items have `syncSource = 'server'` (upgrade/first-time tracking), those items are reset too.
+4. If no stored values exist (first-time sync), no reset occurs — items pulled in a prior pull-only sync retain their markers. This prevents duplicates when `pullFromServer()` runs before `syncAll()` has stored the config.
 
-This ensures no data loss when switching servers.
+This ensures no data loss when switching servers and no duplicates on first sync.
 
 **Files:**
-- `backend/electron/sync.ts`: `resetSyncStateIfServerChanged()`, `saveSyncServerConfig()`
-- `backend/tauri-mobile/src-tauri/src/lib.rs`: `reset_sync_state_if_server_changed()`, `save_sync_server_config()`
+- `sync/sync.js`: `resetSyncStateIfServerChanged()`, `saveSyncServerConfig()` (unified engine)
+- `backend/electron/sync.ts`: `resetSyncStateIfServerChanged()`, `saveSyncServerConfig()` (desktop)
+- `backend/tauri-mobile/src-tauri/src/lib.rs`: `reset_sync_state_if_server_changed()`, `save_sync_server_config()` (mobile)
+
+## Deduplication
+
+### Sync Path (syncId-based only)
+
+When items arrive via sync (`POST /items` with `sync_id`), dedup uses **syncId matching only**:
+- If an item with the same `sync_id` exists: update it
+- If no match: create a new item (even if content is identical)
+
+This means the same URL saved independently on two devices creates two separate server items (each with its own sync_id). This is intentional — sync_id is the canonical identity.
+
+### Non-Sync Path (content-based)
+
+When items arrive without a `sync_id` (e.g., browser extension, API calls):
+- URL items: dedup by `type + content`
+- Tagset items: dedup by matching tag set
+- Text items: dedup by `type + content`
+
+### fromISOString
+
+The server returns integer timestamps (Unix ms). The `fromISOString()` helper in both `sync/sync.js` and `backend/electron/sync.ts` handles both integer and ISO string inputs.
 
 ## E2E Full Sync Test
 
-`scripts/e2e-full-sync-test.sh` (`yarn e2e:full-sync`) runs a clean-room three-way sync test:
+`scripts/e2e-full-sync-test.sh` (`yarn test:e2e:full-sync`) runs a clean-room three-way sync test:
 
+**Phase 1 — Three-way sync (6 items):**
 1. Starts a fresh temp server with 2 seeded items
 2. Configures a desktop profile and seeds 2 items, pushes to server
 3. Creates a fresh iOS simulator database with 2 items
 4. Polls the server waiting for iOS to push (manual step: build in Xcode, sync in simulator)
 5. Triggers desktop re-sync to pull iOS items
 6. Verifies all three platforms have 6 items
+
+**Phase 2 — Sync dedup testing (10 items):**
+7. Re-pushes an existing item with its own sync_id → verifies dedup (still 6)
+8. Seeds identical cross-device URL into desktop + iOS (no sync_id)
+9. Seeds identical cross-device tagset into desktop + iOS (no sync_id)
+10. Desktop pushes new items to server
+11. iOS syncs (manual step)
+12. Verifies 10 items on all platforms (no content dedup in sync path)
+13. Re-sync stability check: 0 pulled, 0 pushed (no growth)
 
 All data is temporary and cleaned up on exit (including iOS simulator backup/restore).
 
@@ -164,7 +196,10 @@ Failed push operations are logged but not retried. After sync, `lastSyncTime` ad
 
 ## Files
 
-- `backend/electron/sync.ts` - Desktop sync implementation
+- `sync/sync.js` - Unified cross-platform sync engine (JS, used by mobile/web)
+- `backend/electron/sync.ts` - Desktop sync implementation (Electron-specific)
 - `backend/server/db.js` - Server database with sync support
+- `backend/tests/sync-e2e.test.js` - Server + desktop headless e2e sync tests
 - `backend/tauri-mobile/src-tauri/src/lib.rs` - Mobile sync (pull/push/sync_all)
+- `scripts/e2e-full-sync-test.sh` - Full three-way e2e test (server + desktop + iOS simulator)
 - `notes/sync-edge-cases.md` - Detailed edge case documentation

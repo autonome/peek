@@ -182,7 +182,7 @@ describe("Database Tests", () => {
       db.saveUrl(TEST_USER_ID, "https://example.com", ["test"]);
       const tags = db.getTagsByFrecency(TEST_USER_ID);
 
-      assert.ok(tags[0].frecency_score > 0);
+      assert.ok(tags[0].frecencyScore > 0);
     });
 
     it("should return empty array when no tags", () => {
@@ -373,7 +373,7 @@ describe("Database Tests", () => {
 
     it("should store file on disk", () => {
       db.saveImage(TEST_USER_ID, "disk.png", testPngBuffer, "image/png");
-      const imagesDir = path.join(TEST_DATA_DIR, TEST_USER_ID, "images");
+      const imagesDir = path.join(TEST_DATA_DIR, TEST_USER_ID, "profiles", "default", "images");
       const files = fs.readdirSync(imagesDir);
       assert.strictEqual(files.length, 1);
       assert.ok(files[0].endsWith(".png"));
@@ -387,7 +387,7 @@ describe("Database Tests", () => {
       assert.notStrictEqual(id1, id2);
 
       // But only one file on disk
-      const imagesDir = path.join(TEST_DATA_DIR, TEST_USER_ID, "images");
+      const imagesDir = path.join(TEST_DATA_DIR, TEST_USER_ID, "profiles", "default", "images");
       const files = fs.readdirSync(imagesDir);
       assert.strictEqual(files.length, 1);
     });
@@ -605,9 +605,9 @@ describe("Database Tests", () => {
       const tableInfo = conn.prepare("PRAGMA table_info(items)").all();
       const columnNames = tableInfo.map((col) => col.name);
 
-      assert.ok(columnNames.includes("sync_id"), "should have sync_id column");
-      assert.ok(columnNames.includes("sync_source"), "should have sync_source column");
-      assert.ok(columnNames.includes("synced_at"), "should have synced_at column");
+      assert.ok(columnNames.includes("syncId"), "should have syncId column");
+      assert.ok(columnNames.includes("syncSource"), "should have syncSource column");
+      assert.ok(columnNames.includes("syncedAt"), "should have syncedAt column");
     });
 
     it("should have sync_id index", () => {
@@ -615,7 +615,7 @@ describe("Database Tests", () => {
       const indexes = conn.prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='items'").all();
       const indexNames = indexes.map((idx) => idx.name);
 
-      assert.ok(indexNames.includes("idx_items_sync_id"), "should have idx_items_sync_id index");
+      assert.ok(indexNames.includes("idx_items_syncId"), "should have idx_items_syncId index");
     });
   });
 

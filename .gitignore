@@ -37,7 +37,12 @@ playwright-report/
 
 # Backup files
 *.bak
+*.swp
 Backups/
+
+# Personal notes (not tracked)
+TODO-mine.md
+*-mine.md
 
 # Xcode app container exports
 *.xcappdata/

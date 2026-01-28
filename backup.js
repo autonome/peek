@@ -220,10 +220,10 @@ function listBackups(userId) {
       return {
         filename: f,
         size: stats.size,
-        created_at: stats.mtime.toISOString()
+        createdAt: stats.mtime.toISOString()
       };
     })
-    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
   return files;
 }

@@ -433,7 +433,11 @@ const ResizableInput: React.FC<ResizableInputProps> = ({
         ref={textareaRef}
         className="resizable-input-textarea"
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => {
+          // Normalize: collapse multiple spaces after list markers (iOS swipe/autosuggestion adds extra space)
+          const normalized = e.target.value.replace(/^(\s*(?:[-*+]|\d+\.))\s{2,}/gm, '$1 ');
+          onChange(normalized);
+        }}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         autoCapitalize="none"

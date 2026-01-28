@@ -1,6 +1,6 @@
 # Peek TODO
 
-How we work:
+## How we work
 - We track pending items in this file
 - In-progress work and current focus goes in WIP.md
 - Completed items go in CHANGELOG.md, grouped by week
@@ -31,7 +31,7 @@ the rules
 - metadata can be weird non-file, as long as consistent
 - external systems require consent to touch my stuff (eg http caching rules)
 
-## unfiled
+## Unfiled
 
 context
 - [ ] implement old context plan eg https://www.reddit.com/r/hackernews/comments/1qddidm/sun_position_calculator/
@@ -49,39 +49,52 @@ once we have cardinal ui
 - [ ] pop up a board of built-in shortcuts/actions
 - [ ] pop up a board of common shortcuts/actions you use
 
-## Addessibility / Core history / feeds
-
-For record/replay, daily ribbon, state feedback loops and observability, etc we need a complete chained history.
-All of those require addressibility of all primary actions, and connections to prev/next actions.
-Includes any peek:// invocation and parameters passed.
-May require the connector/parameter context for each invocation, tbd.
-Requires explicit chaining.
-
-Review against impl
-- [ ] step counter: app level interaction tracing/counting. when is reset? when does action end and new one start?
-- [ ] peeks/slides as tagged addresses with metadata properties? or urls?
-
 ## UI Componentry
 
-Right now we're replicating/forking html and js across extensions.
+Right now we're replicating/forking html and js across extensions, problematic:
 
-problems
 - messy, error prone, poor DRY practice
 - also means we can't generatively and rapidly build out UIs without whole new piles of html/js/css to manage
 
-We want:
-- a flexible and reusable system provided at the ./app layer
-- extensions can include it and inject data/styling into these controls
-- they have system-consistent ux and visual design
-- this is a loosely coupled system with deterministic management
-- not just importing and writing js components w/ css, React-style.
-- this is more like a set of prebuilt controls
+We also need generic containers to support many different use-cases:
 
-- callers instanciate a control, and provide schema and data into a control which has a default template
-- template can be replaced by caller
-- designed for single-component scoping, not complex document hierarchies
+- grids, lists
+- buttons
+- cards
+- button boards
 
-Once we add atproto support, this same system could be used to bind lexicons + data for generated viewing/CRUD interfaces.
+We are going to be adding feeds and streams, need generic components for display and interaction, that support dynamic data.
+
+Examples:
+- groups ui, tags ui and more are all basically grids of cards, and can share common generic api while adjusting basic styling for the use case
+- groups is a two layers of grids of cards - groups, then a group's pages
+- page view ui is two layers, with the overlay being clear background, address bar is a command input, and widgets/info-panes are cards (with lists, etc)
+- command chaining ui is command bar, command bar suggestions, cards containing previews/editors/lists
+- a widgets extension would be a grid of cards, with drag-and-drop moving around enabled
+
+What it is
+- flexible and reusable system provided at the ./app layer
+- used by extensions for easy interface building
+- system-consistent ux and visual design
+- loosely-coupled system with deterministic management
+- feels like a set of prebuilt controls
+- designed for single-component scoping
+- can sort, shuffle, filter anything enumerable
+- controls can bind to data sources for reactivity
+- can wire up to feeds, custom event sources, etc
+- template overrideable by caller (bring your own markup)
+
+What is it not
+- no js inside, not writing js components React-style
+- for making complex document hierarchies
+
+Other use-cases
+- Once we add atproto support, this same system could be used to bind lexicons + data for generated viewing/CRUD interfaces
+
+usage and flow
+- callers instanciate a control
+- control has a default template
+- provide schema and data/data-source
 
 reactive schema+card+data system
 - [ ] cards + json schema + data
@@ -104,17 +117,17 @@ ui
 - [ ] horizontal carousel of cards (eg for command chaining, day ribbons)
 - [ ] image viewer
 - [ ] command input
-- [ ] command suggestion
+- [ ] command suggestion list
 - [ ] command preview pane
 - [ ] search/filters on enumerable items (list, grid)
 - [ ] editor
 
 initial porting
-- [ ] groups -> card/cards
-- [ ] tags -> card/cards
-- [ ] tag sets -> button set
+- [ ] groups -> card/card grid
+- [ ] tags ui -> card/card grid
+- [ ] tag sets -> button, button set
 - [ ] cmd -> command input/suggestions
-- [ ] cmd chaining -> horizontal carousel, list
+- [ ] cmd chaining -> horizontal carousel, list, etc
 
 popup carousel system
 - [ ] horizontal and vertical carousel components
@@ -122,7 +135,7 @@ popup carousel system
 - [ ] active item focused in popup
 - [ ] arrow controls and vim directionals
 - [ ] port cmd chaining to horizontal carousel popups
-- [ ] port cmd previews to vertical carousel popups
+- [ ] (tbd) port cmd previews to vertical carousel popups
 
 button sets
 - [ ] set of buttons
@@ -147,8 +160,19 @@ notes
 - [ ] How does cmd indicate scope/target?
    - [ ] eg "Target: [window title]" header when window-scoped command is selected?
 
-## Web page experience
+## Addessibility / Core history / feeds
 
+For record/replay, daily ribbon, state feedback loops and observability, etc we need a complete chained history.
+All of those require addressibility of all primary actions, and connections to prev/next actions.
+Includes any peek:// invocation and parameters passed.
+May require the connector/parameter context for each invocation, tbd.
+Requires explicit chaining.
+
+Review against impl
+- [ ] step counter: app level interaction tracing/counting. when is reset? when does action end and new one start?
+- [ ] peeks/slides as tagged addresses with metadata properties? or urls?
+
+## Web page experience (reviewme: partially done)
 
 Page loading core
 - [ ] how to load pages - raw browserwindow (what we do now), webview in a default transparent page that hosts overlay??
@@ -191,6 +215,7 @@ syncing history
 - [ ] how to sync/merge frencency and adaptive matching?
 
 ## Extension dev
+
 - [ ] shared libs, eg utils
 - [ ] language: call them feature or apps? other? extensions? mods?
 
@@ -204,7 +229,7 @@ syncing history
 
 ## Polish
 
-- [ ] if no api key set, sync settings are disabled, and pull-to-sync on mobile
+- [ ] (already done?) if no api key set, sync settings are disabled, and pull-to-sync on mobile
 
 ## Pagestream
 

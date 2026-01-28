@@ -6,6 +6,11 @@ import os.log
 
 private let shareLog = OSLog(subsystem: "com.dietrich.peek-mobile.share", category: "ShareExtension")
 
+/// Schema version for tracking compatibility between Rust main app and Swift Share Extension.
+/// Increment this when making schema changes that both codepaths must understand.
+/// Both Rust and Swift code should use the same version number.
+private let SCHEMA_VERSION = "1"
+
 // MARK: - Item Types
 enum ItemType: String {
     case page = "url"      // Use 'url' to match Rust main app's expected type
@@ -201,13 +206,19 @@ class DatabaseManager {
                 print("[DB] Migrating from urls/url_tags to items/item_tags")
 
                 // Create new tables
+                // IMPORTANT: Schema must match Rust's items table in lib.rs
+                // - Use 'url' as default type to match ItemType.page.rawValue
+                // - Include sync columns that Rust expects
                 try db.execute(sql: """
                     CREATE TABLE IF NOT EXISTS items (
                         id TEXT PRIMARY KEY,
-                        type TEXT NOT NULL DEFAULT 'page',
+                        type TEXT NOT NULL DEFAULT 'url',
                         url TEXT,
                         content TEXT,
                         metadata TEXT,
+                        sync_id TEXT DEFAULT '',
+                        sync_source TEXT DEFAULT '',
+                        synced_at TEXT,
                         created_at TEXT NOT NULL,
                         updated_at TEXT NOT NULL,
                         deleted_at TEXT
@@ -223,10 +234,10 @@ class DatabaseManager {
                     );
                 """)
 
-                // Migrate data
+                // Migrate data (use 'url' type to match ItemType.page.rawValue)
                 try db.execute(sql: """
                     INSERT INTO items (id, type, url, created_at, updated_at, deleted_at)
-                        SELECT id, 'page', url, created_at, updated_at, deleted_at FROM urls;
+                        SELECT id, 'url', url, created_at, updated_at, deleted_at FROM urls;
 
                     INSERT INTO item_tags (item_id, tag_id, created_at)
                         SELECT url_id, tag_id, created_at FROM url_tags;
@@ -241,13 +252,19 @@ class DatabaseManager {
                 print("[DB] Migration complete")
             } else {
                 // Create new schema directly
+                // IMPORTANT: Schema must match Rust's items table in lib.rs
+                // - Use 'url' as default type to match ItemType.page.rawValue
+                // - Include sync columns that Rust expects
                 try db.execute(sql: """
                     CREATE TABLE IF NOT EXISTS items (
                         id TEXT PRIMARY KEY,
-                        type TEXT NOT NULL DEFAULT 'page',
+                        type TEXT NOT NULL DEFAULT 'url',
                         url TEXT,
                         content TEXT,
                         metadata TEXT,
+                        sync_id TEXT DEFAULT '',
+                        sync_source TEXT DEFAULT '',
+                        synced_at TEXT,
                         created_at TEXT NOT NULL,
                         updated_at TEXT NOT NULL,
                         deleted_at TEXT
@@ -305,10 +322,31 @@ class DatabaseManager {
                 CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
                 CREATE INDEX IF NOT EXISTS idx_items_url ON items(url);
                 CREATE INDEX IF NOT EXISTS idx_items_deleted ON items(deleted_at);
+                CREATE INDEX IF NOT EXISTS idx_items_sync_id ON items(sync_id);
                 CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
                 CREATE INDEX IF NOT EXISTS idx_tags_frecency ON tags(frecencyScore DESC);
                 CREATE INDEX IF NOT EXISTS idx_blobs_item_id ON blobs(item_id);
             """)
+        }
+
+        // Write schema version to settings table for compatibility tracking.
+        // This allows detecting mismatches between Rust main app and Swift Share Extension.
+        // Note: Swift writes to 'schema_version_swift' key so Rust can detect Swift's version
+        try dbQueue?.write { db in
+            try db.execute(
+                sql: "INSERT OR REPLACE INTO settings (key, value) VALUES ('schema_version_swift', ?)",
+                arguments: [SCHEMA_VERSION]
+            )
+
+            // Check for schema version mismatch (Rust main app may have written a different version)
+            if let row = try Row.fetchOne(db, sql: "SELECT value FROM settings WHERE key = 'schema_version'") {
+                let rustVersion = row["value"] as? String ?? ""
+                if rustVersion != SCHEMA_VERSION {
+                    print("[DB] WARNING: Schema version mismatch! Swift: \(SCHEMA_VERSION), Rust: \(rustVersion)")
+                }
+            }
+
+            print("[DB] Schema version \(SCHEMA_VERSION) written to settings")
         }
     }
 
@@ -347,7 +385,7 @@ class DatabaseManager {
                     FROM item_tags it
                     JOIN items i ON it.item_id = i.id
                     WHERE i.deleted_at IS NULL
-                      AND i.type = 'page'
+                      AND i.type = 'url'
                       AND (i.url LIKE ? OR i.url LIKE ? OR i.url LIKE ? OR i.url LIKE ?)
                 """, arguments: [domainPattern, domainPatternRoot, wwwDomainPattern, wwwDomainPatternRoot])
 

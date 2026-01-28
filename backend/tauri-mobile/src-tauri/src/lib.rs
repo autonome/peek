@@ -915,6 +915,11 @@ use std::sync::Once;
 
 static DB_INIT: Once = Once::new();
 
+/// Schema version for tracking compatibility between Rust main app and Swift Share Extension.
+/// Increment this when making schema changes that both codepaths must understand.
+/// Both Rust and Swift code should use the same version number.
+const SCHEMA_VERSION: &str = "1";
+
 fn ensure_database_initialized() -> Result<(), String> {
     let mut init_result: Result<(), String> = Ok(());
 
@@ -1399,7 +1404,28 @@ fn ensure_database_initialized() -> Result<(), String> {
             }
         }
 
-        println!("[Rust] Database initialized successfully");
+        // Write schema version to settings table for compatibility tracking.
+        // This allows detecting mismatches between Rust main app and Swift Share Extension.
+        let _ = conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('schema_version', ?1)",
+            params![SCHEMA_VERSION],
+        );
+
+        // Check for schema version mismatch (Swift Share Extension may have written a different version)
+        if let Ok(existing_version) = conn.query_row::<String, _, _>(
+            "SELECT value FROM settings WHERE key = 'schema_version_swift'",
+            [],
+            |row| row.get(0),
+        ) {
+            if existing_version != SCHEMA_VERSION {
+                println!(
+                    "[Rust] WARNING: Schema version mismatch! Rust: {}, Swift: {}",
+                    SCHEMA_VERSION, existing_version
+                );
+            }
+        }
+
+        println!("[Rust] Database initialized successfully (schema version {})", SCHEMA_VERSION);
     });
 
     init_result
@@ -1875,9 +1901,10 @@ async fn save_url(url: String, tags: Vec<String>, metadata: Option<serde_json::V
 
         existing
     } else {
-        // Insert new page item
+        // Insert new url item
+        // IMPORTANT: Use 'url' type to match Swift's ItemType.page.rawValue = "url"
         conn.execute(
-            "INSERT INTO items (id, type, url, metadata, created_at, updated_at) VALUES (?, 'page', ?, ?, ?, ?)",
+            "INSERT INTO items (id, type, url, metadata, created_at, updated_at) VALUES (?, 'url', ?, ?, ?, ?)",
             params![&id, &url, &metadata_json, &now, &now],
         )
         .map_err(|e| format!("Failed to insert item: {}", e))?;

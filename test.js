@@ -707,6 +707,100 @@ describe("Database Tests", () => {
     });
   });
 
+  describe("TEXT Timestamp Migration", () => {
+    it("should convert ISO string and stringified number timestamps to integers", () => {
+      const Database = require("better-sqlite3");
+      const tsDir = path.join(TEST_DATA_DIR, "ts-user", "profiles", "default");
+      fs.mkdirSync(tsDir, { recursive: true });
+      const tsDb = new Database(path.join(tsDir, "datastore.sqlite"));
+      tsDb.pragma("journal_mode = WAL");
+
+      // Create schema with TEXT affinity columns (simulates production)
+      tsDb.exec(`
+        CREATE TABLE items (
+          id TEXT PRIMARY KEY,
+          type TEXT NOT NULL,
+          content TEXT,
+          metadata TEXT,
+          syncId TEXT DEFAULT '',
+          syncSource TEXT DEFAULT '',
+          syncedAt TEXT DEFAULT '0',
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL,
+          deletedAt TEXT DEFAULT '0'
+        );
+        CREATE TABLE tags (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL UNIQUE,
+          frequency INTEGER DEFAULT 1,
+          lastUsedAt TEXT NOT NULL,
+          frecencyScore REAL DEFAULT 0.0,
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL
+        );
+        CREATE TABLE item_tags (
+          itemId TEXT NOT NULL,
+          tagId TEXT NOT NULL,
+          createdAt TEXT NOT NULL,
+          PRIMARY KEY (itemId, tagId)
+        );
+        CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
+      `);
+
+      // Insert items with TEXT timestamps (ISO strings and stringified numbers)
+      tsDb.prepare(`
+        INSERT INTO items (id, type, content, syncId, syncSource, syncedAt, createdAt, updatedAt, deletedAt)
+        VALUES ('iso-1', 'text', 'hello', '', '', '0', '2026-01-27T21:12:47.876Z', '2026-01-27T21:12:47.876Z', '0')
+      `).run();
+      tsDb.prepare(`
+        INSERT INTO items (id, type, content, syncId, syncSource, syncedAt, createdAt, updatedAt, deletedAt)
+        VALUES ('num-1', 'url', 'https://example.com', '', '', '0', '1769559596558.0', '1769559596558.0', '1769509253170')
+      `).run();
+      tsDb.prepare(`
+        INSERT INTO tags (id, name, frequency, lastUsedAt, frecencyScore, createdAt, updatedAt)
+        VALUES ('tag-1', 'test', 1, '2026-01-27T12:00:00.000Z', 10.0, '2026-01-27T12:00:00.000Z', '2026-01-27T12:00:00.000Z')
+      `).run();
+      tsDb.prepare(`
+        INSERT INTO item_tags (itemId, tagId, createdAt) VALUES ('iso-1', 'tag-1', '2026-01-27T12:00:00.000Z')
+      `).run();
+      tsDb.close();
+
+      // Open via db module — initializeSchema should migrate timestamps
+      delete require.cache[require.resolve("./db")];
+      const freshDb = require("./db");
+      const conn = freshDb.getConnection("ts-user");
+
+      // DB values are numeric (ISO converted to Unix ms, float strings to integers)
+      // but may remain TEXT type due to column TEXT affinity from legacy schema.
+      // The toTimestamp() safety net in response code ensures API returns integers.
+      const row1 = conn.prepare("SELECT CAST(createdAt AS INTEGER) as v FROM items WHERE id = 'iso-1'").get();
+      assert.ok(row1.v > 1700000000000, `ISO timestamp should be Unix ms, got ${row1.v}`);
+
+      const row2 = conn.prepare("SELECT CAST(createdAt AS INTEGER) as v, CAST(deletedAt AS INTEGER) as dv FROM items WHERE id = 'num-1'").get();
+      assert.strictEqual(row2.v, 1769559596558, `Should preserve value: ${row2.v}`);
+      assert.strictEqual(row2.dv, 1769509253170);
+
+      // Verify API response returns JavaScript numbers (the critical fix for clients)
+      const items = freshDb.getItems("ts-user", null, "default", true);
+      assert.strictEqual(items.length, 2);
+      for (const item of items) {
+        assert.strictEqual(typeof item.created_at, "number", `created_at should be number, got ${typeof item.created_at}: ${item.created_at}`);
+        assert.strictEqual(typeof item.updated_at, "number", `updated_at should be number, got ${typeof item.updated_at}: ${item.updated_at}`);
+        assert.strictEqual(typeof item.deleted_at, "number", `deleted_at should be number, got ${typeof item.deleted_at}: ${item.deleted_at}`);
+      }
+
+      // Verify getItemsSince works correctly with TEXT-affinity timestamps
+      const sinceItems = freshDb.getItemsSince("ts-user", 0, null, "default");
+      assert.strictEqual(sinceItems.length, 2, `getItemsSince(0) should return all items`);
+      for (const item of sinceItems) {
+        assert.strictEqual(typeof item.created_at, "number");
+        assert.strictEqual(typeof item.updated_at, "number");
+      }
+
+      freshDb.closeAllConnections();
+    });
+  });
+
   describe("sync_id Deduplication", () => {
     it("should deduplicate by sync_id and return same server id", () => {
       // Simulate same item pushed twice with same sync_id

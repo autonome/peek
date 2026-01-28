@@ -49,6 +49,48 @@ function migrateColumns(db, table, renames) {
   }
 }
 
+/**
+ * Convert TEXT timestamp values to INTEGER (Unix ms).
+ * Production databases from older schema versions stored timestamps as TEXT
+ * (ISO 8601 strings or stringified numbers). SQLite preserved TEXT affinity
+ * after column rename, so values like "2026-01-27T21:12:47.876Z" and
+ * "1769559596439.0" need conversion to proper integers for comparisons
+ * and client compatibility (Rust/serde expects integers).
+ *
+ * Handles both camelCase and snake_case column names — safe to call before
+ * or after migrateColumns renames them.
+ */
+function migrateTimestamps(db, table, columns) {
+  const actualCols = new Set(
+    db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name)
+  );
+  for (const col of columns) {
+    // If the camelCase column doesn't exist yet, try the snake_case equivalent
+    let actualCol = col;
+    if (!actualCols.has(col)) {
+      const snakeCase = col.replace(/[A-Z]/g, m => `_${m.toLowerCase()}`);
+      if (actualCols.has(snakeCase)) {
+        actualCol = snakeCase;
+      } else {
+        // Column doesn't exist in either form — skip
+        continue;
+      }
+    }
+    // Convert ISO 8601 strings (contain 'T') to Unix ms
+    db.exec(`
+      UPDATE ${table}
+      SET ${actualCol} = CAST(strftime('%s', ${actualCol}) AS INTEGER) * 1000
+      WHERE typeof(${actualCol}) = 'text' AND ${actualCol} LIKE '%T%'
+    `);
+    // Convert stringified numbers ("1769559596439.0") to integers
+    db.exec(`
+      UPDATE ${table}
+      SET ${actualCol} = CAST(CAST(${actualCol} AS REAL) AS INTEGER)
+      WHERE typeof(${actualCol}) = 'text' AND ${actualCol} NOT LIKE '%T%'
+    `);
+  }
+}
+
 function initializeSchema(db) {
   // Canonical camelCase schema — matches sync engine
   db.exec(`
@@ -95,6 +137,9 @@ function initializeSchema(db) {
     db.exec("ALTER TABLE items ADD COLUMN deletedAt INTEGER DEFAULT 0");
   }
 
+  // Convert any TEXT timestamps to INTEGER (Unix ms)
+  migrateTimestamps(db, "items", ["createdAt", "updatedAt", "syncedAt", "deletedAt"]);
+
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_items_syncId ON items(syncId);
     CREATE INDEX IF NOT EXISTS idx_items_deletedAt ON items(deletedAt);
@@ -119,6 +164,8 @@ function initializeSchema(db) {
     "updated_at": "updatedAt",
   });
 
+  migrateTimestamps(db, "tags", ["lastUsedAt", "createdAt", "updatedAt"]);
+
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
     CREATE INDEX IF NOT EXISTS idx_tags_frecency ON tags(frecencyScore DESC);
@@ -139,6 +186,8 @@ function initializeSchema(db) {
     "created_at": "createdAt",
   });
 
+  migrateTimestamps(db, "item_tags", ["createdAt"]);
+
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_item_tags_itemId ON item_tags(itemId);
     CREATE INDEX IF NOT EXISTS idx_item_tags_tagId ON item_tags(tagId);
@@ -156,6 +205,19 @@ function initializeSchema(db) {
     "datastore_version",
     String(DATASTORE_VERSION)
   );
+}
+
+/**
+ * Coerce a value to integer timestamp (Unix ms). Safety net for legacy TEXT values
+ * that survived the migration (e.g., if migrateTimestamps hasn't run yet for a DB).
+ */
+function toTimestamp(val) {
+  if (typeof val === 'number') return Math.trunc(val);
+  if (typeof val === 'string') {
+    if (val.includes('T')) return new Date(val).getTime() || 0;
+    return Math.trunc(Number(val)) || 0;
+  }
+  return 0;
 }
 
 function generateUUID() {
@@ -342,9 +404,9 @@ function getItems(userId, type = null, profileId = "default", includeDeleted = f
       id: row.id,
       type: row.type,
       content: row.content,
-      created_at: row.createdAt,
-      updated_at: row.updatedAt,
-      deleted_at: row.deletedAt || 0,
+      created_at: toTimestamp(row.createdAt),
+      updated_at: toTimestamp(row.updatedAt),
+      deleted_at: toTimestamp(row.deletedAt),
       tags: getTagsStmt.all(row.id).map((t) => t.name),
     };
     if (row.metadata) {
@@ -572,8 +634,8 @@ function getImages(userId, profileId = "default") {
       filename: row.content,
       mime: metadata.mime,
       size: metadata.size,
-      created_at: row.createdAt,
-      updated_at: row.updatedAt,
+      created_at: toTimestamp(row.createdAt),
+      updated_at: toTimestamp(row.updatedAt),
       tags: getTagsStmt.all(row.id).map((t) => t.name),
     };
   });
@@ -623,10 +685,12 @@ function deleteImage(userId, itemId, profileId = "default") {
 function getItemsSince(userId, timestamp, type = null, profileId = "default") {
   const conn = getConnection(userId, profileId);
 
+  // CAST handles TEXT-affinity columns from legacy schemas where timestamps
+  // are stored as strings (ISO 8601 or stringified numbers)
   let query = `
     SELECT id, type, content, metadata, createdAt, updatedAt, deletedAt
     FROM items
-    WHERE updatedAt > ?
+    WHERE CAST(updatedAt AS INTEGER) > ?
   `;
   const params = [timestamp];
 
@@ -651,9 +715,9 @@ function getItemsSince(userId, timestamp, type = null, profileId = "default") {
       id: row.id,
       type: row.type,
       content: row.content,
-      created_at: row.createdAt,
-      updated_at: row.updatedAt,
-      deleted_at: row.deletedAt || 0,
+      created_at: toTimestamp(row.createdAt),
+      updated_at: toTimestamp(row.updatedAt),
+      deleted_at: toTimestamp(row.deletedAt),
       tags: getTagsStmt.all(row.id).map((t) => t.name),
     };
     if (row.metadata) {
@@ -688,8 +752,8 @@ function getItemById(userId, itemId, profileId = "default") {
     id: row.id,
     type: row.type,
     content: row.content,
-    created_at: row.createdAt,
-    updated_at: row.updatedAt,
+    created_at: toTimestamp(row.createdAt),
+    updated_at: toTimestamp(row.updatedAt),
     tags: getTagsStmt.all(row.id).map((t) => t.name),
   };
   if (row.metadata) {

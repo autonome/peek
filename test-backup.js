@@ -108,7 +108,7 @@ describe("Backup Module Tests", () => {
       assert.strictEqual(backups.length, 2);
       assert.ok(backups[0].filename, "should have filename");
       assert.ok(backups[0].size, "should have size");
-      assert.ok(backups[0].created_at, "should have created_at");
+      assert.ok(backups[0].createdAt, "should have createdAt");
     });
 
     it("should return backups sorted by date descending", async () => {
@@ -121,8 +121,8 @@ describe("Backup Module Tests", () => {
       const backups = backup.listBackups(TEST_USER_ID);
 
       // First backup should be more recent
-      const date1 = new Date(backups[0].created_at);
-      const date2 = new Date(backups[1].created_at);
+      const date1 = new Date(backups[0].createdAt);
+      const date2 = new Date(backups[1].createdAt);
       assert.ok(date1 >= date2, "backups should be sorted newest first");
     });
   });

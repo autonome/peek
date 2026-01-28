@@ -96,13 +96,13 @@ describe("Database Tests", () => {
       ]);
     });
 
-    it("should include saved_at timestamp", () => {
+    it("should include savedAt timestamp", () => {
       db.saveUrl(TEST_USER_ID, "https://example.com");
       const urls = db.getSavedUrls(TEST_USER_ID);
 
-      assert.ok(urls[0].saved_at);
-      // Should be ISO format
-      assert.ok(new Date(urls[0].saved_at).toISOString());
+      assert.ok(urls[0].savedAt);
+      // Should be a number (Unix ms)
+      assert.strictEqual(typeof urls[0].savedAt, "number");
     });
   });
 
@@ -324,7 +324,7 @@ describe("Database Tests", () => {
       // includeDeleted should show them
       const allItems = db.getItems(TEST_USER_ID, null, "default", true);
       assert.strictEqual(allItems.length, 1);
-      assert.ok(allItems[0].deleted_at > 0, "deleted_at should be set");
+      assert.ok(allItems[0].deletedAt > 0, "deletedAt should be set");
     });
   });
 
@@ -454,7 +454,7 @@ describe("Database Tests", () => {
       assert.ok(images[0].filename);
       assert.ok(images[0].mime);
       assert.ok(images[0].size);
-      assert.ok(images[0].created_at);
+      assert.ok(images[0].createdAt);
       assert.ok(Array.isArray(images[0].tags));
     });
   });
@@ -545,7 +545,7 @@ describe("Database Tests", () => {
       // Should still exist with includeDeleted
       const allItems = db.getItems(TEST_USER_ID, "image", "default", true);
       assert.strictEqual(allItems.length, 1);
-      assert.ok(allItems[0].deleted_at > 0, "deleted_at should be set");
+      assert.ok(allItems[0].deletedAt > 0, "deletedAt should be set");
     });
   });
 
@@ -963,17 +963,17 @@ describe("Database Tests", () => {
       const items = freshDb.getItems("ts-user", null, "default", true);
       assert.strictEqual(items.length, 2);
       for (const item of items) {
-        assert.strictEqual(typeof item.created_at, "number", `created_at should be number, got ${typeof item.created_at}: ${item.created_at}`);
-        assert.strictEqual(typeof item.updated_at, "number", `updated_at should be number, got ${typeof item.updated_at}: ${item.updated_at}`);
-        assert.strictEqual(typeof item.deleted_at, "number", `deleted_at should be number, got ${typeof item.deleted_at}: ${item.deleted_at}`);
+        assert.strictEqual(typeof item.createdAt, "number", `createdAt should be number, got ${typeof item.createdAt}: ${item.createdAt}`);
+        assert.strictEqual(typeof item.updatedAt, "number", `updatedAt should be number, got ${typeof item.updatedAt}: ${item.updatedAt}`);
+        assert.strictEqual(typeof item.deletedAt, "number", `deletedAt should be number, got ${typeof item.deletedAt}: ${item.deletedAt}`);
       }
 
       // Verify getItemsSince works correctly with TEXT-affinity timestamps
       const sinceItems = freshDb.getItemsSince("ts-user", 0, null, "default");
       assert.strictEqual(sinceItems.length, 2, `getItemsSince(0) should return all items`);
       for (const item of sinceItems) {
-        assert.strictEqual(typeof item.created_at, "number");
-        assert.strictEqual(typeof item.updated_at, "number");
+        assert.strictEqual(typeof item.createdAt, "number");
+        assert.strictEqual(typeof item.updatedAt, "number");
       }
 
       freshDb.closeAllConnections();
@@ -1063,10 +1063,10 @@ describe("Database Tests", () => {
       const items = freshDb.getItems("prod-user");
       assert.strictEqual(items.length, 2);
       for (const item of items) {
-        assert.strictEqual(typeof item.created_at, "number", `created_at should be number`);
-        assert.strictEqual(typeof item.updated_at, "number", `updated_at should be number`);
-        assert.strictEqual(typeof item.deleted_at, "number", `deleted_at should be number`);
-        assert.ok(item.created_at > 0, `created_at should be positive`);
+        assert.strictEqual(typeof item.createdAt, "number", `createdAt should be number`);
+        assert.strictEqual(typeof item.updatedAt, "number", `updatedAt should be number`);
+        assert.strictEqual(typeof item.deletedAt, "number", `deletedAt should be number`);
+        assert.ok(item.createdAt > 0, `createdAt should be positive`);
       }
 
       // Verify getItemsSince works (exercises CAST query)
@@ -1190,7 +1190,7 @@ describe("Database Tests", () => {
       assert.strictEqual(db.getItems(TEST_USER_ID).length, 0);
       const allItems = db.getItems(TEST_USER_ID, null, "default", true);
       assert.strictEqual(allItems.length, 1);
-      assert.ok(allItems[0].deleted_at > 0);
+      assert.ok(allItems[0].deletedAt > 0);
     });
 
     it("should match when device re-pushes with server ID as sync_id", () => {

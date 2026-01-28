@@ -378,9 +378,10 @@ app.post("/items", async (c) => {
   const userId = c.get("userId");
   const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
   const body = await c.req.json();
-  const { type, content, tags = [], metadata = null, sync_id = null, deleted_at } = body;
+  const { type, content, tags = [], metadata = null, sync_id = null, syncId = null, deletedAt } = body;
+  const effectiveSyncId = syncId || sync_id; // Support both camelCase and snake_case during transition
 
-  if (deleted_at) console.log(`[sync] Received tombstone push: sync_id=${sync_id} deleted_at=${deleted_at}`);
+  if (deletedAt) console.log(`[sync] Received tombstone push: syncId=${effectiveSyncId} deletedAt=${deletedAt}`);
 
   // Sync logging for e2e test verification
   console.log("=== Sync Item Received ===");
@@ -388,7 +389,7 @@ app.post("/items", async (c) => {
   console.log("Profile:", profileId);
   console.log("Timestamp:", new Date().toISOString());
   console.log("Type:", type);
-  console.log("sync_id:", sync_id || "(none)");
+  console.log("syncId:", effectiveSyncId || "(none)");
   console.log("Content preview:", content?.substring(0, 100) || "(null)");
   console.log("Tags:", tags.join(", ") || "(none)");
   console.log("==========================");
@@ -434,7 +435,7 @@ app.post("/items", async (c) => {
     }
   }
 
-  const id = db.saveItem(userId, type, content || null, tags, metadata, sync_id, profileId, deleted_at);
+  const id = db.saveItem(userId, type, content || null, tags, metadata, effectiveSyncId, profileId, deletedAt);
   return c.json({ id, type, created: true });
 });
 

@@ -41,9 +41,9 @@ echo ">>> Deploying from main:"
 jj log -r main --no-graph -T 'commit_id.short(12) ++ " " ++ description.first_line()' 2>/dev/null
 echo ""
 
-# Show recent server changes
-echo ">>> Recent server changes:"
-jj log -r 'ancestors(main, 5)' --no-graph -T 'if(diff.contains("backend/server/"), change_id.short(8) ++ " " ++ description.first_line() ++ "\n")' 2>/dev/null | head -10
+# Show recent commits that touched server
+echo ">>> Recent commits touching backend/server/:"
+jj log -r 'ancestors(main, 10)' --no-graph -T 'change_id.short(8) ++ " " ++ description.first_line() ++ "\n"' -- backend/server/ 2>/dev/null | head -5
 echo ""
 
 # Ensure deploy/server branch exists
@@ -76,11 +76,16 @@ cd "$DEPLOY_DIR"
 if [ -n "$(git status --porcelain)" ]; then
   git add -A
   git commit -m "deploy: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  echo "Committed new deployment"
+  echo ""
+  echo ">>> Deployed changes:"
+  git log -1 --stat --oneline
+  echo ""
 else
-  echo "No changes to deploy"
+  echo ">>> No changes to deploy"
 fi
 
 # Push to GitHub
 git push github deploy/server --force-with-lease 2>/dev/null || git push github deploy/server -f
-echo "Pushed deploy/server branch to GitHub"
+echo ""
+echo ">>> Pushed deploy/server branch to GitHub"
+echo ">>> Railway will auto-deploy from: https://github.com/autonome/peek/tree/deploy/server"

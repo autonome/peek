@@ -801,6 +801,118 @@ describe("Database Tests", () => {
     });
   });
 
+  describe("Production State: snake_case + TEXT timestamps", () => {
+    it("should handle legacy DB with snake_case columns AND TEXT timestamps end-to-end", () => {
+      // This is the actual production state that caused the crash:
+      // snake_case columns with TEXT-affinity timestamps
+      const Database = require("better-sqlite3");
+      const prodDir = path.join(TEST_DATA_DIR, "prod-user", "profiles", "default");
+      fs.mkdirSync(prodDir, { recursive: true });
+      const prodDb = new Database(path.join(prodDir, "datastore.sqlite"));
+      prodDb.pragma("journal_mode = WAL");
+
+      // Create legacy schema: snake_case columns with TEXT affinity
+      prodDb.exec(`
+        CREATE TABLE items (
+          id TEXT PRIMARY KEY,
+          type TEXT NOT NULL,
+          content TEXT,
+          metadata TEXT,
+          sync_id TEXT DEFAULT '',
+          sync_source TEXT DEFAULT '',
+          synced_at TEXT DEFAULT '0',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          deleted_at TEXT DEFAULT '0'
+        );
+        CREATE TABLE tags (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL UNIQUE,
+          frequency INTEGER DEFAULT 1,
+          last_used_at TEXT NOT NULL,
+          frecency_score REAL DEFAULT 0.0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE item_tags (
+          item_id TEXT NOT NULL,
+          tag_id TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          PRIMARY KEY (item_id, tag_id)
+        );
+        CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
+      `);
+
+      // Insert production-like data with TEXT timestamps
+      prodDb.prepare(`
+        INSERT INTO items (id, type, content, sync_id, sync_source, synced_at, created_at, updated_at, deleted_at)
+        VALUES ('prod-1', 'url', 'https://example.com', '', '', '0', '2026-01-27T21:12:47.876Z', '2026-01-27T21:12:47.876Z', '0')
+      `).run();
+      prodDb.prepare(`
+        INSERT INTO items (id, type, content, sync_id, sync_source, synced_at, created_at, updated_at, deleted_at)
+        VALUES ('prod-2', 'text', 'A note', '', '', '0', '1769559596558.0', '1769559596558.0', '0')
+      `).run();
+      prodDb.prepare(`
+        INSERT INTO tags (id, name, frequency, last_used_at, frecency_score, created_at, updated_at)
+        VALUES ('tag-1', 'test', 1, '2026-01-27T12:00:00.000Z', 10.0, '2026-01-27T12:00:00.000Z', '2026-01-27T12:00:00.000Z')
+      `).run();
+      prodDb.prepare(`
+        INSERT INTO item_tags (item_id, tag_id, created_at) VALUES ('prod-1', 'tag-1', '2026-01-27T12:00:00.000Z')
+      `).run();
+      prodDb.close();
+
+      // Open via db module — must not crash
+      delete require.cache[require.resolve("./db")];
+      const freshDb = require("./db");
+      const conn = freshDb.getConnection("prod-user");
+
+      // Verify columns were renamed to camelCase
+      const itemCols = new Set(conn.prepare("PRAGMA table_info(items)").all().map(c => c.name));
+      assert.ok(itemCols.has("syncId"), "sync_id should be renamed to syncId");
+      assert.ok(itemCols.has("createdAt"), "created_at should be renamed to createdAt");
+      assert.ok(itemCols.has("deletedAt"), "deleted_at should be renamed to deletedAt");
+
+      const tagCols = new Set(conn.prepare("PRAGMA table_info(tags)").all().map(c => c.name));
+      assert.ok(tagCols.has("lastUsedAt"), "last_used_at should be renamed to lastUsedAt");
+      assert.ok(tagCols.has("frecencyScore"), "frecency_score should be renamed to frecencyScore");
+
+      const itCols = new Set(conn.prepare("PRAGMA table_info(item_tags)").all().map(c => c.name));
+      assert.ok(itCols.has("itemId"), "item_id should be renamed to itemId");
+      assert.ok(itCols.has("tagId"), "tag_id should be renamed to tagId");
+
+      // Verify getItems works (exercises runtime queries)
+      const items = freshDb.getItems("prod-user");
+      assert.strictEqual(items.length, 2);
+      for (const item of items) {
+        assert.strictEqual(typeof item.created_at, "number", `created_at should be number`);
+        assert.strictEqual(typeof item.updated_at, "number", `updated_at should be number`);
+        assert.strictEqual(typeof item.deleted_at, "number", `deleted_at should be number`);
+        assert.ok(item.created_at > 0, `created_at should be positive`);
+      }
+
+      // Verify getItemsSince works (exercises CAST query)
+      const sinceItems = freshDb.getItemsSince("prod-user", 0);
+      assert.strictEqual(sinceItems.length, 2);
+
+      // Verify getTagsByFrecency works
+      const tags = freshDb.getTagsByFrecency("prod-user");
+      assert.strictEqual(tags.length, 1);
+      assert.strictEqual(tags[0].name, "test");
+
+      // Verify saving new items works on the migrated DB
+      const newId = freshDb.saveUrl("prod-user", "https://new.com", ["newtag"]);
+      assert.ok(newId);
+      const allItems = freshDb.getItems("prod-user");
+      assert.strictEqual(allItems.length, 3);
+
+      // Verify deleteItem works
+      freshDb.deleteItem("prod-user", "prod-1");
+      assert.strictEqual(freshDb.getItems("prod-user").length, 2);
+
+      freshDb.closeAllConnections();
+    });
+  });
+
   describe("sync_id Deduplication", () => {
     it("should deduplicate by sync_id and return same server id", () => {
       // Simulate same item pushed twice with same sync_id

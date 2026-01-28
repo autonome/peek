@@ -167,7 +167,8 @@ export class SyncEngine {
         });
 
         pushed++;
-      } catch {
+      } catch (error) {
+        console.error(`[sync] Push failed for item ${item.id}:`, error.message);
         failed++;
       }
     }

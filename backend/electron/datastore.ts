@@ -479,7 +479,7 @@ function migrateTinyBaseData(): void {
 function migrateSyncColumns(): void {
   if (!db) return;
 
-  const tablesToMigrate = ['addresses', 'content', 'tags'];
+  const tablesToMigrate = ['addresses', 'content', 'tags', 'items'];
 
   for (const table of tablesToMigrate) {
     // Check if syncId column already exists

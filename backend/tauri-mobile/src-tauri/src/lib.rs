@@ -120,6 +120,24 @@ where
     }
 }
 
+/// Like deserialize_flexible_timestamp, but also handles absent/null fields (defaults to 0).
+fn deserialize_optional_flexible_timestamp<'de, D>(deserializer: D) -> Result<i64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    match &value {
+        serde_json::Value::Null => Ok(0),
+        serde_json::Value::Number(n) => n
+            .as_i64()
+            .ok_or_else(|| serde::de::Error::custom("timestamp number out of i64 range")),
+        serde_json::Value::String(s) => chrono::DateTime::parse_from_rfc3339(s)
+            .map(|dt| dt.timestamp_millis())
+            .map_err(|_| serde::de::Error::custom("invalid ISO 8601 timestamp")),
+        _ => Err(serde::de::Error::custom("expected number, string, or null for timestamp")),
+    }
+}
+
 // Server item format (from GET /items)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ServerItem {
@@ -133,7 +151,7 @@ struct ServerItem {
     created_at: i64,
     #[serde(deserialize_with = "deserialize_flexible_timestamp")]
     updated_at: i64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_optional_flexible_timestamp")]
     deleted_at: i64,
 }
 

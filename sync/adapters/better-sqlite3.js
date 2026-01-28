@@ -83,6 +83,19 @@ export function createBetterSqliteAdapter(db) {
     if (!tagColNames.has('updatedAt')) {
       db.exec('ALTER TABLE tags ADD COLUMN updatedAt INTEGER DEFAULT 0');
     }
+
+    // Add missing sync columns to items if they exist from a prior schema
+    const itemCols = db.prepare('PRAGMA table_info(items)').all();
+    const itemColNames = new Set(itemCols.map(c => c.name));
+    if (!itemColNames.has('syncId')) {
+      db.exec("ALTER TABLE items ADD COLUMN syncId TEXT DEFAULT ''");
+    }
+    if (!itemColNames.has('syncSource')) {
+      db.exec("ALTER TABLE items ADD COLUMN syncSource TEXT DEFAULT ''");
+    }
+    if (!itemColNames.has('syncedAt')) {
+      db.exec('ALTER TABLE items ADD COLUMN syncedAt INTEGER DEFAULT 0');
+    }
   }
 
   function prepareStatements() {

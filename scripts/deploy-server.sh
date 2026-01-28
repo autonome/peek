@@ -30,7 +30,10 @@ jj git export
 cd "$DIR"
 
 # Split backend/server/ into a standalone branch
-git subtree split --prefix=backend/server -b deploy/server
+# IMPORTANT: Specify 'main' explicitly. In a colocated jj repo, HEAD can lag
+# behind the main branch. Without this, subtree split uses HEAD and may deploy
+# stale code.
+git subtree split --prefix=backend/server -b deploy/server main
 
 # Remove yarn.lock from deploy branch if present (Railway uses npm)
 if git show deploy/server:yarn.lock &>/dev/null; then

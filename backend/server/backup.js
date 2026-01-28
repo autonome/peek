@@ -49,7 +49,7 @@ function getTableCounts(conn) {
   const itemTypes = conn.prepare(`
     SELECT type, COUNT(*) as count
     FROM items
-    WHERE deleted_at IS NULL
+    WHERE deletedAt = 0
     GROUP BY type
   `).all();
 

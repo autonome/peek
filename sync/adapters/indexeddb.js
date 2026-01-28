@@ -59,31 +59,51 @@ export function createIndexedDBAdapter() {
 
         request.onupgradeneeded = (event) => {
           const database = event.target.result;
+          const oldVersion = event.oldVersion;
 
-          // Delete old stores from version 1 if upgrading
-          for (const name of [...database.objectStoreNames]) {
-            database.deleteObjectStore(name);
+          if (oldVersion < 1) {
+            // Fresh install — create all stores
+            const items = database.createObjectStore('items', { keyPath: 'id' });
+            items.createIndex('type', 'type', { unique: false });
+            items.createIndex('syncId', 'syncId', { unique: false });
+            items.createIndex('deletedAt', 'deletedAt', { unique: false });
+            items.createIndex('createdAt', 'createdAt', { unique: false });
+
+            const tags = database.createObjectStore('tags', { keyPath: 'id' });
+            tags.createIndex('name', 'name', { unique: false });
+            tags.createIndex('frecencyScore', 'frecencyScore', { unique: false });
+
+            const itemTags = database.createObjectStore('item_tags', { keyPath: ['itemId', 'tagId'] });
+            itemTags.createIndex('itemId', 'itemId', { unique: false });
+            itemTags.createIndex('tagId', 'tagId', { unique: false });
+
+            database.createObjectStore('settings', { keyPath: 'key' });
           }
 
-          // items store
-          const items = database.createObjectStore('items', { keyPath: 'id' });
-          items.createIndex('type', 'type', { unique: false });
-          items.createIndex('syncId', 'syncId', { unique: false });
-          items.createIndex('deletedAt', 'deletedAt', { unique: false });
-          items.createIndex('createdAt', 'createdAt', { unique: false });
-
-          // tags store
-          const tags = database.createObjectStore('tags', { keyPath: 'id' });
-          tags.createIndex('name', 'name', { unique: false });
-          tags.createIndex('frecencyScore', 'frecencyScore', { unique: false });
-
-          // item_tags store — compound key
-          const itemTags = database.createObjectStore('item_tags', { keyPath: ['itemId', 'tagId'] });
-          itemTags.createIndex('itemId', 'itemId', { unique: false });
-          itemTags.createIndex('tagId', 'tagId', { unique: false });
-
-          // settings store — simple KV
-          database.createObjectStore('settings', { keyPath: 'key' });
+          if (oldVersion >= 1 && oldVersion < 2) {
+            // v1 → v2: add missing stores/indexes without destroying data.
+            // Add any stores that don't exist yet.
+            if (!database.objectStoreNames.contains('items')) {
+              const items = database.createObjectStore('items', { keyPath: 'id' });
+              items.createIndex('type', 'type', { unique: false });
+              items.createIndex('syncId', 'syncId', { unique: false });
+              items.createIndex('deletedAt', 'deletedAt', { unique: false });
+              items.createIndex('createdAt', 'createdAt', { unique: false });
+            }
+            if (!database.objectStoreNames.contains('tags')) {
+              const tags = database.createObjectStore('tags', { keyPath: 'id' });
+              tags.createIndex('name', 'name', { unique: false });
+              tags.createIndex('frecencyScore', 'frecencyScore', { unique: false });
+            }
+            if (!database.objectStoreNames.contains('item_tags')) {
+              const itemTags = database.createObjectStore('item_tags', { keyPath: ['itemId', 'tagId'] });
+              itemTags.createIndex('itemId', 'itemId', { unique: false });
+              itemTags.createIndex('tagId', 'tagId', { unique: false });
+            }
+            if (!database.objectStoreNames.contains('settings')) {
+              database.createObjectStore('settings', { keyPath: 'key' });
+            }
+          }
         };
 
         request.onsuccess = (event) => {

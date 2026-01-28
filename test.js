@@ -691,7 +691,7 @@ describe("Database Tests", () => {
       assert.ok(!itemCols.includes("sync_id"), "items should not have snake_case sync_id");
 
       const tagCols = conn.prepare("PRAGMA table_info(tags)").all().map(c => c.name);
-      assert.ok(tagCols.includes("lastUsedAt"), "tags.last_used_at should be renamed to lastUsedAt");
+      assert.ok(tagCols.includes("lastUsed"), "tags.last_used_at should be renamed to lastUsed");
       assert.ok(tagCols.includes("frecencyScore"), "tags.frecency_score should be renamed to frecencyScore");
 
       const itCols = conn.prepare("PRAGMA table_info(item_tags)").all().map(c => c.name);
@@ -707,9 +707,15 @@ describe("Database Tests", () => {
     });
   });
 
-  describe("Table Rebuild Fallback", () => {
-    it("should rebuild tables when ALTER TABLE RENAME COLUMN fails", () => {
-      // Create a legacy DB with a VIEW that blocks ALTER TABLE RENAME COLUMN
+  describe("Production Schema Migration", () => {
+    it("should migrate original production schema to canonical (INTEGER PK, last_used, TEXT timestamps)", () => {
+      // This tests the ACTUAL production database schema from commit 21c30add5839.
+      // Key differences from canonical:
+      // - tags.id: INTEGER PRIMARY KEY AUTOINCREMENT (not TEXT)
+      // - tags column: last_used (not last_used_at or lastUsed)
+      // - item_tags.tag_id: INTEGER (not TEXT)
+      // - All timestamps: TEXT (not INTEGER)
+      // - items.deleted_at: NULL means not deleted (not 0)
       const Database = require("better-sqlite3");
       const rbDir = path.join(TEST_DATA_DIR, "rebuild-user", "profiles", "default");
       fs.mkdirSync(rbDir, { recursive: true });
@@ -719,53 +725,49 @@ describe("Database Tests", () => {
       rbDb.exec(`
         CREATE TABLE items (
           id TEXT PRIMARY KEY,
-          type TEXT NOT NULL,
+          type TEXT NOT NULL CHECK(type IN ('url', 'text', 'tagset', 'image')),
           content TEXT,
           metadata TEXT,
-          sync_id TEXT DEFAULT '',
-          sync_source TEXT DEFAULT '',
-          synced_at INTEGER DEFAULT 0,
-          created_at INTEGER NOT NULL,
-          updated_at INTEGER NOT NULL,
-          deleted_at INTEGER DEFAULT 0
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          deleted_at TEXT
         );
         CREATE TABLE tags (
-          id TEXT PRIMARY KEY,
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
           name TEXT NOT NULL UNIQUE,
-          frequency INTEGER DEFAULT 1,
-          last_used_at INTEGER NOT NULL,
-          frecency_score REAL DEFAULT 0.0,
-          created_at INTEGER NOT NULL,
-          updated_at INTEGER NOT NULL
+          frequency INTEGER NOT NULL DEFAULT 0,
+          last_used TEXT NOT NULL,
+          frecency_score REAL NOT NULL DEFAULT 0.0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
         );
         CREATE TABLE item_tags (
           item_id TEXT NOT NULL,
-          tag_id TEXT NOT NULL,
-          created_at INTEGER NOT NULL,
-          PRIMARY KEY (item_id, tag_id)
+          tag_id INTEGER NOT NULL,
+          created_at TEXT NOT NULL,
+          PRIMARY KEY (item_id, tag_id),
+          FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE,
+          FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
         );
-        CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
+        CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
+        CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
+        CREATE INDEX IF NOT EXISTS idx_tags_frecency ON tags(frecency_score DESC);
       `);
 
-      // Add a VIEW referencing snake_case columns — this blocks ALTER TABLE RENAME COLUMN
-      rbDb.exec(`
-        CREATE VIEW tags_view AS SELECT last_used_at, frecency_score FROM tags;
-        CREATE VIEW items_view AS SELECT created_at, deleted_at FROM items;
-        CREATE VIEW item_tags_view AS SELECT item_id, tag_id FROM item_tags;
-      `);
-
-      // Insert test data
+      // Insert test data with original TEXT timestamps and NULL deleted_at
+      const ts = new Date("2026-01-15T10:00:00Z").toISOString();
       rbDb.prepare(`
         INSERT INTO items (id, type, content, created_at, updated_at, deleted_at)
-        VALUES ('rb-1', 'url', 'https://example.com', 1000, 1000, 0)
-      `).run();
+        VALUES ('rb-1', 'url', 'https://example.com', ?, ?, NULL)
+      `).run(ts, ts);
       rbDb.prepare(`
-        INSERT INTO tags (id, name, frequency, last_used_at, frecency_score, created_at, updated_at)
-        VALUES ('tag-1', 'test', 1, 1000, 10.0, 1000, 1000)
-      `).run();
+        INSERT INTO tags (name, frequency, last_used, frecency_score, created_at, updated_at)
+        VALUES ('test', 3, ?, 15.0, ?, ?)
+      `).run(ts, ts, ts);
       rbDb.prepare(`
-        INSERT INTO item_tags (item_id, tag_id, created_at) VALUES ('rb-1', 'tag-1', 1000)
-      `).run();
+        INSERT INTO item_tags (item_id, tag_id, created_at) VALUES ('rb-1', 1, ?)
+      `).run(ts);
       rbDb.close();
 
       // Open via db module — ALTER RENAME will fail, rebuild should kick in
@@ -780,12 +782,21 @@ describe("Database Tests", () => {
       assert.ok(itemCols.has("syncId"), "items should have syncId");
 
       const tagCols = new Set(conn.prepare("PRAGMA table_info(tags)").all().map(c => c.name));
-      assert.ok(tagCols.has("lastUsedAt"), "tags should have lastUsedAt");
+      assert.ok(tagCols.has("lastUsed"), "tags should have lastUsed (was last_used)");
       assert.ok(tagCols.has("frecencyScore"), "tags should have frecencyScore");
+      assert.ok(tagCols.has("createdAt"), "tags should have createdAt");
+      // Verify tags.id is now TEXT (was INTEGER AUTOINCREMENT)
+      const tagIdCol = conn.prepare("PRAGMA table_info(tags)").all().find(c => c.name === "id");
+      assert.ok(tagIdCol, "tags should have id column");
+      assert.strictEqual(tagIdCol.type, "TEXT", "tags.id should be TEXT after rebuild");
 
       const itCols = new Set(conn.prepare("PRAGMA table_info(item_tags)").all().map(c => c.name));
       assert.ok(itCols.has("itemId"), "item_tags should have itemId");
       assert.ok(itCols.has("tagId"), "item_tags should have tagId");
+      // Verify item_tags.tagId is now TEXT (was INTEGER)
+      const itTagIdCol = conn.prepare("PRAGMA table_info(item_tags)").all().find(c => c.name === "tagId");
+      assert.ok(itTagIdCol, "item_tags should have tagId column");
+      assert.strictEqual(itTagIdCol.type, "TEXT", "item_tags.tagId should be TEXT after rebuild");
 
       // Verify data survived the rebuild
       const items = freshDb.getItems("rebuild-user");
@@ -795,11 +806,81 @@ describe("Database Tests", () => {
       const tags = freshDb.getTagsByFrecency("rebuild-user");
       assert.strictEqual(tags.length, 1);
       assert.strictEqual(tags[0].name, "test");
+      assert.strictEqual(tags[0].frequency, 3, "tag frequency should be preserved");
 
       // Verify new items can be saved
       const newId = freshDb.saveUrl("rebuild-user", "https://new.com", ["newtag"]);
       assert.ok(newId);
       assert.strictEqual(freshDb.getItems("rebuild-user").length, 2);
+
+      freshDb.closeAllConnections();
+    });
+  });
+
+  describe("Missing Columns Safety Net", () => {
+    it("should add missing columns when tags table has incomplete schema", () => {
+      // Simulate a legacy DB where tags table was created without some columns
+      // (e.g., an older version of the code that didn't have frecencyScore or lastUsed)
+      const Database = require("better-sqlite3");
+      const mcDir = path.join(TEST_DATA_DIR, "missing-cols-user", "profiles", "default");
+      fs.mkdirSync(mcDir, { recursive: true });
+      const mcDb = new Database(path.join(mcDir, "datastore.sqlite"));
+      mcDb.pragma("journal_mode = WAL");
+
+      // Minimal tags table — missing lastUsed, frecencyScore, createdAt, updatedAt
+      mcDb.exec(`
+        CREATE TABLE items (
+          id TEXT PRIMARY KEY,
+          type TEXT NOT NULL,
+          content TEXT,
+          metadata TEXT,
+          syncId TEXT DEFAULT '',
+          syncSource TEXT DEFAULT '',
+          syncedAt INTEGER DEFAULT 0,
+          createdAt INTEGER NOT NULL,
+          updatedAt INTEGER NOT NULL,
+          deletedAt INTEGER DEFAULT 0
+        );
+        CREATE TABLE tags (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL UNIQUE,
+          frequency INTEGER DEFAULT 1
+        );
+        CREATE TABLE item_tags (
+          itemId TEXT NOT NULL,
+          tagId TEXT NOT NULL,
+          createdAt INTEGER NOT NULL,
+          PRIMARY KEY (itemId, tagId)
+        );
+        CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
+      `);
+
+      // Insert test data with minimal columns
+      mcDb.prepare("INSERT INTO tags (id, name, frequency) VALUES ('t1', 'testtag', 3)").run();
+      mcDb.close();
+
+      // Open via db module — should add missing columns without crashing
+      delete require.cache[require.resolve("./db")];
+      const freshDb = require("./db");
+      const conn = freshDb.getConnection("missing-cols-user");
+
+      // Verify all required columns exist
+      const tagCols = new Set(conn.prepare("PRAGMA table_info(tags)").all().map(c => c.name));
+      assert.ok(tagCols.has("lastUsed"), "tags should have lastUsed after safety net");
+      assert.ok(tagCols.has("frecencyScore"), "tags should have frecencyScore after safety net");
+      assert.ok(tagCols.has("createdAt"), "tags should have createdAt after safety net");
+      assert.ok(tagCols.has("updatedAt"), "tags should have updatedAt after safety net");
+
+      // Verify existing data survived
+      const tags = freshDb.getTagsByFrecency("missing-cols-user");
+      assert.strictEqual(tags.length, 1);
+      assert.strictEqual(tags[0].name, "testtag");
+      assert.strictEqual(tags[0].frequency, 3);
+
+      // Verify new operations work
+      freshDb.saveUrl("missing-cols-user", "https://example.com", ["newtag"]);
+      const items = freshDb.getItems("missing-cols-user");
+      assert.strictEqual(items.length, 1);
 
       freshDb.closeAllConnections();
     });
@@ -831,7 +912,7 @@ describe("Database Tests", () => {
           id TEXT PRIMARY KEY,
           name TEXT NOT NULL UNIQUE,
           frequency INTEGER DEFAULT 1,
-          lastUsedAt TEXT NOT NULL,
+          lastUsed TEXT NOT NULL,
           frecencyScore REAL DEFAULT 0.0,
           createdAt TEXT NOT NULL,
           updatedAt TEXT NOT NULL
@@ -855,7 +936,7 @@ describe("Database Tests", () => {
         VALUES ('num-1', 'url', 'https://example.com', '', '', '0', '1769559596558.0', '1769559596558.0', '1769509253170')
       `).run();
       tsDb.prepare(`
-        INSERT INTO tags (id, name, frequency, lastUsedAt, frecencyScore, createdAt, updatedAt)
+        INSERT INTO tags (id, name, frequency, lastUsed, frecencyScore, createdAt, updatedAt)
         VALUES ('tag-1', 'test', 1, '2026-01-27T12:00:00.000Z', 10.0, '2026-01-27T12:00:00.000Z', '2026-01-27T12:00:00.000Z')
       `).run();
       tsDb.prepare(`
@@ -971,7 +1052,7 @@ describe("Database Tests", () => {
       assert.ok(itemCols.has("deletedAt"), "deleted_at should be renamed to deletedAt");
 
       const tagCols = new Set(conn.prepare("PRAGMA table_info(tags)").all().map(c => c.name));
-      assert.ok(tagCols.has("lastUsedAt"), "last_used_at should be renamed to lastUsedAt");
+      assert.ok(tagCols.has("lastUsed"), "last_used_at should be renamed to lastUsed");
       assert.ok(tagCols.has("frecencyScore"), "frecency_score should be renamed to frecencyScore");
 
       const itCols = new Set(conn.prepare("PRAGMA table_info(item_tags)").all().map(c => c.name));

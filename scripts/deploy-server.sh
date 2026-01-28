@@ -20,16 +20,31 @@ fi
 
 cd "$DIR"
 
+echo "=== Server Deploy ==="
+echo ""
+
 # Auto-commit any pending jj changes
 if [ -n "$(jj diff --stat 2>/dev/null)" ]; then
-  echo "Auto-committing pending changes..."
+  echo ">>> Auto-committing pending changes..."
   jj commit -m "chore: auto-commit for deploy"
 fi
 
 # Sync jj state to git and ensure git main matches jj main
+echo ">>> Syncing jj → git..."
 jj git export
 MAIN_COMMIT=$(jj log -r main --no-graph -T 'commit_id' 2>/dev/null)
 git branch -f main "$MAIN_COMMIT" 2>/dev/null || true
+
+# Show what we're deploying
+echo ""
+echo ">>> Deploying from main:"
+jj log -r main --no-graph -T 'commit_id.short(12) ++ " " ++ description.first_line()' 2>/dev/null
+echo ""
+
+# Show recent server changes
+echo ">>> Recent server changes:"
+jj log -r 'ancestors(main, 5)' --no-graph -T 'if(diff.contains("backend/server/"), change_id.short(8) ++ " " ++ description.first_line() ++ "\n")' 2>/dev/null | head -10
+echo ""
 
 # Ensure deploy/server branch exists
 if ! git rev-parse --verify deploy/server &>/dev/null; then

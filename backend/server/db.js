@@ -36,6 +36,19 @@ function getConnection(userId, profileId = "default") {
   return db;
 }
 
+/**
+ * Rename snake_case columns to camelCase if the old names exist.
+ * SQLite 3.25+ supports ALTER TABLE RENAME COLUMN.
+ */
+function migrateColumns(db, table, renames) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name);
+  for (const [oldName, newName] of Object.entries(renames)) {
+    if (cols.includes(oldName) && !cols.includes(newName)) {
+      db.exec(`ALTER TABLE ${table} RENAME COLUMN ${oldName} TO ${newName}`);
+    }
+  }
+}
+
 function initializeSchema(db) {
   // Canonical camelCase schema — matches sync engine
   db.exec(`
@@ -54,20 +67,31 @@ function initializeSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
   `);
 
-  // Migrate existing tables: add columns that may not exist yet.
-  // CREATE TABLE IF NOT EXISTS skips when the table exists, so new columns
-  // must be added via ALTER TABLE. Indexes on new columns go after the migration.
-  const cols = db.prepare("PRAGMA table_info(items)").all().map(c => c.name);
-  if (!cols.includes("syncId")) {
+  // --- Migrate existing tables ---
+  // Production databases may have snake_case columns from older schema versions.
+  // CREATE TABLE IF NOT EXISTS skips when the table exists, so we must handle
+  // both adding missing columns AND renaming snake_case → camelCase.
+  migrateColumns(db, "items", {
+    "sync_id": "syncId",
+    "sync_source": "syncSource",
+    "synced_at": "syncedAt",
+    "created_at": "createdAt",
+    "updated_at": "updatedAt",
+    "deleted_at": "deletedAt",
+  });
+
+  // Add columns that may not exist in any form
+  const itemCols = db.prepare("PRAGMA table_info(items)").all().map(c => c.name);
+  if (!itemCols.includes("syncId")) {
     db.exec("ALTER TABLE items ADD COLUMN syncId TEXT DEFAULT ''");
   }
-  if (!cols.includes("syncSource")) {
+  if (!itemCols.includes("syncSource")) {
     db.exec("ALTER TABLE items ADD COLUMN syncSource TEXT DEFAULT ''");
   }
-  if (!cols.includes("syncedAt")) {
+  if (!itemCols.includes("syncedAt")) {
     db.exec("ALTER TABLE items ADD COLUMN syncedAt INTEGER DEFAULT 0");
   }
-  if (!cols.includes("deletedAt")) {
+  if (!itemCols.includes("deletedAt")) {
     db.exec("ALTER TABLE items ADD COLUMN deletedAt INTEGER DEFAULT 0");
   }
 
@@ -86,6 +110,16 @@ function initializeSchema(db) {
       createdAt INTEGER NOT NULL,
       updatedAt INTEGER NOT NULL
     );
+  `);
+
+  migrateColumns(db, "tags", {
+    "last_used_at": "lastUsedAt",
+    "frecency_score": "frecencyScore",
+    "created_at": "createdAt",
+    "updated_at": "updatedAt",
+  });
+
+  db.exec(`
     CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
     CREATE INDEX IF NOT EXISTS idx_tags_frecency ON tags(frecencyScore DESC);
   `);
@@ -97,6 +131,15 @@ function initializeSchema(db) {
       createdAt INTEGER NOT NULL,
       PRIMARY KEY (itemId, tagId)
     );
+  `);
+
+  migrateColumns(db, "item_tags", {
+    "item_id": "itemId",
+    "tag_id": "tagId",
+    "created_at": "createdAt",
+  });
+
+  db.exec(`
     CREATE INDEX IF NOT EXISTS idx_item_tags_itemId ON item_tags(itemId);
     CREATE INDEX IF NOT EXISTS idx_item_tags_tagId ON item_tags(tagId);
   `);

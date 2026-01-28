@@ -630,6 +630,83 @@ describe("Database Tests", () => {
     });
   });
 
+  describe("Snake-case Migration", () => {
+    it("should migrate snake_case item_tags columns to camelCase", () => {
+      // Simulate a legacy database with snake_case columns
+      const Database = require("better-sqlite3");
+      const legacyDir = path.join(TEST_DATA_DIR, "legacy-user", "profiles", "default");
+      fs.mkdirSync(legacyDir, { recursive: true });
+      const legacyDb = new Database(path.join(legacyDir, "datastore.sqlite"));
+      legacyDb.pragma("journal_mode = WAL");
+
+      // Create legacy schema with snake_case columns
+      legacyDb.exec(`
+        CREATE TABLE items (
+          id TEXT PRIMARY KEY,
+          type TEXT NOT NULL,
+          content TEXT,
+          metadata TEXT,
+          sync_id TEXT DEFAULT '',
+          sync_source TEXT DEFAULT '',
+          synced_at INTEGER DEFAULT 0,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          deleted_at INTEGER DEFAULT 0
+        );
+        CREATE TABLE tags (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL UNIQUE,
+          frequency INTEGER DEFAULT 1,
+          last_used_at INTEGER NOT NULL,
+          frecency_score REAL DEFAULT 0.0,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+        CREATE TABLE item_tags (
+          item_id TEXT NOT NULL,
+          tag_id TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          PRIMARY KEY (item_id, tag_id)
+        );
+        CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
+      `);
+
+      // Insert a legacy item
+      legacyDb.prepare(`
+        INSERT INTO items (id, type, content, sync_id, sync_source, synced_at, created_at, updated_at, deleted_at)
+        VALUES ('legacy-1', 'url', 'https://example.com', '', '', 0, 1000, 1000, 0)
+      `).run();
+      legacyDb.close();
+
+      // Now open via db module — initializeSchema should migrate columns
+      delete require.cache[require.resolve("./db")];
+      const freshDb = require("./db");
+      const conn = freshDb.getConnection("legacy-user");
+
+      // Verify columns were renamed
+      const itemCols = conn.prepare("PRAGMA table_info(items)").all().map(c => c.name);
+      assert.ok(itemCols.includes("syncId"), "items.sync_id should be renamed to syncId");
+      assert.ok(itemCols.includes("createdAt"), "items.created_at should be renamed to createdAt");
+      assert.ok(itemCols.includes("deletedAt"), "items.deleted_at should be renamed to deletedAt");
+      assert.ok(!itemCols.includes("sync_id"), "items should not have snake_case sync_id");
+
+      const tagCols = conn.prepare("PRAGMA table_info(tags)").all().map(c => c.name);
+      assert.ok(tagCols.includes("lastUsedAt"), "tags.last_used_at should be renamed to lastUsedAt");
+      assert.ok(tagCols.includes("frecencyScore"), "tags.frecency_score should be renamed to frecencyScore");
+
+      const itCols = conn.prepare("PRAGMA table_info(item_tags)").all().map(c => c.name);
+      assert.ok(itCols.includes("itemId"), "item_tags.item_id should be renamed to itemId");
+      assert.ok(itCols.includes("tagId"), "item_tags.tag_id should be renamed to tagId");
+
+      // Verify the legacy data is still accessible
+      const items = freshDb.getItems("legacy-user");
+      assert.strictEqual(items.length, 1);
+      assert.strictEqual(items[0].content, "https://example.com");
+
+      freshDb.closeAllConnections();
+    });
+  });
+
   describe("sync_id Deduplication", () => {
     it("should deduplicate by sync_id and return same server id", () => {
       // Simulate same item pushed twice with same sync_id

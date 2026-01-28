@@ -57,8 +57,10 @@ function migrateColumns(db, table, renames) {
  * Fallback when ALTER TABLE RENAME COLUMN fails (e.g., indexes/triggers that
  * SQLite can't automatically update). Uses the canonical SQLite table-rebuild:
  * create new table → copy data with column aliases → drop old → rename new.
+ *
+ * @param {boolean} forceRebuild - Force rebuild even if no renames pending (e.g., for type changes)
  */
-function rebuildTableIfNeeded(db, table, createSQL, renames) {
+function rebuildTableIfNeeded(db, table, createSQL, renames, forceRebuild = false) {
   const currentCols = db.prepare(`PRAGMA table_info(${table})`).all();
   const currentColNames = new Set(currentCols.map(c => c.name));
 
@@ -67,9 +69,12 @@ function rebuildTableIfNeeded(db, table, createSQL, renames) {
     ([oldName, newName]) => currentColNames.has(oldName) && !currentColNames.has(newName)
   );
 
-  if (pending.length === 0) return;
+  if (pending.length === 0 && !forceRebuild) return;
 
-  console.log(`[schema] Rebuilding ${table} — ALTER RENAME COLUMN failed for: ${pending.map(([o, n]) => `${o}→${n}`).join(", ")}`);
+  const reason = pending.length > 0
+    ? `ALTER RENAME COLUMN failed for: ${pending.map(([o, n]) => `${o}→${n}`).join(", ")}`
+    : "forced (type migration)";
+  console.log(`[schema] Rebuilding ${table} — ${reason}`);
 
   const nameMap = new Map(pending);
   const reverseMap = new Map(pending.map(([o, n]) => [n, o]));
@@ -160,7 +165,7 @@ function migrateTimestamps(db, table, columns) {
 function validateSchema(db) {
   const required = {
     items: ["id", "type", "syncId", "syncSource", "syncedAt", "createdAt", "updatedAt", "deletedAt"],
-    tags: ["id", "name", "frequency", "lastUsedAt", "frecencyScore", "createdAt", "updatedAt"],
+    tags: ["id", "name", "frequency", "lastUsed", "frecencyScore", "createdAt", "updatedAt"],
     item_tags: ["itemId", "tagId", "createdAt"],
   };
   const missing = [];
@@ -173,6 +178,11 @@ function validateSchema(db) {
     }
   }
   if (missing.length > 0) {
+    // Log actual schema state for debugging before throwing
+    for (const table of Object.keys(required)) {
+      const actual = db.prepare(`PRAGMA table_info(${table})`).all();
+      console.error(`[schema] ${table} actual columns: ${actual.map(c => c.name).join(", ")}`);
+    }
     throw new Error(
       `[schema] Required columns missing after migration: ${missing.join(", ")}. ` +
       `Column renames may have failed. Check server logs for '[schema] Failed to rename' errors.`
@@ -210,6 +220,10 @@ function initializeSchema(db) {
     "updated_at": "updatedAt",
     "deleted_at": "deletedAt",
   };
+  // Diagnostic: log actual items schema before migration
+  const itemColsPre = db.prepare("PRAGMA table_info(items)").all();
+  console.log(`[schema] items columns before migration: ${itemColsPre.map(c => c.name).join(", ")}`);
+
   migrateColumns(db, "items", itemRenames);
   rebuildTableIfNeeded(db, "items", `CREATE TABLE items (
     id TEXT PRIMARY KEY,
@@ -243,6 +257,9 @@ function initializeSchema(db) {
   // Convert any TEXT timestamps to INTEGER (Unix ms)
   migrateTimestamps(db, "items", ["createdAt", "updatedAt", "syncedAt", "deletedAt"]);
 
+  // Convert NULL deletedAt to 0 (old schema used NULL for not-deleted, new uses 0)
+  db.exec("UPDATE items SET deletedAt = 0 WHERE deletedAt IS NULL");
+
   // Create indexes only if referenced columns exist (rename may have failed)
   const itemColsPost = new Set(db.prepare("PRAGMA table_info(items)").all().map(c => c.name));
   if (itemColsPost.has("syncId")) {
@@ -257,7 +274,7 @@ function initializeSchema(db) {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
       frequency INTEGER DEFAULT 1,
-      lastUsedAt INTEGER NOT NULL,
+      lastUsed INTEGER NOT NULL,
       frecencyScore REAL DEFAULT 0.0,
       createdAt INTEGER NOT NULL,
       updatedAt INTEGER NOT NULL
@@ -265,23 +282,77 @@ function initializeSchema(db) {
   `);
 
   const tagRenames = {
-    "last_used_at": "lastUsedAt",
+    "last_used": "lastUsed",      // Original production schema used "last_used" (not "last_used_at")
+    "last_used_at": "lastUsed",   // In case any DB was created with "last_used_at"
     "frecency_score": "frecencyScore",
     "created_at": "createdAt",
     "updated_at": "updatedAt",
   };
+
+  // Diagnostic: log actual tags schema before migration
+  const tagColsPre = db.prepare("PRAGMA table_info(tags)").all();
+  console.log(`[schema] tags columns before migration: ${tagColsPre.map(c => c.name).join(", ")}`);
+
   migrateColumns(db, "tags", tagRenames);
+
+  // Check if tags.id needs type migration (INTEGER AUTOINCREMENT → TEXT)
+  // This happens when the production DB was created with the original schema.
+  // rebuildTableIfNeeded only checks for column renames, not type changes.
+  const tagsIdCol = db.prepare("PRAGMA table_info(tags)").all().find(c => c.name === "id");
+  const needsIdTypeRebuild = tagsIdCol && tagsIdCol.type.toUpperCase() === "INTEGER";
+  if (needsIdTypeRebuild) {
+    console.log("[schema] tags.id is INTEGER, forcing rebuild for TEXT PRIMARY KEY migration");
+  }
+
   rebuildTableIfNeeded(db, "tags", `CREATE TABLE tags (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
     frequency INTEGER DEFAULT 1,
-    lastUsedAt INTEGER NOT NULL,
+    lastUsed INTEGER NOT NULL,
     frecencyScore REAL DEFAULT 0.0,
     createdAt INTEGER NOT NULL,
     updatedAt INTEGER NOT NULL
-  )`, tagRenames);
+  )`, tagRenames, needsIdTypeRebuild);
 
-  migrateTimestamps(db, "tags", ["lastUsedAt", "createdAt", "updatedAt"]);
+  // Safety net: add any missing columns (handles unknown legacy schemas)
+  const tagColSet = new Set(db.prepare("PRAGMA table_info(tags)").all().map(c => c.name));
+  if (!tagColSet.has("lastUsed") && !tagColSet.has("last_used_at")) {
+    console.log("[schema] Adding missing column tags.lastUsed");
+    db.exec("ALTER TABLE tags ADD COLUMN lastUsed INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!tagColSet.has("frecencyScore") && !tagColSet.has("frecency_score")) {
+    console.log("[schema] Adding missing column tags.frecencyScore");
+    db.exec("ALTER TABLE tags ADD COLUMN frecencyScore REAL DEFAULT 0.0");
+  }
+  if (!tagColSet.has("createdAt") && !tagColSet.has("created_at")) {
+    console.log("[schema] Adding missing column tags.createdAt");
+    db.exec("ALTER TABLE tags ADD COLUMN createdAt INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!tagColSet.has("updatedAt") && !tagColSet.has("updated_at")) {
+    console.log("[schema] Adding missing column tags.updatedAt");
+    db.exec("ALTER TABLE tags ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!tagColSet.has("frequency")) {
+    console.log("[schema] Adding missing column tags.frequency");
+    db.exec("ALTER TABLE tags ADD COLUMN frequency INTEGER DEFAULT 1");
+  }
+
+  // Re-run rename/rebuild after ADD COLUMN (columns may now exist with snake_case from ADD)
+  const tagColsAfterAdd = new Set(db.prepare("PRAGMA table_info(tags)").all().map(c => c.name));
+  if ([...Object.values(tagRenames)].some(n => !tagColsAfterAdd.has(n))) {
+    migrateColumns(db, "tags", tagRenames);
+    rebuildTableIfNeeded(db, "tags", `CREATE TABLE tags (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      frequency INTEGER DEFAULT 1,
+      lastUsed INTEGER NOT NULL,
+      frecencyScore REAL DEFAULT 0.0,
+      createdAt INTEGER NOT NULL,
+      updatedAt INTEGER NOT NULL
+    )`, tagRenames);
+  }
+
+  migrateTimestamps(db, "tags", ["lastUsed", "createdAt", "updatedAt"]);
 
   db.exec("CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name)");
   const tagColsPost = new Set(db.prepare("PRAGMA table_info(tags)").all().map(c => c.name));
@@ -303,13 +374,42 @@ function initializeSchema(db) {
     "tag_id": "tagId",
     "created_at": "createdAt",
   };
+
+  // Diagnostic: log actual item_tags schema before migration
+  const itColsPre = db.prepare("PRAGMA table_info(item_tags)").all();
+  console.log(`[schema] item_tags columns before migration: ${itColsPre.map(c => c.name).join(", ")}`);
+
   migrateColumns(db, "item_tags", itemTagRenames);
+
+  // Check if item_tags.tag_id/tagId needs type migration (INTEGER → TEXT)
+  // Production item_tags had tag_id INTEGER as foreign key to tags.id INTEGER
+  const itTagIdCol = db.prepare("PRAGMA table_info(item_tags)").all().find(c => c.name === "tag_id" || c.name === "tagId");
+  const needsTagIdTypeRebuild = itTagIdCol && itTagIdCol.type.toUpperCase() === "INTEGER";
+  if (needsTagIdTypeRebuild) {
+    console.log("[schema] item_tags.tagId is INTEGER, forcing rebuild for TEXT migration");
+  }
+
   rebuildTableIfNeeded(db, "item_tags", `CREATE TABLE item_tags (
     itemId TEXT NOT NULL,
     tagId TEXT NOT NULL,
     createdAt INTEGER NOT NULL,
     PRIMARY KEY (itemId, tagId)
-  )`, itemTagRenames);
+  )`, itemTagRenames, needsTagIdTypeRebuild);
+
+  // Safety net: add any missing columns for item_tags
+  const itColSet = new Set(db.prepare("PRAGMA table_info(item_tags)").all().map(c => c.name));
+  if (!itColSet.has("itemId") && !itColSet.has("item_id")) {
+    console.log("[schema] Adding missing column item_tags.itemId");
+    db.exec("ALTER TABLE item_tags ADD COLUMN itemId TEXT NOT NULL DEFAULT ''");
+  }
+  if (!itColSet.has("tagId") && !itColSet.has("tag_id")) {
+    console.log("[schema] Adding missing column item_tags.tagId");
+    db.exec("ALTER TABLE item_tags ADD COLUMN tagId TEXT NOT NULL DEFAULT ''");
+  }
+  if (!itColSet.has("createdAt") && !itColSet.has("created_at")) {
+    console.log("[schema] Adding missing column item_tags.createdAt");
+    db.exec("ALTER TABLE item_tags ADD COLUMN createdAt INTEGER NOT NULL DEFAULT 0");
+  }
 
   migrateTimestamps(db, "item_tags", ["createdAt"]);
 
@@ -359,8 +459,8 @@ function now() {
   return Date.now();
 }
 
-function calculateFrecency(frequency, lastUsedAt) {
-  const daysSinceUse = (Date.now() - lastUsedAt) / (1000 * 60 * 60 * 24);
+function calculateFrecency(frequency, lastUsed) {
+  const daysSinceUse = (Date.now() - lastUsed) / (1000 * 60 * 60 * 24);
   const decayFactor = 1.0 / (1.0 + daysSinceUse / 7.0);
   return frequency * 10.0 * decayFactor;
 }
@@ -373,7 +473,7 @@ function getOrCreateTagWithConn(conn, name, timestamp) {
     const newFrequency = existing.frequency + 1;
     const frecencyScore = calculateFrecency(newFrequency, timestamp);
     conn.prepare(`
-      UPDATE tags SET frequency = ?, lastUsedAt = ?, frecencyScore = ?, updatedAt = ?
+      UPDATE tags SET frequency = ?, lastUsed = ?, frecencyScore = ?, updatedAt = ?
       WHERE id = ?
     `).run(newFrequency, timestamp, frecencyScore, timestamp, existing.id);
     return existing.id;
@@ -381,7 +481,7 @@ function getOrCreateTagWithConn(conn, name, timestamp) {
     const tagId = generateUUID();
     const frecencyScore = calculateFrecency(1, timestamp);
     conn.prepare(`
-      INSERT INTO tags (id, name, frequency, lastUsedAt, frecencyScore, createdAt, updatedAt)
+      INSERT INTO tags (id, name, frequency, lastUsed, frecencyScore, createdAt, updatedAt)
       VALUES (?, ?, 1, ?, ?, ?, ?)
     `).run(tagId, name, timestamp, frecencyScore, timestamp, timestamp);
     return tagId;
@@ -591,7 +691,7 @@ function getTagsByFrecency(userId, profileId = "default") {
   const conn = getConnection(userId, profileId);
 
   return conn.prepare(`
-    SELECT name, frequency, lastUsedAt, frecencyScore
+    SELECT name, frequency, lastUsed, frecencyScore
     FROM tags
     ORDER BY frecencyScore DESC
   `).all();

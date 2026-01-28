@@ -1309,7 +1309,7 @@ describe('Memory Adapter', () => {
 
     // Should have inserted a tag to check
     await adapter.insertTag({
-      id: 'tag-1', name: 'test', frequency: 1, lastUsedAt: 1000,
+      id: 'tag-1', name: 'test', frequency: 1, lastUsed: 1000,
       frecencyScore: 10, createdAt: 1000, updatedAt: 1000,
     });
 
@@ -1489,7 +1489,7 @@ if (betterSqliteWorks) {
         createdAt: 1000, updatedAt: 1000, deletedAt: 0,
       });
       await adapter.insertTag({
-        id: 'tag-1', name: 'test', frequency: 1, lastUsedAt: 1000,
+        id: 'tag-1', name: 'test', frequency: 1, lastUsed: 1000,
         frecencyScore: 10, createdAt: 1000, updatedAt: 1000,
       });
       await adapter.tagItem('hd-1', 'tag-1');
@@ -1506,7 +1506,7 @@ if (betterSqliteWorks) {
     it('should manage tags', async () => {
       await adapter.open();
       await adapter.insertTag({
-        id: 'tag-a', name: 'Alpha', frequency: 1, lastUsedAt: 1000,
+        id: 'tag-a', name: 'Alpha', frequency: 1, lastUsed: 1000,
         frecencyScore: 10, createdAt: 1000, updatedAt: 1000,
       });
       const byName = await adapter.getTagByName('alpha');
@@ -1526,7 +1526,7 @@ if (betterSqliteWorks) {
         createdAt: 1000, updatedAt: 1000, deletedAt: 0,
       });
       await adapter.insertTag({
-        id: 'tag-b', name: 'Beta', frequency: 1, lastUsedAt: 1000,
+        id: 'tag-b', name: 'Beta', frequency: 1, lastUsed: 1000,
         frecencyScore: 10, createdAt: 1000, updatedAt: 1000,
       });
 
@@ -1553,11 +1553,11 @@ if (betterSqliteWorks) {
         createdAt: 1000, updatedAt: 1000, deletedAt: 0,
       });
       await adapter.insertTag({
-        id: 'tag-c1', name: 'C1', frequency: 1, lastUsedAt: 1000,
+        id: 'tag-c1', name: 'C1', frequency: 1, lastUsed: 1000,
         frecencyScore: 10, createdAt: 1000, updatedAt: 1000,
       });
       await adapter.insertTag({
-        id: 'tag-c2', name: 'C2', frequency: 1, lastUsedAt: 1000,
+        id: 'tag-c2', name: 'C2', frequency: 1, lastUsed: 1000,
         frecencyScore: 10, createdAt: 1000, updatedAt: 1000,
       });
       await adapter.tagItem('ct-1', 'tag-c1');

@@ -70,7 +70,7 @@ interface ProfileEntry {
   id: string;
   name: string;
   createdAt: string;
-  lastUsedAt: string;
+  lastUsed: string;
 }
 
 interface SyncSettings {

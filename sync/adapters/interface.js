@@ -22,7 +22,7 @@
  * @property {string|number} id
  * @property {string} name
  * @property {number} frequency
- * @property {number} lastUsedAt - Unix ms
+ * @property {number} lastUsed - Unix ms
  * @property {number} frecencyScore
  * @property {number} createdAt - Unix ms
  * @property {number} updatedAt - Unix ms

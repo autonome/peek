@@ -141,7 +141,7 @@ export class DataEngine {
       const frecencyScore = calculateFrecency(newFrequency, timestamp);
       await this.adapter.updateTag(existing.id, {
         frequency: newFrequency,
-        lastUsedAt: timestamp,
+        lastUsed: timestamp,
         frecencyScore,
         updatedAt: timestamp,
       });
@@ -149,7 +149,7 @@ export class DataEngine {
         tag: {
           ...existing,
           frequency: newFrequency,
-          lastUsedAt: timestamp,
+          lastUsed: timestamp,
           frecencyScore,
           updatedAt: timestamp,
         },
@@ -161,7 +161,7 @@ export class DataEngine {
       id: generateId(),
       name: trimmed,
       frequency: 1,
-      lastUsedAt: timestamp,
+      lastUsed: timestamp,
       frecencyScore: calculateFrecency(1, timestamp),
       createdAt: timestamp,
       updatedAt: timestamp,

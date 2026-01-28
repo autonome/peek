@@ -550,7 +550,7 @@ if not profiles:
         'id': 'e2e-default-profile',
         'name': 'Default',
         'createdAt': '2026-01-01T00:00:00+00:00',
-        'lastUsedAt': '2026-01-01T00:00:00+00:00',
+        'lastUsed': '2026-01-01T00:00:00+00:00',
         'server_url': 'http://$LOCAL_IP:$PORT',
         'api_key': '$USER_A_KEY',
         'server_profile_id': '$PROFILE_A_DEFAULT_ID'

@@ -45,7 +45,7 @@ export function createBetterSqliteAdapter(db) {
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL UNIQUE,
         frequency INTEGER DEFAULT 1,
-        lastUsedAt INTEGER NOT NULL,
+        lastUsed INTEGER NOT NULL,
         frecencyScore REAL DEFAULT 0.0,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL
@@ -74,8 +74,8 @@ export function createBetterSqliteAdapter(db) {
     if (!tagColNames.has('frequency')) {
       db.exec('ALTER TABLE tags ADD COLUMN frequency INTEGER DEFAULT 1');
     }
-    if (!tagColNames.has('lastUsedAt')) {
-      db.exec('ALTER TABLE tags ADD COLUMN lastUsedAt INTEGER DEFAULT 0');
+    if (!tagColNames.has('lastUsed')) {
+      db.exec('ALTER TABLE tags ADD COLUMN lastUsed INTEGER DEFAULT 0');
     }
     if (!tagColNames.has('frecencyScore')) {
       db.exec('ALTER TABLE tags ADD COLUMN frecencyScore REAL DEFAULT 0.0');
@@ -113,8 +113,8 @@ export function createBetterSqliteAdapter(db) {
       getTagById: db.prepare('SELECT * FROM tags WHERE id = ?'),
       getTagByName: db.prepare('SELECT * FROM tags WHERE LOWER(name) = LOWER(?)'),
       insertTag: db.prepare(`
-        INSERT INTO tags (id, name, frequency, lastUsedAt, frecencyScore, createdAt, updatedAt)
-        VALUES (@id, @name, @frequency, @lastUsedAt, @frecencyScore, @createdAt, @updatedAt)
+        INSERT INTO tags (id, name, frequency, lastUsed, frecencyScore, createdAt, updatedAt)
+        VALUES (@id, @name, @frequency, @lastUsed, @frecencyScore, @createdAt, @updatedAt)
       `),
 
       getItemTags: db.prepare(`

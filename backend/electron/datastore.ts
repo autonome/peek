@@ -113,7 +113,7 @@ const createTableStatements = `
     createdAt INTEGER,
     updatedAt INTEGER,
     frequency INTEGER DEFAULT 0,
-    lastUsedAt INTEGER DEFAULT 0,
+    lastUsed INTEGER DEFAULT 0,
     frecencyScore INTEGER DEFAULT 0
   );
   CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
@@ -387,9 +387,9 @@ export function isValidTable(tableName: string): tableName is TableName {
   return (tableNames as readonly string[]).includes(tableName);
 }
 
-export function calculateFrecency(frequency: number, lastUsedAt: number): number {
+export function calculateFrecency(frequency: number, lastUsed: number): number {
   const currentTime = Date.now();
-  const daysSinceUse = (currentTime - lastUsedAt) / (1000 * 60 * 60 * 24);
+  const daysSinceUse = (currentTime - lastUsed) / (1000 * 60 * 60 * 24);
   const decayFactor = 1 / (1 + daysSinceUse / 7);
   return Math.round(frequency * 10 * decayFactor);
 }
@@ -1307,7 +1307,7 @@ export function getOrCreateTag(name: string): { tag: Tag; created: boolean } {
 
   const tagId = generateId('tag');
   getDb().prepare(`
-    INSERT INTO tags (id, name, slug, color, parentId, description, metadata, createdAt, updatedAt, frequency, lastUsedAt, frecencyScore)
+    INSERT INTO tags (id, name, slug, color, parentId, description, metadata, createdAt, updatedAt, frequency, lastUsed, frecencyScore)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(tagId, name.trim(), slug, '#999999', '', '', '{}', timestamp, timestamp, 0, 0, 0);
 
@@ -1331,7 +1331,7 @@ export function tagAddress(addressId: string, tagId: string): { link: AddressTag
   if (tag) {
     const newFrequency = (tag.frequency || 0) + 1;
     const frecencyScore = calculateFrecency(newFrequency, timestamp);
-    getDb().prepare('UPDATE tags SET frequency = ?, lastUsedAt = ?, frecencyScore = ?, updatedAt = ? WHERE id = ?')
+    getDb().prepare('UPDATE tags SET frequency = ?, lastUsed = ?, frecencyScore = ?, updatedAt = ? WHERE id = ?')
       .run(newFrequency, timestamp, frecencyScore, timestamp, tagId);
   }
 
@@ -1350,7 +1350,7 @@ export function getTagsByFrecency(domain?: string): Tag[] {
   // Recalculate frecency scores
   tags = tags.map(tag => ({
     ...tag,
-    frecencyScore: calculateFrecency(tag.frequency || 0, tag.lastUsedAt || 0)
+    frecencyScore: calculateFrecency(tag.frequency || 0, tag.lastUsed || 0)
   }));
 
   // If domain provided, boost tags used on same-domain addresses
@@ -1656,7 +1656,7 @@ export function tagItem(itemId: string, tagId: string): { link: ItemTag; already
     const newFrequency = (tag.frequency || 0) + 1;
     const frecencyScore = calculateFrecency(newFrequency, timestamp);
     getDb().prepare(
-      'UPDATE tags SET frequency = ?, lastUsedAt = ?, frecencyScore = ?, updatedAt = ? WHERE id = ?'
+      'UPDATE tags SET frequency = ?, lastUsed = ?, frecencyScore = ?, updatedAt = ? WHERE id = ?'
     ).run(newFrequency, timestamp, frecencyScore, timestamp, tagId);
   }
 

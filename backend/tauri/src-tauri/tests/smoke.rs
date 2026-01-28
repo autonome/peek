@@ -655,7 +655,7 @@ fn test_item_type_migration() {
                 createdAt INTEGER,
                 updatedAt INTEGER,
                 frequency INTEGER DEFAULT 0,
-                lastUsedAt INTEGER DEFAULT 0,
+                lastUsed INTEGER DEFAULT 0,
                 frecencyScore INTEGER DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS extension_settings (

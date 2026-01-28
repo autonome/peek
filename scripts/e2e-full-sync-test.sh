@@ -1,6 +1,17 @@
 #!/bin/bash
 # Full E2E Sync Test: Server + Desktop (headless) + iOS Simulator
 #
+# ┌─────────────────────────────────────────────────────────────────┐
+# │  INTERACTIVE TEST - Run in background, monitor output manually  │
+# │                                                                 │
+# │  Usage:                                                         │
+# │    npm run interactive-test:e2e:full-sync -- --interactive &    │
+# │                                                                 │
+# │  Then watch output and follow prompts to tap buttons in the     │
+# │  iOS simulator when instructed. Do NOT run this blocking in     │
+# │  an automated context - it requires human interaction.          │
+# └─────────────────────────────────────────────────────────────────┘
+#
 # Clean-room test covering all sync permutations:
 # - Server has pre-existing items (seeded via API)
 # - Desktop has pre-existing items (seeded via preconfigure script)
@@ -269,7 +280,7 @@ config = {
             "id": "$IOS_PROFILE_ID",
             "name": "E2E Test",
             "createdAt": "2026-01-27T00:00:00.000Z",
-            "lastUsedAt": "2026-01-27T00:00:00.000Z",
+            "lastUsed": "2026-01-27T00:00:00.000Z",
             "server_url": "$SERVER_URL",
             "api_key": "$API_KEY",
             "server_profile_id": "$SERVER_PROFILE_ID"
@@ -389,12 +400,6 @@ DESKTOP_PID=$!
 echo "  Desktop started headless (PID $DESKTOP_PID)"
 sleep 3
 
-# --- Step 10: Open Xcode ---
-
-echo ""
-echo "Step 10: Opening Xcode..."
-open "$XCODE_PROJECT"
-
 # --- Summary ---
 
 echo ""
@@ -435,6 +440,12 @@ echo ""
 echo "  Waiting for iOS to sync (polling server for $((SERVER_COUNT + DESKTOP_LOCAL + IOS_COUNT)) items)..."
 echo "  Press Ctrl+C at any time to stop and clean up."
 echo "=========================================="
+echo ""
+
+# --- Open Xcode (now that everything is ready) ---
+
+echo "Opening Xcode... Build & Run (⌘R), then tap 'Sync All' in the app."
+open "$XCODE_PROJECT"
 echo ""
 
 # --- Poll server until iOS items appear (or timeout) ---

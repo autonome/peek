@@ -26,7 +26,7 @@ export interface Profile {
   lastSyncAt: number | null;    // Unix ms
 
   createdAt: number;            // Unix ms
-  lastUsedAt: number;           // Unix ms
+  lastUsed: number;           // Unix ms
   isDefault: boolean;           // Cannot be deleted
 }
 
@@ -99,7 +99,7 @@ function rowToProfile(row: any): Profile {
     serverProfileId: row.server_profile_slug || null,
     lastSyncAt: row.last_sync_at || null,
     createdAt: row.created_at,
-    lastUsedAt: row.last_used_at,
+    lastUsed: row.last_used_at,
     isDefault: row.is_default === 1,
   };
 }
@@ -177,13 +177,13 @@ export function getProfileById(id: string): Profile | null {
 export function updateProfile(id: string, updates: Partial<Profile>): void {
   const db = getProfilesDb();
 
-  const allowedUpdates: Array<keyof Profile> = ['name', 'lastUsedAt'];
+  const allowedUpdates: Array<keyof Profile> = ['name', 'lastUsed'];
   const setClauses: string[] = [];
   const values: any[] = [];
 
   for (const key of allowedUpdates) {
     if (updates[key] !== undefined) {
-      const dbKey = key === 'lastUsedAt' ? 'last_used_at' : key;
+      const dbKey = key === 'lastUsed' ? 'last_used_at' : key;
       setClauses.push(`${dbKey} = ?`);
       values.push(updates[key]);
     }
@@ -275,7 +275,7 @@ export function setActiveProfile(folder: string): void {
   `).run(folder);
 
   // Update last_used_at
-  updateProfile(profile.id, { lastUsedAt: Date.now() });
+  updateProfile(profile.id, { lastUsed: Date.now() });
 }
 
 /**

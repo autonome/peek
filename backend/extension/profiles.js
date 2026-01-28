@@ -49,7 +49,7 @@ export async function ensureDefaultProfile() {
       serverProfileId: null,
       lastSyncAt: null,
       createdAt: timestamp,
-      lastUsedAt: timestamp,
+      lastUsed: timestamp,
       isDefault: true,
       environment: null,
     });
@@ -61,8 +61,8 @@ export async function ensureDefaultProfile() {
 
 export async function listProfiles() {
   const profiles = await getProfiles();
-  // Sort by lastUsedAt descending
-  profiles.sort((a, b) => (b.lastUsedAt || 0) - (a.lastUsedAt || 0));
+  // Sort by lastUsed descending
+  profiles.sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0));
   return { success: true, data: profiles };
 }
 
@@ -84,7 +84,7 @@ export async function createProfile(name) {
     serverProfileId: null,
     lastSyncAt: null,
     createdAt: timestamp,
-    lastUsedAt: timestamp,
+    lastUsed: timestamp,
     isDefault: false,
     environment: null,
   };
@@ -137,7 +137,7 @@ export async function switchProfile(slug) {
     return { success: false, error: `Profile '${slug}' not found` };
   }
 
-  profile.lastUsedAt = Date.now();
+  profile.lastUsed = Date.now();
   await saveProfiles(profiles);
   await setActiveSlug(slug);
 

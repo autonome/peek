@@ -87,7 +87,7 @@ const CREATE_TABLE_STATEMENTS: &str = r#"
     createdAt INTEGER,
     updatedAt INTEGER,
     frequency INTEGER DEFAULT 0,
-    lastUsedAt INTEGER DEFAULT 0,
+    lastUsed INTEGER DEFAULT 0,
     frecencyScore INTEGER DEFAULT 0
   );
   CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
@@ -299,7 +299,7 @@ pub struct Tag {
     pub created_at: i64,
     pub updated_at: i64,
     pub frequency: i64,
-    pub last_used_at: i64,
+    pub last_used: i64,
     pub frecency_score: i64,
 }
 
@@ -484,9 +484,9 @@ pub fn normalize_url(uri: &str) -> String {
     }
 }
 
-pub fn calculate_frecency(frequency: i64, last_used_at: i64) -> i64 {
+pub fn calculate_frecency(frequency: i64, last_used: i64) -> i64 {
     let current_time = now();
-    let days_since_use = (current_time - last_used_at) as f64 / (1000.0 * 60.0 * 60.0 * 24.0);
+    let days_since_use = (current_time - last_used) as f64 / (1000.0 * 60.0 * 60.0 * 24.0);
     let decay_factor = 1.0 / (1.0 + days_since_use / 7.0);
     (frequency as f64 * 10.0 * decay_factor).round() as i64
 }
@@ -956,7 +956,7 @@ pub fn get_or_create_tag(conn: &Connection, name: &str) -> Result<(Tag, bool)> {
 
     // Check if tag exists
     let mut stmt =
-        conn.prepare("SELECT id, name, slug, color, parentId, description, metadata, createdAt, updatedAt, frequency, lastUsedAt, frecencyScore FROM tags WHERE LOWER(name) = LOWER(?1)")?;
+        conn.prepare("SELECT id, name, slug, color, parentId, description, metadata, createdAt, updatedAt, frequency, lastUsed, frecencyScore FROM tags WHERE LOWER(name) = LOWER(?1)")?;
 
     let existing = stmt.query_row(params![name], |row| {
         Ok(Tag {
@@ -970,7 +970,7 @@ pub fn get_or_create_tag(conn: &Connection, name: &str) -> Result<(Tag, bool)> {
             created_at: row.get(7)?,
             updated_at: row.get(8)?,
             frequency: row.get(9)?,
-            last_used_at: row.get(10)?,
+            last_used: row.get(10)?,
             frecency_score: row.get(11)?,
         })
     });
@@ -980,7 +980,7 @@ pub fn get_or_create_tag(conn: &Connection, name: &str) -> Result<(Tag, bool)> {
         Err(rusqlite::Error::QueryReturnedNoRows) => {
             let tag_id = generate_id("tag");
             conn.execute(
-                r#"INSERT INTO tags (id, name, slug, color, parentId, description, metadata, createdAt, updatedAt, frequency, lastUsedAt, frecencyScore)
+                r#"INSERT INTO tags (id, name, slug, color, parentId, description, metadata, createdAt, updatedAt, frequency, lastUsed, frecencyScore)
                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)"#,
                 params![
                     tag_id,
@@ -1009,7 +1009,7 @@ pub fn get_or_create_tag(conn: &Connection, name: &str) -> Result<(Tag, bool)> {
                 created_at: timestamp,
                 updated_at: timestamp,
                 frequency: 0,
-                last_used_at: 0,
+                last_used: 0,
                 frecency_score: 0,
             };
             Ok((tag, true))
@@ -1046,7 +1046,7 @@ pub fn tag_address(conn: &Connection, address_id: &str, tag_id: &str) -> Result<
 
             // Update tag frequency
             conn.execute(
-                "UPDATE tags SET frequency = frequency + 1, lastUsedAt = ?1, frecencyScore = ?2, updatedAt = ?1 WHERE id = ?3",
+                "UPDATE tags SET frequency = frequency + 1, lastUsed = ?1, frecencyScore = ?2, updatedAt = ?1 WHERE id = ?3",
                 params![timestamp, calculate_frecency(1, timestamp), tag_id],
             )?;
 
@@ -1072,7 +1072,7 @@ pub fn untag_address(conn: &Connection, address_id: &str, tag_id: &str) -> Resul
 
 pub fn get_address_tags(conn: &Connection, address_id: &str) -> Result<Vec<Tag>> {
     let mut stmt = conn.prepare(
-        r#"SELECT t.id, t.name, t.slug, t.color, t.parentId, t.description, t.metadata, t.createdAt, t.updatedAt, t.frequency, t.lastUsedAt, t.frecencyScore
+        r#"SELECT t.id, t.name, t.slug, t.color, t.parentId, t.description, t.metadata, t.createdAt, t.updatedAt, t.frequency, t.lastUsed, t.frecencyScore
            FROM tags t
            JOIN address_tags at ON t.id = at.tagId
            WHERE at.addressId = ?1"#,
@@ -1090,7 +1090,7 @@ pub fn get_address_tags(conn: &Connection, address_id: &str) -> Result<Vec<Tag>>
             created_at: row.get(7)?,
             updated_at: row.get(8)?,
             frequency: row.get(9)?,
-            last_used_at: row.get(10)?,
+            last_used: row.get(10)?,
             frecency_score: row.get(11)?,
         })
     })?;
@@ -1100,9 +1100,9 @@ pub fn get_address_tags(conn: &Connection, address_id: &str) -> Result<Vec<Tag>>
 
 pub fn get_tags_by_frecency(conn: &Connection, limit: i64) -> Result<Vec<Tag>> {
     let mut stmt = conn.prepare(
-        r#"SELECT id, name, slug, color, parentId, description, metadata, createdAt, updatedAt, frequency, lastUsedAt, frecencyScore
+        r#"SELECT id, name, slug, color, parentId, description, metadata, createdAt, updatedAt, frequency, lastUsed, frecencyScore
            FROM tags
-           ORDER BY frecencyScore DESC, frequency DESC, lastUsedAt DESC
+           ORDER BY frecencyScore DESC, frequency DESC, lastUsed DESC
            LIMIT ?1"#,
     )?;
 
@@ -1118,7 +1118,7 @@ pub fn get_tags_by_frecency(conn: &Connection, limit: i64) -> Result<Vec<Tag>> {
             created_at: row.get(7)?,
             updated_at: row.get(8)?,
             frequency: row.get(9)?,
-            last_used_at: row.get(10)?,
+            last_used: row.get(10)?,
             frecency_score: row.get(11)?,
         })
     })?;
@@ -1660,7 +1660,7 @@ pub fn tag_item(conn: &Connection, item_id: &str, tag_id: &str) -> Result<(ItemT
         let new_frequency = tag.frequency + 1;
         let frecency_score = calculate_frecency(new_frequency, timestamp);
         conn.execute(
-            "UPDATE tags SET frequency = ?1, lastUsedAt = ?2, frecencyScore = ?3, updatedAt = ?2 WHERE id = ?4",
+            "UPDATE tags SET frequency = ?1, lastUsed = ?2, frecencyScore = ?3, updatedAt = ?2 WHERE id = ?4",
             params![new_frequency, timestamp, frecency_score, tag_id],
         )?;
     }
@@ -1685,7 +1685,7 @@ pub fn untag_item(conn: &Connection, item_id: &str, tag_id: &str) -> Result<bool
 pub fn get_item_tags(conn: &Connection, item_id: &str) -> Result<Vec<Tag>> {
     let mut stmt = conn.prepare(
         r#"SELECT t.id, t.name, t.slug, t.color, t.parentId, t.description, t.metadata,
-                  t.createdAt, t.updatedAt, t.frequency, t.lastUsedAt, t.frecencyScore
+                  t.createdAt, t.updatedAt, t.frequency, t.lastUsed, t.frecencyScore
            FROM tags t
            JOIN item_tags it ON t.id = it.tagId
            WHERE it.itemId = ?1"#,
@@ -1703,7 +1703,7 @@ pub fn get_item_tags(conn: &Connection, item_id: &str) -> Result<Vec<Tag>> {
             created_at: row.get(7)?,
             updated_at: row.get(8)?,
             frequency: row.get(9)?,
-            last_used_at: row.get(10)?,
+            last_used: row.get(10)?,
             frecency_score: row.get(11)?,
         })
     })?;
@@ -1747,7 +1747,7 @@ pub fn get_items_by_tag(conn: &Connection, tag_id: &str) -> Result<Vec<Item>> {
 // Helper to get a tag by ID (used by tag_item)
 fn get_tag_by_id(conn: &Connection, tag_id: &str) -> Result<Option<Tag>> {
     let mut stmt = conn.prepare(
-        "SELECT id, name, slug, color, parentId, description, metadata, createdAt, updatedAt, frequency, lastUsedAt, frecencyScore FROM tags WHERE id = ?1",
+        "SELECT id, name, slug, color, parentId, description, metadata, createdAt, updatedAt, frequency, lastUsed, frecencyScore FROM tags WHERE id = ?1",
     )?;
     let mut rows = stmt.query(params![tag_id])?;
 
@@ -1763,7 +1763,7 @@ fn get_tag_by_id(conn: &Connection, tag_id: &str) -> Result<Option<Tag>> {
             created_at: row.get(7)?,
             updated_at: row.get(8)?,
             frequency: row.get(9)?,
-            last_used_at: row.get(10)?,
+            last_used: row.get(10)?,
             frecency_score: row.get(11)?,
         })),
         None => Ok(None),

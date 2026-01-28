@@ -61,7 +61,7 @@ describe('profiles', () => {
   // ==================== listProfiles ====================
 
   describe('listProfiles', () => {
-    it('should return all profiles sorted by lastUsedAt', async () => {
+    it('should return all profiles sorted by lastUsed', async () => {
       await ensureDefaultProfile();
       await createProfile('Work');
       await createProfile('Personal');

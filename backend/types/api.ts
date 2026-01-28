@@ -162,7 +162,7 @@ export interface Tag {
   createdAt: number;
   updatedAt: number;
   frequency: number;
-  lastUsedAt: number;
+  lastUsed: number;
   frecencyScore: number;
 }
 

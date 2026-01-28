@@ -225,7 +225,7 @@ struct ProfileEntry {
     name: String,
     #[serde(rename = "createdAt")]
     created_at: String,
-    #[serde(rename = "lastUsedAt")]
+    #[serde(rename = "lastUsed")]
     last_used_at: String,
     /// Server profile UUID — maps this local profile to a server-side profile for sync.
     /// When set, sync requests send this ID instead of the local profile ID.

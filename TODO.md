@@ -1,10 +1,11 @@
 # Peek TODO
 
 How we work:
-- We track actionable items in this file
+- We track pending items in this file
+- In-progress work and current focus goes in WIP.md
+- Completed items go in CHANGELOG.md, grouped by week
 - This file is not for notes or description - link to documents in ./notes for that
-- Checkbox states: `- [ ]` pending, `- [~]` in-progress, `- [x]` done
-- We move completed items into the Done section at the bottom, grouped by week of year the items were completed
+- Checkbox states: `- [ ]` pending, `- [~]` in-progress (move to WIP.md), `- [x]` done (move to CHANGELOG.md)
 
 ## Design principles
 
@@ -30,21 +31,12 @@ the rules
 - metadata can be weird non-file, as long as consistent
 - external systems require consent to touch my stuff (eg http caching rules)
 
-## Prioritization
-
-Be able to use the app on mobile and desktop with the safety of knowing there's also at least one remote copy.
-
-Today
-- [~] integrate app versioning changes, local end to end testing, deployment to server/mobile/desktop and test
-- [ ][desktop] the items in the History section under the Addressability header
-
 ## unfiled
 
 context
 - [ ] implement old context plan eg https://www.reddit.com/r/hackernews/comments/1qddidm/sun_position_calculator/
 
 server
-- [x] remove yarn.lock from backend/server/ on main (Railway uses npm, yarn.lock causes build failures)
 - [ ] edgeworkernode/server vs what we got now? both? lite-version, or this it?
 
 peeks on links
@@ -65,23 +57,6 @@ Includes any peek:// invocation and parameters passed.
 May require the connector/parameter context for each invocation, tbd.
 Requires explicit chaining.
 
-History
-- [ ] add peek:// loads to history table
-- [ ] peek urls don't need params yet, but we'll need to do cmd params and connector data somehow maybe
-- [ ] ensure all window/frame/webview loads of any kind are entered in history
-- [ ] bug: some link clicks in web pages open in a window with a title bar that's clearly not entered in peek's window tracking, maybe js in the page opening windows?
-- [ ] sync: don't sync peek addresses for now
-
-History chaining
-- [ ] not doing paths/forking yet - is just one single chain of actions
-- [ ] add next/prev cols to history table, or maintain in new table?
-- [ ] when a history record is added, set prevId pointing to previous history record
-- [ ] each time a history record is added, set nextId to its prevId
-
-API
-- [ ] enumerate history
-- [ ] filter on date ranges
-
 Review against impl
 - [ ] step counter: app level interaction tracing/counting. when is reset? when does action end and new one start?
 - [ ] peeks/slides as tagged addresses with metadata properties? or urls?
@@ -89,13 +64,23 @@ Review against impl
 ## UI Componentry
 
 Right now we're replicating/forking html and js across extensions.
-This is messy, error prone, poor DRY practice.
-It also makes it so we can't generatively and rapidly build out UIs without whole new piles of html/js/css.
-We want a flexible and reusable system provided at the ./app layer which extensions can include and inject data/styling into.
-this is a loosely coupled system with deterministic management.
-Not just importing and writing js components w/ css, React-style.
-This is more like a templating system injecting schema, a card (html fragment?), and data.
-It's designed for single-component scoping, not complex document management. You'd insert these as smaller pieces into a larger system like React, etc.
+
+problems
+- messy, error prone, poor DRY practice
+- also means we can't generatively and rapidly build out UIs without whole new piles of html/js/css to manage
+
+We want:
+- a flexible and reusable system provided at the ./app layer
+- extensions can include it and inject data/styling into these controls
+- they have system-consistent ux and visual design
+- this is a loosely coupled system with deterministic management
+- not just importing and writing js components w/ css, React-style.
+- this is more like a set of prebuilt controls
+
+- callers instanciate a control, and provide schema and data into a control which has a default template
+- template can be replaced by caller
+- designed for single-component scoping, not complex document hierarchies
+
 Once we add atproto support, this same system could be used to bind lexicons + data for generated viewing/CRUD interfaces.
 
 reactive schema+card+data system
@@ -162,13 +147,12 @@ notes
 - [ ] How does cmd indicate scope/target?
    - [ ] eg "Target: [window title]" header when window-scoped command is selected?
 
-
 ## Web page experience
+
 
 Page loading core
 - [ ] how to load pages - raw browserwindow (what we do now), webview in a default transparent page that hosts overlay??
 - [ ] overlay infrastructure for showing metadata, security info
-  - [ ] maybe this requires window templates?
 - [ ] interaction with cmd actions (page mode again?)
 
 Basic nav etc
@@ -380,7 +364,6 @@ diagnostics
 
 misc
 - [ ] Add migration dry-run mode
-- [ ] Add database integrity verification
 - [ ] Add automatic backup cleanup after grace period
 
 ## harvester / hearts and stars
@@ -530,206 +513,4 @@ storage backends
 
 desktop
 - [ ] Tray work
-
-## Done
-
-Newly done items go here, grouped under third-level headings by week of year.
-
-### 2026-W04
-
-- [x] add device ID tracking to item metadata
-- [x] app version and datastore version as separate layers of compatibility
-- [x] define compat detection system across desktop/server/mobile/other
-- [x] define how sync works when incompatible (clients only sync w/ datastore-compatible nodes)
-- [x] sync is not spoke server - all nodes equal participants
-- [x] implement version compat in desktop/server (DATASTORE_VERSION + PROTOCOL_VERSION, exact match, 409 on mismatch)
-- [x] implement version compat in mobile (add version headers to lib.rs sync) (rlrlqkqz)
-- [x][mobile] fix sync re-pushing all items every time - per-item synced_at (nxszorty)
-- [x][mobile] add version headers to mobile sync - DATASTORE_VERSION + PROTOCOL_VERSION (rlrlqkqz)
-- [x][desktop] add new items - url/tagset/note commands (pwuyrstl)
-- [x][desktop] editor extension with full note editing (rmztsrkr)
-- [x][tauri] sync module, schema migrations, version compat to match Electron (zzyllzsk)
-- [x] e2e sync & version test suite, fix sync profile resolution (rlrlqkqz)
-- [x][mobile] fix share extension creating duplicate items per tag (yvumsuqr)
-- [x][mobile] merge home and search into unified view, configurable archive tag (txzkumku)
-- [x][mobile] fix big bottom bar showing again (tqnmowqm)
-- [x][mobile] iOS profile support with build detection and per-profile databases (ylkwxtut)
-- [x][mobile] UUID-based profile sync across mobile, desktop, and server (mlqntkvw)
-- [x][mobile] iOS share extension fixes + tag input filtering (smuxwlzx)
-- [x][mobile] consolidate editor views with shared components (wvvqrquo)
-- [x][mobile] add clear buttons to all input fields and textareas (vyuwkrpy)
-- [x][mobile] fix tags not persisting on text notes (qowppxlk)
-- [x][mobile] add archive tag support to hide items from views (urmmzrvr)
-- [x][mobile] add font size slider in settings with realtime preview (umqpnqto)
-- [x][mobile] mobile editing ux - toasts, validation, draft persistence, spacing, bottom bar fix (rqwmmpnm)
-- [x][mobile] pull-to-refresh gesture triggers sync (roqqsxyp)
-- [x][desktop] window titlebar hide/show pref with settings UI (wpykxvrl)
-- [x][desktop] windows movable and resizable by default with window.open API params (wpykxvrl)
-- [x][desktop] persist keyed/url window position+size across app restarts (wpykxvrl)
-- [x][desktop] pin window on top (app and OS level) with commands (wpykxvrl)
-- [x][desktop] configurable escape behavior per-window via window.open API (wpykxvrl)
-- [x][desktop] window animation API (to/from coords, time) + slides impl (wpykxvrl)
-- [x][desktop] Desktop Windows - title bar, persistence, pin controls, animations (wpykxvrl)
-- [x][desktop] migrate old addresses to items table, fix CHECK constraint (ltovmzon)
-- [x][desktop] multi-tag search in tags UI (ltovmzon)
-- [x][desktop] extension nav styling improvements (ltovmzon)
-- [x][desktop] fix groups extension - add visit tracking, filter for URLs only (wuywuwyn)
-- [x][desktop] fix sync status in settings UI - use correct field name for display (xxtpswys)
-- [x][desktop] persist autoSync setting in extension_settings (vyvorvtq)
-- [x][desktop+server] add sync version compatibility - DATASTORE_VERSION + PROTOCOL_VERSION (rltmkytv)
-- [x][desktop+server] add user profiles and profile switching
-- [x][desktop] add tags extension for tag visualization and management
-- [x][desktop] click-and-hold window dragging for frameless windows
-- [x][desktop] fix better-sqlite3 node/electron version mismatch with postinstall script
-- [x][desktop] debug and stabilize build on new Electron (stale node_modules after upgrade)
-- [x][desktop] upgrade Electron to 40 + pin Node to 24
-- [x][desktop] e2e sync test infrastructure for production
-- [x][desktop] daily data snapshots saved to compress archives in ~/sync/peek-backups
-- [x][desktop] fix 5GB packaged build by adding exclusions to electron-builder.yml (~280MB now)
-- [x][desktop] update release build and drive it
-- [x][security] remove production server endpoint from source - require env config (rnxppwkx)
-- [x][server] Add pre-migration backup to server migration
-- [x][server] add daily snapshot backups on server, test locally, deploy, test and confirm working on railway
-- [x][server] document Railway deployment info so agents don't have to relearn each time
-- [x][sync] fix duplicates: add sync_id parameter for server-side deduplication
-- [x][sync] investigate remaining sync edge cases
-- [x][sync] E2E integration tests for desktop-server sync
-- [x] data model: multi-user support (server full, desktop profile isolation)
-- [x] desktop sync working (bidirectional in backend/electron/sync.ts)
-- [x] sync config in settings UI
-- [x] windows draggable/moveable (click-and-hold in app/drag.js)
-- [x] notes in datastore (items table with type='text')
-- [x] peek-node supports text/urls/tagsets/images
-- [x] backup/restore snapshots (daily automated + manual)
-- [x] action history storage (visits table)
-- [x] update main README
-- [x][mobile] shared iOS build cache to avoid Rust rebuilds across agent workspaces
-- [x][mobile] update to full bidirectional sync (pull + push, not just webhook push)
-- [x][workflow] agent workspace isolation - rules to stay in workspace, no parent repo access
-- [x][workflow] fix divergent commits - mmerge uses jj new+restore pattern
-- [x][workflow] Railway deploy scripts - npm/yarn scripts with --service flag
-- [x][workflow] fix TODO archival - updated agent templates with clearer instructions
-- [x][workflow] clarify ./app rule - now about respecting front-end/back-end architecture boundary (tkvzpvlu)
-- [x][workflow] restore git/github push for Railway deploys
-- [x][workflow] fix jj commit/merge strategy - agents no longer touch main bookmark
-
-### 2026-W03
-
-- [x][desktop] settings UI for sync
-- [x][desktop] test sync and package
-- [x] merge peek-node into peek repo (now at backend/server/)
-- [x] update peek-node to support multi-user and the core types (already done)
-- [x] unify data model across mobile/desktop/server
-- [x] sync working between all three
-- [x][mobile] test and deploy ios to prod
-
-### Old completed items
-
-### Base Extensions
-- [x] see notes/extensibility.md
-- [x] window manager views (bad name, but what Peek "features" are now)
-- [x] commands (eg Quicksilver, Ubiquity, Raycast style)
-
-### Portability
-- [x] Abstract back-end system
-- [x] Electron back-end
-- [x] Tauri back-end
-
-### Pages, Tagging & Groups
-- [x] Open page by default in cmd
-- [x] Open page from OS, other apps
-- [x] Cmd to tag current page
-- [x] Groups based on tags, for now
-- [x] Untagged -> default group
-- [x] Cmd to open groups home
-- [x] Escape for navigating back up the group views, not closing window
-- [x] adaptive matching
-- [x] frecency
-
-### V.0.3 - Datastore
-- [x] Datastore
-
-### v0.2 - MVCP
-- [x] app showing in dock even tho disabled
-- [x] app not showing in tray, even tho enabled
-- [x] all api calls get source attached
-- [x] window cache s/custom/map/
-- [x] window cache all windows not just persistent
-- [x] window cache - evaluate key approach (use-case: apps need to identify windows they open)
-- [x] always return window id, so apps can manage it
-- [x] reimplement keys, so much easier for callers than managing ids
-- [x] account for number of renderer processes (seems double?)
-- [x] prototype window.open
-- [x] evaluate webContents.setWindowOpenHandler
-- [x] stop using openWindow to show pre-existing hidden windows?
-  - [x] can track web windows locally
-  - [x] can identify web windows on both sides (key/name)
-  - [x] add new custom api for windows superpowers
-- [x] collapse window opening to span both approaches
-- [x] finish converting all openWindow to window.open
-- [x] figure out single devtools window if possible
-
-### ✅ v0.1 - MVPOC
-
-minimum viable proof of concept.
-
-question: would i use this?
-
-Core moduluarization
-- [x] Modularize feature types, eyeing the extensibility model
-- [x] move settings window to features/settings
-
-App cleanup
-- [x] main window vs settings
-- [x] change settings shortcut from global+esc to opt+comma
-
-Window lifecycle
-- [x] modularize window open/close + hidden/visible
-- [x] update settings, peeks, slides, scripts
-- [x] hide/show window vs create fresh
-- [x] update slides impl to use openWindow (x, y)
-
-Minimal Electron + Maximal Web
-- [x] move features to all web code, with a couple special apis
-- [x] make globalShortcut an api like openWindow
-
-Create core app
-- [x] core settings
-- [x] registers other features
-
-Move all features to web implementation
-- [x] move all possible code from the electron file to the web app
-- [x] move to web implemented globalShortcut
-- [x] move to web implemented openWindow
-- [x] move settings re-use code to utils lib
-- [x] ability to add clickable links in settings panes
-- [x] add links to Settings app
-- [x] per-feature settings ui
-
-Core+settings
-- [x] move feature list and enablement to storage
-- [x] merge core + settings
-- [x] enable/disable features
-- [x] configurable default feature to load on app open (default to settings)
-- [x] wire up tray icon to pref
-- [x] tray click opens default app
-
-Core/Basic
-- [x] basic command bar to open pages
-- [x] fix setting layout wrapping issue
-
-Commands/messaging
-- [x] implement pubsub api
-- [x] way to tell feature to open default ui (if there is one)
-- [x] way tell feature to open its settings ui (if there is one)
-
-Features cleanup
-- [x] enable/disable individual slides, peeks
-- [x] enable/disable individual scripts
-
-Internal cleanup
-- [x] s/guid/id/
-- [x] fix label names, match to pwa manifest
-- [x] put readable log labels back in
-
 

@@ -707,6 +707,104 @@ describe("Database Tests", () => {
     });
   });
 
+  describe("Table Rebuild Fallback", () => {
+    it("should rebuild tables when ALTER TABLE RENAME COLUMN fails", () => {
+      // Create a legacy DB with a VIEW that blocks ALTER TABLE RENAME COLUMN
+      const Database = require("better-sqlite3");
+      const rbDir = path.join(TEST_DATA_DIR, "rebuild-user", "profiles", "default");
+      fs.mkdirSync(rbDir, { recursive: true });
+      const rbDb = new Database(path.join(rbDir, "datastore.sqlite"));
+      rbDb.pragma("journal_mode = WAL");
+
+      rbDb.exec(`
+        CREATE TABLE items (
+          id TEXT PRIMARY KEY,
+          type TEXT NOT NULL,
+          content TEXT,
+          metadata TEXT,
+          sync_id TEXT DEFAULT '',
+          sync_source TEXT DEFAULT '',
+          synced_at INTEGER DEFAULT 0,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          deleted_at INTEGER DEFAULT 0
+        );
+        CREATE TABLE tags (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL UNIQUE,
+          frequency INTEGER DEFAULT 1,
+          last_used_at INTEGER NOT NULL,
+          frecency_score REAL DEFAULT 0.0,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+        CREATE TABLE item_tags (
+          item_id TEXT NOT NULL,
+          tag_id TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          PRIMARY KEY (item_id, tag_id)
+        );
+        CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
+      `);
+
+      // Add a VIEW referencing snake_case columns — this blocks ALTER TABLE RENAME COLUMN
+      rbDb.exec(`
+        CREATE VIEW tags_view AS SELECT last_used_at, frecency_score FROM tags;
+        CREATE VIEW items_view AS SELECT created_at, deleted_at FROM items;
+        CREATE VIEW item_tags_view AS SELECT item_id, tag_id FROM item_tags;
+      `);
+
+      // Insert test data
+      rbDb.prepare(`
+        INSERT INTO items (id, type, content, created_at, updated_at, deleted_at)
+        VALUES ('rb-1', 'url', 'https://example.com', 1000, 1000, 0)
+      `).run();
+      rbDb.prepare(`
+        INSERT INTO tags (id, name, frequency, last_used_at, frecency_score, created_at, updated_at)
+        VALUES ('tag-1', 'test', 1, 1000, 10.0, 1000, 1000)
+      `).run();
+      rbDb.prepare(`
+        INSERT INTO item_tags (item_id, tag_id, created_at) VALUES ('rb-1', 'tag-1', 1000)
+      `).run();
+      rbDb.close();
+
+      // Open via db module — ALTER RENAME will fail, rebuild should kick in
+      delete require.cache[require.resolve("./db")];
+      const freshDb = require("./db");
+      const conn = freshDb.getConnection("rebuild-user");
+
+      // Verify all columns are camelCase after rebuild
+      const itemCols = new Set(conn.prepare("PRAGMA table_info(items)").all().map(c => c.name));
+      assert.ok(itemCols.has("createdAt"), "items should have createdAt");
+      assert.ok(itemCols.has("deletedAt"), "items should have deletedAt");
+      assert.ok(itemCols.has("syncId"), "items should have syncId");
+
+      const tagCols = new Set(conn.prepare("PRAGMA table_info(tags)").all().map(c => c.name));
+      assert.ok(tagCols.has("lastUsedAt"), "tags should have lastUsedAt");
+      assert.ok(tagCols.has("frecencyScore"), "tags should have frecencyScore");
+
+      const itCols = new Set(conn.prepare("PRAGMA table_info(item_tags)").all().map(c => c.name));
+      assert.ok(itCols.has("itemId"), "item_tags should have itemId");
+      assert.ok(itCols.has("tagId"), "item_tags should have tagId");
+
+      // Verify data survived the rebuild
+      const items = freshDb.getItems("rebuild-user");
+      assert.strictEqual(items.length, 1);
+      assert.strictEqual(items[0].content, "https://example.com");
+
+      const tags = freshDb.getTagsByFrecency("rebuild-user");
+      assert.strictEqual(tags.length, 1);
+      assert.strictEqual(tags[0].name, "test");
+
+      // Verify new items can be saved
+      const newId = freshDb.saveUrl("rebuild-user", "https://new.com", ["newtag"]);
+      assert.ok(newId);
+      assert.strictEqual(freshDb.getItems("rebuild-user").length, 2);
+
+      freshDb.closeAllConnections();
+    });
+  });
+
   describe("TEXT Timestamp Migration", () => {
     it("should convert ISO string and stringified number timestamps to integers", () => {
       const Database = require("better-sqlite3");

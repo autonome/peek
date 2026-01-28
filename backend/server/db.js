@@ -54,6 +54,63 @@ function migrateColumns(db, table, renames) {
 }
 
 /**
+ * Fallback when ALTER TABLE RENAME COLUMN fails (e.g., indexes/triggers that
+ * SQLite can't automatically update). Uses the canonical SQLite table-rebuild:
+ * create new table → copy data with column aliases → drop old → rename new.
+ */
+function rebuildTableIfNeeded(db, table, createSQL, renames) {
+  const currentCols = db.prepare(`PRAGMA table_info(${table})`).all();
+  const currentColNames = new Set(currentCols.map(c => c.name));
+
+  // Check if any renames are still pending (old name exists, new doesn't)
+  const pending = Object.entries(renames).filter(
+    ([oldName, newName]) => currentColNames.has(oldName) && !currentColNames.has(newName)
+  );
+
+  if (pending.length === 0) return;
+
+  console.log(`[schema] Rebuilding ${table} — ALTER RENAME COLUMN failed for: ${pending.map(([o, n]) => `${o}→${n}`).join(", ")}`);
+
+  const nameMap = new Map(pending);
+  const reverseMap = new Map(pending.map(([o, n]) => [n, o]));
+  const tempTable = `_${table}_rebuild`;
+
+  // Create temp table with target schema
+  const tempCreateSQL = createSQL
+    .replace(`CREATE TABLE IF NOT EXISTS ${table}`, `CREATE TABLE "${tempTable}"`)
+    .replace(`CREATE TABLE ${table}`, `CREATE TABLE "${tempTable}"`);
+
+  db.exec(`DROP TABLE IF EXISTS "${tempTable}"`);
+  db.exec(tempCreateSQL);
+
+  // Map target columns to source expressions
+  const targetCols = db.prepare(`PRAGMA table_info("${tempTable}")`).all();
+  const insertCols = [];
+  const selectExprs = [];
+
+  for (const tc of targetCols) {
+    const oldName = reverseMap.get(tc.name);
+    if (oldName && currentColNames.has(oldName)) {
+      // Renamed column: select from old name
+      insertCols.push(`"${tc.name}"`);
+      selectExprs.push(`"${oldName}"`);
+    } else if (currentColNames.has(tc.name)) {
+      // Column exists with same name
+      insertCols.push(`"${tc.name}"`);
+      selectExprs.push(`"${tc.name}"`);
+    }
+    // else: new column not in source — DEFAULT applies
+  }
+
+  // Atomic rebuild: if any step fails, the original table is preserved
+  db.transaction(() => {
+    db.exec(`INSERT INTO "${tempTable}" (${insertCols.join(", ")}) SELECT ${selectExprs.join(", ")} FROM "${table}"`);
+    db.exec(`DROP TABLE "${table}"`);
+    db.exec(`ALTER TABLE "${tempTable}" RENAME TO "${table}"`);
+  })();
+}
+
+/**
  * Convert TEXT timestamp values to INTEGER (Unix ms).
  * Production databases from older schema versions stored timestamps as TEXT
  * (ISO 8601 strings or stringified numbers). SQLite preserved TEXT affinity
@@ -145,14 +202,27 @@ function initializeSchema(db) {
   // Production databases may have snake_case columns from older schema versions.
   // CREATE TABLE IF NOT EXISTS skips when the table exists, so we must handle
   // both adding missing columns AND renaming snake_case → camelCase.
-  migrateColumns(db, "items", {
+  const itemRenames = {
     "sync_id": "syncId",
     "sync_source": "syncSource",
     "synced_at": "syncedAt",
     "created_at": "createdAt",
     "updated_at": "updatedAt",
     "deleted_at": "deletedAt",
-  });
+  };
+  migrateColumns(db, "items", itemRenames);
+  rebuildTableIfNeeded(db, "items", `CREATE TABLE items (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    content TEXT,
+    metadata TEXT,
+    syncId TEXT DEFAULT '',
+    syncSource TEXT DEFAULT '',
+    syncedAt INTEGER DEFAULT 0,
+    createdAt INTEGER NOT NULL,
+    updatedAt INTEGER NOT NULL,
+    deletedAt INTEGER DEFAULT 0
+  )`, itemRenames);
 
   // Add columns that may not exist in any form.
   // Check both camelCase AND snake_case to avoid creating duplicates if rename failed.
@@ -194,12 +264,22 @@ function initializeSchema(db) {
     );
   `);
 
-  migrateColumns(db, "tags", {
+  const tagRenames = {
     "last_used_at": "lastUsedAt",
     "frecency_score": "frecencyScore",
     "created_at": "createdAt",
     "updated_at": "updatedAt",
-  });
+  };
+  migrateColumns(db, "tags", tagRenames);
+  rebuildTableIfNeeded(db, "tags", `CREATE TABLE tags (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    frequency INTEGER DEFAULT 1,
+    lastUsedAt INTEGER NOT NULL,
+    frecencyScore REAL DEFAULT 0.0,
+    createdAt INTEGER NOT NULL,
+    updatedAt INTEGER NOT NULL
+  )`, tagRenames);
 
   migrateTimestamps(db, "tags", ["lastUsedAt", "createdAt", "updatedAt"]);
 
@@ -218,11 +298,18 @@ function initializeSchema(db) {
     );
   `);
 
-  migrateColumns(db, "item_tags", {
+  const itemTagRenames = {
     "item_id": "itemId",
     "tag_id": "tagId",
     "created_at": "createdAt",
-  });
+  };
+  migrateColumns(db, "item_tags", itemTagRenames);
+  rebuildTableIfNeeded(db, "item_tags", `CREATE TABLE item_tags (
+    itemId TEXT NOT NULL,
+    tagId TEXT NOT NULL,
+    createdAt INTEGER NOT NULL,
+    PRIMARY KEY (itemId, tagId)
+  )`, itemTagRenames);
 
   migrateTimestamps(db, "item_tags", ["createdAt"]);
 

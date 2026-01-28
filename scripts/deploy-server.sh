@@ -57,7 +57,10 @@ fi
 
 # Create temp worktree for deploy branch
 DEPLOY_DIR=$(mktemp -d)
-trap "rm -rf $DEPLOY_DIR; git worktree remove $DEPLOY_DIR --force 2>/dev/null || true" EXIT
+trap "rm -rf $DEPLOY_DIR; git worktree remove $DEPLOY_DIR --force 2>/dev/null || true; git worktree prune 2>/dev/null || true" EXIT
+
+# Clean any stale worktrees first
+git worktree prune 2>/dev/null || true
 
 git worktree add "$DEPLOY_DIR" deploy/server
 

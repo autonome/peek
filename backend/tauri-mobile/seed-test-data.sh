@@ -72,10 +72,10 @@ INSERT OR IGNORE INTO items (id, type, url, content, created_at, updated_at, syn
 VALUES ('$UUID3', 'url', 'https://mobile-news.example.com', NULL, '$NOW', '$NOW', '', '');
 
 -- Add tags for the items
-INSERT OR IGNORE INTO tags (name, frequency, last_used, frecency_score, created_at, updated_at)
+INSERT OR IGNORE INTO tags (name, frequency, lastUsed, frecencyScore, createdAt, updatedAt)
 VALUES ('mobile', 1, '$NOW', 10.0, '$NOW', '$NOW');
 
-INSERT OR IGNORE INTO tags (name, frequency, last_used, frecency_score, created_at, updated_at)
+INSERT OR IGNORE INTO tags (name, frequency, lastUsed, frecencyScore, createdAt, updatedAt)
 VALUES ('local', 1, '$NOW', 10.0, '$NOW', '$NOW');
 
 -- Link tags to items

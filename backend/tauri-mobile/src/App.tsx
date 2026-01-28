@@ -48,8 +48,8 @@ interface SavedImage {
 interface TagStats {
   name: string;
   frequency: number;
-  last_used: string;
-  frecency_score: number;
+  lastUsed: string;
+  frecencyScore: number;
 }
 
 interface BidirectionalSyncResult {

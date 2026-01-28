@@ -46,5 +46,9 @@
 	<string>Peek needs camera access to capture photos for saving.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Peek needs photo library access to save captured images.</string>
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 </dict>
 </plist>

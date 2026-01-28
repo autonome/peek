@@ -35,7 +35,7 @@ sqlite3 "$DB_PATH" "SELECT COUNT(*) as total, SUM(CASE WHEN deleted_at IS NULL T
 echo ""
 
 echo "=== Tags (by frecency) ==="
-sqlite3 "$DB_PATH" "SELECT name, frequency, frecency_score FROM tags ORDER BY frecency_score DESC LIMIT 10;"
+sqlite3 "$DB_PATH" "SELECT name, frequency, frecencyScore FROM tags ORDER BY frecencyScore DESC LIMIT 10;"
 echo ""
 
 echo "=== URL-Tag associations ==="

@@ -647,8 +647,8 @@ describe('SyncEngine: Pull', () => {
         content: 'https://from-server.com',
         tags: ['imported'],
         metadata: null,
-        created_at: new Date(1000).toISOString(),
-        updated_at: new Date(2000).toISOString(),
+        createdAt: new Date(1000).toISOString(),
+        updatedAt: new Date(2000).toISOString(),
       },
     ];
     const { adapter, data, sync } = createSyncTestEngine(serverItems);
@@ -677,8 +677,8 @@ describe('SyncEngine: Pull', () => {
         content: 'https://updated.com',
         tags: ['new-tag'],
         metadata: null,
-        created_at: new Date(1000).toISOString(),
-        updated_at: new Date(Date.now() + 10000).toISOString(), // future = newer
+        createdAt: new Date(1000).toISOString(),
+        updatedAt: new Date(Date.now() + 10000).toISOString(), // future = newer
       },
     ];
     const { adapter, data, sync } = createSyncTestEngine(serverItems);
@@ -713,8 +713,8 @@ describe('SyncEngine: Pull', () => {
         content: 'https://server-old.com',
         tags: [],
         metadata: null,
-        created_at: new Date(1000).toISOString(),
-        updated_at: new Date(1000).toISOString(), // very old
+        createdAt: new Date(1000).toISOString(),
+        updatedAt: new Date(1000).toISOString(), // very old
       },
     ];
     const { adapter, data, sync } = createSyncTestEngine(serverItems);
@@ -760,14 +760,14 @@ describe('SyncEngine: Pull', () => {
       {
         id: 'server-1', type: 'url', content: 'https://first.com',
         tags: [], metadata: null,
-        created_at: new Date(1000).toISOString(),
-        updated_at: new Date(2000).toISOString(),
+        createdAt: new Date(1000).toISOString(),
+        updatedAt: new Date(2000).toISOString(),
       },
       {
         id: 'server-2', type: 'text', content: 'Server note',
         tags: ['note'], metadata: null,
-        created_at: new Date(1000).toISOString(),
-        updated_at: new Date(2000).toISOString(),
+        createdAt: new Date(1000).toISOString(),
+        updatedAt: new Date(2000).toISOString(),
       },
     ];
     const { adapter, data, sync } = createSyncTestEngine(serverItems);
@@ -865,8 +865,8 @@ describe('SyncEngine: syncAll', () => {
       {
         id: 'server-1', type: 'url', content: 'https://from-server.com',
         tags: [], metadata: null,
-        created_at: new Date(1000).toISOString(),
-        updated_at: new Date(2000).toISOString(),
+        createdAt: new Date(1000).toISOString(),
+        updatedAt: new Date(2000).toISOString(),
       },
     ];
     const { adapter, data, sync, getConfig } = createSyncTestEngine(serverItems);
@@ -949,8 +949,8 @@ describe('SyncEngine: Delete Propagation', () => {
         content: 'https://deleted-on-server.com',
         tags: ['old'],
         metadata: null,
-        created_at: new Date(1000).toISOString(),
-        updated_at: new Date(Date.now() + 10000).toISOString(),
+        createdAt: new Date(1000).toISOString(),
+        updatedAt: new Date(Date.now() + 10000).toISOString(),
         deleted_at: Date.now() + 5000,
       },
     ];
@@ -993,8 +993,8 @@ describe('SyncEngine: Delete Propagation', () => {
         content: 'https://never-existed-locally.com',
         tags: [],
         metadata: null,
-        created_at: new Date(1000).toISOString(),
-        updated_at: new Date(2000).toISOString(),
+        createdAt: new Date(1000).toISOString(),
+        updatedAt: new Date(2000).toISOString(),
         deleted_at: 3000,
       },
     ];
@@ -1017,8 +1017,8 @@ describe('SyncEngine: Delete Propagation', () => {
         content: 'https://undeleted.com',
         tags: ['restored'],
         metadata: null,
-        created_at: new Date(1000).toISOString(),
-        updated_at: new Date(Date.now() + 10000).toISOString(), // future = newer
+        createdAt: new Date(1000).toISOString(),
+        updatedAt: new Date(Date.now() + 10000).toISOString(), // future = newer
       },
     ];
     const { adapter, data, sync } = createSyncTestEngine(serverItems);
@@ -1056,8 +1056,8 @@ describe('SyncEngine: Delete Propagation', () => {
         content: 'https://conflict.com',
         tags: [],
         metadata: null,
-        created_at: new Date(1000).toISOString(),
-        updated_at: new Date(1000).toISOString(), // very old
+        createdAt: new Date(1000).toISOString(),
+        updatedAt: new Date(1000).toISOString(), // very old
       },
     ];
     const { adapter, data, sync } = createSyncTestEngine(serverItems);

@@ -365,8 +365,8 @@ function mergeServerItem(serverItem: ServerItem): 'pulled' | 'conflict' | 'skipp
     'SELECT * FROM items WHERE syncId = ?'
   ).get(serverItem.id) as Item | undefined;
 
-  const serverUpdatedAt = fromISOString(serverItem.updated_at);
-  const serverDeletedAt = typeof serverItem.deleted_at === 'number' ? serverItem.deleted_at : 0;
+  const serverUpdatedAt = serverItem.updatedAt;
+  const serverDeletedAt = typeof serverItem.deletedAt === 'number' ? serverItem.deletedAt : 0;
 
   if (serverDeletedAt > 0) {
     // Server says item is deleted
@@ -397,7 +397,7 @@ function mergeServerItem(serverItem: ServerItem): 'pulled' | 'conflict' | 'skipp
     const now = Date.now();
     db.prepare(`
       UPDATE items SET createdAt = ?, updatedAt = ?, syncedAt = ? WHERE id = ?
-    `).run(fromISOString(serverItem.created_at), serverUpdatedAt, now, localId);
+    `).run(serverItem.createdAt, serverUpdatedAt, now, localId);
 
     // Add tags
     syncTagsToItem(localId, serverItem.tags);
@@ -597,7 +597,7 @@ async function pushSingleItem(
   }
 
   if (item.deletedAt > 0) {
-    body.deleted_at = item.deletedAt;
+    body.deletedAt = item.deletedAt;
   }
 
   // POST to server with profile parameter

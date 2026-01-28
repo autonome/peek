@@ -64,6 +64,7 @@ pub struct SyncStatus {
 
 /// Server item format (matches server JSON)
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ServerItem {
     pub id: String,
     #[serde(rename = "type")]
@@ -71,8 +72,8 @@ pub struct ServerItem {
     pub content: Option<String>,
     pub tags: Vec<String>,
     pub metadata: Option<serde_json::Value>,
-    pub created_at: String,
-    pub updated_at: String,
+    pub created_at: i64,
+    pub updated_at: i64,
     #[serde(default)]
     pub deleted_at: i64,
 }
@@ -90,6 +91,7 @@ struct ServerPushResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct PushBody {
     #[serde(rename = "type")]
     item_type: String,
@@ -477,7 +479,7 @@ fn merge_server_item(conn: &Connection, server_item: &ServerItem) -> Result<Stri
         )
         .ok();
 
-    let server_updated_at = from_iso_string(&server_item.updated_at);
+    let server_updated_at = server_item.updated_at;
 
     // Handle server-deleted items
     if server_item.deleted_at > 0 {
@@ -525,10 +527,9 @@ fn merge_server_item(conn: &Connection, server_item: &ServerItem) -> Result<Stri
 
         // Update timestamps to match server
         let now_ts = datastore::now();
-        let server_created_at = from_iso_string(&server_item.created_at);
         conn.execute(
             "UPDATE items SET createdAt = ?1, updatedAt = ?2, syncedAt = ?3 WHERE id = ?4",
-            params![server_created_at, server_updated_at, now_ts, local_id],
+            params![server_item.created_at, server_updated_at, now_ts, local_id],
         )
         .map_err(|e| format!("Failed to update timestamps: {}", e))?;
 

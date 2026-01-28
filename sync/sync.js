@@ -140,11 +140,11 @@ export class SyncEngine {
           type: item.type,
           content: item.content,
           tags: tagNames,
-          sync_id: item.syncId || item.id,
+          syncId: item.syncId || item.id,
         };
         if (metadata) body.metadata = metadata;
         if (item.deletedAt > 0) {
-          body.deleted_at = item.deletedAt;
+          body.deletedAt = item.deletedAt;
         }
 
         let pushPath = '/items';
@@ -359,15 +359,13 @@ export class SyncEngine {
    * @returns {Promise<'pulled'|'conflict'|'skipped'>}
    */
   async _mergeServerItem(serverItem) {
-    const serverUpdatedAt = fromISOString(serverItem.updated_at);
-    const serverDeletedAt = serverItem.deleted_at
-      ? fromISOString(serverItem.deleted_at)
-      : 0;
+    const serverUpdatedAt = serverItem.updatedAt;
+    const serverDeletedAt = serverItem.deletedAt || 0;
 
     // Find local item by syncId
     const localItem = await this.data.adapter.findItemBySyncId(serverItem.id);
 
-    // Handle server-side tombstones (deleted_at > 0)
+    // Handle server-side tombstones (deletedAt > 0)
     if (serverDeletedAt > 0) {
       if (!localItem) {
         // No local item — nothing to delete, skip
@@ -389,7 +387,7 @@ export class SyncEngine {
       return 'pulled';
     }
 
-    // Server item is active (deleted_at is 0 or absent)
+    // Server item is active (deletedAt is 0 or absent)
     if (!localItem) {
       // New item from server — insert
       const { id: localId } = await this.data.addItem(serverItem.type, {
@@ -403,7 +401,7 @@ export class SyncEngine {
 
       // Overwrite timestamps to match server
       await this.data.adapter.updateItem(localId, {
-        createdAt: fromISOString(serverItem.created_at),
+        createdAt: serverItem.createdAt,
         updatedAt: serverUpdatedAt,
         syncedAt: Date.now(),
       });

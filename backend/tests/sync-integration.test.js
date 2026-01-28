@@ -404,28 +404,25 @@ async function testTimestampFields() {
   const response = await serverRequest('GET', `/items/since/${beforeTimestamp}`);
   const item = response.items[0];
 
-  if (!item.created_at) {
-    throw new Error('Expected created_at in sync response');
+  if (item.createdAt === undefined) {
+    throw new Error('Expected createdAt in sync response');
   }
 
-  if (!item.updated_at) {
-    throw new Error('Expected updated_at in sync response');
+  if (item.updatedAt === undefined) {
+    throw new Error('Expected updatedAt in sync response');
   }
 
-  // Verify timestamps are valid ISO strings
-  const createdAt = new Date(item.created_at);
-  const updatedAt = new Date(item.updated_at);
-
-  if (isNaN(createdAt.getTime())) {
-    throw new Error(`Invalid created_at timestamp: ${item.created_at}`);
+  // Verify timestamps are valid numbers (Unix ms)
+  if (typeof item.createdAt !== 'number' || item.createdAt <= 0) {
+    throw new Error(`Invalid createdAt timestamp: ${item.createdAt}`);
   }
 
-  if (isNaN(updatedAt.getTime())) {
-    throw new Error(`Invalid updated_at timestamp: ${item.updated_at}`);
+  if (typeof item.updatedAt !== 'number' || item.updatedAt <= 0) {
+    throw new Error(`Invalid updatedAt timestamp: ${item.updatedAt}`);
   }
 
-  console.log(`  created_at: ${item.created_at}`);
-  console.log(`  updated_at: ${item.updated_at}`);
+  console.log(`  createdAt: ${item.createdAt}`);
+  console.log(`  updatedAt: ${item.updatedAt}`);
   console.log('  Timestamp fields verified');
 }
 

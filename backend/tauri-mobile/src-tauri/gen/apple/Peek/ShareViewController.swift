@@ -34,10 +34,10 @@ struct TagRecord: Codable, FetchableRecord, PersistableRecord {
     var id: Int64?
     var name: String
     var frequency: Int
-    var last_used: String
-    var frecency_score: Double
-    var created_at: String
-    var updated_at: String
+    var lastUsed: String
+    var frecencyScore: Double
+    var createdAt: String
+    var updatedAt: String
 }
 
 struct ItemTagRecord: Codable, FetchableRecord, PersistableRecord {
@@ -66,8 +66,8 @@ struct BlobRecord: Codable, FetchableRecord, PersistableRecord {
 struct TagStats {
     var name: String
     var frequency: Int
-    var last_used: String
-    var frecency_score: Double
+    var lastUsed: String
+    var frecencyScore: Double
 }
 
 struct SavedItem {
@@ -278,10 +278,10 @@ class DatabaseManager {
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL UNIQUE,
                     frequency INTEGER NOT NULL DEFAULT 0,
-                    last_used TEXT NOT NULL,
-                    frecency_score REAL NOT NULL DEFAULT 0.0,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
+                    lastUsed TEXT NOT NULL,
+                    frecencyScore REAL NOT NULL DEFAULT 0.0,
+                    createdAt TEXT NOT NULL,
+                    updatedAt TEXT NOT NULL
                 );
 
                 CREATE TABLE IF NOT EXISTS settings (
@@ -306,7 +306,7 @@ class DatabaseManager {
                 CREATE INDEX IF NOT EXISTS idx_items_url ON items(url);
                 CREATE INDEX IF NOT EXISTS idx_items_deleted ON items(deleted_at);
                 CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
-                CREATE INDEX IF NOT EXISTS idx_tags_frecency ON tags(frecency_score DESC);
+                CREATE INDEX IF NOT EXISTS idx_tags_frecency ON tags(frecencyScore DESC);
                 CREATE INDEX IF NOT EXISTS idx_blobs_item_id ON blobs(item_id);
             """)
         }
@@ -315,8 +315,8 @@ class DatabaseManager {
     func loadTags() -> [TagStats] {
         do {
             return try dbQueue?.read { db in
-                let records = try TagRecord.order(Column("frecency_score").desc).fetchAll(db)
-                return records.map { TagStats(name: $0.name, frequency: $0.frequency, last_used: $0.last_used, frecency_score: $0.frecency_score) }
+                let records = try TagRecord.order(Column("frecencyScore").desc).fetchAll(db)
+                return records.map { TagStats(name: $0.name, frequency: $0.frequency, lastUsed: $0.lastUsed, frecencyScore: $0.frecencyScore) }
             } ?? []
         } catch {
             print("[DB] Failed to load tags: \(error)")
@@ -354,18 +354,18 @@ class DatabaseManager {
                 // Apply 2x multiplier to tags used on same-domain URLs
                 let boostedTags = records.map { record -> TagStats in
                     let boostedScore = domainTagIds.contains(record.id ?? -1)
-                        ? record.frecency_score * 2.0
-                        : record.frecency_score
+                        ? record.frecencyScore * 2.0
+                        : record.frecencyScore
                     return TagStats(
                         name: record.name,
                         frequency: record.frequency,
-                        last_used: record.last_used,
-                        frecency_score: boostedScore
+                        lastUsed: record.lastUsed,
+                        frecencyScore: boostedScore
                     )
                 }
 
                 // Sort by boosted score descending
-                return boostedTags.sorted { $0.frecency_score > $1.frecency_score }
+                return boostedTags.sorted { $0.frecencyScore > $1.frecencyScore }
             } ?? []
         } catch {
             print("[DB] Failed to load tags with domain boost: \(error)")
@@ -469,13 +469,13 @@ class DatabaseManager {
                         let frecency = calculateFrecency(frequency: newFrequency, lastUsed: now)
 
                         try db.execute(sql: """
-                            UPDATE tags SET frequency = ?, last_used = ?, frecency_score = ?, updated_at = ?
+                            UPDATE tags SET frequency = ?, lastUsed = ?, frecencyScore = ?, updatedAt = ?
                             WHERE id = ?
                         """, arguments: [newFrequency, now, frecency, now, existingTag.id!])
                     } else {
                         // Create new tag
                         let frecency = calculateFrecency(frequency: 1, lastUsed: now)
-                        let newTag = TagRecord(id: nil, name: tagName, frequency: 1, last_used: now, frecency_score: frecency, created_at: now, updated_at: now)
+                        let newTag = TagRecord(id: nil, name: tagName, frequency: 1, lastUsed: now, frecencyScore: frecency, createdAt: now, updatedAt: now)
                         try newTag.insert(db)
                         tagId = db.lastInsertedRowID
                     }
@@ -539,19 +539,19 @@ class DatabaseManager {
                             let frecency = calculateFrecency(frequency: newFrequency, lastUsed: now)
 
                             try db.execute(sql: """
-                                UPDATE tags SET frequency = ?, last_used = ?, frecency_score = ?, updated_at = ?
+                                UPDATE tags SET frequency = ?, lastUsed = ?, frecencyScore = ?, updatedAt = ?
                                 WHERE id = ?
                             """, arguments: [newFrequency, now, frecency, now, existingTag.id!])
                         } else {
                             let frecency = calculateFrecency(frequency: existingTag.frequency, lastUsed: now)
                             try db.execute(sql: """
-                                UPDATE tags SET last_used = ?, frecency_score = ?, updated_at = ?
+                                UPDATE tags SET lastUsed = ?, frecencyScore = ?, updatedAt = ?
                                 WHERE id = ?
                             """, arguments: [now, frecency, now, existingTag.id!])
                         }
                     } else {
                         let frecency = calculateFrecency(frequency: 1, lastUsed: now)
-                        let newTag = TagRecord(id: nil, name: tagName, frequency: 1, last_used: now, frecency_score: frecency, created_at: now, updated_at: now)
+                        let newTag = TagRecord(id: nil, name: tagName, frequency: 1, lastUsed: now, frecencyScore: frecency, createdAt: now, updatedAt: now)
                         try newTag.insert(db)
                         tagId = db.lastInsertedRowID
                     }
@@ -663,21 +663,21 @@ class DatabaseManager {
                             let frecency = calculateFrecency(frequency: newFrequency, lastUsed: now)
 
                             try db.execute(sql: """
-                                UPDATE tags SET frequency = ?, last_used = ?, frecency_score = ?, updated_at = ?
+                                UPDATE tags SET frequency = ?, lastUsed = ?, frecencyScore = ?, updatedAt = ?
                                 WHERE id = ?
                             """, arguments: [newFrequency, now, frecency, now, existingTag.id!])
                         } else {
-                            // Tag was already on this item, just update last_used and recalculate frecency
+                            // Tag was already on this item, just update lastUsed and recalculate frecency
                             let frecency = calculateFrecency(frequency: existingTag.frequency, lastUsed: now)
                             try db.execute(sql: """
-                                UPDATE tags SET last_used = ?, frecency_score = ?, updated_at = ?
+                                UPDATE tags SET lastUsed = ?, frecencyScore = ?, updatedAt = ?
                                 WHERE id = ?
                             """, arguments: [now, frecency, now, existingTag.id!])
                         }
                     } else {
                         // Create new tag
                         let frecency = calculateFrecency(frequency: 1, lastUsed: now)
-                        let newTag = TagRecord(id: nil, name: tagName, frequency: 1, last_used: now, frecency_score: frecency, created_at: now, updated_at: now)
+                        let newTag = TagRecord(id: nil, name: tagName, frequency: 1, lastUsed: now, frecencyScore: frecency, createdAt: now, updatedAt: now)
                         try newTag.insert(db)
                         tagId = db.lastInsertedRowID
                     }

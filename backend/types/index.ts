@@ -298,9 +298,9 @@ export interface ServerItem {
   content: string | null;
   metadata?: Record<string, unknown> | null;
   tags: string[];
-  created_at: string;
-  updated_at: string;
-  deleted_at?: number;
+  createdAt: number;
+  updatedAt: number;
+  deletedAt?: number;
 }
 
 // ==================== Backup Types ====================

@@ -77,8 +77,8 @@ describe('sync', () => {
         content: 'From server',
         tags: [],
         metadata: null,
-        created_at: '2024-01-01T00:00:00.000Z',
-        updated_at: '2024-01-01T00:00:00.000Z',
+        createdAt: new Date('2024-01-01T00:00:00.000Z').getTime(),
+        updatedAt: new Date('2024-01-01T00:00:00.000Z').getTime(),
       };
 
       mockFetchHandler = async () => jsonResponse({ items: [serverItem] });
@@ -103,15 +103,15 @@ describe('sync', () => {
       });
 
       // Make server item newer
-      const futureDate = new Date(Date.now() + 100000).toISOString();
+      const futureTime = Date.now() + 100000;
       const serverItem = {
         id: 'server-2',
         type: 'text',
         content: 'Updated content',
         tags: [],
         metadata: null,
-        created_at: '2024-01-01T00:00:00.000Z',
-        updated_at: futureDate,
+        createdAt: new Date('2024-01-01T00:00:00.000Z').getTime(),
+        updatedAt: futureTime,
       };
 
       mockFetchHandler = async () => jsonResponse({ items: [serverItem] });
@@ -138,8 +138,8 @@ describe('sync', () => {
         content: 'Server old content',
         tags: [],
         metadata: null,
-        created_at: '2020-01-01T00:00:00.000Z',
-        updated_at: '2020-01-01T00:00:00.000Z',
+        createdAt: new Date('2020-01-01T00:00:00.000Z').getTime(),
+        updatedAt: new Date('2020-01-01T00:00:00.000Z').getTime(),
       };
 
       mockFetchHandler = async () => jsonResponse({ items: [serverItem] });
@@ -231,8 +231,8 @@ describe('sync', () => {
         content: 'https://synced.com',
         tags: [],
         metadata: null,
-        created_at: '2024-01-01T00:00:00.000Z',
-        updated_at: '2024-01-01T00:00:00.000Z',
+        createdAt: new Date('2024-01-01T00:00:00.000Z').getTime(),
+        updatedAt: new Date('2024-01-01T00:00:00.000Z').getTime(),
       };
 
       let requestLog = [];

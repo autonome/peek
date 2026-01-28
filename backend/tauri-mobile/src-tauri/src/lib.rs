@@ -1,7 +1,7 @@
 use chrono::Utc;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::path::PathBuf;
 use std::fs;
@@ -9,6 +9,11 @@ use std::sync::RwLock;
 use reqwest;
 use regex::Regex;
 use tauri::Manager;
+
+// Simple logging - println! works in debug builds and Xcode console
+fn ios_log(msg: &str) {
+    println!("[Peek] {}", msg);
+}
 
 // Sync version constants — must match backend/version.ts and backend/server/version.js
 // Bump DATASTORE_VERSION when schema changes break sync.
@@ -140,6 +145,7 @@ where
 
 // Server item format (from GET /items)
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ServerItem {
     id: String,
     #[serde(rename = "type")]
@@ -179,6 +185,7 @@ struct SyncStatus {
 // App Group bridge - just need the container path now
 extern "C" {
     fn get_app_group_container_path() -> *const c_char;
+    fn get_documents_path() -> *const c_char;
     fn get_system_is_dark_mode() -> i32;
     fn is_app_store_build() -> i32;
 }
@@ -225,7 +232,7 @@ struct ProfileEntry {
     name: String,
     #[serde(rename = "createdAt")]
     created_at: String,
-    #[serde(rename = "lastUsed")]
+    #[serde(rename = "lastUsed", alias = "lastUsedAt")]
     last_used_at: String,
     /// Server profile UUID — maps this local profile to a server-side profile for sync.
     /// When set, sync requests send this ID instead of the local profile ID.
@@ -247,6 +254,166 @@ fn get_container_path() -> Option<PathBuf> {
         let path_str = CStr::from_ptr(c_str).to_string_lossy().to_string();
         libc::free(c_str as *mut libc::c_void);
         Some(PathBuf::from(path_str))
+    }
+}
+
+/// Get the Documents directory path (visible in Finder via File Sharing)
+fn get_docs_path() -> Option<PathBuf> {
+    unsafe {
+        let c_str = get_documents_path();
+        if c_str.is_null() {
+            ios_log("Failed to get Documents path");
+            return None;
+        }
+        let path_str = CStr::from_ptr(c_str).to_string_lossy().to_string();
+        libc::free(c_str as *mut libc::c_void);
+        Some(PathBuf::from(path_str))
+    }
+}
+
+/// Restore data from Documents folder to App Group container
+/// Drag files named *.restore via Finder, app will restore on next launch
+/// e.g., profiles.json.restore -> profiles.json in App Group
+fn restore_from_documents() {
+    let docs = match get_docs_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let container = match get_container_path() {
+        Some(p) => p,
+        None => return,
+    };
+
+    // Look for any files ending in .restore
+    let entries = match fs::read_dir(&docs) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+
+    let mut restored = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let filename = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+
+        if filename.ends_with(".restore") {
+            // Strip .restore suffix to get real filename
+            let real_name = &filename[..filename.len() - 8]; // remove ".restore"
+            let dest = container.join(real_name);
+
+            ios_log(&format!("=== Restoring {} ===", real_name));
+
+            match fs::copy(&path, &dest) {
+                Ok(bytes) => {
+                    ios_log(&format!("Restored {} ({} bytes)", real_name, bytes));
+                    restored += 1;
+                    // Delete the .restore file after successful copy
+                    let _ = fs::remove_file(&path);
+                }
+                Err(e) => {
+                    ios_log(&format!("Failed to restore {}: {}", real_name, e));
+                }
+            }
+        }
+    }
+
+    if restored > 0 {
+        ios_log(&format!("=== Restore complete: {} files ===", restored));
+    }
+}
+
+/// Backup App Group data to Documents folder (visible in Finder)
+/// This runs on every startup to ensure data is always recoverable
+fn backup_app_group_to_documents() {
+    ios_log("=== Starting backup to Documents ===");
+
+    let container = match get_container_path() {
+        Some(p) => p,
+        None => {
+            ios_log("No container path - skipping backup");
+            return;
+        }
+    };
+
+    let docs = match get_docs_path() {
+        Some(p) => p,
+        None => {
+            ios_log("No documents path - skipping backup");
+            return;
+        }
+    };
+
+    // Create backup directory with timestamp
+    let timestamp = Utc::now().format("%Y-%m-%d_%H-%M-%S").to_string();
+    let backup_dir = docs.join("Backups").join(&timestamp);
+
+    if let Err(e) = fs::create_dir_all(&backup_dir) {
+        ios_log(&format!("Failed to create backup dir: {}", e));
+        return;
+    }
+
+    ios_log(&format!("Backup dir: {}", backup_dir.display()));
+
+    // Copy all files from App Group to backup
+    let mut copied = 0;
+    if let Ok(entries) = fs::read_dir(&container) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                let filename = path.file_name().unwrap_or_default();
+                let dest = backup_dir.join(filename);
+                match fs::copy(&path, &dest) {
+                    Ok(bytes) => {
+                        ios_log(&format!("Copied {} ({} bytes)", filename.to_string_lossy(), bytes));
+                        copied += 1;
+                    }
+                    Err(e) => {
+                        ios_log(&format!("Failed to copy {}: {}", filename.to_string_lossy(), e));
+                    }
+                }
+            }
+        }
+    }
+
+    ios_log(&format!("=== Backup complete: {} files ===", copied));
+
+    // Also copy to a "latest" folder for easy access
+    let latest_dir = docs.join("Backups").join("latest");
+    let _ = fs::remove_dir_all(&latest_dir); // Remove old latest
+    if let Err(e) = fs::create_dir_all(&latest_dir) {
+        ios_log(&format!("Failed to create latest dir: {}", e));
+        return;
+    }
+
+    if let Ok(entries) = fs::read_dir(&container) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                let filename = path.file_name().unwrap_or_default();
+                let dest = latest_dir.join(filename);
+                let _ = fs::copy(&path, &dest);
+            }
+        }
+    }
+
+    // Cleanup old backups - keep only last 5
+    if let Ok(mut entries) = fs::read_dir(docs.join("Backups")) {
+        let mut dirs: Vec<_> = entries
+            .flatten()
+            .filter(|e| e.path().is_dir() && e.file_name() != "latest")
+            .collect();
+
+        // Sort by name (timestamp format ensures chronological order)
+        dirs.sort_by_key(|e| e.file_name());
+
+        // Remove oldest if more than 5
+        while dirs.len() > 5 {
+            if let Some(oldest) = dirs.first() {
+                ios_log(&format!("Removing old backup: {}", oldest.file_name().to_string_lossy()));
+                let _ = fs::remove_dir_all(oldest.path());
+                dirs.remove(0);
+            }
+        }
     }
 }
 
@@ -419,15 +586,46 @@ fn migrate_sync_settings_from_db(container_path: &Option<PathBuf>, old_current_s
 
 /// Load profile config directly from file (bypasses cache)
 fn load_profile_config_from_file() -> ProfileConfig {
+    // DEBUG: List all files in App Group container (uses NSLog on iOS for release visibility)
+    if let Some(container) = get_container_path() {
+        ios_log("=== App Group Container Contents ===");
+        ios_log(&format!("Container path: {}", container.display()));
+        if let Ok(entries) = fs::read_dir(&container) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let metadata = fs::metadata(&path).ok();
+                let size = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
+                let modified = metadata.as_ref()
+                    .and_then(|m| m.modified().ok())
+                    .map(|t| format!("{:?}", t))
+                    .unwrap_or_else(|| "unknown".to_string());
+                ios_log(&format!("- {} (size: {} bytes, modified: {})",
+                    path.file_name().unwrap_or_default().to_string_lossy(),
+                    size,
+                    modified));
+            }
+        }
+        ios_log("=== End Container Contents ===");
+    }
+
     let config_path = match get_profiles_config_path() {
         Some(p) => p,
         None => {
-            println!("[Rust] No config path available, creating default config");
+            ios_log("No config path available, creating default config");
             return create_default_profile_config();
         }
     };
 
-    println!("[Rust] Loading profile config from: {} (exists: {})", config_path.display(), config_path.exists());
+    ios_log(&format!("Loading profile config from: {} (exists: {})", config_path.display(), config_path.exists()));
+
+    // DEBUG: Print raw profiles.json contents
+    if config_path.exists() {
+        if let Ok(raw_contents) = fs::read_to_string(&config_path) {
+            ios_log("=== Raw profiles.json ===");
+            ios_log(&raw_contents);
+            ios_log("=== End profiles.json ===");
+        }
+    }
 
     if config_path.exists() {
         match fs::read_to_string(&config_path) {
@@ -837,10 +1035,10 @@ fn ensure_database_initialized() -> Result<(), String> {
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL UNIQUE,
                     frequency INTEGER NOT NULL DEFAULT 0,
-                    last_used TEXT NOT NULL,
-                    frecency_score REAL NOT NULL DEFAULT 0.0,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
+                    lastUsed TEXT NOT NULL,
+                    frecencyScore REAL NOT NULL DEFAULT 0.0,
+                    createdAt TEXT NOT NULL,
+                    updatedAt TEXT NOT NULL
                 );
 
                 CREATE TABLE IF NOT EXISTS item_tags (
@@ -870,7 +1068,7 @@ fn ensure_database_initialized() -> Result<(), String> {
                 CREATE INDEX IF NOT EXISTS idx_items_deleted ON items(deleted_at);
                 CREATE INDEX IF NOT EXISTS idx_items_sync_id ON items(sync_id);
                 CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
-                CREATE INDEX IF NOT EXISTS idx_tags_frecency ON tags(frecency_score DESC);
+                CREATE INDEX IF NOT EXISTS idx_tags_frecency ON tags(frecencyScore DESC);
                 CREATE INDEX IF NOT EXISTS idx_blobs_item ON blobs(item_id);
 
                 CREATE TABLE IF NOT EXISTS settings (
@@ -936,6 +1134,38 @@ fn ensure_database_initialized() -> Result<(), String> {
             }
         }
 
+        // Migrate tags table columns from snake_case to camelCase
+        let has_last_used_snake: bool = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('tags') WHERE name='last_used'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap_or(0) > 0;
+
+        if has_last_used_snake {
+            ios_log("Migrating tags table columns from snake_case to camelCase...");
+            // SQLite 3.25+ supports RENAME COLUMN
+            let renames = [
+                ("last_used", "lastUsed"),
+                ("frecency_score", "frecencyScore"),
+                ("created_at", "createdAt"),
+                ("updated_at", "updatedAt"),
+            ];
+            for (old_name, new_name) in renames {
+                let sql = format!("ALTER TABLE tags RENAME COLUMN {} TO {}", old_name, new_name);
+                if let Err(e) = conn.execute(&sql, []) {
+                    ios_log(&format!("Warning: Failed to rename column {} to {}: {}", old_name, new_name, e));
+                } else {
+                    ios_log(&format!("Renamed tags.{} to tags.{}", old_name, new_name));
+                }
+            }
+            // Recreate index with new column name
+            let _ = conn.execute("DROP INDEX IF EXISTS idx_tags_frecency", []);
+            let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_tags_frecency ON tags(frecencyScore DESC)", []);
+            ios_log("Tags table migration complete");
+        }
+
         // Ensure blobs table exists (for existing installs)
         let has_blobs_table: bool = conn
             .query_row(
@@ -975,10 +1205,10 @@ fn ensure_database_initialized() -> Result<(), String> {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL UNIQUE,
                 frequency INTEGER NOT NULL DEFAULT 0,
-                last_used TEXT NOT NULL,
-                frecency_score REAL NOT NULL DEFAULT 0.0,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                lastUsed TEXT NOT NULL,
+                frecencyScore REAL NOT NULL DEFAULT 0.0,
+                createdAt TEXT NOT NULL,
+                updatedAt TEXT NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS settings (
@@ -987,7 +1217,7 @@ fn ensure_database_initialized() -> Result<(), String> {
             );
 
             CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
-            CREATE INDEX IF NOT EXISTS idx_tags_frecency ON tags(frecency_score DESC);
+            CREATE INDEX IF NOT EXISTS idx_tags_frecency ON tags(frecencyScore DESC);
             ",
         ) {
             init_result = Err(format!("Failed to ensure auxiliary tables: {}", e));
@@ -1677,7 +1907,7 @@ async fn save_url(url: String, tags: Vec<String>, metadata: Option<serde_json::V
                 let frecency = calculate_frecency(new_frequency, &now);
 
                 conn.execute(
-                    "UPDATE tags SET frequency = ?, last_used = ?, frecency_score = ?, updated_at = ? WHERE id = ?",
+                    "UPDATE tags SET frequency = ?, lastUsed = ?, frecencyScore = ?, updatedAt = ? WHERE id = ?",
                     params![new_frequency, &now, frecency, &now, id],
                 )
                 .map_err(|e| format!("Failed to update tag: {}", e))?;
@@ -1688,7 +1918,7 @@ async fn save_url(url: String, tags: Vec<String>, metadata: Option<serde_json::V
                 // Create new tag
                 let frecency = calculate_frecency(1, &now);
                 conn.execute(
-                    "INSERT INTO tags (name, frequency, last_used, frecency_score, created_at, updated_at) VALUES (?, 1, ?, ?, ?, ?)",
+                    "INSERT INTO tags (name, frequency, lastUsed, frecencyScore, createdAt, updatedAt) VALUES (?, 1, ?, ?, ?, ?)",
                     params![tag_name, &now, frecency, &now, &now],
                 )
                 .map_err(|e| format!("Failed to insert tag: {}", e))?;
@@ -1733,7 +1963,7 @@ async fn get_tags_by_frecency() -> Result<Vec<TagStats>, String> {
     let conn = get_connection()?;
 
     let mut stmt = conn
-        .prepare("SELECT name, frequency, last_used, frecency_score FROM tags ORDER BY frecency_score DESC")
+        .prepare("SELECT name, frequency, lastUsed, frecencyScore FROM tags ORDER BY frecencyScore DESC")
         .map_err(|e| format!("Failed to prepare query: {}", e))?;
 
     let tags: Vec<TagStats> = stmt
@@ -1765,7 +1995,7 @@ async fn get_tags_by_frecency_for_url(url: String) -> Result<Vec<TagStats>, Stri
 
     // Get all tags with their IDs
     let mut stmt = conn
-        .prepare("SELECT id, name, frequency, last_used, frecency_score FROM tags")
+        .prepare("SELECT id, name, frequency, lastUsed, frecencyScore FROM tags")
         .map_err(|e| format!("Failed to prepare query: {}", e))?;
 
     let tags_with_ids: Vec<(i64, TagStats)> = stmt
@@ -1975,7 +2205,7 @@ async fn update_url(id: String, url: String, tags: Vec<String>) -> Result<(), St
                 let frecency = calculate_frecency(new_frequency, &now);
 
                 conn.execute(
-                    "UPDATE tags SET frequency = ?, last_used = ?, frecency_score = ?, updated_at = ? WHERE id = ?",
+                    "UPDATE tags SET frequency = ?, lastUsed = ?, frecencyScore = ?, updatedAt = ? WHERE id = ?",
                     params![new_frequency, &now, frecency, &now, existing_id],
                 )
                 .map_err(|e| format!("Failed to update tag: {}", e))?;
@@ -1986,7 +2216,7 @@ async fn update_url(id: String, url: String, tags: Vec<String>) -> Result<(), St
                 // Create new tag
                 let frecency = calculate_frecency(1, &now);
                 conn.execute(
-                    "INSERT INTO tags (name, frequency, last_used, frecency_score, created_at, updated_at) VALUES (?, 1, ?, ?, ?, ?)",
+                    "INSERT INTO tags (name, frequency, lastUsed, frecencyScore, createdAt, updatedAt) VALUES (?, 1, ?, ?, ?, ?)",
                     params![tag_name, &now, frecency, &now, &now],
                 )
                 .map_err(|e| format!("Failed to insert tag: {}", e))?;
@@ -2101,7 +2331,7 @@ async fn update_url_tags(id: String, tags: Vec<String>) -> Result<(), String> {
                 let frecency = calculate_frecency(new_frequency, &now);
 
                 conn.execute(
-                    "UPDATE tags SET frequency = ?, last_used = ?, frecency_score = ?, updated_at = ? WHERE id = ?",
+                    "UPDATE tags SET frequency = ?, lastUsed = ?, frecencyScore = ?, updatedAt = ? WHERE id = ?",
                     params![new_frequency, &now, frecency, &now, existing_id],
                 )
                 .map_err(|e| format!("Failed to update tag: {}", e))?;
@@ -2112,7 +2342,7 @@ async fn update_url_tags(id: String, tags: Vec<String>) -> Result<(), String> {
                 // Create new tag
                 let frecency = calculate_frecency(1, &now);
                 conn.execute(
-                    "INSERT INTO tags (name, frequency, last_used, frecency_score, created_at, updated_at) VALUES (?, 1, ?, ?, ?, ?)",
+                    "INSERT INTO tags (name, frequency, lastUsed, frecencyScore, createdAt, updatedAt) VALUES (?, 1, ?, ?, ?, ?)",
                     params![tag_name, &now, frecency, &now, &now],
                 )
                 .map_err(|e| format!("Failed to insert tag: {}", e))?;
@@ -2200,7 +2430,7 @@ async fn save_text(content: String, tags: Option<Vec<String>>, metadata: Option<
                 let frecency = calculate_frecency(new_frequency, &now);
 
                 conn.execute(
-                    "UPDATE tags SET frequency = ?, last_used = ?, frecency_score = ?, updated_at = ? WHERE id = ?",
+                    "UPDATE tags SET frequency = ?, lastUsed = ?, frecencyScore = ?, updatedAt = ? WHERE id = ?",
                     params![new_frequency, &now, frecency, &now, existing_id],
                 )
                 .map_err(|e| format!("Failed to update tag: {}", e))?;
@@ -2210,7 +2440,7 @@ async fn save_text(content: String, tags: Option<Vec<String>>, metadata: Option<
             Err(_) => {
                 let frecency = calculate_frecency(1, &now);
                 conn.execute(
-                    "INSERT INTO tags (name, frequency, last_used, frecency_score, created_at, updated_at) VALUES (?, 1, ?, ?, ?, ?)",
+                    "INSERT INTO tags (name, frequency, lastUsed, frecencyScore, createdAt, updatedAt) VALUES (?, 1, ?, ?, ?, ?)",
                     params![tag_name, &now, frecency, &now, &now],
                 )
                 .map_err(|e| format!("Failed to insert tag: {}", e))?;
@@ -2277,7 +2507,7 @@ async fn save_tagset(tags: Vec<String>, metadata: Option<serde_json::Value>) -> 
                 let frecency = calculate_frecency(new_frequency, &now);
 
                 conn.execute(
-                    "UPDATE tags SET frequency = ?, last_used = ?, frecency_score = ?, updated_at = ? WHERE id = ?",
+                    "UPDATE tags SET frequency = ?, lastUsed = ?, frecencyScore = ?, updatedAt = ? WHERE id = ?",
                     params![new_frequency, &now, frecency, &now, existing_id],
                 )
                 .map_err(|e| format!("Failed to update tag: {}", e))?;
@@ -2287,7 +2517,7 @@ async fn save_tagset(tags: Vec<String>, metadata: Option<serde_json::Value>) -> 
             Err(_) => {
                 let frecency = calculate_frecency(1, &now);
                 conn.execute(
-                    "INSERT INTO tags (name, frequency, last_used, frecency_score, created_at, updated_at) VALUES (?, 1, ?, ?, ?, ?)",
+                    "INSERT INTO tags (name, frequency, lastUsed, frecencyScore, createdAt, updatedAt) VALUES (?, 1, ?, ?, ?, ?)",
                     params![tag_name, &now, frecency, &now, &now],
                 )
                 .map_err(|e| format!("Failed to insert tag: {}", e))?;
@@ -2488,7 +2718,7 @@ async fn update_text(id: String, content: String, tags: Vec<String>) -> Result<(
                 let frecency = calculate_frecency(new_frequency, &now);
 
                 conn.execute(
-                    "UPDATE tags SET frequency = ?, last_used = ?, frecency_score = ?, updated_at = ? WHERE id = ?",
+                    "UPDATE tags SET frequency = ?, lastUsed = ?, frecencyScore = ?, updatedAt = ? WHERE id = ?",
                     params![new_frequency, &now, frecency, &now, existing_id],
                 )
                 .map_err(|e| format!("Failed to update tag: {}", e))?;
@@ -2498,7 +2728,7 @@ async fn update_text(id: String, content: String, tags: Vec<String>) -> Result<(
             Err(_) => {
                 let frecency = calculate_frecency(1, &now);
                 conn.execute(
-                    "INSERT INTO tags (name, frequency, last_used, frecency_score, created_at, updated_at) VALUES (?, 1, ?, ?, ?, ?)",
+                    "INSERT INTO tags (name, frequency, lastUsed, frecencyScore, createdAt, updatedAt) VALUES (?, 1, ?, ?, ?, ?)",
                     params![tag_name, &now, frecency, &now, &now],
                 )
                 .map_err(|e| format!("Failed to insert tag: {}", e))?;
@@ -2612,7 +2842,7 @@ async fn update_tagset(id: String, tags: Vec<String>) -> Result<(), String> {
                 let frecency = calculate_frecency(new_frequency, &now);
 
                 conn.execute(
-                    "UPDATE tags SET frequency = ?, last_used = ?, frecency_score = ?, updated_at = ? WHERE id = ?",
+                    "UPDATE tags SET frequency = ?, lastUsed = ?, frecencyScore = ?, updatedAt = ? WHERE id = ?",
                     params![new_frequency, &now, frecency, &now, existing_id],
                 )
                 .map_err(|e| format!("Failed to update tag: {}", e))?;
@@ -2622,7 +2852,7 @@ async fn update_tagset(id: String, tags: Vec<String>) -> Result<(), String> {
             Err(_) => {
                 let frecency = calculate_frecency(1, &now);
                 conn.execute(
-                    "INSERT INTO tags (name, frequency, last_used, frecency_score, created_at, updated_at) VALUES (?, 1, ?, ?, ?, ?)",
+                    "INSERT INTO tags (name, frequency, lastUsed, frecencyScore, createdAt, updatedAt) VALUES (?, 1, ?, ?, ?, ?)",
                     params![tag_name, &now, frecency, &now, &now],
                 )
                 .map_err(|e| format!("Failed to insert tag: {}", e))?;
@@ -2720,7 +2950,7 @@ async fn save_image(
                 let frecency = calculate_frecency(new_frequency, &now);
 
                 conn.execute(
-                    "UPDATE tags SET frequency = ?, last_used = ?, frecency_score = ?, updated_at = ? WHERE id = ?",
+                    "UPDATE tags SET frequency = ?, lastUsed = ?, frecencyScore = ?, updatedAt = ? WHERE id = ?",
                     params![new_frequency, &now, frecency, &now, existing_id],
                 )
                 .map_err(|e| format!("Failed to update tag: {}", e))?;
@@ -2730,7 +2960,7 @@ async fn save_image(
             Err(_) => {
                 let frecency = calculate_frecency(1, &now);
                 conn.execute(
-                    "INSERT INTO tags (name, frequency, last_used, frecency_score, created_at, updated_at) VALUES (?, 1, ?, ?, ?, ?)",
+                    "INSERT INTO tags (name, frequency, lastUsed, frecencyScore, createdAt, updatedAt) VALUES (?, 1, ?, ?, ?, ?)",
                     params![tag_name, &now, frecency, &now, &now],
                 )
                 .map_err(|e| format!("Failed to insert tag: {}", e))?;
@@ -2930,7 +3160,7 @@ async fn update_image_tags(id: String, tags: Vec<String>) -> Result<(), String> 
                 let frecency = calculate_frecency(new_frequency, &now);
 
                 conn.execute(
-                    "UPDATE tags SET frequency = ?, last_used = ?, frecency_score = ?, updated_at = ? WHERE id = ?",
+                    "UPDATE tags SET frequency = ?, lastUsed = ?, frecencyScore = ?, updatedAt = ? WHERE id = ?",
                     params![new_frequency, &now, frecency, &now, existing_id],
                 )
                 .map_err(|e| format!("Failed to update tag: {}", e))?;
@@ -2940,7 +3170,7 @@ async fn update_image_tags(id: String, tags: Vec<String>) -> Result<(), String> 
             Err(_) => {
                 let frecency = calculate_frecency(1, &now);
                 conn.execute(
-                    "INSERT INTO tags (name, frequency, last_used, frecency_score, created_at, updated_at) VALUES (?, 1, ?, ?, ?, ?)",
+                    "INSERT INTO tags (name, frequency, lastUsed, frecencyScore, createdAt, updatedAt) VALUES (?, 1, ?, ?, ?, ?)",
                     params![tag_name, &now, frecency, &now, &now],
                 )
                 .map_err(|e| format!("Failed to insert tag: {}", e))?;
@@ -3688,7 +3918,7 @@ fn update_item_tags_from_server(conn: &Connection, item_id: &str, tag_names: &[S
                 let frecency = calculate_frecency(new_frequency, &now);
 
                 conn.execute(
-                    "UPDATE tags SET frequency = ?, last_used = ?, frecency_score = ?, updated_at = ? WHERE id = ?",
+                    "UPDATE tags SET frequency = ?, lastUsed = ?, frecencyScore = ?, updatedAt = ? WHERE id = ?",
                     params![new_frequency, &now, frecency, &now, id],
                 ).ok();
 
@@ -3698,7 +3928,7 @@ fn update_item_tags_from_server(conn: &Connection, item_id: &str, tag_names: &[S
                 // Create new tag
                 let frecency = calculate_frecency(1, &now);
                 conn.execute(
-                    "INSERT INTO tags (name, frequency, last_used, frecency_score, created_at, updated_at) VALUES (?, 1, ?, ?, ?, ?)",
+                    "INSERT INTO tags (name, frequency, lastUsed, frecencyScore, createdAt, updatedAt) VALUES (?, 1, ?, ?, ?, ?)",
                     params![tag_name, &now, frecency, &now, &now],
                 )
                 .map_err(|e| format!("Failed to insert tag: {}", e))?;
@@ -3896,13 +4126,13 @@ async fn push_to_server() -> Result<BidirectionalSyncResult, String> {
             "content": content,
             "tags": tags,
             "metadata": metadata,
-            "sync_id": sync_id_to_send,
+            "syncId": sync_id_to_send,
         });
 
-        // Include deleted_at if the item was soft-deleted locally
+        // Include deletedAt if the item was soft-deleted locally
         if let Some(ref deleted_at_str) = deleted_at_opt {
             if let Some(dt) = parse_iso_datetime(deleted_at_str) {
-                body["deleted_at"] = serde_json::json!(dt.timestamp_millis());
+                body["deletedAt"] = serde_json::json!(dt.timestamp_millis());
             }
         }
 
@@ -4040,6 +4270,12 @@ fn get_sync_status() -> Result<SyncStatus, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // RESTORE: Check for *.restore files in Documents and copy to App Group
+    restore_from_documents();
+
+    // BACKUP: Copy App Group data to Documents for recovery via Finder File Sharing
+    backup_app_group_to_documents();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
@@ -4135,10 +4371,10 @@ mod tests {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL UNIQUE,
                 frequency INTEGER NOT NULL DEFAULT 0,
-                last_used TEXT NOT NULL,
-                frecency_score REAL NOT NULL DEFAULT 0.0,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                lastUsed TEXT NOT NULL,
+                frecencyScore REAL NOT NULL DEFAULT 0.0,
+                createdAt TEXT NOT NULL,
+                updatedAt TEXT NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS item_tags (
@@ -4181,7 +4417,7 @@ mod tests {
                 Ok(existing_id) => existing_id,
                 Err(_) => {
                     conn.execute(
-                        "INSERT INTO tags (name, frequency, last_used, frecency_score, created_at, updated_at) VALUES (?, 1, ?, 10.0, ?, ?)",
+                        "INSERT INTO tags (name, frequency, lastUsed, frecencyScore, createdAt, updatedAt) VALUES (?, 1, ?, 10.0, ?, ?)",
                         params![&normalized, &now, &now, &now],
                     )
                     .expect("Failed to insert tag");
@@ -4330,7 +4566,7 @@ mod tests {
                 Ok(existing_id) => existing_id,
                 Err(_) => {
                     conn.execute(
-                        "INSERT INTO tags (name, frequency, last_used, frecency_score, created_at, updated_at) VALUES (?, 1, ?, 10.0, ?, ?)",
+                        "INSERT INTO tags (name, frequency, lastUsed, frecencyScore, createdAt, updatedAt) VALUES (?, 1, ?, 10.0, ?, ?)",
                         params![&normalized, &now, &now, &now],
                     )
                     .expect("Failed to insert tag");

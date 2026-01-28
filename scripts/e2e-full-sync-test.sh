@@ -326,10 +326,10 @@ CREATE TABLE IF NOT EXISTS tags (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
     frequency INTEGER NOT NULL DEFAULT 0,
-    last_used TEXT NOT NULL,
-    frecency_score REAL NOT NULL DEFAULT 0.0,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    lastUsed TEXT NOT NULL,
+    frecencyScore REAL NOT NULL DEFAULT 0.0,
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS item_tags (
@@ -364,7 +364,7 @@ CREATE INDEX IF NOT EXISTS idx_items_url ON items(url);
 CREATE INDEX IF NOT EXISTS idx_items_deleted ON items(deleted_at);
 CREATE INDEX IF NOT EXISTS idx_items_sync_id ON items(sync_id);
 CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
-CREATE INDEX IF NOT EXISTS idx_tags_frecency ON tags(frecency_score DESC);
+CREATE INDEX IF NOT EXISTS idx_tags_frecency ON tags(frecencyScore DESC);
 CREATE INDEX IF NOT EXISTS idx_blobs_item ON blobs(item_id);
 
 -- Seed iOS-origin items
@@ -374,7 +374,7 @@ VALUES
   ('ios-e2e-note-1', 'text', '', 'Note created on iOS', '', '', datetime('now'), datetime('now'));
 
 -- Tags
-INSERT INTO tags (name, frequency, last_used, frecency_score, created_at, updated_at)
+INSERT INTO tags (name, frequency, lastUsed, frecencyScore, createdAt, updatedAt)
 VALUES
   ('ios', 1, datetime('now'), 1.0, datetime('now'), datetime('now')),
   ('e2e', 1, datetime('now'), 1.0, datetime('now'), datetime('now')),
@@ -635,7 +635,7 @@ INSERT INTO items (id, type, url, content, metadata, sync_source, created_at, up
 VALUES
   ('ios-crossdev-1', 'url', '$CROSS_URL', '', '', '', datetime('now'), datetime('now'));
 
-INSERT OR IGNORE INTO tags (name, frequency, last_used, frecency_score, created_at, updated_at)
+INSERT OR IGNORE INTO tags (name, frequency, lastUsed, frecencyScore, createdAt, updatedAt)
 VALUES ('cross-device', 1, datetime('now'), 1.0, datetime('now'), datetime('now'));
 
 INSERT INTO item_tags (item_id, tag_id, created_at)
@@ -678,7 +678,7 @@ sqlite3 "$IOS_DB" << 'SQLEOF'
 INSERT INTO items (id, type, url, content, metadata, sync_source, created_at, updated_at)
 VALUES ('ios-tagset-1', 'tagset', '', '', '', '', datetime('now'), datetime('now'));
 
-INSERT OR IGNORE INTO tags (name, frequency, last_used, frecency_score, created_at, updated_at)
+INSERT OR IGNORE INTO tags (name, frequency, lastUsed, frecencyScore, createdAt, updatedAt)
 VALUES
   ('shared', 1, datetime('now'), 1.0, datetime('now'), datetime('now')),
   ('tagset', 1, datetime('now'), 1.0, datetime('now'), datetime('now'));

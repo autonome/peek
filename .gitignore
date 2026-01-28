@@ -37,6 +37,10 @@ playwright-report/
 
 # Backup files
 *.bak
+Backups/
+
+# Xcode app container exports
+*.xcappdata/
 
 # Experimental/unused files
 babel.config.json

@@ -635,9 +635,9 @@ function getItems(userId, type = null, profileId = "default", includeDeleted = f
       id: row.id,
       type: row.type,
       content: row.content,
-      created_at: toTimestamp(row.createdAt),
-      updated_at: toTimestamp(row.updatedAt),
-      deleted_at: toTimestamp(row.deletedAt),
+      createdAt: toTimestamp(row.createdAt),
+      updatedAt: toTimestamp(row.updatedAt),
+      deletedAt: toTimestamp(row.deletedAt),
       tags: getTagsStmt.all(row.id).map((t) => t.name),
     };
     if (row.metadata) {
@@ -652,7 +652,7 @@ function getSavedUrls(userId, profileId = "default") {
     const result = {
       id: item.id,
       url: item.content,
-      saved_at: item.created_at,
+      savedAt: item.createdAt,
       tags: item.tags,
     };
     if (item.metadata) result.metadata = item.metadata;
@@ -665,8 +665,8 @@ function getTexts(userId, profileId = "default") {
     const result = {
       id: item.id,
       content: item.content,
-      created_at: item.created_at,
-      updated_at: item.updated_at,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
       tags: item.tags,
     };
     if (item.metadata) result.metadata = item.metadata;
@@ -678,8 +678,8 @@ function getTagsets(userId, profileId = "default") {
   return getItems(userId, "tagset", profileId).map((item) => {
     const result = {
       id: item.id,
-      created_at: item.created_at,
-      updated_at: item.updated_at,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
       tags: item.tags,
     };
     if (item.metadata) result.metadata = item.metadata;
@@ -865,8 +865,8 @@ function getImages(userId, profileId = "default") {
       filename: row.content,
       mime: metadata.mime,
       size: metadata.size,
-      created_at: toTimestamp(row.createdAt),
-      updated_at: toTimestamp(row.updatedAt),
+      createdAt: toTimestamp(row.createdAt),
+      updatedAt: toTimestamp(row.updatedAt),
       tags: getTagsStmt.all(row.id).map((t) => t.name),
     };
   });
@@ -946,9 +946,9 @@ function getItemsSince(userId, timestamp, type = null, profileId = "default") {
       id: row.id,
       type: row.type,
       content: row.content,
-      created_at: toTimestamp(row.createdAt),
-      updated_at: toTimestamp(row.updatedAt),
-      deleted_at: toTimestamp(row.deletedAt),
+      createdAt: toTimestamp(row.createdAt),
+      updatedAt: toTimestamp(row.updatedAt),
+      deletedAt: toTimestamp(row.deletedAt),
       tags: getTagsStmt.all(row.id).map((t) => t.name),
     };
     if (row.metadata) {
@@ -983,8 +983,8 @@ function getItemById(userId, itemId, profileId = "default") {
     id: row.id,
     type: row.type,
     content: row.content,
-    created_at: toTimestamp(row.createdAt),
-    updated_at: toTimestamp(row.updatedAt),
+    createdAt: toTimestamp(row.createdAt),
+    updatedAt: toTimestamp(row.updatedAt),
     tags: getTagsStmt.all(row.id).map((t) => t.name),
   };
   if (row.metadata) {

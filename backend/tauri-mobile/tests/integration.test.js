@@ -347,7 +347,7 @@ async function testTagsAPI() {
     if (!found) {
       throw new Error(`Expected tag '${tag}' not found`);
     }
-    console.log(`  Tag '${tag}': frequency=${found.frequency}, frecency=${found.frecency_score.toFixed(2)}`);
+    console.log(`  Tag '${tag}': frequency=${found.frequency}, frecency=${found.frecencyScore.toFixed(2)}`);
   }
 
   console.log('  Tags API verified successfully');

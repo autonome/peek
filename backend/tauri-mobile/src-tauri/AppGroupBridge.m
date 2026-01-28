@@ -70,3 +70,15 @@ const char* get_app_group_container_path() {
     NSLog(@"[AppGroupBridge] Container path: %@", containerURL.path);
     return strdup([containerURL.path UTF8String]);
 }
+
+// Returns the path to the app's Documents directory (visible in Finder via File Sharing)
+const char* get_documents_path() {
+    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+    if (paths.count == 0) {
+        NSLog(@"[AppGroupBridge] Failed to get Documents directory");
+        return NULL;
+    }
+    NSString *documentsPath = paths.firstObject;
+    NSLog(@"[AppGroupBridge] Documents path: %@", documentsPath);
+    return strdup([documentsPath UTF8String]);
+}

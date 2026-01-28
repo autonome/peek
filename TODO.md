@@ -69,19 +69,40 @@ problems
 - messy, error prone, poor DRY practice
 - also means we can't generatively and rapidly build out UIs without whole new piles of html/js/css to manage
 
-We want:
-- a flexible and reusable system provided at the ./app layer
-- extensions can include it and inject data/styling into these controls
-- they have system-consistent ux and visual design
-- this is a loosely coupled system with deterministic management
-- not just importing and writing js components w/ css, React-style.
-- this is more like a set of prebuilt controls
+What it is
+- flexible / reusable system at the ./app layer
+- extensions use for creating/generating interfaces
+- can override/overlay/inject styling
+- easy to make system-consistent ux and themed visual design
+- loosely coupled system with deterministic management
+- like a set of prebuilt controls
+- designed for single-component, or sets
+- binds to data source, is reactive to it (events, event-sources, streams, our feed system)
 
-- callers instanciate a control, and provide schema and data into a control which has a default template
+what it isn't
+- designed for complex document hierarchies
+- js components React-style
+
+usage
+- callers instanciate a control
+- provide schema/data into a control which has a default template
 - template can be replaced by caller
-- designed for single-component scoping, not complex document hierarchies
 
-Once we add atproto support, this same system could be used to bind lexicons + data for generated viewing/CRUD interfaces.
+examples/use-cases
+- groups, tag ui and windows viewer are all card grids
+- chaining is command components + card popups with lists, editors, previews, etc
+- after atproto support, this could be used to bind lexicons + data for generated viewing/CRUD interfaces.
+- see the Window templates section of this file
+- see the Pagestream section of this file
+- see the Chaining section of this file
+- see the Notes/Editor section of this file
+- see the Web page experience section of this file
+- see the Unfiled section of this file
+- see the Commands section of this file
+
+implementation
+- use https://open-ui.org/ as much as possible, should cover a lot, eg, buttons, card/grid, cmd, carousels
+- see ~/sync/Sites/base for experiments w/ hud etc
 
 reactive schema+card+data system
 - [ ] cards + json schema + data
@@ -108,6 +129,7 @@ ui
 - [ ] command preview pane
 - [ ] search/filters on enumerable items (list, grid)
 - [ ] editor
+- [ ] column/columns
 
 initial porting
 - [ ] groups -> card/cards
@@ -137,19 +159,19 @@ tags
 ## Modes/scopes
 
 notes
-- We need to add a concept of "modes", so users have explicit, consistent and clear behavior
-- Eg, viewing web pages would have a specific mode, with mode-specific hotkeys, etc.
-- or when we open a group, we're in mode optimized for working with the group's set of pages
+- Pages have a specific mode, with specific hotkeys, etc.
+- Commands like "theme dark here" operate on the "target window".
+- Target window is usually what the user was looking at before opening cmd.
+- Currently this works but there's no visual indication.
 
-Example
-- commands like "theme dark here" operate on the "target window"
-- target window is usually what the user was looking at before opening cmd
-- currently this works but is ambiguous, and there's no visual indication of the target
+examples
+- web page viewing has a mode w/ special actions and hotkeys
+- when "in" a group, we need special mode optimized for working w/ the group's set of pages
+- cmd might operate differently depending on if it's in a mode or not
 
-open questions
 - [ ] How to do page "mode" (for example) with conditional context/hotkeys/actions
 - [ ] Should commands declare `scope: 'window' | 'page' | 'global'` in registration?
-- [ ] How does cmd indicate scope/target in the language?
+- [ ] How does cmd indicate scope/target?
    - [ ] eg "Target: [window title]" header when window-scoped command is selected?
 
 ## Web page experience (reviewme: partially done)
@@ -179,6 +201,7 @@ Titlebar
 ## Metadata, QS and reflection
 
 - [ ] tabstats for peek
+- [ ] a page of widgets
 
 ## Files-ness
 
@@ -210,6 +233,13 @@ syncing history
 ## Polish
 
 - [ ] (already done?) if no api key set, sync settings are disabled, and pull-to-sync on mobile
+
+## Window templates
+
+- [ ] declarative sets of ui components?
+- [ ] eg page info hud overlay (~/sync/Sites/base/)
+- [ ] explode: windows using groups ui with transparent background and vi directionals, enter opens
+- [ ] tile/untile, eg the Explode extension
 
 ## Pagestream
 
@@ -320,13 +350,6 @@ examples
 - [ ] execute a command which executes a userScript against a loaded page, detects list/table-ish things (with previews), lets you select one, which it exports as a "list" out (CSV? JSON?)
 - [ ] links on page -> list -> button cloud -> kb activate (then shorten to "link cloud" cmd)
 - [ ] compound cmds (like "link cloud". uses chaining? like a chain package?)
-
-## window templates
-
-- [ ] declarative sets of ui components?
-- [ ] eg page info hud overlay
-- [ ] explode: windows using groups ui with transparent background and vi directionals, enter opens
-- [ ] tile/untile, eg the Explode extension
 
 ## Media: images/videos, favicon/screenshot cache
 

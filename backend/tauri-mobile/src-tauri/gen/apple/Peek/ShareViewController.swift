@@ -377,7 +377,7 @@ class DatabaseManager {
         do {
             return try dbQueue?.read { db in
                 guard let record = try ItemRecord
-                    .filter(Column("url") == url && Column("type") == "page" && Column("deleted_at") == nil)
+                    .filter(Column("url") == url && Column("type") == "url" && Column("deleted_at") == nil)
                     .fetchOne(db) else {
                     return nil
                 }

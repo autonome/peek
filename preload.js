@@ -867,7 +867,13 @@ api.commands = {
   /**
    * Register a command with the cmd palette
    * IMPORTANT: Extensions should wait for cmd:ready before calling this.
-   * @param {Object} command - Command object with name, description, execute
+   * @param {Object} command - Command object with:
+   *   - name: string (required)
+   *   - description: string (optional)
+   *   - scope: 'global' | 'window' | 'page' (optional, defaults to 'global')
+   *   - modes: string[] (optional, major modes where command is available)
+   *   - canExecute: function(context) => boolean (optional, guard function)
+   *   - execute: function(msg) (required)
    */
   register: (command) => {
     if (!command.name || !command.execute) {
@@ -878,6 +884,12 @@ api.commands = {
     // Store the execute handler locally (can't serialize functions via pubsub)
     window._cmdHandlers = window._cmdHandlers || {};
     window._cmdHandlers[command.name] = command.execute;
+
+    // Store canExecute handler if provided
+    if (command.canExecute) {
+      window._cmdCanExecuteHandlers = window._cmdCanExecuteHandlers || {};
+      window._cmdCanExecuteHandlers[command.name] = command.canExecute;
+    }
 
     // Subscribe to execution requests for this command (GLOBAL scope)
     const execTopic = `cmd:execute:${command.name}`;
@@ -920,11 +932,49 @@ api.commands = {
       }
     });
 
+    // Subscribe to canExecute queries for this command
+    const canExecTopic = `cmd:canExecute:${command.name}`;
+    const canExecReplyTopic = `${canExecTopic}:${rndm()}`;
+
+    ipcRenderer.send('subscribe', {
+      source: sourceAddress,
+      scope: 3,
+      topic: canExecTopic,
+      replyTopic: canExecReplyTopic
+    });
+
+    ipcRenderer.on(canExecReplyTopic, async (ev, msg) => {
+      const canExecuteHandler = window._cmdCanExecuteHandlers?.[command.name];
+      let canExecute = true;
+
+      if (canExecuteHandler) {
+        try {
+          canExecute = await canExecuteHandler(msg.context);
+        } catch (err) {
+          console.error('Error in canExecute for', command.name, err);
+          canExecute = false;
+        }
+      }
+
+      // Publish result back
+      if (msg.responseTopic) {
+        ipcRenderer.send('publish', {
+          source: sourceAddress,
+          scope: 3,
+          topic: msg.responseTopic,
+          data: { name: command.name, canExecute }
+        });
+      }
+    });
+
     // Queue registration for batching (improves startup performance)
     pendingRegistrations.push({
       name: command.name,
       description: command.description || '',
       source: sourceAddress,
+      scope: command.scope || 'global',
+      modes: command.modes || [],
+      hasCanExecute: !!command.canExecute,
       accepts: command.accepts || [],
       produces: command.produces || []
     });
@@ -933,7 +983,7 @@ api.commands = {
     clearTimeout(registrationTimer);
     registrationTimer = setTimeout(flushRegistrations, BATCH_DELAY_MS);
 
-    DEBUG && console.log('[preload] commands.register:', command.name);
+    DEBUG && console.log('[preload] commands.register:', command.name, 'scope:', command.scope || 'global');
   },
 
   /**
@@ -972,6 +1022,65 @@ api.commands = {
     // Commands are queried via pubsub cmd:query-commands
     // Return empty - caller should use pubsub directly
     return [];
+  },
+
+  /**
+   * Get the current command context (target window, mode state, etc.)
+   * Useful for determining command availability
+   * @returns {Promise<{success: boolean, data?: object, error?: string}>}
+   */
+  getContext: () => {
+    return ipcRenderer.invoke('modes:getCommandContext');
+  },
+
+  /**
+   * Check if a specific command can execute in the current context
+   * @param {string} name - Command name to check
+   * @returns {Promise<boolean>}
+   */
+  canExecute: async (name) => {
+    // Get current context
+    const contextResult = await ipcRenderer.invoke('modes:getCommandContext');
+    if (!contextResult.success) {
+      return false;
+    }
+
+    // Request canExecute check from the command's source
+    return new Promise((resolve) => {
+      const responseTopic = `cmd:canExecute:response:${rndm()}`;
+
+      // Subscribe to response
+      const handler = (ev, msg) => {
+        ipcRenderer.removeListener(responseTopic, handler);
+        resolve(msg.canExecute ?? true);
+      };
+
+      // Set up one-time listener
+      ipcRenderer.send('subscribe', {
+        source: sourceAddress,
+        scope: 3,
+        topic: responseTopic,
+        replyTopic: responseTopic
+      });
+      ipcRenderer.on(responseTopic, handler);
+
+      // Request canExecute check
+      ipcRenderer.send('publish', {
+        source: sourceAddress,
+        scope: 3,
+        topic: `cmd:canExecute:${name}`,
+        data: {
+          context: contextResult.data,
+          responseTopic
+        }
+      });
+
+      // Timeout after 1 second - assume can execute
+      setTimeout(() => {
+        ipcRenderer.removeListener(responseTopic, handler);
+        resolve(true);
+      }, 1000);
+    });
   }
 };
 

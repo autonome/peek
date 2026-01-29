@@ -90,6 +90,9 @@ const saveCommandCache = async (appVersion, extensionVersions) => {
       name: cmd.name,
       description: cmd.description,
       source: cmd.source,
+      scope: cmd.scope || 'global',
+      modes: cmd.modes || [],
+      hasCanExecute: cmd.hasCanExecute || false,
       accepts: cmd.accepts,
       produces: cmd.produces
     }));
@@ -192,6 +195,13 @@ const initCommandRegistry = () => {
         name: cmd.name,
         description: cmd.description || '',
         source: cmd.source,
+        // Scope: 'global' (app-wide), 'window' (target window), 'page' (page content)
+        scope: cmd.scope || 'global',
+        // Required major modes for command availability (empty = available in all modes)
+        modes: cmd.modes || [],
+        // Whether command has a canExecute guard
+        hasCanExecute: cmd.hasCanExecute || false,
+        // Connector metadata for chaining
         accepts: cmd.accepts || [],
         produces: cmd.produces || []
       });
@@ -205,6 +215,12 @@ const initCommandRegistry = () => {
       name: msg.name,
       description: msg.description || '',
       source: msg.source,
+      // Scope: 'global' (app-wide), 'window' (target window), 'page' (page content)
+      scope: msg.scope || 'global',
+      // Required major modes for command availability
+      modes: msg.modes || [],
+      // Whether command has a canExecute guard
+      hasCanExecute: msg.hasCanExecute || false,
       // Connector metadata for chaining
       accepts: msg.accepts || [],   // MIME types this command accepts as input
       produces: msg.produces || []  // MIME types this command produces as output

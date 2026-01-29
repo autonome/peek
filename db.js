@@ -4,6 +4,12 @@ const crypto = require("crypto");
 const fs = require("fs");
 const { DATASTORE_VERSION } = require("./version");
 
+// Load canonical schema for validation
+const SCHEMA = JSON.parse(
+  fs.readFileSync(path.join(__dirname, "../../schema/v1.json"), "utf-8")
+);
+const REQUIRED_SYNC_COLUMNS = SCHEMA.validation.required_sync_columns;
+
 const DATA_DIR = process.env.DATA_DIR || "./data";
 
 // Connection pool - one connection per user:profile
@@ -163,11 +169,8 @@ function migrateTimestamps(db, table, columns) {
  * a broken schema that crashes on the first query.
  */
 function validateSchema(db) {
-  const required = {
-    items: ["id", "type", "syncId", "syncSource", "syncedAt", "createdAt", "updatedAt", "deletedAt"],
-    tags: ["id", "name", "frequency", "lastUsed", "frecencyScore", "createdAt", "updatedAt"],
-    item_tags: ["itemId", "tagId", "createdAt"],
-  };
+  // Use canonical schema from schema/v1.json
+  const required = REQUIRED_SYNC_COLUMNS;
   const missing = [];
   for (const [table, cols] of Object.entries(required)) {
     const actual = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name));

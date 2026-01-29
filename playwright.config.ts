@@ -23,6 +23,14 @@ export default defineConfig({
       name: 'desktop',
       testMatch: /desktop\/.*\.spec\.ts/,
     },
+    {
+      name: 'components',
+      testMatch: /components\/.*\.spec\.ts/,
+      use: {
+        // Component tests run in browser, not Electron
+        browserName: 'chromium',
+      },
+    },
     // Future projects:
     // { name: 'mobile', testMatch: /mobile\/.*\.spec\.ts/ },
     // { name: 'extension', testMatch: /extension\/.*\.spec\.ts/ },

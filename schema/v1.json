@@ -1,0 +1,272 @@
+{
+  "version": 1,
+  "description": "Peek sync schema - items, tags, and item_tags tables",
+
+  "tables": {
+    "items": {
+      "description": "Unified content storage - URLs, text notes, tagsets, and images",
+      "columns": {
+        "id": {
+          "type": "text",
+          "primary_key": true,
+          "not_null": true,
+          "sync": true,
+          "description": "Unique identifier (UUID or generated ID)"
+        },
+        "type": {
+          "type": "text",
+          "not_null": true,
+          "check": "type IN ('url', 'text', 'tagset', 'image')",
+          "sync": true,
+          "description": "Content type: url, text, tagset, or image"
+        },
+        "content": {
+          "type": "text",
+          "nullable": true,
+          "sync": true,
+          "description": "URL for type=url, text content for type=text, null for tagset/image"
+        },
+        "mimeType": {
+          "type": "text",
+          "default": "''",
+          "sync": true,
+          "description": "MIME type (e.g., text/html, image/png)"
+        },
+        "metadata": {
+          "type": "text",
+          "default": "'{}'",
+          "sync": true,
+          "description": "JSON metadata object"
+        },
+        "syncId": {
+          "type": "text",
+          "default": "''",
+          "sync": true,
+          "description": "ID from originating device (for dedup during sync)"
+        },
+        "syncSource": {
+          "type": "text",
+          "default": "''",
+          "sync": true,
+          "description": "Source device/platform identifier"
+        },
+        "syncedAt": {
+          "type": "integer",
+          "default": "0",
+          "sync": true,
+          "description": "Timestamp of last sync (Unix ms)"
+        },
+        "createdAt": {
+          "type": "integer",
+          "not_null": true,
+          "sync": true,
+          "description": "Creation timestamp (Unix ms)"
+        },
+        "updatedAt": {
+          "type": "integer",
+          "not_null": true,
+          "sync": true,
+          "description": "Last update timestamp (Unix ms)"
+        },
+        "deletedAt": {
+          "type": "integer",
+          "default": "0",
+          "sync": true,
+          "description": "Soft delete timestamp (0 = not deleted, Unix ms)"
+        },
+        "starred": {
+          "type": "integer",
+          "default": "0",
+          "sync": true,
+          "description": "Starred/favorite flag (0/1)"
+        },
+        "archived": {
+          "type": "integer",
+          "default": "0",
+          "sync": true,
+          "description": "Archived flag (0/1)"
+        },
+        "visitCount": {
+          "type": "integer",
+          "default": "0",
+          "sync": false,
+          "description": "Number of visits (local tracking)"
+        },
+        "lastVisitAt": {
+          "type": "integer",
+          "default": "0",
+          "sync": false,
+          "description": "Last visit timestamp (local tracking)"
+        },
+        "frecencyScore": {
+          "type": "integer",
+          "default": "0",
+          "sync": false,
+          "description": "Frecency score for ranking (local calculation)"
+        },
+        "title": {
+          "type": "text",
+          "default": "''",
+          "sync": false,
+          "description": "Page title (cached locally for URL items)"
+        },
+        "domain": {
+          "type": "text",
+          "default": "''",
+          "sync": false,
+          "description": "Domain extracted from URL (cached locally)"
+        },
+        "favicon": {
+          "type": "text",
+          "default": "''",
+          "sync": false,
+          "description": "Favicon URL (cached locally)"
+        }
+      },
+      "indexes": [
+        { "name": "idx_items_type", "columns": ["type"], "sync": true },
+        { "name": "idx_items_syncId", "columns": ["syncId"], "sync": true },
+        { "name": "idx_items_deletedAt", "columns": ["deletedAt"], "sync": true },
+        { "name": "idx_items_createdAt", "columns": ["createdAt"], "order": "DESC", "sync": true },
+        { "name": "idx_items_starred", "columns": ["starred"], "sync": true },
+        { "name": "idx_items_lastVisitAt", "columns": ["lastVisitAt"], "sync": false },
+        { "name": "idx_items_visitCount", "columns": ["visitCount"], "sync": false },
+        { "name": "idx_items_frecencyScore", "columns": ["frecencyScore"], "order": "DESC", "sync": false },
+        { "name": "idx_items_domain", "columns": ["domain"], "sync": false }
+      ]
+    },
+
+    "tags": {
+      "description": "Tag definitions with frecency tracking",
+      "columns": {
+        "id": {
+          "type": "text",
+          "primary_key": true,
+          "not_null": true,
+          "sync": true,
+          "description": "Unique identifier (TEXT UUID - not INTEGER)"
+        },
+        "name": {
+          "type": "text",
+          "not_null": true,
+          "unique": true,
+          "sync": true,
+          "description": "Tag name (unique, case-sensitive)"
+        },
+        "frequency": {
+          "type": "integer",
+          "default": "1",
+          "sync": true,
+          "description": "Usage count"
+        },
+        "lastUsed": {
+          "type": "integer",
+          "not_null": true,
+          "sync": true,
+          "description": "Last usage timestamp (Unix ms)"
+        },
+        "frecencyScore": {
+          "type": "real",
+          "default": "0.0",
+          "sync": true,
+          "description": "Calculated frecency score"
+        },
+        "createdAt": {
+          "type": "integer",
+          "not_null": true,
+          "sync": true,
+          "description": "Creation timestamp (Unix ms)"
+        },
+        "updatedAt": {
+          "type": "integer",
+          "not_null": true,
+          "sync": true,
+          "description": "Last update timestamp (Unix ms)"
+        },
+        "slug": {
+          "type": "text",
+          "nullable": true,
+          "sync": false,
+          "description": "URL-safe slug (desktop only)"
+        },
+        "color": {
+          "type": "text",
+          "default": "'#999999'",
+          "sync": false,
+          "description": "Display color (desktop only)"
+        },
+        "parentId": {
+          "type": "text",
+          "default": "''",
+          "sync": false,
+          "description": "Parent tag for hierarchy (desktop only)"
+        },
+        "description": {
+          "type": "text",
+          "default": "''",
+          "sync": false,
+          "description": "Tag description (desktop only)"
+        },
+        "metadata": {
+          "type": "text",
+          "default": "'{}'",
+          "sync": false,
+          "description": "JSON metadata (desktop only)"
+        }
+      },
+      "indexes": [
+        { "name": "idx_tags_name", "columns": ["name"], "sync": true },
+        { "name": "idx_tags_frecency", "columns": ["frecencyScore"], "order": "DESC", "sync": true },
+        { "name": "idx_tags_slug", "columns": ["slug"], "sync": false },
+        { "name": "idx_tags_parentId", "columns": ["parentId"], "sync": false }
+      ]
+    },
+
+    "item_tags": {
+      "description": "Junction table linking items to tags",
+      "columns": {
+        "id": {
+          "type": "text",
+          "primary_key": true,
+          "not_null": true,
+          "sync": false,
+          "description": "Link ID (desktop only - server uses composite PK)"
+        },
+        "itemId": {
+          "type": "text",
+          "not_null": true,
+          "sync": true,
+          "description": "Reference to items.id"
+        },
+        "tagId": {
+          "type": "text",
+          "not_null": true,
+          "sync": true,
+          "description": "Reference to tags.id"
+        },
+        "createdAt": {
+          "type": "integer",
+          "not_null": true,
+          "sync": true,
+          "description": "Link creation timestamp (Unix ms)"
+        }
+      },
+      "indexes": [
+        { "name": "idx_item_tags_itemId", "columns": ["itemId"], "sync": true },
+        { "name": "idx_item_tags_tagId", "columns": ["tagId"], "sync": true },
+        { "name": "idx_item_tags_unique", "columns": ["itemId", "tagId"], "unique": true, "sync": true }
+      ]
+    }
+  },
+
+  "validation": {
+    "timestamp_type": "integer",
+    "timestamp_unit": "milliseconds",
+    "id_type": "text",
+    "required_sync_columns": {
+      "items": ["id", "type", "content", "syncId", "syncSource", "syncedAt", "createdAt", "updatedAt", "deletedAt"],
+      "tags": ["id", "name", "frequency", "lastUsed", "frecencyScore", "createdAt", "updatedAt"],
+      "item_tags": ["itemId", "tagId", "createdAt"]
+    }
+  }
+}

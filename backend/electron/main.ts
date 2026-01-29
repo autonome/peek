@@ -144,9 +144,9 @@ export async function initialize(): Promise<void> {
       windowRegistry.delete(windowId);
     });
 
-    // Handle local shortcuts
+    // Handle local shortcuts (with window ID for mode-conditional shortcuts)
     window.webContents.on('before-input-event', (event, input) => {
-      if (handleLocalShortcut(input)) {
+      if (handleLocalShortcut(input, windowId)) {
         event.preventDefault();
       }
     });

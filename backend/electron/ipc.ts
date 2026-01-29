@@ -2391,7 +2391,8 @@ export function registerMiscHandlers(onQuit: () => void): void {
   // Register shortcut
   ipcMain.on(IPC_CHANNELS.REGISTER_SHORTCUT, (ev, msg) => {
     const isGlobal = msg.global === true;
-    DEBUG && console.log('ipc register shortcut', msg.shortcut, isGlobal ? '(global)' : '(local)');
+    const modeStr = msg.mode ? ` mode:${msg.mode}` : '';
+    DEBUG && console.log('ipc register shortcut', msg.shortcut, isGlobal ? '(global)' : '(local)', modeStr);
 
     const callback = () => {
       DEBUG && console.log('on(registershortcut): shortcut executed', msg.shortcut, msg.replyTopic);
@@ -2401,7 +2402,11 @@ export function registerMiscHandlers(onQuit: () => void): void {
     if (isGlobal) {
       registerGlobalShortcut(msg.shortcut, msg.source, callback);
     } else {
-      registerLocalShortcut(msg.shortcut, msg.source, callback);
+      // Build mode conditions if provided
+      const modeConditions = (msg.mode || msg.minorModes?.length)
+        ? { majorMode: msg.mode, minorModes: msg.minorModes }
+        : undefined;
+      registerLocalShortcut(msg.shortcut, msg.source, callback, modeConditions);
     }
   });
 
@@ -2416,7 +2421,11 @@ export function registerMiscHandlers(onQuit: () => void): void {
         DEBUG && console.log('ipc unregister global shortcut error:', err.message);
       }
     } else {
-      unregisterLocalShortcut(msg.shortcut);
+      // Build mode conditions if provided
+      const modeConditions = (msg.mode || msg.minorModes?.length)
+        ? { majorMode: msg.mode, minorModes: msg.minorModes }
+        : undefined;
+      unregisterLocalShortcut(msg.shortcut, msg.source, modeConditions);
     }
   });
 

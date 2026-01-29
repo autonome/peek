@@ -4,17 +4,19 @@
  * Handles:
  * - Global shortcuts (work even when app doesn't have focus)
  * - Local shortcuts (only work when app has focus)
+ * - Mode-conditional shortcuts (only trigger in specific modes)
  * - Shortcut parsing and matching
  */
 
-import { globalShortcut } from 'electron';
+import { globalShortcut, BrowserWindow } from 'electron';
 import { DEBUG } from './config.js';
+import { checkModeConditions, type MajorModeId, type MinorModeId } from './modes.js';
 
 // Maps for tracking shortcuts
 // Global shortcuts: shortcut string -> source address
 const globalShortcuts = new Map<string, string>();
 
-// Local shortcuts: shortcut string -> { source, parsed, callback }
+// Local shortcuts: shortcut string -> { source, parsed, callback, modeConditions }
 interface ParsedShortcut {
   ctrl: boolean;
   alt: boolean;
@@ -23,13 +25,20 @@ interface ParsedShortcut {
   code: string;
 }
 
+interface ModeConditions {
+  majorMode?: MajorModeId;
+  minorModes?: MinorModeId[];
+}
+
 interface LocalShortcutEntry {
   source: string;
   parsed: ParsedShortcut;
   callback: () => void;
+  modeConditions?: ModeConditions;
 }
 
-const localShortcuts = new Map<string, LocalShortcutEntry>();
+// Local shortcuts now stored as array to support same key with different mode conditions
+const localShortcuts = new Map<string, LocalShortcutEntry[]>();
 
 // Map key names to physical key codes (for before-input-event matching)
 // Electron's input.code follows the USB HID spec
@@ -175,51 +184,120 @@ export function unregisterGlobalShortcut(shortcut: string): Error | undefined {
 
 /**
  * Register a local shortcut (only works when app has focus)
+ * Supports mode-conditional shortcuts: same key can have different handlers for different modes
  */
 export function registerLocalShortcut(
   shortcut: string,
   source: string,
-  callback: () => void
+  callback: () => void,
+  modeConditions?: ModeConditions
 ): void {
-  DEBUG && console.log('registerLocalShortcut', shortcut);
-
-  if (localShortcuts.has(shortcut)) {
-    DEBUG && console.log('local shortcut already registered, replacing:', shortcut);
-  }
+  DEBUG && console.log('registerLocalShortcut', shortcut, modeConditions ? `mode:${modeConditions.majorMode}` : '');
 
   const parsed = parseShortcut(shortcut);
-  localShortcuts.set(shortcut, { source, parsed, callback });
+  const entry: LocalShortcutEntry = { source, parsed, callback, modeConditions };
+
+  // Get or create the array for this shortcut
+  const entries = localShortcuts.get(shortcut) || [];
+
+  // If mode-conditional, add to array (allows same key with different modes)
+  // If not mode-conditional, replace any existing non-conditional entry
+  if (modeConditions?.majorMode || modeConditions?.minorModes?.length) {
+    // Mode-conditional: add to array
+    entries.push(entry);
+  } else {
+    // Non-conditional: find and replace any existing non-conditional entry
+    const nonConditionalIndex = entries.findIndex(e => !e.modeConditions?.majorMode && !e.modeConditions?.minorModes?.length);
+    if (nonConditionalIndex >= 0) {
+      entries[nonConditionalIndex] = entry;
+    } else {
+      entries.push(entry);
+    }
+  }
+
+  localShortcuts.set(shortcut, entries);
 }
 
 /**
  * Unregister a local shortcut
+ * If modeConditions provided, only removes matching entry; otherwise removes non-conditional entry
  */
-export function unregisterLocalShortcut(shortcut: string): void {
+export function unregisterLocalShortcut(shortcut: string, source?: string, modeConditions?: ModeConditions): void {
   DEBUG && console.log('unregisterLocalShortcut', shortcut);
 
-  if (!localShortcuts.has(shortcut)) {
-    console.error('local shortcut not registered:', shortcut);
+  const entries = localShortcuts.get(shortcut);
+  if (!entries || entries.length === 0) {
+    DEBUG && console.log('local shortcut not registered:', shortcut);
     return;
   }
 
-  localShortcuts.delete(shortcut);
+  // Filter out the matching entry
+  const filtered = entries.filter(entry => {
+    // If source specified, must match
+    if (source && entry.source !== source) return true;
+
+    // If mode conditions specified, must match
+    if (modeConditions?.majorMode) {
+      return entry.modeConditions?.majorMode !== modeConditions.majorMode;
+    }
+
+    // No mode conditions - remove non-conditional entries
+    return entry.modeConditions?.majorMode || entry.modeConditions?.minorModes?.length;
+  });
+
+  if (filtered.length > 0) {
+    localShortcuts.set(shortcut, filtered);
+  } else {
+    localShortcuts.delete(shortcut);
+  }
 }
 
 /**
  * Handle local shortcuts from any focused window
  * Called from before-input-event handler
  * Returns true if shortcut was handled
+ *
+ * Mode-conditional shortcuts are checked first, falling back to non-conditional
  */
-export function handleLocalShortcut(input: InputEvent): boolean {
+export function handleLocalShortcut(input: InputEvent, focusedWindowId?: number): boolean {
   // Only handle keyDown events
   if (input.type !== 'keyDown') return false;
 
-  for (const [, data] of localShortcuts) {
-    if (inputMatchesShortcut(input, data.parsed)) {
-      data.callback();
-      return true;
+  for (const [, entries] of localShortcuts) {
+    for (const entry of entries) {
+      if (inputMatchesShortcut(input, entry.parsed)) {
+        // Check mode conditions if specified
+        if (entry.modeConditions?.majorMode || entry.modeConditions?.minorModes?.length) {
+          // Need a window ID to check mode
+          if (focusedWindowId === undefined) {
+            // Try to get focused window
+            const focused = BrowserWindow.getFocusedWindow();
+            focusedWindowId = focused?.id;
+          }
+
+          if (focusedWindowId !== undefined) {
+            const modeMatches = checkModeConditions(
+              focusedWindowId,
+              entry.modeConditions.majorMode,
+              entry.modeConditions.minorModes
+            );
+
+            if (modeMatches) {
+              entry.callback();
+              return true;
+            }
+            // Mode doesn't match - continue to check other entries
+            continue;
+          }
+        } else {
+          // Non-conditional shortcut - execute immediately
+          entry.callback();
+          return true;
+        }
+      }
     }
   }
+
   return false;
 }
 
@@ -235,11 +313,16 @@ export function unregisterShortcutsForAddress(address: string): void {
     }
   }
 
-  // Unregister local shortcuts
-  for (const [shortcut, data] of localShortcuts) {
-    if (data.source === address) {
-      DEBUG && console.log('unregistering local shortcut', shortcut, 'for', address);
+  // Unregister local shortcuts for this address
+  for (const [shortcut, entries] of localShortcuts) {
+    const filtered = entries.filter(entry => entry.source !== address);
+    if (filtered.length > 0) {
+      localShortcuts.set(shortcut, filtered);
+    } else {
       localShortcuts.delete(shortcut);
+    }
+    if (entries.length !== filtered.length) {
+      DEBUG && console.log('unregistered local shortcut(s)', shortcut, 'for', address);
     }
   }
 }

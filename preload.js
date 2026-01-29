@@ -113,10 +113,13 @@ api.shortcuts = {
    * @param {function} cb - Callback function when shortcut is triggered
    * @param {object} options - Optional configuration
    * @param {boolean} options.global - If true, shortcut works even when app doesn't have focus (default: false)
+   * @param {string} options.mode - Only trigger in this major mode ('page', 'group', 'settings', 'default')
+   * @param {string[]} options.minorModes - Only trigger when these minor modes are active
    */
   register: (shortcut, cb, options = {}) => {
     const isGlobal = options.global === true;
-    DEBUG && console.log(src, `registering ${isGlobal ? 'global' : 'local'} shortcut ${shortcut} for ${window.location}`);
+    const modeStr = options.mode ? ` mode:${options.mode}` : '';
+    DEBUG && console.log(src, `registering ${isGlobal ? 'global' : 'local'} shortcut ${shortcut}${modeStr} for ${window.location}`);
 
     const replyTopic = `${shortcut}${rndm()}`;
 
@@ -124,7 +127,9 @@ api.shortcuts = {
       source: sourceAddress,
       shortcut,
       replyTopic,
-      global: isGlobal
+      global: isGlobal,
+      mode: options.mode,
+      minorModes: options.minorModes
     });
 
     ipcRenderer.on(replyTopic, (ev, msg) => {
@@ -138,6 +143,7 @@ api.shortcuts = {
    * @param {string} shortcut - The shortcut to unregister
    * @param {object} options - Optional configuration (must match registration)
    * @param {boolean} options.global - If true, unregisters a global shortcut (default: false)
+   * @param {string} options.mode - Mode condition (must match registration)
    */
   unregister: (shortcut, options = {}) => {
     const isGlobal = options.global === true;
@@ -145,7 +151,9 @@ api.shortcuts = {
     ipcRenderer.send('unregistershortcut', {
       source: sourceAddress,
       shortcut,
-      global: isGlobal
+      global: isGlobal,
+      mode: options.mode,
+      minorModes: options.minorModes
     });
   }
 };

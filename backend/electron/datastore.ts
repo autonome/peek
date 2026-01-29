@@ -6,6 +6,9 @@
  */
 
 import Database from 'better-sqlite3';
+import { readFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import type {
   TableName,
   Address,
@@ -33,6 +36,14 @@ import { tableNames } from '../types/index.js';
 import { DEBUG } from './config.js';
 import { DATASTORE_VERSION } from '../version.js';
 import { addDeviceMetadata } from './device.js';
+
+// Load canonical schema for validation
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const SCHEMA = JSON.parse(
+  readFileSync(join(__dirname, '../../schema/v1.json'), 'utf-8')
+);
+const REQUIRED_SYNC_COLUMNS: Record<string, string[]> = SCHEMA.validation.required_sync_columns;
 
 // Flag: set to true if stored datastore version > code version (downgrade detected)
 let syncDisabledDueToVersionMismatch = false;
@@ -338,6 +349,43 @@ const createTableStatements = `
 // Module state
 let db: Database.Database | null = null;
 
+// ==================== Schema Validation ====================
+
+/**
+ * Validate that the database has all required sync columns from the canonical schema.
+ * Called after migrations to ensure schema consistency across all backends.
+ */
+function validateSyncSchema(): void {
+  if (!db) throw new Error('Database not initialized');
+
+  const missing: string[] = [];
+
+  for (const [table, cols] of Object.entries(REQUIRED_SYNC_COLUMNS)) {
+    const actual = new Set(
+      db.prepare(`PRAGMA table_info(${table})`).all().map((c: { name: string }) => c.name)
+    );
+    for (const col of cols) {
+      if (!actual.has(col)) {
+        missing.push(`${table}.${col}`);
+      }
+    }
+  }
+
+  if (missing.length > 0) {
+    // Log actual schema state for debugging
+    for (const table of Object.keys(REQUIRED_SYNC_COLUMNS)) {
+      const actual = db.prepare(`PRAGMA table_info(${table})`).all();
+      console.error(`[schema] ${table} actual columns: ${(actual as { name: string }[]).map(c => c.name).join(', ')}`);
+    }
+    throw new Error(
+      `[schema] Required sync columns missing: ${missing.join(', ')}. ` +
+      `Database may need migration. See schema/v1.json for canonical schema.`
+    );
+  }
+
+  DEBUG && console.log('main', 'schema validation passed');
+}
+
 // ==================== Lifecycle ====================
 
 export function initDatabase(dbPath: string): Database.Database {
@@ -357,6 +405,9 @@ export function initDatabase(dbPath: string): Database.Database {
   migrateItemFrecencyColumns();
   migrateAllAddressesToItems();
   migrateVisitsToItemVisits();
+
+  // Validate schema against canonical definition
+  validateSyncSchema();
 
   // Check and write datastore version
   checkAndWriteDatastoreVersion();

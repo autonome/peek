@@ -5,16 +5,30 @@ Single source of truth for sync schema definitions across all backends.
 ## Quick Start
 
 ```bash
-# Generate code from schema
-node schema/codegen.js
-# or
+# Generate code from schema (runs automatically during build)
 yarn schema:codegen
 
 # Run fidelity tests
-node --test schema/fidelity.test.js
-# or
 yarn schema:test
+
+# Check if generated files are fresh (for CI)
+yarn schema:check
 ```
+
+## Build Integration
+
+Schema codegen runs automatically as part of `yarn build`:
+1. `node schema/codegen.js` - Regenerate all files from v1.json
+2. `tsc -p backend/tsconfig.json` - Compile TypeScript
+
+## Runtime Validation
+
+Both Server and Electron backends validate their schemas on startup:
+
+- **Server** (`backend/server/db.js`): Imports `REQUIRED_SYNC_COLUMNS` from schema/v1.json and validates after migrations
+- **Electron** (`backend/electron/datastore.ts`): Calls `validateSyncSchema()` after migrations, throws if columns missing
+
+This catches schema drift early - if a migration is missing or broken, the app fails fast with a clear error.
 
 ## Files
 

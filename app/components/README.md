@@ -1556,3 +1556,339 @@ Components use modern CSS and HTML features:
 - `name` attribute for exclusive accordions - Chrome 120+, Safari 17.2+
 
 Supported in all modern browsers (Chrome 120+, Firefox 125+, Safari 17.2+, Edge 120+).
+
+---
+
+## Extension Developer Guide
+
+Complete guide for building Peek extensions with the component library.
+
+### Getting Started
+
+```javascript
+// Import components you need
+import {
+  PeekButton, PeekCard, PeekList,
+  registerExtension, setTheme
+} from 'peek://app/components/index.js';
+
+// Or import everything
+import 'peek://app/components/index.js';
+```
+
+### Project Structure
+
+```
+my-extension/
+├── manifest.json
+├── background.js
+├── content.js          # Content script
+├── popup/
+│   ├── popup.html
+│   └── popup.js
+└── styles/
+    └── theme.js        # Custom theme tokens
+```
+
+### Content Script Pattern
+
+Content scripts need style isolation to avoid conflicts with host pages:
+
+```javascript
+// content.js
+import { initContentScript } from 'peek://app/components/extension.js';
+
+const { container, destroy } = initContentScript({
+  id: 'my-extension',
+  theme: {
+    'theme-accent': '#9b59b6'
+  },
+  render: (shadow) => {
+    // Shadow DOM container - styles are isolated
+    shadow.innerHTML = `
+      <div class="my-extension-ui">
+        <peek-card>
+          <span slot="header">My Extension</span>
+          <peek-list selection="single">
+            <peek-list-item value="1">Item 1</peek-list-item>
+            <peek-list-item value="2">Item 2</peek-list-item>
+          </peek-list>
+          <div slot="footer">
+            <peek-button variant="primary">Action</peek-button>
+          </div>
+        </peek-card>
+      </div>
+    `;
+
+    // Add event listeners
+    shadow.querySelector('peek-list').addEventListener('selection-change', (e) => {
+      console.log('Selected:', e.detail);
+    });
+  }
+});
+
+// Cleanup when extension unloads
+window.addEventListener('unload', destroy);
+```
+
+### Popup Pattern
+
+```html
+<!-- popup.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { width: 320px; padding: 16px; margin: 0; }
+  </style>
+</head>
+<body>
+  <peek-card>
+    <span slot="header">Settings</span>
+    <peek-switch id="darkMode">Dark Mode</peek-switch>
+    <peek-select id="theme" placeholder="Choose theme"></peek-select>
+  </peek-card>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
+```
+
+```javascript
+// popup.js
+import { initPopup, setTheme, getThemeNames } from 'peek://app/components/index.js';
+
+initPopup({ id: 'my-popup' });
+
+// Setup theme selector
+const themeSelect = document.getElementById('theme');
+themeSelect.options = getThemeNames();
+themeSelect.addEventListener('change', (e) => setTheme(e.detail.value));
+
+// Dark mode toggle
+document.getElementById('darkMode').addEventListener('change', (e) => {
+  setTheme(e.detail.checked ? 'dark' : 'light');
+});
+```
+
+### Custom Theming
+
+```javascript
+// theme.js - Define your extension's theme
+import { registerTheme } from 'peek://app/components/theme.js';
+
+// Extend the light theme
+registerTheme('my-brand', {
+  'theme-accent': '#e74c3c',
+  'theme-accent-hover': '#c0392b',
+  'peek-radius-md': '8px',
+  'peek-btn-height-md': '40px'
+});
+
+// Dark variant
+registerTheme('my-brand-dark', {
+  'theme-accent': '#e74c3c',
+  'theme-bg': '#1e1e1e',
+  'theme-text': '#f0f0f0'
+}, { extends: 'dark' });
+
+export { 'my-brand', 'my-brand-dark' };
+```
+
+### Data-Driven Components
+
+```javascript
+import { signal, effect } from 'peek://app/components/signals.js';
+import { DataBoundElement } from 'peek://app/components/data-binding.js';
+
+// Create reactive data
+const items = signal([
+  { id: 1, name: 'Task 1', done: false },
+  { id: 2, name: 'Task 2', done: true }
+]);
+
+// Update UI automatically when data changes
+effect(() => {
+  const list = document.querySelector('peek-list');
+  list.innerHTML = items.value.map(item => `
+    <peek-list-item value="${item.id}" ${item.done ? 'selected' : ''}>
+      ${item.name}
+    </peek-list-item>
+  `).join('');
+});
+
+// Add item
+function addItem(name) {
+  items.value = [...items.value, { id: Date.now(), name, done: false }];
+}
+```
+
+### Cross-Component Communication
+
+```javascript
+import { on, emit, channel } from 'peek://app/components/events.js';
+
+// Create namespaced channel
+const taskChannel = channel('tasks');
+
+// Subscribe to events
+taskChannel.on('add', (task) => {
+  console.log('Task added:', task);
+});
+
+taskChannel.on('complete', (taskId) => {
+  console.log('Task completed:', taskId);
+});
+
+// Emit events
+taskChannel.emit('add', { id: 1, name: 'New task' });
+
+// Wait for event (async)
+const task = await taskChannel.waitFor('add', { timeout: 5000 });
+```
+
+### Form Validation
+
+```javascript
+import { validate, Schema } from 'peek://app/components/schema.js';
+
+const formSchema = Schema.object({
+  email: Schema.string({ format: 'email' }),
+  password: Schema.string({ minLength: 8 }),
+  age: Schema.integer({ minimum: 18 })
+}, { required: ['email', 'password'] });
+
+function handleSubmit(formData) {
+  const result = validate(formData, formSchema);
+
+  if (!result.valid) {
+    result.errors.forEach(err => {
+      console.error(`${err.path}: ${err.message}`);
+    });
+    return;
+  }
+
+  // Process valid data
+  submitForm(result.data);
+}
+```
+
+### Responsive Layouts
+
+```html
+<!-- Auto-fit grid -->
+<peek-grid min-item-width="200" gap="16">
+  <peek-card>Card 1</peek-card>
+  <peek-card>Card 2</peek-card>
+  <peek-card>Card 3</peek-card>
+</peek-grid>
+
+<!-- Fixed columns -->
+<peek-grid columns="2">
+  <peek-grid-item col-span="2">Wide item</peek-grid-item>
+  <peek-grid-item>Normal</peek-grid-item>
+  <peek-grid-item>Normal</peek-grid-item>
+</peek-grid>
+```
+
+### Accessibility Patterns
+
+```html
+<!-- Keyboard navigable list with selection -->
+<peek-list selection="single" wrap>
+  <peek-list-item value="opt1">Option 1</peek-list-item>
+  <peek-list-item value="opt2">Option 2</peek-list-item>
+  <peek-list-item value="opt3" disabled>Disabled</peek-list-item>
+</peek-list>
+
+<!-- Accessible tabs -->
+<peek-tabs>
+  <peek-tab>General</peek-tab>
+  <peek-tab>Advanced</peek-tab>
+  <peek-tab-panel>General content</peek-tab-panel>
+  <peek-tab-panel>Advanced content</peek-tab-panel>
+</peek-tabs>
+
+<!-- Accessible dialog -->
+<peek-dialog id="confirmDialog" size="sm" close-on-escape>
+  <span slot="header">Confirm Action</span>
+  <p>Are you sure?</p>
+  <div slot="footer">
+    <peek-button variant="ghost" onclick="confirmDialog.close()">Cancel</peek-button>
+    <peek-button variant="danger" onclick="doAction()">Confirm</peek-button>
+  </div>
+</peek-dialog>
+```
+
+### Component Customization
+
+#### Via CSS Custom Properties
+
+```css
+/* Global customization */
+:root {
+  --peek-radius-md: 12px;
+  --peek-btn-height-md: 42px;
+}
+
+/* Component-specific */
+peek-button {
+  --peek-btn-bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+peek-card {
+  --peek-card-bg: #f8f9fa;
+  --peek-card-border: transparent;
+  --peek-card-radius: 16px;
+}
+```
+
+#### Via CSS Parts
+
+```css
+/* Style shadow DOM parts */
+peek-button::part(button) {
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+peek-card::part(header) {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+peek-dialog::part(backdrop) {
+  backdrop-filter: blur(4px);
+}
+```
+
+#### Via Slots
+
+```html
+<!-- Replace default content with custom markup -->
+<peek-card>
+  <div slot="header">
+    <img src="icon.png" alt="">
+    <h3>Custom Header</h3>
+  </div>
+  <div slot="media">
+    <video src="preview.mp4" autoplay muted loop></video>
+  </div>
+  <p>Card body with custom header and video media.</p>
+</peek-card>
+```
+
+### Best Practices
+
+1. **Use Shadow DOM for content scripts** - Always use `createContainer()` or `initContentScript()` to isolate styles from host pages.
+
+2. **Prefer native elements** - Components wrap native elements (`<dialog>`, `<details>`, `<select>`) for maximum accessibility.
+
+3. **Use signals for shared state** - Signals provide efficient reactive updates without framework overhead.
+
+4. **Theme inheritance** - Extend existing themes rather than defining all tokens from scratch.
+
+5. **Event composition** - Use `composed: true` for custom events that need to cross shadow boundaries.
+
+6. **Cleanup resources** - Call `destroy()` on extension contexts when unloading to prevent memory leaks.
+
+7. **Keyboard navigation** - All interactive components support keyboard navigation out of the box.

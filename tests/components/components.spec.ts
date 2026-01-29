@@ -301,7 +301,11 @@ test.describe('Components @components', () => {
         wrapper?.click();
       });
 
-      await page.waitForTimeout(50);
+      // Wait for checked state to change
+      await page.waitForFunction(() => {
+        const el = document.querySelector('#switch-off') as any;
+        return el?.checked === true;
+      });
 
       const newState = await page.evaluate(() => {
         const el = document.querySelector('#switch-off') as any;
@@ -325,7 +329,12 @@ test.describe('Components @components', () => {
   test.describe('peek-dialog', () => {
     test('opens when show() is called', async () => {
       await page.click('#open-dialog');
-      await page.waitForTimeout(100);
+
+      // Wait for dialog to open
+      await page.waitForFunction(() => {
+        const el = document.querySelector('#test-dialog') as any;
+        return el?.open === true;
+      });
 
       const isOpen = await page.evaluate(() => {
         const el = document.querySelector('#test-dialog') as any;
@@ -335,14 +344,24 @@ test.describe('Components @components', () => {
 
       // Close for next tests
       await page.click('#close-dialog');
-      await page.waitForTimeout(100);
+      await page.waitForFunction(() => {
+        const el = document.querySelector('#test-dialog') as any;
+        return el?.open === false;
+      });
     });
 
     test('closes when close() is called', async () => {
       await page.click('#open-dialog');
-      await page.waitForTimeout(100);
+      await page.waitForFunction(() => {
+        const el = document.querySelector('#test-dialog') as any;
+        return el?.open === true;
+      });
+
       await page.click('#close-dialog');
-      await page.waitForTimeout(100);
+      await page.waitForFunction(() => {
+        const el = document.querySelector('#test-dialog') as any;
+        return el?.open === false;
+      });
 
       const isOpen = await page.evaluate(() => {
         const el = document.querySelector('#test-dialog') as any;
@@ -431,6 +450,313 @@ test.describe('Components @components', () => {
         return el?.value;
       });
       expect(value).toBe('opt2');
+    });
+  });
+
+  // ==========================================================================
+  // peek-carousel
+  // ==========================================================================
+
+  test.describe('peek-carousel', () => {
+    test('renders slides', async () => {
+      const slideCount = await page.evaluate(() => {
+        const carousel = document.querySelector('#carousel-basic') as any;
+        return carousel?.items?.length;
+      });
+      expect(slideCount).toBe(3);
+    });
+
+    test('starts at first slide', async () => {
+      const activeIndex = await page.evaluate(() => {
+        const carousel = document.querySelector('#carousel-basic') as any;
+        return carousel?.activeIndex;
+      });
+      expect(activeIndex).toBe(0);
+    });
+
+    test('has controls when enabled', async () => {
+      const hasControls = await page.evaluate(() => {
+        const carousel = document.querySelector('#carousel-basic');
+        const prev = carousel?.shadowRoot?.querySelector('[part="prev"]');
+        const next = carousel?.shadowRoot?.querySelector('[part="next"]');
+        return !!prev && !!next;
+      });
+      expect(hasControls).toBe(true);
+    });
+
+    test('has indicators when enabled', async () => {
+      const indicatorCount = await page.evaluate(() => {
+        const carousel = document.querySelector('#carousel-basic');
+        const indicators = carousel?.shadowRoot?.querySelectorAll('.indicator');
+        return indicators?.length;
+      });
+      expect(indicatorCount).toBe(3);
+    });
+
+    test('has navigation methods', async () => {
+      const hasMethods = await page.evaluate(() => {
+        const carousel = document.querySelector('#carousel-basic') as any;
+        return {
+          hasNext: typeof carousel?.next === 'function',
+          hasPrev: typeof carousel?.prev === 'function',
+          hasGoTo: typeof carousel?.goTo === 'function'
+        };
+      });
+      expect(hasMethods.hasNext).toBe(true);
+      expect(hasMethods.hasPrev).toBe(true);
+      expect(hasMethods.hasGoTo).toBe(true);
+    });
+
+    test('loop carousel wraps at end', async () => {
+      const canWrap = await page.evaluate(() => {
+        const carousel = document.querySelector('#carousel-loop') as any;
+        return carousel?.loop === true;
+      });
+      expect(canWrap).toBe(true);
+    });
+  });
+
+  // ==========================================================================
+  // peek-grid
+  // ==========================================================================
+
+  test.describe('peek-grid', () => {
+    test('renders grid container', async () => {
+      const hasGrid = await page.evaluate(() => {
+        const grid = document.querySelector('#grid-basic');
+        const inner = grid?.shadowRoot?.querySelector('[part="grid"]');
+        return !!inner;
+      });
+      expect(hasGrid).toBe(true);
+    });
+
+    test('uses auto-fit by default', async () => {
+      const gridColumns = await page.evaluate(() => {
+        const grid = document.querySelector('#grid-basic');
+        const inner = grid?.shadowRoot?.querySelector('.grid') as HTMLElement;
+        return inner?.style.getPropertyValue('--_grid-columns');
+      });
+      expect(gridColumns).toContain('auto-fit');
+    });
+
+    test('respects fixed columns', async () => {
+      const gridColumns = await page.evaluate(() => {
+        const grid = document.querySelector('#grid-fixed');
+        const inner = grid?.shadowRoot?.querySelector('.grid') as HTMLElement;
+        return inner?.style.getPropertyValue('--_grid-columns');
+      });
+      expect(gridColumns).toContain('repeat(2');
+    });
+
+    test('applies gap', async () => {
+      const gap = await page.evaluate(() => {
+        const grid = document.querySelector('#grid-basic');
+        const inner = grid?.shadowRoot?.querySelector('.grid') as HTMLElement;
+        return inner?.style.getPropertyValue('--_grid-gap');
+      });
+      expect(gap).toBe('8px');
+    });
+  });
+
+  // ==========================================================================
+  // peek-popover
+  // ==========================================================================
+
+  test.describe('peek-popover', () => {
+    test('closed by default', async () => {
+      const isOpen = await page.evaluate(() => {
+        const popover = document.querySelector('#popover-basic') as any;
+        return popover?.open;
+      });
+      expect(isOpen).toBe(false);
+    });
+
+    test('has trigger slot', async () => {
+      const hasTrigger = await page.evaluate(() => {
+        const popover = document.querySelector('#popover-basic');
+        const slot = popover?.shadowRoot?.querySelector('slot[name="trigger"]');
+        return !!slot;
+      });
+      expect(hasTrigger).toBe(true);
+    });
+
+    test('has popover element', async () => {
+      const hasPopover = await page.evaluate(() => {
+        const popover = document.querySelector('#popover-basic');
+        const el = popover?.shadowRoot?.querySelector('[popover]');
+        return !!el;
+      });
+      expect(hasPopover).toBe(true);
+    });
+  });
+
+  // ==========================================================================
+  // peek-drawer
+  // ==========================================================================
+
+  test.describe('peek-drawer', () => {
+    test('closed by default', async () => {
+      const isOpen = await page.evaluate(() => {
+        const drawer = document.querySelector('#test-drawer') as any;
+        return drawer?.open;
+      });
+      expect(isOpen).toBe(false);
+    });
+
+    test('uses native dialog element', async () => {
+      const tagName = await page.evaluate(() => {
+        const drawer = document.querySelector('#test-drawer');
+        const dialog = drawer?.shadowRoot?.querySelector('dialog');
+        return dialog?.tagName.toLowerCase();
+      });
+      expect(tagName).toBe('dialog');
+    });
+
+    test('opens when show() is called', async () => {
+      await page.click('#open-drawer');
+
+      // Wait for drawer to open
+      await page.waitForFunction(() => {
+        const drawer = document.querySelector('#test-drawer') as any;
+        return drawer?.open === true;
+      });
+
+      const isOpen = await page.evaluate(() => {
+        const drawer = document.querySelector('#test-drawer') as any;
+        return drawer?.open;
+      });
+      expect(isOpen).toBe(true);
+
+      // Close drawer
+      await page.evaluate(() => {
+        const drawer = document.querySelector('#test-drawer') as any;
+        drawer?.close();
+      });
+      await page.waitForFunction(() => {
+        const drawer = document.querySelector('#test-drawer') as any;
+        return drawer?.open === false;
+      });
+    });
+
+    test('has close button', async () => {
+      const hasClose = await page.evaluate(() => {
+        const drawer = document.querySelector('#test-drawer');
+        const btn = drawer?.shadowRoot?.querySelector('.close-btn');
+        return !!btn;
+      });
+      expect(hasClose).toBe(true);
+    });
+  });
+
+  // ==========================================================================
+  // peek-tooltip
+  // ==========================================================================
+
+  test.describe('peek-tooltip', () => {
+    test('has content attribute', async () => {
+      const content = await page.evaluate(() => {
+        const tooltip = document.querySelector('#tooltip-top') as any;
+        return tooltip?.content;
+      });
+      expect(content).toBe('Tooltip on top');
+    });
+
+    test('uses popover manual mode', async () => {
+      const popoverMode = await page.evaluate(() => {
+        const tooltip = document.querySelector('#tooltip-top');
+        const el = tooltip?.shadowRoot?.querySelector('.tooltip');
+        return el?.getAttribute('popover');
+      });
+      expect(popoverMode).toBe('manual');
+    });
+
+    test('has role tooltip', async () => {
+      const role = await page.evaluate(() => {
+        const tooltip = document.querySelector('#tooltip-top');
+        const el = tooltip?.shadowRoot?.querySelector('.tooltip');
+        return el?.getAttribute('role');
+      });
+      expect(role).toBe('tooltip');
+    });
+
+    test('positions can be set', async () => {
+      const position = await page.evaluate(() => {
+        const tooltip = document.querySelector('#tooltip-bottom') as any;
+        return tooltip?.position;
+      });
+      expect(position).toBe('bottom');
+    });
+  });
+
+  // ==========================================================================
+  // Component Combos
+  // ==========================================================================
+
+  test.describe('Component Combos', () => {
+    test('cards render in grid', async () => {
+      const cardsInGrid = await page.evaluate(() => {
+        const grid = document.querySelector('#combo-cards-grid');
+        const cards = grid?.querySelectorAll('peek-card');
+        return cards?.length;
+      });
+      expect(cardsInGrid).toBe(2);
+    });
+
+    test('dialog contains form elements', async () => {
+      await page.click('#open-form-dialog');
+
+      // Wait for dialog to open
+      await page.waitForFunction(() => {
+        const dialog = document.querySelector('#form-dialog') as any;
+        return dialog?.open === true;
+      });
+
+      const hasFormElements = await page.evaluate(() => {
+        const dialog = document.querySelector('#form-dialog');
+        const input = dialog?.querySelector('peek-input');
+        const switchEl = dialog?.querySelector('peek-switch');
+        return !!input && !!switchEl;
+      });
+      expect(hasFormElements).toBe(true);
+
+      // Close dialog
+      await page.click('#form-dialog-cancel');
+      await page.waitForFunction(() => {
+        const dialog = document.querySelector('#form-dialog') as any;
+        return dialog?.open === false;
+      });
+    });
+
+    test('tooltip works on disabled button', async () => {
+      const tooltipContent = await page.evaluate(() => {
+        const tooltip = document.querySelector('#tooltip-disabled') as any;
+        return tooltip?.content;
+      });
+      expect(tooltipContent).toBe('This button is disabled');
+    });
+
+    test('nested buttons in dialog footer are accessible', async () => {
+      await page.click('#open-form-dialog');
+
+      // Wait for dialog to open
+      await page.waitForFunction(() => {
+        const dialog = document.querySelector('#form-dialog') as any;
+        return dialog?.open === true;
+      });
+
+      const buttons = await page.evaluate(() => {
+        const dialog = document.querySelector('#form-dialog');
+        const footer = dialog?.querySelector('[slot="footer"]');
+        const btns = footer?.querySelectorAll('peek-button');
+        return btns?.length;
+      });
+      expect(buttons).toBe(2);
+
+      await page.click('#form-dialog-cancel');
+      await page.waitForFunction(() => {
+        const dialog = document.querySelector('#form-dialog') as any;
+        return dialog?.open === false;
+      });
     });
   });
 

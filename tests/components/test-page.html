@@ -222,6 +222,72 @@
     </peek-drawer>
   </section>
 
+  <!-- Carousel Tests -->
+  <section class="test-section" id="carousel-tests">
+    <h2>peek-carousel</h2>
+    <peek-carousel id="carousel-basic" controls indicators style="width: 300px;">
+      <div style="width: 100%; height: 150px; background: #e0e0e0; display: flex; align-items: center; justify-content: center;">Slide 1</div>
+      <div style="width: 100%; height: 150px; background: #d0d0d0; display: flex; align-items: center; justify-content: center;">Slide 2</div>
+      <div style="width: 100%; height: 150px; background: #c0c0c0; display: flex; align-items: center; justify-content: center;">Slide 3</div>
+    </peek-carousel>
+    <peek-carousel id="carousel-loop" controls loop style="width: 300px; margin-top: 16px;">
+      <div style="width: 100%; height: 100px; background: #e8e8e8;">Loop 1</div>
+      <div style="width: 100%; height: 100px; background: #d8d8d8;">Loop 2</div>
+    </peek-carousel>
+  </section>
+
+  <!-- Grid Tests -->
+  <section class="test-section" id="grid-tests">
+    <h2>peek-grid</h2>
+    <peek-grid id="grid-basic" min-item-width="100" gap="8">
+      <div style="background: #e0e0e0; padding: 16px;">Item 1</div>
+      <div style="background: #d0d0d0; padding: 16px;">Item 2</div>
+      <div style="background: #c0c0c0; padding: 16px;">Item 3</div>
+      <div style="background: #b0b0b0; padding: 16px;">Item 4</div>
+    </peek-grid>
+    <peek-grid id="grid-fixed" columns="2" gap="12" style="margin-top: 16px;">
+      <div style="background: #e8e8e8; padding: 16px;">Fixed 1</div>
+      <div style="background: #d8d8d8; padding: 16px;">Fixed 2</div>
+    </peek-grid>
+  </section>
+
+  <!-- Popover Tests -->
+  <section class="test-section" id="popover-tests">
+    <h2>peek-popover</h2>
+    <peek-popover id="popover-basic" position="bottom">
+      <peek-button slot="trigger">Open Popover</peek-button>
+      <div>Popover content here</div>
+    </peek-popover>
+  </section>
+
+  <!-- Component Combos -->
+  <section class="test-section" id="combo-tests">
+    <h2>Component Combos</h2>
+
+    <!-- Cards in Grid -->
+    <peek-grid id="combo-cards-grid" min-item-width="150" gap="12">
+      <peek-card id="combo-card-1"><p>Grid Card 1</p></peek-card>
+      <peek-card id="combo-card-2"><p>Grid Card 2</p></peek-card>
+    </peek-grid>
+
+    <!-- Dialog with Form -->
+    <peek-button id="open-form-dialog">Open Form Dialog</peek-button>
+    <peek-dialog id="form-dialog">
+      <span slot="header">Form Dialog</span>
+      <peek-input id="dialog-input" placeholder="Enter name..."></peek-input>
+      <peek-switch id="dialog-switch">Enable feature</peek-switch>
+      <div slot="footer">
+        <peek-button id="form-dialog-cancel" variant="ghost">Cancel</peek-button>
+        <peek-button id="form-dialog-submit" variant="primary">Submit</peek-button>
+      </div>
+    </peek-dialog>
+
+    <!-- Tooltip on Disabled -->
+    <peek-tooltip id="tooltip-disabled" content="This button is disabled" position="top">
+      <peek-button id="btn-with-tooltip" disabled>Disabled with Tooltip</peek-button>
+    </peek-tooltip>
+  </section>
+
   <script type="module">
     // Import all components
     import '/app/components/index.js';
@@ -259,6 +325,17 @@
     // Drawer handler
     document.getElementById('open-drawer').addEventListener('click', () => {
       document.getElementById('test-drawer').show();
+    });
+
+    // Form dialog handlers
+    document.getElementById('open-form-dialog').addEventListener('click', () => {
+      document.getElementById('form-dialog').show();
+    });
+    document.getElementById('form-dialog-cancel').addEventListener('click', () => {
+      document.getElementById('form-dialog').close();
+    });
+    document.getElementById('form-dialog-submit').addEventListener('click', () => {
+      document.getElementById('form-dialog').close();
     });
 
     // Signal ready

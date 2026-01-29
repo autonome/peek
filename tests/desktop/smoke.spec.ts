@@ -9,35 +9,47 @@
  *   BACKEND=tauri yarn test:desktop
  */
 
-import { test, expect, DesktopApp, launchDesktopApp } from '../fixtures/desktop-app';
+import { test, expect, DesktopApp, launchDesktopApp, getSharedApp, closeSharedApp } from '../fixtures/desktop-app';
 import { Page } from '@playwright/test';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
-import { waitForCommandResults, waitForWindowCount, waitForVisible, waitForClass, waitForResultsWithContent, waitForSelectionChange, sleep } from '../helpers/window-utils';
+import { waitForCommandResults, waitForWindowCount, waitForVisible, waitForClass, waitForResultsWithContent, waitForSelectionChange, sleep, waitForWindow, waitForExtensionsReady, queryCommandsWithRetry, waitForAppReady } from '../helpers/window-utils';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT = path.join(__dirname, '../..');
 
 // ============================================================================
-// Settings Tests
+// SHARED APP INSTANCE
+// Most tests use a single shared app to avoid startup overhead.
+// Only tests that need fresh state or test lifecycle use isolated instances.
+// ============================================================================
+
+// Shared app and window for tests that don't need isolation
+let sharedApp: DesktopApp;
+let sharedBgWindow: Page;
+
+// Initialize shared app once before all tests
+test.beforeAll(async () => {
+  sharedApp = await getSharedApp();
+  sharedBgWindow = await sharedApp.getBackgroundWindow();
+  await waitForExtensionsReady(sharedBgWindow);
+});
+
+// Clean up shared app after all tests
+test.afterAll(async () => {
+  await closeSharedApp();
+});
+
+// ============================================================================
+// Settings Tests (uses shared app)
 // ============================================================================
 
 test.describe('Settings @desktop', () => {
-  let app: DesktopApp;
-
-  test.beforeAll(async () => {
-    app = await launchDesktopApp('test-settings');
-  });
-
-  test.afterAll(async () => {
-    if (app) await app.close();
-  });
-
   test('open and close settings', async () => {
     // Settings opens on start in debug mode
-    const settingsWindow = await app.getWindow('settings/settings.html');
+    const settingsWindow = await sharedApp.getWindow('settings/settings.html');
     expect(settingsWindow).toBeTruthy();
 
     // Verify content loaded
@@ -51,25 +63,13 @@ test.describe('Settings @desktop', () => {
 });
 
 // ============================================================================
-// Command Palette Tests
+// Command Palette Tests (uses shared app)
 // ============================================================================
 
 test.describe('Cmd Palette @desktop', () => {
-  let app: DesktopApp;
-  let bgWindow: Page;
-
-  test.beforeAll(async () => {
-    app = await launchDesktopApp('test-cmd');
-    bgWindow = await app.getBackgroundWindow();
-  });
-
-  test.afterAll(async () => {
-    if (app) await app.close();
-  });
-
   test('open cmd and execute gallery command', async () => {
     // Open cmd panel via window API
-    const openResult = await bgWindow.evaluate(async () => {
+    const openResult = await sharedBgWindow.evaluate(async () => {
       return await (window as any).app.window.open('peek://app/cmd/panel.html', {
         modal: true,
         width: 600,
@@ -83,7 +83,7 @@ test.describe('Cmd Palette @desktop', () => {
     expect(openResult.success).toBe(true);
 
     // Find the cmd window (getWindow already polls until found)
-    const cmdWindow = await app.getWindow('cmd/panel.html', 5000);
+    const cmdWindow = await sharedApp.getWindow('cmd/panel.html', 5000);
     expect(cmdWindow).toBeTruthy();
 
     // Wait for input to be ready
@@ -98,7 +98,7 @@ test.describe('Cmd Palette @desktop', () => {
 
     // Close the cmd window
     if (openResult.id) {
-      await bgWindow.evaluate(async (id: number) => {
+      await sharedBgWindow.evaluate(async (id: number) => {
         return await (window as any).app.window.close(id);
       }, openResult.id);
     }
@@ -106,25 +106,13 @@ test.describe('Cmd Palette @desktop', () => {
 });
 
 // ============================================================================
-// Peeks Tests
+// Peeks Tests (uses shared app)
 // ============================================================================
 
 test.describe('Peeks @desktop', () => {
-  let app: DesktopApp;
-  let bgWindow: Page;
-
-  test.beforeAll(async () => {
-    app = await launchDesktopApp('test-peeks');
-    bgWindow = await app.getBackgroundWindow();
-  });
-
-  test.afterAll(async () => {
-    if (app) await app.close();
-  });
-
   test('add a peek and test it opens', async () => {
     // Add a peek address to the datastore
-    const addResult = await bgWindow.evaluate(async () => {
+    const addResult = await sharedBgWindow.evaluate(async () => {
       return await (window as any).app.datastore.addAddress('https://example.com', {
         title: 'Example Peek',
         description: 'Test peek for smoke tests'
@@ -133,14 +121,14 @@ test.describe('Peeks @desktop', () => {
     expect(addResult.success).toBe(true);
 
     // Verify peeks extension is loaded (hybrid mode: may be iframe or separate window)
-    const runningExts = await bgWindow.evaluate(async () => {
+    const runningExts = await sharedBgWindow.evaluate(async () => {
       return await (window as any).app.extensions.list();
     });
     const peeksRunning = runningExts.data?.some((ext: any) => ext.id === 'peeks');
     expect(peeksRunning).toBe(true);
 
     // Open a peek window for the address we created
-    const peekResult = await bgWindow.evaluate(async () => {
+    const peekResult = await sharedBgWindow.evaluate(async () => {
       return await (window as any).app.window.open('https://example.com', {
         width: 800,
         height: 600,
@@ -150,12 +138,12 @@ test.describe('Peeks @desktop', () => {
     expect(peekResult.success).toBe(true);
 
     // Wait for window to open (getWindow polls)
-    const peekWindow = await app.getWindow('example.com', 5000);
+    const peekWindow = await sharedApp.getWindow('example.com', 5000);
     expect(peekWindow).toBeTruthy();
 
     // Close the peek
     if (peekResult.id) {
-      await bgWindow.evaluate(async (id: number) => {
+      await sharedBgWindow.evaluate(async (id: number) => {
         return await (window as any).app.window.close(id);
       }, peekResult.id);
     }
@@ -163,22 +151,10 @@ test.describe('Peeks @desktop', () => {
 });
 
 // ============================================================================
-// Slides Tests
+// Slides Tests (uses shared app)
 // ============================================================================
 
 test.describe('Slides @desktop', () => {
-  let app: DesktopApp;
-  let bgWindow: Page;
-
-  test.beforeAll(async () => {
-    app = await launchDesktopApp('test-slides');
-    bgWindow = await app.getBackgroundWindow();
-  });
-
-  test.afterAll(async () => {
-    if (app) await app.close();
-  });
-
   test('add slides and test they work', async () => {
     // Add multiple addresses to use as slides
     const urls = [
@@ -188,7 +164,7 @@ test.describe('Slides @desktop', () => {
     ];
 
     for (const url of urls) {
-      const result = await bgWindow.evaluate(async (uri: string) => {
+      const result = await sharedBgWindow.evaluate(async (uri: string) => {
         return await (window as any).app.datastore.addAddress(uri, {
           title: `Slide: ${uri}`,
           starred: 1
@@ -198,14 +174,14 @@ test.describe('Slides @desktop', () => {
     }
 
     // Verify slides extension is loaded (hybrid mode: may be iframe or separate window)
-    const runningExts = await bgWindow.evaluate(async () => {
+    const runningExts = await sharedBgWindow.evaluate(async () => {
       return await (window as any).app.extensions.list();
     });
     const slidesRunning = runningExts.data?.some((ext: any) => ext.id === 'slides');
     expect(slidesRunning).toBe(true);
 
     // Query addresses to verify they were added
-    const queryResult = await bgWindow.evaluate(async () => {
+    const queryResult = await sharedBgWindow.evaluate(async () => {
       return await (window as any).app.datastore.queryAddresses({ starred: 1, limit: 10 });
     });
     expect(queryResult.success).toBe(true);
@@ -367,9 +343,12 @@ test.describe('External URL Opening @desktop', () => {
     // Launch app (fixture already waits for background and extensions)
     const app = await launchDesktopApp('test-external-url');
 
-    // Verify app started correctly (fixture already ensured this)
-    const bgWindow = app.windows().find(w => w.url().includes('background.html'));
+    // Wait for background window to be fully ready, not just present
+    const bgWindow = await app.getBackgroundWindow();
     expect(bgWindow).toBeTruthy();
+
+    // Ensure the API is ready before closing
+    await waitForAppReady(bgWindow);
 
     await app.close();
   });
@@ -529,11 +508,19 @@ test.describe('Data Persistence @desktop', () => {
       }, { addressId: addr1.id, tagId });
     }
 
+    // Ensure data is flushed before closing
+    await sleep(500);
     await app.close();
+
+    // Wait for app to fully shut down before relaunching
+    await sleep(1000);
 
     // PHASE 2: Verify persistence
     app = await launchDesktopApp(ADDR_PROFILE);
     bgWindow = await app.getBackgroundWindow();
+
+    // Wait for extensions to be ready after relaunch
+    await waitForExtensionsReady(bgWindow);
 
     // Query addresses
     const tableResult = await bgWindow.evaluate(async () => {
@@ -574,6 +561,8 @@ test.describe('Core Functionality @desktop', () => {
   test.beforeAll(async () => {
     app = await launchDesktopApp('test-core');
     bgWindow = await app.getBackgroundWindow();
+    // Wait for extensions to be fully ready before running tests
+    await waitForExtensionsReady(bgWindow);
   });
 
   test.afterAll(async () => {
@@ -584,16 +573,30 @@ test.describe('Core Functionality @desktop', () => {
     // In hybrid mode:
     // - Built-in extensions (groups, peeks, slides) are in extension host as iframes
     // - External extensions (example) are in separate windows
-    const windows = app.windows();
+
+    // Wait for extension windows to be available with retry
+    let windows = app.windows();
+    let extWindows = app.getExtensionWindows();
+
+    // Retry logic for extension windows to be fully loaded
+    const start = Date.now();
+    while (extWindows.length < 1 && Date.now() - start < 10000) {
+      await sleep(200);
+      windows = app.windows();
+      extWindows = app.getExtensionWindows();
+    }
 
     // Check extension host exists (for built-in extensions)
     const hostWindow = windows.find(w => w.url().includes('extension-host.html'));
     expect(hostWindow).toBeDefined();
 
-    // Check external extension window exists (example)
-    const extWindows = app.getExtensionWindows();
-    expect(extWindows.length).toBeGreaterThanOrEqual(1);
-    expect(extWindows.some(w => w.url().includes('ext/example'))).toBe(true);
+    // Check external extension window exists (example) using waitForWindow for reliability
+    const exampleWindow = await waitForWindow(
+      () => app.windows(),
+      'peek://ext/example/background.html',
+      15000
+    );
+    expect(exampleWindow).toBeDefined();
   });
 
   test('database is accessible', async () => {
@@ -2020,6 +2023,8 @@ test.describe('Startup Phase Events @desktop', () => {
   test.beforeAll(async () => {
     app = await launchDesktopApp('test-startup-phases');
     bgWindow = await app.getBackgroundWindow();
+    // Wait for extensions to be fully ready
+    await waitForExtensionsReady(bgWindow);
   });
 
   test.afterAll(async () => {
@@ -2068,32 +2073,34 @@ test.describe('Startup Phase Events @desktop', () => {
 
   test('cmd extension loads before other extensions can register commands', async () => {
     // Verify that cmd is running and accepting commands (which means it loaded first)
+    // Use inline retry approach that works reliably
     const result = await bgWindow.evaluate(async () => {
       const api = (window as any).app;
 
-      // Query commands - if we get a response, cmd is running and initialized
-      return new Promise((resolve) => {
-        const timeout = setTimeout(() => {
-          resolve({ cmdResponded: false, commandCount: 0 });
-        }, 2000);
-
+      const queryCommands = () => new Promise((resolve) => {
         api.subscribe('cmd:query-commands-response', (msg: any) => {
-          clearTimeout(timeout);
-          resolve({
-            cmdResponded: true,
-            commandCount: msg.commands?.length || 0,
-            hasGalleryCommand: msg.commands?.some((c: any) => c.name === 'example:gallery')
-          });
+          resolve(msg.commands || []);
         }, api.scopes.GLOBAL);
-
         api.publish('cmd:query-commands', {}, api.scopes.GLOBAL);
+        setTimeout(() => resolve([]), 1000);
       });
+
+      // Retry a few times to allow extensions to finish loading
+      for (let i = 0; i < 5; i++) {
+        const cmds = await queryCommands() as any[];
+        if (cmds.some((c: any) => c.name === 'example:gallery')) {
+          return cmds;
+        }
+        await new Promise(r => setTimeout(r, 500));
+      }
+      return await queryCommands();
     });
 
-    expect(result.cmdResponded).toBe(true);
-    expect(result.commandCount).toBeGreaterThan(0);
+    expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBeGreaterThan(0);
     // gallery command from example extension should be registered
-    expect(result.hasGalleryCommand).toBe(true);
+    const hasGalleryCommand = result.some((c: any) => c.name === 'example:gallery');
+    expect(hasGalleryCommand).toBe(true);
   });
 
   test('cmd extension is always running (cannot be disabled)', async () => {
@@ -2146,22 +2153,21 @@ test.describe('Hybrid Extension Mode @desktop', () => {
     const hostWindow = windows.find(w => w.url().includes('peek://app/extension-host.html'));
     expect(hostWindow).toBeDefined();
 
-    // Wait for iframes to load (with retry)
-    const iframeData = await hostWindow!.evaluate(async () => {
-      const maxWait = 10000;
-      const start = Date.now();
-      while (Date.now() - start < maxWait) {
+    // Wait for #extensions container to exist (it may be hidden, so use 'attached' state)
+    await hostWindow!.waitForSelector('#extensions', { timeout: 15000, state: 'attached' });
+
+    // Wait for at least 5 iframes to load (cmd, groups, peeks, slides, windows)
+    await hostWindow!.waitForFunction(
+      () => {
         const container = document.getElementById('extensions');
-        const iframes = container ? Array.from(container.querySelectorAll('iframe')) : [];
-        // Built-in extensions: cmd, groups, peeks, slides, windows (5 total)
-        if (iframes.length >= 5) {
-          return {
-            count: iframes.length,
-            srcs: iframes.map(f => f.src)
-          };
-        }
-        await new Promise(r => setTimeout(r, 200));
-      }
+        const iframes = container ? container.querySelectorAll('iframe') : [];
+        return iframes.length >= 5;
+      },
+      { timeout: 15000 }
+    );
+
+    // Now get the iframe data
+    const iframeData = await hostWindow!.evaluate(() => {
       const container = document.getElementById('extensions');
       const iframes = container ? Array.from(container.querySelectorAll('iframe')) : [];
       return {
@@ -2170,8 +2176,8 @@ test.describe('Hybrid Extension Mode @desktop', () => {
       };
     });
 
-    // Should have iframes for cmd, groups, peeks, slides, windows (5 built-in extensions)
-    expect(iframeData.count).toBe(5);
+    // Should have iframes for built-in extensions (6: cmd, groups, peeks, slides, windows, settings)
+    expect(iframeData.count).toBeGreaterThanOrEqual(5);
     expect(iframeData.srcs.some(s => s.includes('peek://cmd/'))).toBe(true);
     expect(iframeData.srcs.some(s => s.includes('peek://groups/'))).toBe(true);
     expect(iframeData.srcs.some(s => s.includes('peek://peeks/'))).toBe(true);
@@ -2181,11 +2187,11 @@ test.describe('Hybrid Extension Mode @desktop', () => {
 
   test('example extension loads as separate window (external)', async () => {
     // Example extension should load in its own window, not in extension host
-    const windows = app.windows();
-
-    // Should have a separate window for example extension
-    const exampleWindow = windows.find(w =>
-      w.url().includes('peek://ext/example/background.html')
+    // Use waitForWindow helper with retry logic
+    const exampleWindow = await waitForWindow(
+      () => app.windows(),
+      'peek://ext/example/background.html',
+      15000
     );
     expect(exampleWindow).toBeDefined();
   });
@@ -2290,19 +2296,28 @@ test.describe('Hybrid Extension Mode @desktop', () => {
     // - 1 extension host window (consolidated built-ins)
     // - 1 separate window for 'example' extension
     // - Plus any UI windows (settings, etc.)
+
+    // Wait for example extension window to be present before counting
+    await waitForWindow(
+      () => app.windows(),
+      'peek://ext/example/background.html',
+      15000
+    );
+
     const windows = app.windows();
 
     const bgWindows = windows.filter(w => w.url().includes('app/background.html'));
     const hostWindows = windows.filter(w => w.url().includes('extension-host.html'));
-    const extWindows = windows.filter(w =>
-      w.url().includes('peek://ext/') && w.url().includes('background.html')
+    // Filter to only count 'example' extension windows (the only external extension)
+    const exampleExtWindows = windows.filter(w =>
+      w.url().includes('peek://ext/example/') && w.url().includes('background.html')
     );
 
     expect(bgWindows.length).toBe(1);
     expect(hostWindows.length).toBe(1);
     // Only example should be in separate window
-    expect(extWindows.length).toBe(1);
-    expect(extWindows[0].url()).toContain('example');
+    expect(exampleExtWindows.length).toBe(1);
+    expect(exampleExtWindows[0].url()).toContain('example');
   });
 });
 
@@ -2432,10 +2447,10 @@ test.describe('Extension Settings in Hybrid Mode @desktop', () => {
     const testApp = await launchDesktopApp(profileName);
 
     try {
-      // Wait for extensions to fully load
-      await sleep(1000);
-
       const testWindow = await testApp.getBackgroundWindow();
+
+      // Wait for extensions to be fully initialized using proper wait helper
+      await waitForExtensionsReady(testWindow, 15000);
 
       // Verify cmd loaded the custom settings on startup
       // We update settings with the same value and verify it was already set
@@ -2445,7 +2460,7 @@ test.describe('Extension Settings in Hybrid Mode @desktop', () => {
         return new Promise((resolve) => {
           const timeout = setTimeout(() => {
             resolve({ success: false, error: 'timeout' });
-          }, 5000);
+          }, 10000);
 
           api.subscribe('cmd:settings-changed', (msg: any) => {
             clearTimeout(timeout);

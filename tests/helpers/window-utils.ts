@@ -206,3 +206,179 @@ export async function waitForSelectionChange(
     { timeout }
   );
 }
+
+// ============================================================================
+// Extension Waiting Helpers
+// ============================================================================
+
+interface ExtensionInfo {
+  id: string;
+  status: string;
+}
+
+interface ExtensionListResult {
+  success: boolean;
+  data?: ExtensionInfo[];
+}
+
+interface AppApi {
+  extensions: {
+    list(): Promise<ExtensionListResult>;
+  };
+  subscribe(event: string, callback: (msg: unknown) => void, scope: unknown): () => void;
+  publish(event: string, data: unknown, scope: unknown): void;
+  scopes: {
+    GLOBAL: unknown;
+  };
+}
+
+interface WindowWithApp extends Window {
+  app: AppApi;
+}
+
+/**
+ * Wait for all extensions to be initialized and ready
+ */
+export async function waitForExtensionsReady(
+  bgWindow: Page,
+  timeout = 10000
+): Promise<void> {
+  await bgWindow.waitForFunction(
+    async () => {
+      const api = (window as unknown as WindowWithApp).app;
+      if (!api || !api.extensions) return false;
+
+      const result = await api.extensions.list();
+      if (!result.success || !result.data) return false;
+
+      // Check if critical extensions are running
+      const hasCmd = result.data.some(
+        (e: ExtensionInfo) => e.id === 'cmd' && e.status === 'running'
+      );
+      const extensionCount = result.data.length;
+
+      return hasCmd && extensionCount >= 3; // At least cmd + 2 others
+    },
+    { timeout }
+  );
+}
+
+/**
+ * Wait for specific event to be published via pubsub
+ */
+export async function waitForPubsubEvent(
+  bgWindow: Page,
+  eventName: string,
+  timeout = 5000
+): Promise<unknown> {
+  return bgWindow.evaluate(
+    async ([event, timeoutMs]) => {
+      return new Promise((resolve, reject) => {
+        const t = setTimeout(() => {
+          reject(new Error(`Event ${event} not received within ${timeoutMs}ms`));
+        }, timeoutMs);
+
+        const api = (window as unknown as WindowWithApp).app;
+        const unsub = api.subscribe(
+          event,
+          (msg: unknown) => {
+            clearTimeout(t);
+            unsub();
+            resolve(msg);
+          },
+          api.scopes.GLOBAL
+        );
+      });
+    },
+    [eventName, timeout] as [string, number]
+  );
+}
+
+interface CommandInfo {
+  name: string;
+}
+
+interface QueryCommandsResponse {
+  commands?: CommandInfo[];
+}
+
+/**
+ * Wait for command to be available in cmd extension
+ */
+export async function waitForCommand(
+  bgWindow: Page,
+  commandName: string,
+  timeout = 10000
+): Promise<void> {
+  const startTime = Date.now();
+  while (Date.now() - startTime < timeout) {
+    const found = await bgWindow.evaluate(async (cmd) => {
+      const api = (window as unknown as WindowWithApp).app;
+      return new Promise((resolve) => {
+        const unsub = api.subscribe(
+          'cmd:query-commands-response',
+          (msg: unknown) => {
+            unsub();
+            const response = msg as QueryCommandsResponse;
+            resolve(response.commands?.some((c) => c.name === cmd) || false);
+          },
+          api.scopes.GLOBAL
+        );
+
+        api.publish('cmd:query-commands', {}, api.scopes.GLOBAL);
+        setTimeout(() => resolve(false), 500);
+      });
+    }, commandName);
+    if (found) return;
+    await sleep(200);
+  }
+  throw new Error(`Command "${commandName}" not found within ${timeout}ms`);
+}
+
+/**
+ * Query commands with retry logic for reliability.
+ * Retry loop is inside evaluate to avoid subscription issues across page boundary.
+ */
+export async function queryCommandsWithRetry(
+  bgWindow: Page,
+  retries = 5,
+  delayMs = 500
+): Promise<CommandInfo[]> {
+  const commands = await bgWindow.evaluate(
+    async ([maxRetries, delay]) => {
+      const api = (window as unknown as WindowWithApp).app;
+
+      const queryCommands = () =>
+        new Promise<CommandInfo[] | null>((resolve) => {
+          const unsub = api.subscribe(
+            'cmd:query-commands-response',
+            (msg: unknown) => {
+              unsub();
+              const response = msg as QueryCommandsResponse;
+              resolve((response.commands as CommandInfo[]) || []);
+            },
+            api.scopes.GLOBAL
+          );
+
+          api.publish('cmd:query-commands', {}, api.scopes.GLOBAL);
+          setTimeout(() => resolve(null), 1000);
+        });
+
+      // Retry loop inside evaluate to keep subscriptions in same JS context
+      for (let i = 0; i < maxRetries; i++) {
+        const cmds = await queryCommands();
+        if (cmds && cmds.length > 0) {
+          return cmds;
+        }
+        await new Promise((r) => setTimeout(r, delay));
+      }
+      return [];
+    },
+    [retries, delayMs] as const
+  );
+
+  if (!commands || commands.length === 0) {
+    throw new Error(`Failed to query commands after ${retries} attempts`);
+  }
+  return commands as CommandInfo[];
+}

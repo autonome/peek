@@ -10,6 +10,13 @@
 # │  Then watch output and follow prompts to tap buttons in the     │
 # │  iOS simulator when instructed. Do NOT run this blocking in     │
 # │  an automated context - it requires human interaction.          │
+# │                                                                 │
+# │  For semi-automated mode (auto-relaunch, no prompts):           │
+# │    npm run interactive-test:e2e:full-sync -- --headless         │
+# │                                                                 │
+# │  In headless mode, the script auto-relaunches the iOS app but   │
+# │  still requires manual "Sync All" taps OR the iOS app must      │
+# │  support PEEK_AUTO_SYNC=true env var for auto-sync on launch.   │
 # └─────────────────────────────────────────────────────────────────┘
 #
 # Clean-room test covering all sync permutations:
@@ -29,6 +36,16 @@ SERVER_DIR="$PROJECT_DIR/backend/server"
 TAURI_DIR="$PROJECT_DIR/backend/tauri-mobile"
 XCODE_PROJECT="$TAURI_DIR/src-tauri/gen/apple/peek-save.xcodeproj"
 
+# --- Parse arguments ---
+HEADLESS=false
+for arg in "$@"; do
+    case "$arg" in
+        --headless|--auto)
+            HEADLESS=true
+            ;;
+    esac
+done
+
 # --- Configuration ---
 
 PORT="${PORT:-3459}"
@@ -41,9 +58,68 @@ IOS_BACKUP_DIR="$(mktemp -d /tmp/e2e-peek-ios-backup-XXXXXX)"
 
 LOCAL_IP=$(ipconfig getifaddr en0 2>/dev/null || echo "localhost")
 SERVER_URL="http://$LOCAL_IP:$PORT"
+IOS_BUNDLE_ID="com.dietrich.peek-mobile"
+
+# --- Helper functions ---
+
+# Relaunch iOS app in simulator (terminate + launch)
+# Usage: relaunch_ios_app [reason] [auto_sync]
+#   reason: optional description for logging
+#   auto_sync: if "true", passes PEEK_AUTO_SYNC=true to trigger sync on launch
+relaunch_ios_app() {
+    local reason="${1:-}"
+    local auto_sync="${2:-false}"
+    if [ -n "$reason" ]; then
+        echo "  Relaunching iOS app ($reason)..."
+    else
+        echo "  Relaunching iOS app..."
+    fi
+    xcrun simctl terminate booted "$IOS_BUNDLE_ID" 2>/dev/null || true
+    sleep 1
+
+    # Launch with optional auto-sync environment variable
+    if [ "$auto_sync" = "true" ]; then
+        echo "  [AUTO-SYNC] Launching with PEEK_AUTO_SYNC=true"
+        SIMCTL_CHILD_PEEK_AUTO_SYNC=true xcrun simctl launch booted "$IOS_BUNDLE_ID" 2>/dev/null || {
+            echo "  WARNING: Failed to launch iOS app. Is it installed?"
+            return 1
+        }
+    else
+        xcrun simctl launch booted "$IOS_BUNDLE_ID" 2>/dev/null || {
+            echo "  WARNING: Failed to launch iOS app. Is it installed?"
+            return 1
+        }
+    fi
+    sleep 2
+    echo "  iOS app relaunched."
+}
+
+# Prompt user or auto-proceed in headless mode
+prompt_or_continue() {
+    local message="$1"
+    local action="${2:-}"
+
+    if [ "$HEADLESS" = true ]; then
+        if [ -n "$action" ]; then
+            echo "  [HEADLESS] $action"
+        fi
+        echo "  [HEADLESS] Continuing without user prompt..."
+    else
+        echo ""
+        echo "=========================================="
+        echo "  $message"
+        echo "=========================================="
+        echo ""
+    fi
+}
 
 echo "=========================================="
 echo "  Full E2E Sync Test (Clean Room)"
+if [ "$HEADLESS" = true ]; then
+    echo "  Mode: HEADLESS (auto-relaunch, no prompts)"
+else
+    echo "  Mode: INTERACTIVE (manual prompts)"
+fi
 echo "=========================================="
 echo ""
 echo "  Server URL:       $SERVER_URL"
@@ -116,19 +192,25 @@ echo "  iOS Rust library build complete"
 echo ""
 echo "Step 2: Preparing iOS simulator (clean room)..."
 
-APP_GROUP=$(xcrun simctl get_app_container booted com.dietrich.peek-mobile groups 2>/dev/null | grep "group.com.dietrich.peek-mobile" | awk '{print $2}')
+APP_GROUP=$(xcrun simctl get_app_container booted "$IOS_BUNDLE_ID" groups 2>/dev/null | grep "group.$IOS_BUNDLE_ID" | awk '{print $2}')
 
 if [ -z "$APP_GROUP" ]; then
-    echo "  WARNING: iOS app not installed in simulator."
-    echo "  Build and run the app once from Xcode, then re-run this script."
-    echo ""
-    open "$XCODE_PROJECT"
-    echo "  Server is running. Press Ctrl+C to stop."
-    # Start server so user can build/install, then re-run
-    DATA_DIR="$SERVER_TEMP_DIR" PORT="$PORT" API_KEY="$API_KEY" node "$SERVER_DIR/index.js" &
-    SERVER_PID=$!
-    wait "$SERVER_PID"
-    exit 0
+    echo "  ERROR: iOS app not installed in simulator."
+    if [ "$HEADLESS" = true ]; then
+        echo "  [HEADLESS] Cannot continue without iOS app installed."
+        echo "  Build and run the app once from Xcode, then re-run this script."
+        exit 1
+    else
+        echo "  Build and run the app once from Xcode, then re-run this script."
+        echo ""
+        open "$XCODE_PROJECT"
+        echo "  Server is running. Press Ctrl+C to stop."
+        # Start server so user can build/install, then re-run
+        DATA_DIR="$SERVER_TEMP_DIR" PORT="$PORT" API_KEY="$API_KEY" node "$SERVER_DIR/index.js" &
+        SERVER_PID=$!
+        wait "$SERVER_PID"
+        exit 0
+    fi
 fi
 
 echo "  App container: $APP_GROUP"
@@ -425,13 +507,19 @@ echo ""
 echo "  Desktop: headless PID $DESKTOP_PID, profile '$DESKTOP_PROFILE'"
 echo "  iOS:     profile $IOS_PROFILE_ID"
 echo ""
-echo "  iOS test steps:"
-echo "    1. Build & run in Xcode (Debug, iPhone simulator)"
-echo "    2. Force-quit and relaunch app (pick up profiles.json)"
-echo "    3. Tap 'Sync All'"
-echo "       → should pull server + desktop items"
-echo "       → should push iOS items to server"
-echo "    4. Check expected total: $(($SERVER_COUNT + $DESKTOP_LOCAL + $IOS_COUNT)) items"
+if [ "$HEADLESS" = true ]; then
+    echo "  [HEADLESS] Fully automated - iOS app will be auto-relaunched with PEEK_AUTO_SYNC=true"
+    echo "  [HEADLESS] No manual steps required!"
+    echo "  Expected total: $(($SERVER_COUNT + $DESKTOP_LOCAL + $IOS_COUNT)) items"
+else
+    echo "  iOS test steps:"
+    echo "    1. Build & run in Xcode (Debug, iPhone simulator)"
+    echo "    2. Force-quit and relaunch app (pick up profiles.json)"
+    echo "    3. Tap 'Sync All'"
+    echo "       → should pull server + desktop items"
+    echo "       → should push iOS items to server"
+    echo "    4. Check expected total: $(($SERVER_COUNT + $DESKTOP_LOCAL + $IOS_COUNT)) items"
+fi
 echo ""
 echo "  Verify server items:"
 echo "    curl -s 'http://localhost:$PORT/items?profile=$SERVER_PROFILE_ID' \\"
@@ -444,9 +532,16 @@ echo ""
 
 # --- Open Xcode (now that everything is ready) ---
 
-echo "Opening Xcode... Build & Run (⌘R), then tap 'Sync All' in the app."
-open "$XCODE_PROJECT"
-echo ""
+if [ "$HEADLESS" = true ]; then
+    echo "[HEADLESS] Skipping Xcode open. Ensure iOS app is already built and installed."
+    echo "[HEADLESS] Relaunching iOS app with PEEK_AUTO_SYNC=true..."
+    relaunch_ios_app "pick up fresh test profile + auto-sync" "true"
+    echo ""
+else
+    echo "Opening Xcode... Build & Run (⌘R), then tap 'Sync All' in the app."
+    open "$XCODE_PROJECT"
+    echo ""
+fi
 
 # --- Poll server until iOS items appear (or timeout) ---
 
@@ -715,8 +810,14 @@ echo "  Expected after all syncs: 10 items total"
 echo "    6 original + 2 cross-device URLs + 2 cross-device tagsets"
 echo "    (No content dedup — each device's copy is a separate item)"
 echo ""
-echo "  Please tap 'Sync All' in the iOS simulator."
-echo "  Polling server for 10 items..."
+if [ "$HEADLESS" = true ]; then
+    echo "  [HEADLESS] Relaunching iOS app to pick up seeded items and sync..."
+    relaunch_ios_app "pick up Phase 2 seeded items + sync" "true"
+    echo "  [HEADLESS] Polling server for 10 items..."
+else
+    echo "  Please tap 'Sync All' in the iOS simulator."
+    echo "  Polling server for 10 items..."
+fi
 echo "=========================================="
 echo ""
 
@@ -1055,7 +1156,12 @@ fi
 
 echo ""
 echo "Step 24: iOS dedup verification..."
-echo "  Please force-quit and relaunch the iOS app in the simulator."
+if [ "$HEADLESS" = true ]; then
+    echo "  [HEADLESS] Auto-relaunching iOS app to trigger dedup migration..."
+    relaunch_ios_app "trigger dedup migration"
+else
+    echo "  Please force-quit and relaunch the iOS app in the simulator."
+fi
 echo "  The dedup migration runs in ensure_database_initialized() on startup."
 echo "  Polling iOS database for dedup_cleanup_v1 flag..."
 
@@ -1200,7 +1306,7 @@ SERVER_TOMBSTONE=$(curl -sf "http://localhost:$PORT/items?$PROFILE_PARAM&include
     -H "X-Peek-Protocol-Version: 1" | python3 -c "
 import sys, json
 items = json.load(sys.stdin)['items']
-tombstones = [i for i in items if i.get('deleted_at', 0) > 0]
+tombstones = [i for i in items if i.get('deletedAt', 0) > 0]
 print(len(tombstones))
 ")
 echo "  Server tombstones: $SERVER_TOMBSTONE"
@@ -1216,7 +1322,12 @@ fi
 
 echo ""
 echo "=========================================="
-echo "  Please tap 'Sync All' in the iOS simulator to pull the tombstone."
+if [ "$HEADLESS" = true ]; then
+    echo "  [HEADLESS] Relaunching iOS app with auto-sync to pull tombstone..."
+    relaunch_ios_app "pull desktop deletion tombstone" "true"
+else
+    echo "  Please tap 'Sync All' in the iOS simulator to pull the tombstone."
+fi
 echo "  Polling iOS database for the deleted item..."
 echo "=========================================="
 
@@ -1247,12 +1358,11 @@ fi
 #
 # We must terminate the iOS app BEFORE modifying the database externally.
 # The running app has its own SQLite connection (WAL mode) and won't see
-# external writes. After modifying, we checkpoint the WAL and ask the
-# user to relaunch.
+# external writes. After modifying, we checkpoint the WAL and relaunch.
 
 echo ""
 echo "Step 29: Terminating iOS app before modifying database..."
-xcrun simctl terminate booted com.dietrich.peek-mobile 2>/dev/null || true
+xcrun simctl terminate booted "$IOS_BUNDLE_ID" 2>/dev/null || true
 sleep 2
 
 # Pick an iOS-origin item to delete
@@ -1276,8 +1386,13 @@ echo "  iOS items: $IOS_ACTIVE active, $IOS_DELETED deleted"
 
 echo ""
 echo "=========================================="
-echo "  Please relaunch the iOS app in the simulator and tap 'Sync All'"
-echo "  to push the tombstone. (App was terminated to pick up DB changes.)"
+if [ "$HEADLESS" = true ]; then
+    echo "  [HEADLESS] Relaunching iOS app with PEEK_AUTO_SYNC=true to push tombstone..."
+    relaunch_ios_app "pick up DB changes + auto-sync tombstone" "true"
+else
+    echo "  Please relaunch the iOS app in the simulator and tap 'Sync All'"
+    echo "  to push the tombstone. (App was terminated to pick up DB changes.)"
+fi
 echo "  Polling server for updated deletion count..."
 echo "=========================================="
 
@@ -1293,7 +1408,7 @@ while [ "$SERVER_TOMB_POLL_ELAPSED" -lt "$SERVER_TOMB_POLL_TIMEOUT" ]; do
         -H "X-Peek-Protocol-Version: 1" 2>/dev/null | python3 -c "
 import sys, json
 items = json.load(sys.stdin)['items']
-tombstones = [i for i in items if i.get('deleted_at', 0) > 0]
+tombstones = [i for i in items if i.get('deletedAt', 0) > 0]
 print(len(tombstones))
 " 2>/dev/null || echo "0")
     if [ "$CURRENT_TOMBS" -ge "$EXPECTED_TOMBSTONES" ] 2>/dev/null; then
@@ -1341,8 +1456,8 @@ SERVER_FINAL_ALL=$(curl -sf "http://localhost:$PORT/items?$PROFILE_PARAM&include
     -H "X-Peek-Protocol-Version: 1" | python3 -c "
 import sys, json
 items = json.load(sys.stdin)['items']
-active = len([i for i in items if i.get('deleted_at', 0) == 0])
-deleted = len([i for i in items if i.get('deleted_at', 0) > 0])
+active = len([i for i in items if i.get('deletedAt', 0) == 0])
+deleted = len([i for i in items if i.get('deletedAt', 0) > 0])
 print(f'{active} active, {deleted} deleted')
 ")
 echo "  Server: $SERVER_FINAL_ALL"

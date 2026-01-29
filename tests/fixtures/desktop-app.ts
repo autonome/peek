@@ -213,10 +213,53 @@ async function launchElectron(profile: string, options: LaunchOptions = {}): Pro
       const extWindows = electronApp.windows().filter(w =>
         w.url().includes('peek://ext/') && w.url().includes('background.html')
       );
-      // Ready when we have both host and at least one external
-      if (hostWindow && extWindows.length >= 1) return;
+
+      // Need both host and at least one external extension
+      if (!hostWindow || extWindows.length < 1) {
+        await sleep(100);
+        continue;
+      }
+
+      // Verify host window's DOM is actually ready
+      try {
+        const hostReady = await hostWindow.evaluate(() => {
+          return document.readyState === 'complete' &&
+                 document.getElementById('extensions') !== null;
+        });
+        if (!hostReady) {
+          await sleep(100);
+          continue;
+        }
+      } catch {
+        await sleep(100);
+        continue;
+      }
+
+      // Verify at least one external extension window is also ready
+      let extReady = false;
+      for (const extWin of extWindows) {
+        try {
+          const ready = await extWin.evaluate(() => document.readyState === 'complete');
+          if (ready) {
+            extReady = true;
+            break;
+          }
+        } catch {
+          // Window not ready, continue checking others
+        }
+      }
+
+      if (extReady) {
+        return; // Success - both host and ext are ready
+      }
+
       await sleep(100);
     }
+
+    // Timeout reached - throw error with diagnostic info
+    const windows = electronApp.windows();
+    const urls = windows.map(w => w.url());
+    throw new Error(`Hybrid extensions failed to load within ${timeout}ms. Windows: ${JSON.stringify(urls)}`);
   };
   await waitForHybridExtensions(10000);
 
@@ -242,9 +285,57 @@ async function launchElectron(profile: string, options: LaunchOptions = {}): Pro
     },
 
     close: async () => {
-      await electronApp.close();
-      // Note: Temp directory cleanup happens via process exit handlers
-      // This allows persistence tests to relaunch with same profile
+      // Capture PID before any close attempts
+      let pid: number | undefined;
+      try {
+        pid = electronApp.process().pid;
+      } catch { /* process may already be gone */ }
+
+      // Helper to check if process is still running
+      const isRunning = (p: number): boolean => {
+        try {
+          process.kill(p, 0); // Signal 0 just checks if process exists
+          return true;
+        } catch {
+          return false;
+        }
+      };
+
+      // Try graceful close first (3s)
+      try {
+        await Promise.race([
+          electronApp.close(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+        ]);
+        // Give it a moment to fully terminate
+        await sleep(200);
+        if (!pid || !isRunning(pid)) return;
+      } catch { /* continue to force kill */ }
+
+      if (!pid) return;
+
+      // Try SIGTERM (2s wait)
+      if (isRunning(pid)) {
+        console.warn(`[test] Graceful close timed out for PID ${pid}, sending SIGTERM`);
+        try {
+          process.kill(pid, 'SIGTERM');
+        } catch { /* ignore */ }
+        await sleep(2000);
+      }
+
+      // Last resort: SIGKILL
+      if (isRunning(pid)) {
+        console.warn(`[test] SIGTERM failed for PID ${pid}, sending SIGKILL`);
+        try {
+          process.kill(pid, 'SIGKILL');
+        } catch { /* ignore */ }
+        await sleep(500);
+      }
+
+      // Final verification
+      if (isRunning(pid)) {
+        console.error(`[test] WARNING: Process ${pid} still running after SIGKILL`);
+      }
     }
   };
 }
@@ -465,6 +556,50 @@ export async function launchDesktopApp(profile?: string, options: LaunchOptions 
     return launchTauriFrontend(testProfile);
   } else {
     throw new Error(`Unknown backend: ${backend}. Use BACKEND=electron or BACKEND=tauri`);
+  }
+}
+
+// ==================== Shared Instance ====================
+
+/**
+ * Global shared app instance for tests that don't need isolation.
+ * Use getSharedApp() to get or create, closeSharedApp() to cleanup.
+ */
+let sharedApp: DesktopApp | null = null;
+let sharedAppPromise: Promise<DesktopApp> | null = null;
+
+/**
+ * Get or create a shared app instance.
+ * Most tests can use this instead of launching their own instance.
+ * Only use launchDesktopApp() for tests that need:
+ * - Fresh database state
+ * - App restart/lifecycle testing
+ * - Specific profile configuration
+ */
+export async function getSharedApp(): Promise<DesktopApp> {
+  if (sharedApp) {
+    return sharedApp;
+  }
+
+  // Prevent multiple concurrent launches
+  if (sharedAppPromise) {
+    return sharedAppPromise;
+  }
+
+  sharedAppPromise = launchDesktopApp('shared-test-instance');
+  sharedApp = await sharedAppPromise;
+  sharedAppPromise = null;
+  return sharedApp;
+}
+
+/**
+ * Close the shared app instance.
+ * Call this in a global teardown or at the end of test file.
+ */
+export async function closeSharedApp(): Promise<void> {
+  if (sharedApp) {
+    await sharedApp.close();
+    sharedApp = null;
   }
 }
 

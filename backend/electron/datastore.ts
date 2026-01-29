@@ -405,6 +405,7 @@ export function initDatabase(dbPath: string): Database.Database {
   migrateItemFrecencyColumns();
   migrateAllAddressesToItems();
   migrateVisitsToItemVisits();
+  migrateTagsLastUsedColumn();
 
   // Validate schema against canonical definition
   validateSyncSchema();
@@ -1320,6 +1321,46 @@ function migrateVisitsToItemVisits(): void {
   // Mark migration as complete
   db.prepare('INSERT OR REPLACE INTO migrations (id, status, completedAt) VALUES (?, ?, ?)').run(MIGRATION_ID, 'complete', Date.now());
   DEBUG && console.log('main', `Migrated ${migratedCount} visits to item_visits, skipped ${skippedCount}, calculated frecency for ${urlItems.length} items`);
+}
+
+/**
+ * Rename lastUsedAt column to lastUsed in tags table for schema consistency.
+ * Some databases may have been created with lastUsedAt instead of lastUsed.
+ */
+function migrateTagsLastUsedColumn(): void {
+  if (!db) return;
+
+  // Check if tags table has lastUsedAt column (old name)
+  const columns = db.prepare(`PRAGMA table_info(tags)`).all() as { name: string }[];
+  const hasLastUsedAt = columns.some(col => col.name === 'lastUsedAt');
+  const hasLastUsed = columns.some(col => col.name === 'lastUsed');
+
+  if (hasLastUsedAt && !hasLastUsed) {
+    DEBUG && console.log('main', 'Renaming tags.lastUsedAt to tags.lastUsed');
+    try {
+      // SQLite 3.25.0+ supports ALTER TABLE RENAME COLUMN
+      db.exec(`ALTER TABLE tags RENAME COLUMN lastUsedAt TO lastUsed`);
+      DEBUG && console.log('main', 'Successfully renamed lastUsedAt to lastUsed');
+    } catch (error) {
+      // Fallback: create new column and copy data (for older SQLite versions)
+      DEBUG && console.log('main', 'Rename failed, trying fallback migration:', (error as Error).message);
+      try {
+        db.exec(`ALTER TABLE tags ADD COLUMN lastUsed INTEGER DEFAULT 0`);
+        db.exec(`UPDATE tags SET lastUsed = lastUsedAt`);
+        DEBUG && console.log('main', 'Fallback migration complete (lastUsedAt data copied to lastUsed)');
+      } catch (fallbackError) {
+        DEBUG && console.log('main', 'Fallback migration failed:', (fallbackError as Error).message);
+      }
+    }
+  } else if (!hasLastUsed) {
+    // Neither column exists, add lastUsed
+    DEBUG && console.log('main', 'Adding missing lastUsed column to tags');
+    try {
+      db.exec(`ALTER TABLE tags ADD COLUMN lastUsed INTEGER DEFAULT 0`);
+    } catch (error) {
+      DEBUG && console.log('main', 'Failed to add lastUsed column:', (error as Error).message);
+    }
+  }
 }
 
 // ==================== Version Check ====================

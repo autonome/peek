@@ -4303,8 +4303,42 @@ pub fn run() {
     // BACKUP: Copy App Group data to Documents for recovery via Finder File Sharing
     backup_app_group_to_documents();
 
+    // Check for auto-sync environment variable (used by e2e tests)
+    let auto_sync_on_launch = std::env::var("PEEK_AUTO_SYNC")
+        .map(|v| v == "1" || v.to_lowercase() == "true")
+        .unwrap_or(false);
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .setup(move |_app| {
+            if auto_sync_on_launch {
+                println!("[Rust] PEEK_AUTO_SYNC enabled - triggering sync on launch");
+                // Spawn async task to sync after app is ready
+                tauri::async_runtime::spawn(async move {
+                    // Small delay to ensure database is fully initialized
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+
+                    // Check if sync is configured before attempting
+                    let config = load_profile_config();
+                    if config.sync.server_url.is_empty() || config.sync.api_key.is_empty() {
+                        println!("[Rust] PEEK_AUTO_SYNC: Sync not configured, skipping");
+                        return;
+                    }
+
+                    println!("[Rust] PEEK_AUTO_SYNC: Starting automatic sync...");
+                    match sync_all_internal().await {
+                        Ok(result) => {
+                            println!("[Rust] PEEK_AUTO_SYNC: Sync complete - {} pulled, {} pushed",
+                                result.pulled, result.pushed);
+                        }
+                        Err(e) => {
+                            println!("[Rust] PEEK_AUTO_SYNC: Sync failed - {}", e);
+                        }
+                    }
+                });
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             // Page (URL) commands
             save_url,

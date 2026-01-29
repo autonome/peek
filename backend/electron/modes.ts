@@ -24,7 +24,7 @@
  */
 
 import { BrowserWindow } from 'electron';
-import { publish, scopes as PubSubScopes } from './pubsub.js';
+import { publish, scopes as PubSubScopes, getSystemAddress } from './pubsub.js';
 import { DEBUG } from './config.js';
 
 // ============================================================================
@@ -228,11 +228,11 @@ export function cleanupWindowMode(windowId: number): void {
  * Publish mode change event via pubsub
  */
 function publishModeChange(windowId: number, state: WindowModeState): void {
-  publish('modes:changed', {
+  publish(getSystemAddress(), PubSubScopes.GLOBAL, 'modes:changed', {
     windowId,
     major: state.major,
     minors: [...state.minors],
-  }, PubSubScopes.GLOBAL);
+  });
 }
 
 // ============================================================================

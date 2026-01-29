@@ -129,9 +129,10 @@ export async function initialize(): Promise<void> {
 
   // Track window events globally
   app.on('browser-window-created', (_, window) => {
+    const windowId = window.id;
+
     // Handle window close
     window.on('closed', () => {
-      const windowId = window.id;
       const windowData = windowRegistry.get(windowId);
 
       if (windowData) {

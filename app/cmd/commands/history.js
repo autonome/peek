@@ -1,39 +1,42 @@
 /**
- * History command - search and open pages from address history
- * Addresses are sorted by visitCount (frecency)
+ * History command - search and open pages from URL history
+ * Uses unified items table with frecency scoring
  */
 import windows from '../../windows.js';
 import api from '../../api.js';
 
 /**
- * Get addresses sorted by visit count (frecency)
+ * Get URL items sorted by frecency score
  * Optionally filter by search term
  */
 const getHistory = async (searchTerm = '', limit = 20) => {
-  const result = await api.datastore.queryAddresses({});
-  if (!result.success) return [];
+  // Use the new unified items API with frecency sorting
+  const filter = {
+    type: 'url',
+    sortBy: 'frecency',
+    limit,
+  };
 
-  let addresses = result.data;
-
-  // Filter by search term if provided
+  // Add search filter if provided
   if (searchTerm) {
-    const lower = searchTerm.toLowerCase();
-    addresses = addresses.filter(addr => {
-      const uri = (addr.uri || '').toLowerCase();
-      const title = (addr.title || '').toLowerCase();
-      const domain = (addr.domain || '').toLowerCase();
-      return uri.includes(lower) || title.includes(lower) || domain.includes(lower);
-    });
+    filter.search = searchTerm;
   }
 
-  // Sort by visitCount descending (frecency)
-  addresses.sort((a, b) => (b.visitCount || 0) - (a.visitCount || 0));
+  const result = await api.datastore.queryItems(filter);
+  if (!result.success) return [];
 
-  return addresses.slice(0, limit);
+  // Transform items to the shape expected by the rest of the code
+  return result.data.map(item => ({
+    uri: item.content || '',
+    title: item.title || '',
+    domain: item.domain || '',
+    visitCount: item.visitCount || 0,
+    frecencyScore: item.frecencyScore || 0,
+  }));
 };
 
 /**
- * Open an address from history
+ * Open a URL from history
  */
 const openFromHistory = async (uri) => {
   try {
@@ -58,7 +61,7 @@ const commands = [
     name: 'history',
     async execute(ctx) {
       if (ctx.search) {
-        // Search provided - find matching address and open it
+        // Search provided - find matching item and open it
         const matches = await getHistory(ctx.search, 1);
         if (matches.length > 0) {
           await openFromHistory(matches[0].uri);
@@ -69,8 +72,8 @@ const commands = [
         // No search - just log recent history
         const recent = await getHistory('', 10);
         console.log('Recent history:');
-        recent.forEach((addr, i) => {
-          console.log(`${i + 1}. [${addr.visitCount || 0}] ${addr.title || addr.uri}`);
+        recent.forEach((item, i) => {
+          console.log(`${i + 1}. [${item.frecencyScore}] ${item.title || item.uri}`);
         });
       }
     }
@@ -86,21 +89,21 @@ export const initializeSources = async (addCommand) => {
   const history = await getHistory('', 50); // Get more entries
   console.log('Adding history entries as commands:', history.length);
 
-  history.forEach(addr => {
+  history.forEach(item => {
     // Use the URI as the command name so it's searchable
     addCommand({
-      name: addr.uri,
+      name: item.uri,
       async execute(ctx) {
-        await openFromHistory(addr.uri);
+        await openFromHistory(item.uri);
       }
     });
 
     // Also add title as a command if it exists and is different
-    if (addr.title && addr.title !== addr.uri) {
+    if (item.title && item.title !== item.uri) {
       addCommand({
-        name: addr.title,
+        name: item.title,
         async execute(ctx) {
-          await openFromHistory(addr.uri);
+          await openFromHistory(item.uri);
         }
       });
     }

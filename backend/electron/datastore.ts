@@ -25,6 +25,9 @@ import type {
   ItemType,
   ItemOptions,
   ItemFilter,
+  ItemVisit,
+  ItemVisitFilter,
+  ItemVisitOptions,
 } from '../types/index.js';
 import { tableNames } from '../types/index.js';
 import { DEBUG } from './config.js';
@@ -283,6 +286,53 @@ const createTableStatements = `
     key TEXT PRIMARY KEY,
     value TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS item_visits (
+    id TEXT PRIMARY KEY,
+    itemId TEXT NOT NULL,
+    timestamp INTEGER NOT NULL,
+    duration INTEGER DEFAULT 0,
+    source TEXT DEFAULT 'direct',
+    sourceId TEXT DEFAULT '',
+    windowType TEXT DEFAULT 'main',
+    metadata TEXT DEFAULT '{}',
+    scrollDepth INTEGER DEFAULT 0,
+    interacted INTEGER DEFAULT 0,
+    prevId TEXT DEFAULT NULL,
+    nextId TEXT DEFAULT NULL,
+    FOREIGN KEY(itemId) REFERENCES items(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_item_visits_itemId ON item_visits(itemId);
+  CREATE INDEX IF NOT EXISTS idx_item_visits_timestamp ON item_visits(timestamp);
+  CREATE INDEX IF NOT EXISTS idx_item_visits_prevId ON item_visits(prevId);
+  CREATE INDEX IF NOT EXISTS idx_item_visits_nextId ON item_visits(nextId);
+
+  CREATE TABLE IF NOT EXISTS item_groups (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    type TEXT DEFAULT 'manual',
+    query TEXT DEFAULT '',
+    metadata TEXT DEFAULT '{}',
+    createdAt INTEGER NOT NULL,
+    updatedAt INTEGER NOT NULL,
+    deletedAt INTEGER DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS idx_item_groups_type ON item_groups(type);
+  CREATE INDEX IF NOT EXISTS idx_item_groups_deletedAt ON item_groups(deletedAt);
+
+  CREATE TABLE IF NOT EXISTS item_group_members (
+    id TEXT PRIMARY KEY,
+    groupId TEXT NOT NULL,
+    itemId TEXT NOT NULL,
+    position INTEGER DEFAULT 0,
+    createdAt INTEGER NOT NULL,
+    FOREIGN KEY(groupId) REFERENCES item_groups(id),
+    FOREIGN KEY(itemId) REFERENCES items(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_item_group_members_groupId ON item_group_members(groupId);
+  CREATE INDEX IF NOT EXISTS idx_item_group_members_itemId ON item_group_members(itemId);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_item_group_members_unique ON item_group_members(groupId, itemId);
 `;
 
 // Module state
@@ -304,6 +354,9 @@ export function initDatabase(dbPath: string): Database.Database {
   migrateAddressesToItems();
   migrateVisitChaining();
   migrateDeduplicateItems();
+  migrateItemFrecencyColumns();
+  migrateAllAddressesToItems();
+  migrateVisitsToItemVisits();
 
   // Check and write datastore version
   checkAndWriteDatastoreVersion();
@@ -891,6 +944,331 @@ function migrateDeduplicateItems(): void {
   } else {
     DEBUG && console.log('main', 'Dedup cleanup: no duplicates found');
   }
+}
+
+/**
+ * Add frecencyScore, title, domain, favicon columns to items table for URL history unification.
+ * These columns are local-only (not synced) and support frecency-based sorting.
+ */
+function migrateItemFrecencyColumns(): void {
+  if (!db) return;
+
+  const columns = db.prepare(`PRAGMA table_info(items)`).all() as { name: string }[];
+  const hasFrecencyScore = columns.some(col => col.name === 'frecencyScore');
+
+  if (!hasFrecencyScore) {
+    DEBUG && console.log('main', 'Adding frecency columns to items table');
+    try {
+      db.exec(`ALTER TABLE items ADD COLUMN frecencyScore INTEGER DEFAULT 0`);
+      db.exec(`ALTER TABLE items ADD COLUMN title TEXT DEFAULT ''`);
+      db.exec(`ALTER TABLE items ADD COLUMN domain TEXT DEFAULT ''`);
+      db.exec(`ALTER TABLE items ADD COLUMN favicon TEXT DEFAULT ''`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_items_frecencyScore ON items(frecencyScore DESC)`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_items_domain ON items(domain)`);
+    } catch (error) {
+      DEBUG && console.log('main', `Item frecency columns migration:`, (error as Error).message);
+    }
+  }
+
+  // Always ensure indexes exist
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_items_frecencyScore ON items(frecencyScore DESC)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_items_domain ON items(domain)`);
+  } catch (error) {
+    DEBUG && console.log('main', `Item frecency indexes:`, (error as Error).message);
+  }
+}
+
+/**
+ * Calculate frecency score for an item based on visit history.
+ * Uses a time-decay algorithm where recent visits contribute more.
+ */
+export function calculateItemFrecency(visits: Array<{ timestamp: number; interacted: number; source: string }>): number {
+  let score = 0;
+  for (const visit of visits) {
+    const ageDays = (Date.now() - visit.timestamp) / (1000 * 60 * 60 * 24);
+    const decay = 1 / (1 + Math.pow(ageDays / 7, 0.5));
+    // Weight: interacted visits count more, direct navigations count less than link clicks
+    const weight = visit.interacted ? 2 : (visit.source === 'direct' ? 0.5 : 1);
+    score += weight * decay;
+  }
+  return Math.round(score * 10);
+}
+
+/**
+ * Migrate ALL addresses to items (not just tagged ones).
+ * This extends the earlier migrateAddressesToItems() which only migrated tagged addresses.
+ * Creates items for all addresses and tracks address.id → item.id mapping for visit migration.
+ */
+function migrateAllAddressesToItems(): void {
+  if (!db) return;
+
+  const MIGRATION_ID = 'all_addresses_to_items_v1';
+
+  // Check if already migrated
+  const migrationRecord = db.prepare('SELECT * FROM migrations WHERE id = ?').get(MIGRATION_ID) as { status: string } | undefined;
+  if (migrationRecord && migrationRecord.status === 'complete') {
+    DEBUG && console.log('main', 'All addresses to items migration already complete');
+    return;
+  }
+
+  // Get ALL addresses (not just tagged ones)
+  const allAddresses = db.prepare('SELECT * FROM addresses').all() as Address[];
+
+  if (allAddresses.length === 0) {
+    db.prepare('INSERT OR REPLACE INTO migrations (id, status, completedAt) VALUES (?, ?, ?)').run(MIGRATION_ID, 'complete', Date.now());
+    DEBUG && console.log('main', 'No addresses to migrate');
+    return;
+  }
+
+  DEBUG && console.log('main', `Migrating ${allAddresses.length} addresses to items table`);
+
+  let createdCount = 0;
+  let mergedCount = 0;
+
+  // Build address.id → item.id mapping for visit migration
+  const addressToItemMap: Record<string, string> = {};
+
+  for (const addr of allAddresses) {
+    // Check if item with this URL already exists
+    const existingItem = db.prepare('SELECT * FROM items WHERE type = ? AND content = ? AND deletedAt = 0').get('url', addr.uri) as Item | undefined;
+
+    if (existingItem) {
+      // Map to existing item, merge metadata
+      addressToItemMap[addr.id] = existingItem.id;
+
+      // Merge metadata: combine address metadata with item metadata
+      let itemMeta: Record<string, unknown> = {};
+      try {
+        itemMeta = typeof existingItem.metadata === 'string' ? JSON.parse(existingItem.metadata) : existingItem.metadata || {};
+      } catch { /* ignore */ }
+
+      // Update with address data if item is missing it
+      const updates: string[] = [];
+      const values: unknown[] = [];
+
+      if (!itemMeta.title && addr.title) {
+        itemMeta.title = addr.title;
+      }
+      if (!itemMeta.favicon && addr.favicon) {
+        itemMeta.favicon = addr.favicon;
+      }
+
+      // Also set the denormalized columns
+      if (addr.title) {
+        updates.push('title = ?');
+        values.push(addr.title);
+      }
+      if (addr.domain) {
+        updates.push('domain = ?');
+        values.push(addr.domain);
+      }
+      if (addr.favicon) {
+        updates.push('favicon = ?');
+        values.push(addr.favicon);
+      }
+
+      // Merge visit stats (take max)
+      if ((addr.visitCount || 0) > (existingItem.visitCount || 0)) {
+        updates.push('visitCount = ?');
+        values.push(addr.visitCount);
+      }
+      if ((addr.lastVisitAt || 0) > (existingItem.lastVisitAt || 0)) {
+        updates.push('lastVisitAt = ?');
+        values.push(addr.lastVisitAt);
+      }
+      if (addr.starred && !existingItem.starred) {
+        updates.push('starred = ?');
+        values.push(1);
+      }
+
+      if (updates.length > 0) {
+        updates.push('metadata = ?');
+        values.push(JSON.stringify(itemMeta));
+        updates.push('updatedAt = ?');
+        values.push(now());
+        values.push(existingItem.id);
+
+        db.prepare(`UPDATE items SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+      }
+
+      mergedCount++;
+    } else {
+      // Create new item for this URL
+      const itemId = generateId('item');
+      const timestamp = now();
+      addressToItemMap[addr.id] = itemId;
+
+      // Build metadata from address
+      const metadata: Record<string, unknown> = {};
+      if (addr.title) metadata.title = addr.title;
+      if (addr.description) metadata.description = addr.description;
+      if (addr.favicon) metadata.favicon = addr.favicon;
+      if (addr.metadata) {
+        try {
+          const addrMeta = typeof addr.metadata === 'string' ? JSON.parse(addr.metadata) : addr.metadata;
+          Object.assign(metadata, addrMeta);
+        } catch { /* ignore invalid JSON */ }
+      }
+
+      db.prepare(`
+        INSERT INTO items (id, type, content, mimeType, metadata, syncId, syncSource, createdAt, updatedAt, deletedAt, starred, archived, visitCount, lastVisitAt, frecencyScore, title, domain, favicon)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 0, ?, ?, ?)
+      `).run(
+        itemId,
+        'url',
+        addr.uri,
+        addr.mimeType || 'text/html',
+        JSON.stringify(metadata),
+        '',
+        '',
+        addr.createdAt || timestamp,
+        addr.updatedAt || timestamp,
+        addr.starred || 0,
+        addr.archived || 0,
+        addr.visitCount || 0,
+        addr.lastVisitAt || 0,
+        addr.title || '',
+        addr.domain || '',
+        addr.favicon || ''
+      );
+
+      createdCount++;
+
+      // Copy tag associations from address_tags to item_tags
+      const addressTags = db.prepare('SELECT * FROM address_tags WHERE addressId = ?').all(addr.id) as AddressTag[];
+      for (const at of addressTags) {
+        const existingLink = db.prepare('SELECT * FROM item_tags WHERE itemId = ? AND tagId = ?').get(itemId, at.tagId);
+        if (!existingLink) {
+          const linkId = generateId('item_tag');
+          db.prepare('INSERT INTO item_tags (id, itemId, tagId, createdAt) VALUES (?, ?, ?, ?)').run(
+            linkId,
+            itemId,
+            at.tagId,
+            at.createdAt || now()
+          );
+        }
+      }
+    }
+  }
+
+  // Store the mapping for visit migration
+  db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('address_to_item_map', JSON.stringify(addressToItemMap));
+
+  // Mark migration as complete
+  db.prepare('INSERT OR REPLACE INTO migrations (id, status, completedAt) VALUES (?, ?, ?)').run(MIGRATION_ID, 'complete', Date.now());
+  DEBUG && console.log('main', `Migrated addresses to items: ${createdCount} created, ${mergedCount} merged`);
+}
+
+/**
+ * Migrate visits from visits table to item_visits table.
+ * Uses the address_to_item_map created by migrateAllAddressesToItems().
+ * Preserves visit chaining (prevId/nextId).
+ */
+function migrateVisitsToItemVisits(): void {
+  if (!db) return;
+
+  const MIGRATION_ID = 'visits_to_item_visits_v1';
+
+  // Check if already migrated
+  const migrationRecord = db.prepare('SELECT * FROM migrations WHERE id = ?').get(MIGRATION_ID) as { status: string } | undefined;
+  if (migrationRecord && migrationRecord.status === 'complete') {
+    DEBUG && console.log('main', 'Visits to item_visits migration already complete');
+    return;
+  }
+
+  // Load address → item mapping
+  const mapRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('address_to_item_map') as { value: string } | undefined;
+  if (!mapRow) {
+    DEBUG && console.log('main', 'No address_to_item_map found, skipping visit migration');
+    db.prepare('INSERT OR REPLACE INTO migrations (id, status, completedAt) VALUES (?, ?, ?)').run(MIGRATION_ID, 'complete', Date.now());
+    return;
+  }
+
+  const addressToItemMap: Record<string, string> = JSON.parse(mapRow.value);
+
+  // Get all visits
+  const allVisits = db.prepare('SELECT * FROM visits ORDER BY timestamp ASC').all() as Visit[];
+
+  if (allVisits.length === 0) {
+    db.prepare('INSERT OR REPLACE INTO migrations (id, status, completedAt) VALUES (?, ?, ?)').run(MIGRATION_ID, 'complete', Date.now());
+    DEBUG && console.log('main', 'No visits to migrate');
+    return;
+  }
+
+  DEBUG && console.log('main', `Migrating ${allVisits.length} visits to item_visits table`);
+
+  // Build old visit.id → new item_visit.id mapping for chaining
+  const visitIdMap: Record<string, string> = {};
+  let migratedCount = 0;
+  let skippedCount = 0;
+
+  // First pass: create all item_visits without chaining
+  for (const visit of allVisits) {
+    const itemId = addressToItemMap[visit.addressId];
+    if (!itemId) {
+      // Address wasn't migrated (shouldn't happen, but handle gracefully)
+      skippedCount++;
+      continue;
+    }
+
+    // Check if this visit was already migrated
+    const existingItemVisit = db.prepare('SELECT id FROM item_visits WHERE timestamp = ? AND itemId = ?').get(visit.timestamp, itemId);
+    if (existingItemVisit) {
+      visitIdMap[visit.id] = (existingItemVisit as { id: string }).id;
+      continue;
+    }
+
+    const itemVisitId = generateId('item_visit');
+    visitIdMap[visit.id] = itemVisitId;
+
+    db.prepare(`
+      INSERT INTO item_visits (id, itemId, timestamp, duration, source, sourceId, windowType, metadata, scrollDepth, interacted, prevId, nextId)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
+    `).run(
+      itemVisitId,
+      itemId,
+      visit.timestamp,
+      visit.duration || 0,
+      visit.source || 'direct',
+      visit.sourceId || '',
+      visit.windowType || 'main',
+      visit.metadata || '{}',
+      visit.scrollDepth || 0,
+      visit.interacted || 0
+    );
+
+    migratedCount++;
+  }
+
+  // Second pass: update chaining (prevId/nextId)
+  for (const visit of allVisits) {
+    const newVisitId = visitIdMap[visit.id];
+    if (!newVisitId) continue;
+
+    const newPrevId = visit.prevId ? visitIdMap[visit.prevId] : null;
+    const newNextId = visit.nextId ? visitIdMap[visit.nextId] : null;
+
+    if (newPrevId || newNextId) {
+      db.prepare('UPDATE item_visits SET prevId = ?, nextId = ? WHERE id = ?').run(
+        newPrevId || null,
+        newNextId || null,
+        newVisitId
+      );
+    }
+  }
+
+  // Calculate initial frecency scores for all URL items
+  const urlItems = db.prepare('SELECT id FROM items WHERE type = ? AND deletedAt = 0').all('url') as { id: string }[];
+  for (const item of urlItems) {
+    const visits = db.prepare('SELECT timestamp, interacted, source FROM item_visits WHERE itemId = ?').all(item.id) as Array<{ timestamp: number; interacted: number; source: string }>;
+    const frecencyScore = calculateItemFrecency(visits);
+    db.prepare('UPDATE items SET frecencyScore = ? WHERE id = ?').run(frecencyScore, item.id);
+  }
+
+  // Mark migration as complete
+  db.prepare('INSERT OR REPLACE INTO migrations (id, status, completedAt) VALUES (?, ?, ?)').run(MIGRATION_ID, 'complete', Date.now());
+  DEBUG && console.log('main', `Migrated ${migratedCount} visits to item_visits, skipped ${skippedCount}, calculated frecency for ${urlItems.length} items`);
 }
 
 // ==================== Version Check ====================
@@ -1619,9 +1997,39 @@ export function queryItems(filter: ItemFilter = {}): Item[] {
     conditions.push('archived = ?');
     values.push(filter.archived);
   }
+  if (filter.domain) {
+    conditions.push('domain = ?');
+    values.push(filter.domain);
+  }
+  if (filter.search) {
+    // Search in content (URL), title, and domain
+    conditions.push('(content LIKE ? OR title LIKE ? OR domain LIKE ?)');
+    const searchPattern = `%${filter.search}%`;
+    values.push(searchPattern, searchPattern, searchPattern);
+  }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-  const orderBy = filter.sortBy === 'updated' ? 'updatedAt DESC' : 'createdAt DESC';
+
+  // Support multiple sort options
+  let orderBy: string;
+  switch (filter.sortBy) {
+    case 'frecency':
+      orderBy = 'frecencyScore DESC, lastVisitAt DESC';
+      break;
+    case 'lastVisit':
+      orderBy = 'lastVisitAt DESC';
+      break;
+    case 'visitCount':
+      orderBy = 'visitCount DESC';
+      break;
+    case 'updated':
+      orderBy = 'updatedAt DESC';
+      break;
+    case 'created':
+    default:
+      orderBy = 'createdAt DESC';
+  }
+
   const limit = filter.limit ? `LIMIT ${filter.limit}` : '';
 
   return getDb().prepare(
@@ -1694,4 +2102,325 @@ export function getItemsByTag(tagId: string): Item[] {
     JOIN item_tags it ON i.id = it.itemId
     WHERE it.tagId = ? AND i.deletedAt = 0
   `).all(tagId) as Item[];
+}
+
+// ==================== Item Visit Operations ====================
+
+/**
+ * Record a visit to an item. Updates visit stats and frecency score.
+ */
+export function recordItemVisit(itemId: string, options: ItemVisitOptions = {}): { id: string } {
+  const visitId = generateId('item_visit');
+  const timestamp = options.timestamp || now();
+  const d = getDb();
+
+  // Find the most recent item visit for chaining
+  const prevVisit = d.prepare('SELECT id FROM item_visits ORDER BY timestamp DESC LIMIT 1').get() as { id: string } | undefined;
+  const prevId = prevVisit ? prevVisit.id : null;
+
+  d.prepare(`
+    INSERT INTO item_visits (id, itemId, timestamp, duration, source, sourceId, windowType, metadata, scrollDepth, interacted, prevId, nextId)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+  `).run(
+    visitId,
+    itemId,
+    timestamp,
+    options.duration || 0,
+    options.source || 'direct',
+    options.sourceId || '',
+    options.windowType || 'main',
+    options.metadata || '{}',
+    options.scrollDepth || 0,
+    options.interacted || 0,
+    prevId
+  );
+
+  // Update nextId on the previous visit
+  if (prevId) {
+    d.prepare('UPDATE item_visits SET nextId = ? WHERE id = ?').run(visitId, prevId);
+  }
+
+  // Update item visit stats and recalculate frecency
+  updateItemVisitStats(itemId);
+
+  return { id: visitId };
+}
+
+/**
+ * Get visits for an item with optional filters
+ */
+export function getItemVisits(itemId: string, filter: ItemVisitFilter = {}): ItemVisit[] {
+  let sql = 'SELECT * FROM item_visits WHERE itemId = ?';
+  const params: (string | number)[] = [itemId];
+
+  if (filter.source) {
+    sql += ' AND source = ?';
+    params.push(filter.source);
+  }
+  if (filter.since) {
+    sql += ' AND timestamp >= ?';
+    params.push(filter.since);
+  }
+  if (filter.until) {
+    sql += ' AND timestamp <= ?';
+    params.push(filter.until);
+  }
+
+  sql += ' ORDER BY timestamp DESC';
+
+  if (filter.limit) {
+    sql += ' LIMIT ?';
+    params.push(filter.limit);
+  }
+
+  return getDb().prepare(sql).all(...params) as ItemVisit[];
+}
+
+/**
+ * Query item visits across all items
+ */
+export function queryItemVisits(filter: ItemVisitFilter = {}): ItemVisit[] {
+  let sql = 'SELECT * FROM item_visits WHERE 1=1';
+  const params: (string | number)[] = [];
+
+  if (filter.itemId) {
+    sql += ' AND itemId = ?';
+    params.push(filter.itemId);
+  }
+  if (filter.source) {
+    sql += ' AND source = ?';
+    params.push(filter.source);
+  }
+  if (filter.since) {
+    sql += ' AND timestamp >= ?';
+    params.push(filter.since);
+  }
+  if (filter.until) {
+    sql += ' AND timestamp <= ?';
+    params.push(filter.until);
+  }
+
+  sql += ' ORDER BY timestamp DESC';
+
+  if (filter.limit) {
+    sql += ' LIMIT ?';
+    params.push(filter.limit);
+  }
+
+  return getDb().prepare(sql).all(...params) as ItemVisit[];
+}
+
+/**
+ * Update visit count, lastVisitAt, and frecency score for an item
+ */
+export function updateItemVisitStats(itemId: string): void {
+  const d = getDb();
+  const timestamp = now();
+
+  // Get all visits for this item
+  const visits = d.prepare('SELECT timestamp, interacted, source FROM item_visits WHERE itemId = ?').all(itemId) as Array<{ timestamp: number; interacted: number; source: string }>;
+
+  const visitCount = visits.length;
+  const lastVisitAt = visits.length > 0 ? Math.max(...visits.map(v => v.timestamp)) : 0;
+  const frecencyScore = calculateItemFrecency(visits);
+
+  d.prepare('UPDATE items SET visitCount = ?, lastVisitAt = ?, frecencyScore = ?, updatedAt = ? WHERE id = ?').run(
+    visitCount,
+    lastVisitAt,
+    frecencyScore,
+    timestamp,
+    itemId
+  );
+}
+
+/**
+ * Unified entry point for tracking navigation.
+ * Finds or creates an item for the URL, then records a visit.
+ * This is the main API for tracking page loads.
+ */
+export function trackNavigation(uri: string, options: {
+  source?: string;
+  sourceId?: string;
+  windowType?: string;
+  title?: string;
+  favicon?: string;
+  interacted?: number;
+} = {}): { visitId: string; itemId: string; created: boolean } {
+  const normalizedUri = normalizeUrl(uri);
+  const parsed = parseUrl(normalizedUri);
+  const d = getDb();
+  let created = false;
+
+  // Find existing item by URL
+  const existing = d.prepare('SELECT id FROM items WHERE type = ? AND content = ? AND deletedAt = 0').get('url', normalizedUri) as { id: string } | undefined;
+
+  let itemId: string;
+  if (existing) {
+    itemId = existing.id;
+    // Update title/favicon if provided and item is missing them
+    const updates: string[] = [];
+    const values: unknown[] = [];
+
+    if (options.title) {
+      updates.push('title = CASE WHEN title = \'\' OR title IS NULL THEN ? ELSE title END');
+      values.push(options.title);
+    }
+    if (options.favicon) {
+      updates.push('favicon = CASE WHEN favicon = \'\' OR favicon IS NULL THEN ? ELSE favicon END');
+      values.push(options.favicon);
+    }
+
+    if (updates.length > 0) {
+      values.push(itemId);
+      d.prepare(`UPDATE items SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    }
+  } else {
+    // Create new item for this URL
+    itemId = generateId('item');
+    const timestamp = now();
+    created = true;
+
+    const metadata: Record<string, unknown> = {};
+    if (options.title) metadata.title = options.title;
+    if (options.favicon) metadata.favicon = options.favicon;
+
+    d.prepare(`
+      INSERT INTO items (id, type, content, mimeType, metadata, syncId, syncSource, createdAt, updatedAt, deletedAt, starred, archived, visitCount, lastVisitAt, frecencyScore, title, domain, favicon)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, 0, ?, ?, ?)
+    `).run(
+      itemId,
+      'url',
+      normalizedUri,
+      'text/html',
+      JSON.stringify(metadata),
+      '',
+      '',
+      timestamp,
+      timestamp,
+      options.title || '',
+      parsed.domain,
+      options.favicon || ''
+    );
+  }
+
+  // Record the visit
+  const visit = recordItemVisit(itemId, {
+    source: options.source || 'window',
+    sourceId: options.sourceId || '',
+    windowType: options.windowType || 'main',
+    interacted: options.interacted || 0,
+  });
+
+  // Also track in legacy visits table for backward compatibility
+  // (This ensures old code that queries addresses/visits still works)
+  const addressResult = d.prepare('SELECT id FROM addresses WHERE uri = ?').get(normalizedUri) as { id: string } | undefined;
+  if (addressResult) {
+    addVisit(addressResult.id, {
+      source: options.source || 'window',
+      sourceId: options.sourceId || '',
+      windowType: options.windowType || 'main',
+    });
+  }
+
+  return { visitId: visit.id, itemId, created };
+}
+
+/**
+ * Query items by frecency, optimized for history/omnibox use cases.
+ * Returns URL items sorted by frecency score.
+ */
+export function queryItemsByFrecency(filter: {
+  search?: string;
+  domain?: string;
+  limit?: number;
+  since?: number;
+} = {}): Item[] {
+  const conditions: string[] = ['type = ?', 'deletedAt = 0'];
+  const values: unknown[] = ['url'];
+
+  if (filter.search) {
+    conditions.push('(content LIKE ? OR title LIKE ? OR domain LIKE ?)');
+    const searchPattern = `%${filter.search}%`;
+    values.push(searchPattern, searchPattern, searchPattern);
+  }
+  if (filter.domain) {
+    conditions.push('domain = ?');
+    values.push(filter.domain);
+  }
+  if (filter.since) {
+    conditions.push('lastVisitAt >= ?');
+    values.push(filter.since);
+  }
+
+  const whereClause = `WHERE ${conditions.join(' AND ')}`;
+  const limit = filter.limit ? `LIMIT ${filter.limit}` : 'LIMIT 50';
+
+  return getDb().prepare(
+    `SELECT * FROM items ${whereClause} ORDER BY frecencyScore DESC, lastVisitAt DESC ${limit}`
+  ).all(...values) as Item[];
+}
+
+/**
+ * Backward compatibility: query addresses and transform to Address shape.
+ * This wraps queryItems for code that still uses the old address API.
+ */
+export function queryAddressesCompat(filter: AddressFilter = {}): Address[] {
+  // Map address filter to item filter
+  const itemFilter: ItemFilter = {
+    type: 'url',
+  };
+
+  if (filter.starred !== undefined) {
+    itemFilter.starred = filter.starred;
+  }
+  if (filter.domain) {
+    itemFilter.domain = filter.domain;
+  }
+  if (filter.limit) {
+    itemFilter.limit = filter.limit;
+  }
+
+  // Map sortBy
+  switch (filter.sortBy) {
+    case 'lastVisit':
+      itemFilter.sortBy = 'lastVisit';
+      break;
+    case 'visitCount':
+      itemFilter.sortBy = 'visitCount';
+      break;
+    case 'created':
+    default:
+      itemFilter.sortBy = 'created';
+  }
+
+  const items = queryItems(itemFilter);
+
+  // Transform items to Address shape
+  return items.map(item => {
+    const parsed = parseUrl(item.content || '');
+    let metadata: Record<string, unknown> = {};
+    try {
+      metadata = typeof item.metadata === 'string' ? JSON.parse(item.metadata) : item.metadata || {};
+    } catch { /* ignore */ }
+
+    return {
+      id: item.id,
+      uri: item.content || '',
+      protocol: parsed.protocol,
+      domain: item.domain || parsed.domain,
+      path: parsed.path,
+      title: item.title || (metadata.title as string) || '',
+      mimeType: item.mimeType || 'text/html',
+      favicon: item.favicon || (metadata.favicon as string) || '',
+      description: (metadata.description as string) || '',
+      tags: '',
+      metadata: item.metadata,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+      lastVisitAt: item.lastVisitAt,
+      visitCount: item.visitCount,
+      starred: item.starred,
+      archived: item.archived,
+    };
+  });
 }

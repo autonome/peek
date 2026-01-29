@@ -43,6 +43,12 @@ import {
   untagItem,
   getItemTags,
   getItemsByTag,
+  // Item visit operations (URL history unification)
+  recordItemVisit,
+  getItemVisits,
+  queryItemVisits,
+  trackNavigation,
+  queryItemsByFrecency,
   // History operations
   trackWindowLoad,
   getHistory,
@@ -537,6 +543,57 @@ export function registerDatastoreHandlers(): void {
   ipcMain.handle('datastore-get-history', async (ev, data = {}) => {
     try {
       const result = getHistory(data.filter);
+      return { success: true, data: result };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // Item visit operations (URL history unification)
+  ipcMain.handle('datastore-record-item-visit', async (ev, data) => {
+    try {
+      const result = recordItemVisit(data.itemId, data.options);
+      return { success: true, data: result };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  ipcMain.handle('datastore-get-item-visits', async (ev, data) => {
+    try {
+      const result = getItemVisits(data.itemId, data.filter);
+      return { success: true, data: result };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  ipcMain.handle('datastore-query-item-visits', async (ev, data = {}) => {
+    try {
+      const result = queryItemVisits(data.filter);
+      return { success: true, data: result };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  ipcMain.handle('datastore-track-navigation', async (ev, data) => {
+    try {
+      const result = trackNavigation(data.uri, data.options);
+      return { success: true, data: result };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  ipcMain.handle('datastore-query-items-by-frecency', async (ev, data = {}) => {
+    try {
+      const result = queryItemsByFrecency(data.filter);
       return { success: true, data: result };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

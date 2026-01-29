@@ -106,6 +106,48 @@ export interface Item {
   archived: number;
   visitCount: number;
   lastVisitAt: number;
+  // Local-only columns for URL history unification (not synced)
+  frecencyScore: number;
+  title: string;
+  domain: string;
+  favicon: string;
+}
+
+// Visit record for item_visits table (local-only, not synced)
+export interface ItemVisit {
+  id: string;
+  itemId: string;
+  timestamp: number;
+  duration: number;
+  source: string;
+  sourceId: string;
+  windowType: string;
+  metadata: string;
+  scrollDepth: number;
+  interacted: number;
+  prevId: string | null;
+  nextId: string | null;
+}
+
+// Group for organizing items (future-proofing)
+export interface ItemGroup {
+  id: string;
+  name: string;
+  description: string;
+  type: string;
+  query: string;
+  metadata: string;
+  createdAt: number;
+  updatedAt: number;
+  deletedAt: number;
+}
+
+export interface ItemGroupMember {
+  id: string;
+  groupId: string;
+  itemId: string;
+  position: number;
+  createdAt: number;
 }
 
 export interface ItemTag {
@@ -239,7 +281,28 @@ export interface ItemFilter {
   archived?: number;
   includeDeleted?: boolean;
   limit?: number;
-  sortBy?: 'created' | 'updated';
+  sortBy?: 'created' | 'updated' | 'frecency' | 'lastVisit' | 'visitCount';
+  domain?: string;
+  search?: string;
+}
+
+export interface ItemVisitFilter {
+  itemId?: string;
+  source?: string;
+  since?: number;
+  until?: number;
+  limit?: number;
+}
+
+export interface ItemVisitOptions {
+  timestamp?: number;
+  duration?: number;
+  source?: string;
+  sourceId?: string;
+  windowType?: string;
+  metadata?: string;
+  scrollDepth?: number;
+  interacted?: number;
 }
 
 // ==================== Table Names ====================
@@ -257,7 +320,11 @@ export type TableName =
   | 'extension_settings'
   | 'migrations'
   | 'items'
-  | 'item_tags';
+  | 'item_tags'
+  | 'item_visits'
+  | 'item_groups'
+  | 'item_group_members'
+  | 'settings';
 
 export const tableNames: TableName[] = [
   'addresses',
@@ -272,7 +339,11 @@ export const tableNames: TableName[] = [
   'extension_settings',
   'migrations',
   'items',
-  'item_tags'
+  'item_tags',
+  'item_visits',
+  'item_groups',
+  'item_group_members',
+  'settings'
 ];
 
 // ==================== Sync Types ====================

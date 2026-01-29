@@ -8,7 +8,7 @@
  * Behind a test feature toggle (peek_history_enabled).
  */
 
-import { addItem, queryItems, getOrCreateTag, tagItem, updateItem, getItemsByTag } from './datastore.js';
+import { addItem, queryItems, getOrCreateTag, tagItem, updateItem, getItemsByTag, recordItemVisit } from './datastore.js';
 
 const CONFIG_KEY = 'peek_history_enabled';
 const HISTORY_TAG = 'from:history';
@@ -82,6 +82,7 @@ function buildHistoryMetadata(historyItem, visits) {
 
 /**
  * Add a new history item or update an existing one with fresh visit data.
+ * Also records item visits for frecency calculation.
  * Returns 'imported' | 'updated' | 'skipped'.
  */
 async function addOrUpdateHistoryItem(url, historyItem, visits, existingUrlMap) {
@@ -89,8 +90,10 @@ async function addOrUpdateHistoryItem(url, historyItem, visits, existingUrlMap) 
 
   const metadata = buildHistoryMetadata(historyItem, visits);
   const existing = existingUrlMap.get(url);
+  let itemId;
 
   if (existing) {
+    itemId = existing.id;
     // Update existing item with fresh metadata
     await updateItem(existing.id, { metadata });
     // Tag existing item so it's counted in history stats
@@ -98,25 +101,67 @@ async function addOrUpdateHistoryItem(url, historyItem, visits, existingUrlMap) 
     if (tagResult.success) {
       await tagItem(existing.id, tagResult.data.tag.id);
     }
-    return 'updated';
-  }
+  } else {
+    // Add new item
+    const result = await addItem('url', {
+      content: url,
+      metadata,
+      syncSource: 'history',
+    });
 
-  // Add new item
-  const result = await addItem('url', {
-    content: url,
-    metadata,
-    syncSource: 'history',
-  });
-
-  if (result.success) {
-    const tagResult = await getOrCreateTag(HISTORY_TAG);
-    if (tagResult.success) {
-      await tagItem(result.data.id, tagResult.data.tag.id);
+    if (result.success) {
+      itemId = result.data.id;
+      const tagResult = await getOrCreateTag(HISTORY_TAG);
+      if (tagResult.success) {
+        await tagItem(result.data.id, tagResult.data.tag.id);
+      }
+      existingUrlMap.set(url, { id: result.data.id, content: url });
     }
-    existingUrlMap.set(url, { id: result.data.id, content: url });
   }
 
-  return 'imported';
+  // Record item visits for frecency calculation
+  // This populates the item_visits table which is used for frecency scoring
+  if (itemId && visits && visits.length > 0) {
+    for (const visit of visits) {
+      // Map browser transition types to our source types
+      const source = mapTransitionToSource(visit.transition);
+      await recordItemVisit(itemId, {
+        timestamp: visit.visitTime,
+        source,
+        sourceId: visit.referringVisitId ? String(visit.referringVisitId) : '',
+        // Typed visits are considered "interacted" as they show user intent
+        interacted: visit.transition === 'typed' ? 1 : 0,
+      });
+    }
+  }
+
+  return existing ? 'updated' : 'imported';
+}
+
+/**
+ * Map Chrome's transition types to our source types
+ */
+function mapTransitionToSource(transition) {
+  switch (transition) {
+    case 'link':
+      return 'link';
+    case 'typed':
+      return 'direct';
+    case 'auto_bookmark':
+      return 'bookmark';
+    case 'auto_subframe':
+    case 'manual_subframe':
+      return 'frame';
+    case 'generated':
+    case 'auto_toplevel':
+      return 'generated';
+    case 'form_submit':
+      return 'form';
+    case 'reload':
+      return 'reload';
+    default:
+      return 'other';
+  }
 }
 
 // ==================== Import ====================

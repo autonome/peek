@@ -585,6 +585,174 @@ class MyComponent extends EventBusMixin(PeekElement) {
 
 ---
 
+## Theme System
+
+Dynamic theme registration, switching, and token inheritance.
+
+```javascript
+import {
+  registerTheme, setTheme, getTheme,
+  onThemeChange, followSystemTheme,
+  ThemeMixin
+} from 'peek://app/components/theme.js';
+
+// Built-in themes: 'light', 'dark'
+setTheme('dark');
+
+// Register custom theme (extends light by default)
+registerTheme('brand', {
+  'theme-accent': '#ff6b35',
+  'theme-bg': '#fefefe',
+  'peek-radius-md': '12px'
+});
+
+// Extend a specific theme
+registerTheme('brand-dark', {
+  'theme-accent': '#ff8c5a'
+}, { extends: 'dark' });
+
+// Listen for theme changes
+const unsubscribe = onThemeChange(({ theme, previousTheme }) => {
+  console.log(`Theme changed from ${previousTheme} to ${theme}`);
+});
+
+// Auto-follow system preference (light/dark)
+const stopFollowing = followSystemTheme();
+
+// Get/set individual tokens
+import { getToken, setToken } from 'peek://app/components/theme.js';
+const accent = getToken('theme-accent');
+setToken('theme-accent', '#00ff00');
+```
+
+### Theme API
+
+| Function | Description |
+|----------|-------------|
+| `registerTheme(name, tokens, options)` | Register a custom theme |
+| `setTheme(name, target?)` | Switch to a theme |
+| `getTheme()` | Get current theme name |
+| `getThemeTokens(name)` | Get resolved tokens (with inheritance) |
+| `getToken(name)` | Get single token value |
+| `setToken(name, value, target?)` | Set single token at runtime |
+| `onThemeChange(listener)` | Subscribe to theme changes |
+| `followSystemTheme()` | Auto-switch based on OS preference |
+| `getSystemTheme()` | Get OS color scheme preference |
+| `generateThemeCSS(name, selector?)` | Generate CSS string |
+| `injectThemeCSS(name, root, selector?)` | Inject theme into document/shadow |
+| `scopedTheme(element, tokens)` | Apply tokens to specific element |
+| `ThemeMixin(Base)` | Mixin for theme-aware components |
+
+### Available Tokens
+
+See [Design Tokens](#design-tokens) for the full list. Key theme tokens:
+
+| Token | Description |
+|-------|-------------|
+| `theme-bg` | Primary background |
+| `theme-bg-secondary` | Secondary background |
+| `theme-bg-tertiary` | Tertiary background |
+| `theme-text` | Primary text color |
+| `theme-text-secondary` | Secondary text |
+| `theme-text-muted` | Muted text |
+| `theme-accent` | Accent/brand color |
+| `theme-border` | Border color |
+| `theme-danger` | Danger/error color |
+| `theme-success` | Success color |
+| `theme-warning` | Warning color |
+
+---
+
+## Extension System
+
+Tools for extensions to register, inject styles, and create isolated component containers.
+
+```javascript
+import {
+  registerExtension,
+  initContentScript,
+  initPopup
+} from 'peek://app/components/extension.js';
+
+// Register extension with custom theme
+const ext = registerExtension('my-extension', {
+  theme: {
+    'theme-accent': '#9b59b6',
+    'peek-card-bg': '#f8f8f8'
+  }
+});
+
+// Inject styles into document
+ext.injectStyles(document);
+
+// Create isolated shadow DOM container
+const container = ext.createContainer();
+container.innerHTML = '<peek-card>...</peek-card>';
+
+// Clean up when done
+ext.destroy();
+```
+
+### Content Script Usage
+
+```javascript
+import { initContentScript } from 'peek://app/components/extension.js';
+
+// One-call setup for content scripts
+const { container, context, destroy } = initContentScript({
+  id: 'my-content-script',
+  theme: { 'theme-accent': '#e74c3c' },
+  parent: document.body,
+  render: (shadow) => {
+    shadow.innerHTML = `
+      <peek-card>
+        <span slot="header">Injected Card</span>
+        <p>Content script UI</p>
+      </peek-card>
+    `;
+  }
+});
+
+// Later: cleanup
+destroy();
+```
+
+### Popup/Sidebar Usage
+
+```javascript
+import { initPopup } from 'peek://app/components/extension.js';
+
+// Initialize popup with theming
+const context = initPopup({
+  id: 'my-popup',
+  theme: { 'theme-accent': '#3498db' }
+});
+```
+
+### Extension API
+
+| Function | Description |
+|----------|-------------|
+| `registerExtension(id, options)` | Register extension, get context |
+| `getExtension(id)` | Get existing extension context |
+| `unregisterExtension(id)` | Unregister and cleanup |
+| `initContentScript(config)` | Quick setup for content scripts |
+| `initPopup(config)` | Quick setup for popups/sidebars |
+| `injectStyles(root, options)` | Inject component styles |
+| `createContainer(options)` | Create isolated container |
+
+### ExtensionContext Methods
+
+| Method | Description |
+|--------|-------------|
+| `injectStyles(root, options)` | Inject styles into document/shadow |
+| `createContainer(options)` | Create scoped shadow DOM container |
+| `setToken(name, value)` | Override token in all containers |
+| `getTokens()` | Get resolved theme tokens |
+| `destroy()` | Clean up all resources |
+
+---
+
 ## Complex Components
 
 ### `<peek-carousel>`

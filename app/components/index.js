@@ -35,6 +35,26 @@ export { DataBoundElement, DataBindingMixin, createDataComponent } from './data-
 // Event bus
 export { bus, on, once, emit, channel, typedEvent, waitFor, EventBusMixin } from './events.js';
 
+// Theming
+export {
+  registerTheme, unregisterTheme, getThemeNames,
+  setTheme, getTheme, applyTheme, clearTheme,
+  getThemeTokens, getToken, setToken,
+  generateThemeCSS, injectThemeCSS, scopedTheme,
+  onThemeChange, ThemeMixin,
+  getSystemTheme, followSystemTheme,
+  defaultTokens, darkTokens
+} from './theme.js';
+
+// Extension system
+export {
+  registerExtension, getExtension, unregisterExtension, getExtensionIds,
+  ExtensionContext,
+  registerComponentStyles, getComponentStyles, generateComponentCSS,
+  injectStyles, createContainer,
+  initContentScript, initPopup
+} from './extension.js';
+
 // Components - Basic
 export { PeekButton } from './peek-button.js';
 export { PeekCard } from './peek-card.js';

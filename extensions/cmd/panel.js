@@ -95,6 +95,49 @@ loadAdaptiveData().then(data => {
   log('cmd:panel', 'Loaded adaptive data');
 });
 
+// Current command context (mode, target window, etc.)
+// Loaded asynchronously when panel opens
+let commandContext = null;
+
+/**
+ * Load the current command context (target window, mode state)
+ * Called when panel becomes visible
+ */
+const loadCommandContext = async () => {
+  try {
+    const result = await api.modes.getCommandContext();
+    if (result.success) {
+      commandContext = result.data;
+      log('cmd:panel', 'Loaded command context:', commandContext);
+    }
+  } catch (err) {
+    log.error('cmd:panel', 'Failed to load command context:', err);
+    commandContext = null;
+  }
+};
+
+/**
+ * Check if a command is available in the current context
+ * Based on mode requirements and scope
+ */
+function isCommandAvailable(cmd) {
+  if (!cmd) return false;
+
+  // Commands without mode restrictions are always available
+  if (!cmd.modes || cmd.modes.length === 0) {
+    return true;
+  }
+
+  // If no context loaded, show all commands
+  if (!commandContext || !commandContext.mode) {
+    return true;
+  }
+
+  // Check if current major mode is in the command's allowed modes
+  const currentMajorMode = commandContext.mode.major;
+  return cmd.modes.includes(currentMajorMode);
+}
+
 // Window sizing constants
 const COLLAPSED_HEIGHT = 60;  // Just the command bar
 const EXPANDED_HEIGHT = 400;  // With results/preview
@@ -180,7 +223,7 @@ async function render() {
   }, 50);
 
   // Reset state when panel becomes visible (handles keepLive reuse)
-  document.addEventListener('visibilitychange', () => {
+  document.addEventListener('visibilitychange', async () => {
     if (!document.hidden) {
       // Reset execution state when panel is shown
       hideExecutionState();
@@ -194,8 +237,13 @@ async function render() {
       }
       // Reset showResults
       state.showResults = false;
+      // Load current command context (mode, target window)
+      await loadCommandContext();
     }
   });
+
+  // Load command context on initial render
+  loadCommandContext();
 
   // Chain cancel button handler
   const chainCancelBtn = document.getElementById('chain-cancel');
@@ -1049,6 +1097,9 @@ async function shutdown() {
 
 /**
  * Finds commands matching the typed text
+ * Filters based on:
+ * 1. Text matching (command name contains typed text)
+ * 2. Mode availability (command's mode requirements match current mode)
  */
 function findMatchingCommands(text) {
   log('cmd:panel', 'findMatchingCommands', text, Object.keys(state.commands).length);
@@ -1068,6 +1119,13 @@ function findMatchingCommands(text) {
 
   // Iterate over all commands, searching for matches
   for (const name of Object.keys(state.commands)) {
+    const cmd = state.commands[name];
+
+    // Check mode availability first
+    if (!isCommandAvailable(cmd)) {
+      continue;
+    }
+
     // Match when:
     // 1. typed string is anywhere in a command name
     // 2. command name is at beginning of typed string (for commands with parameters)
@@ -1333,10 +1391,19 @@ function updateResultsUI() {
       item.appendChild(descSpan);
     }
 
-    // Add badges for chaining capabilities (only show in chain mode or if command has outputs)
-    if (cmd && (state.chainMode || (cmd.produces && cmd.produces.length > 0))) {
+    // Add badges for scope, modes, and chaining capabilities
+    if (cmd) {
       const badgesSpan = document.createElement('span');
       badgesSpan.className = 'cmd-badges';
+
+      // Show scope badge (window/page commands are more specific)
+      if (cmd.scope && cmd.scope !== 'global') {
+        const scopeBadge = document.createElement('span');
+        scopeBadge.className = 'cmd-badge cmd-badge-scope';
+        scopeBadge.textContent = cmd.scope === 'window' ? '⊞' : '⧉'; // window or page icon
+        scopeBadge.title = cmd.scope === 'window' ? 'Window command' : 'Page command';
+        badgesSpan.appendChild(scopeBadge);
+      }
 
       // Show what the command accepts (in chain mode)
       if (state.chainMode && cmd.accepts && cmd.accepts.length > 0) {

@@ -627,10 +627,10 @@ class PeekDropdown extends LitElement {
    - Usage examples
 
 **Phase 5: Extension Distribution**
-1. Module Federation or shared `.js` bundle
-2. Component registry API
-3. Hot-reload for development
-4. Version management for stability
+1. Bundle configuration for ESM distribution (esbuild, rollup, vite compatible)
+2. Component registry API with lazy loading and dependency tracking
+3. Development utilities with hot-reload support
+4. Version management with semantic versioning and migration support
 
 ---
 

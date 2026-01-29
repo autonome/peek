@@ -55,6 +55,30 @@ export {
   initContentScript, initPopup
 } from './extension.js';
 
+// Component registry
+export {
+  registry, defineComponent, undefineComponent,
+  hasComponent, getComponent, getComponentNames,
+  loadComponent, loadComponents, preloadComponents,
+  whenDefined, createElement
+} from './registry.js';
+
+// Version management
+export {
+  version, LIBRARY_VERSION,
+  parseVersion, compareVersions, satisfies,
+  checkCompatibility, isDeprecated,
+  getChangelog, getBreakingChanges,
+  registerMigration, migrate, requireVersion
+} from './version.js';
+
+// Bundle configuration (for build tools)
+export {
+  MODULES, PRESETS,
+  getEntryPoints, getDependencyGraph,
+  generateImportMap, bundleConfig
+} from './bundle.js';
+
 // Components - Basic
 export { PeekButton } from './peek-button.js';
 export { PeekCard } from './peek-card.js';

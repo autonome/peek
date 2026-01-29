@@ -1892,3 +1892,224 @@ peek-dialog::part(backdrop) {
 6. **Cleanup resources** - Call `destroy()` on extension contexts when unloading to prevent memory leaks.
 
 7. **Keyboard navigation** - All interactive components support keyboard navigation out of the box.
+
+---
+
+## Component Registry
+
+Dynamic component registration, lazy loading, and dependency management.
+
+```javascript
+import {
+  registry, defineComponent, loadComponent,
+  createElement, whenDefined
+} from 'peek://app/components/registry.js';
+
+// Check registry stats
+console.log(registry.stats());
+// { version: '1.0.0', total: 22, pending: 22, loading: 0, loaded: 0, error: 0 }
+
+// Load a component on demand
+await loadComponent('peek-dialog');
+
+// Load multiple components
+await loadComponents(['peek-button', 'peek-card', 'peek-list']);
+
+// Preload components without waiting
+preloadComponents(['peek-drawer', 'peek-tabs']);
+
+// Wait for component to be defined
+const PeekButton = await whenDefined('peek-button');
+
+// Create element with initial props
+const button = await createElement('peek-button', {
+  variant: 'primary',
+  loading: true
+});
+document.body.appendChild(button);
+
+// Register custom component
+defineComponent('my-widget', {
+  version: '1.0.0',
+  module: () => import('./my-widget.js'),
+  dependencies: ['peek-card', 'peek-button']
+});
+```
+
+### Registry API
+
+| Function | Description |
+|----------|-------------|
+| `defineComponent(name, def)` | Register a component |
+| `undefineComponent(name)` | Unregister a component |
+| `hasComponent(name)` | Check if registered |
+| `getComponent(name)` | Get component definition |
+| `loadComponent(name)` | Load component and dependencies |
+| `loadComponents(names)` | Load multiple components |
+| `preloadComponents(names)` | Preload without waiting |
+| `whenDefined(name, timeout?)` | Wait for component definition |
+| `createElement(name, props)` | Create and configure element |
+
+---
+
+## Version Management
+
+Semantic versioning, compatibility checking, and migrations.
+
+```javascript
+import {
+  version, LIBRARY_VERSION,
+  checkCompatibility, satisfies,
+  getChangelog, getBreakingChanges,
+  registerMigration, migrate
+} from 'peek://app/components/version.js';
+
+// Current version
+console.log(version.current); // '1.0.0'
+
+// Check compatibility
+if (checkCompatibility('>=1.0.0')) {
+  // Safe to use current features
+}
+
+// Version constraint checking
+satisfies('1.2.3', '>=1.0.0'); // true
+satisfies('1.2.3', '^1.0.0');  // true (same major)
+satisfies('1.2.3', '~1.2.0');  // true (same major.minor)
+
+// Get changelog
+const changes = getChangelog('0.9.0', '1.0.0');
+const breaking = getBreakingChanges('0.9.0');
+
+// Register migration
+registerMigration('0.9.0', '1.0.0', async (data) => {
+  // Transform data for new version
+  return { ...data, newField: 'default' };
+});
+
+// Run migration
+const migratedData = await migrate(oldData, '0.9.0', '1.0.0');
+```
+
+---
+
+## Bundle Configuration
+
+Configuration for building distribution bundles with any ESM bundler.
+
+```javascript
+import {
+  bundleConfig, generateImportMap,
+  getEntryPoints, PRESETS
+} from 'peek://app/components/bundle.js';
+
+// Available presets
+console.log(Object.keys(PRESETS));
+// ['full', 'core', 'minimal', 'basic', 'forms', 'layout', 'interactive']
+
+// Get entry points for a preset
+const entries = getEntryPoints('forms');
+// { base: './base.js', 'peek-button': './peek-button.js', ... }
+
+// Generate import map for native ESM
+const importMap = generateImportMap('/components/', 'full');
+// { imports: { 'peek://app/components/': '/components/', ... } }
+
+// Get bundler-specific config
+const config = bundleConfig({
+  preset: 'full',
+  format: 'esm',
+  minify: true,
+  outdir: 'dist'
+});
+
+// Use with esbuild
+// esbuild.build(config.esbuild);
+
+// Use with rollup
+// rollup(config.rollup);
+
+// Use with vite
+// vite.build(config.vite);
+```
+
+### Bundle Presets
+
+| Preset | Description | Size |
+|--------|-------------|------|
+| `full` | Complete library | ~50KB |
+| `core` | Utilities only, no components | ~15KB |
+| `minimal` | Base, signals, events | ~8KB |
+| `basic` | Button, card, list | ~12KB |
+| `forms` | Form components | ~18KB |
+| `layout` | Layout components | ~20KB |
+| `interactive` | Menus and popovers | ~16KB |
+
+---
+
+## Development Tools
+
+Debugging and hot-reload utilities for development.
+
+```javascript
+// Only import in development
+import { devTools, enableDevMode, enableHotReload } from 'peek://app/components/dev.js';
+
+// Enable dev mode (adds window.__PEEK_DEV__)
+enableDevMode();
+
+// Connect to hot-reload server
+enableHotReload({
+  url: 'ws://localhost:35729/livereload',
+  reconnectDelay: 1000
+});
+
+// Inspect a component
+devTools.inspect('peek-button');
+// Logs: definition, load state, properties, attributes, shadow root
+
+// List all components
+devTools.list();
+// Table: name, state, defined, instances
+
+// Get stats
+devTools.stats();
+// { version, components, theme, extensions, devMode, hotReload }
+
+// Create scoped logger
+const log = devTools.logger('my-component');
+log.debug('Only in dev mode');
+log.time('render');
+// ... render ...
+log.timeEnd('render');
+```
+
+### Performance Profiling
+
+```javascript
+import { ProfilerMixin, startTiming, endTiming } from 'peek://app/components/dev.js';
+
+// Manual timing
+startTiming('my-operation');
+// ... operation ...
+const duration = endTiming('my-operation');
+
+// Mixin for automatic render timing
+class MyComponent extends ProfilerMixin(PeekElement) {
+  // Renders are automatically timed
+  // Warns if render takes > 16ms (one frame)
+}
+```
+
+### Console Access
+
+When dev mode is enabled, access tools via browser console:
+
+```javascript
+// In browser console
+__PEEK_DEV__.inspect('peek-card');
+__PEEK_DEV__.list();
+__PEEK_DEV__.stats();
+__PEEK_DEV__.theme.current();
+__PEEK_DEV__.registry.names();
+```

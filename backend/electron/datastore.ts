@@ -38,10 +38,11 @@ import { DATASTORE_VERSION } from '../version.js';
 import { addDeviceMetadata } from './device.js';
 
 // Load canonical schema for validation
+// Path is relative to compiled JS in dist/backend/electron/
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const SCHEMA = JSON.parse(
-  readFileSync(join(__dirname, '../../schema/v1.json'), 'utf-8')
+  readFileSync(join(__dirname, '../../../schema/v1.json'), 'utf-8')
 );
 const REQUIRED_SYNC_COLUMNS: Record<string, string[]> = SCHEMA.validation.required_sync_columns;
 
@@ -361,9 +362,8 @@ function validateSyncSchema(): void {
   const missing: string[] = [];
 
   for (const [table, cols] of Object.entries(REQUIRED_SYNC_COLUMNS)) {
-    const actual = new Set(
-      db.prepare(`PRAGMA table_info(${table})`).all().map((c: { name: string }) => c.name)
-    );
+    const rows = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    const actual = new Set(rows.map(c => c.name));
     for (const col of cols) {
       if (!actual.has(col)) {
         missing.push(`${table}.${col}`);

@@ -1008,6 +1008,367 @@ Native `<details>`/`<summary>` wrapper with styling and accordion support.
 
 ---
 
+## Phase 4 Components
+
+### `<peek-select>`
+
+Select/combobox with native and custom modes.
+
+#### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `value` | `string` | `''` | Selected value |
+| `placeholder` | `string` | `'Select...'` | Placeholder text |
+| `disabled` | `boolean` | `false` | Disable the select |
+| `required` | `boolean` | `false` | Mark as required |
+| `multiple` | `boolean` | `false` | Allow multiple (native mode only) |
+| `mode` | `'native' \| 'custom'` | `'native'` | Native `<select>` or custom Popover |
+| `options` | `Array` | `[]` | Options: strings or `{ value, label, disabled }` |
+| `name` | `string` | `''` | Form field name |
+
+#### Events
+
+| Event | Detail | Description |
+|-------|--------|-------------|
+| `change` | `{ value, option }` | When selection changes |
+
+#### Example
+
+```html
+<!-- Native select -->
+<peek-select
+  placeholder="Choose a color"
+  .options=${['Red', 'Green', 'Blue']}
+  @change=${(e) => console.log(e.detail.value)}
+></peek-select>
+
+<!-- Custom styled select -->
+<peek-select
+  mode="custom"
+  .options=${[
+    { value: 'sm', label: 'Small' },
+    { value: 'md', label: 'Medium' },
+    { value: 'lg', label: 'Large', disabled: true }
+  ]}
+></peek-select>
+```
+
+---
+
+### `<peek-dropdown>`, `<peek-dropdown-item>`, `<peek-dropdown-divider>`
+
+Action menu / context menu using Popover API.
+
+#### `<peek-dropdown>` Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `open` | `boolean` | `false` | Whether dropdown is open |
+| `position` | `'bottom-start' \| 'bottom-end' \| 'top-start' \| 'top-end'` | `'bottom-start'` | Position relative to trigger |
+| `disabled` | `boolean` | `false` | Disable the trigger |
+
+#### `<peek-dropdown-item>` Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `value` | `string` | `''` | Item value |
+| `disabled` | `boolean` | `false` | Disable this item |
+| `danger` | `boolean` | `false` | Style as destructive action |
+
+#### Slots
+
+**`<peek-dropdown>`:**
+| Slot | Description |
+|------|-------------|
+| `trigger` | Element that triggers the dropdown |
+| (default) | Menu content |
+
+**`<peek-dropdown-item>`:**
+| Slot | Description |
+|------|-------------|
+| `prefix` | Icon before label |
+| (default) | Item label |
+| `suffix` | Shortcut text after label |
+
+#### Events
+
+| Event | Detail | Description |
+|-------|--------|-------------|
+| `open` | — | When dropdown opens |
+| `close` | — | When dropdown closes |
+| `select` | `{ value, item }` | When item is selected |
+
+#### Example
+
+```html
+<peek-dropdown @select=${(e) => handleAction(e.detail.value)}>
+  <peek-button slot="trigger">Actions</peek-button>
+
+  <peek-dropdown-item value="edit">
+    <svg slot="prefix">...</svg>
+    Edit
+    <span slot="suffix">⌘E</span>
+  </peek-dropdown-item>
+  <peek-dropdown-item value="duplicate">Duplicate</peek-dropdown-item>
+  <peek-dropdown-divider></peek-dropdown-divider>
+  <peek-dropdown-item value="delete" danger>Delete</peek-dropdown-item>
+</peek-dropdown>
+```
+
+---
+
+### `<peek-switch>`
+
+Toggle switch built on native checkbox.
+
+#### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `checked` | `boolean` | `false` | Whether switch is on |
+| `disabled` | `boolean` | `false` | Disable the switch |
+| `name` | `string` | `''` | Form field name |
+| `value` | `string` | `'on'` | Form value when checked |
+| `size` | `'sm' \| 'md' \| 'lg'` | `'md'` | Switch size |
+
+#### Slots
+
+| Slot | Description |
+|------|-------------|
+| (default) | Label text |
+| `on` | Content shown when on (inside track) |
+| `off` | Content shown when off (inside track) |
+
+#### Events
+
+| Event | Detail | Description |
+|-------|--------|-------------|
+| `change` | `{ checked }` | When checked state changes |
+
+#### Methods
+
+| Method | Description |
+|--------|-------------|
+| `toggle()` | Toggle checked state |
+
+#### Example
+
+```html
+<!-- Basic switch -->
+<peek-switch @change=${(e) => setDarkMode(e.detail.checked)}>
+  Dark mode
+</peek-switch>
+
+<!-- With on/off labels -->
+<peek-switch checked>
+  <span slot="on">ON</span>
+  <span slot="off">OFF</span>
+  Notifications
+</peek-switch>
+
+<!-- Sizes -->
+<peek-switch size="sm">Small</peek-switch>
+<peek-switch size="lg">Large</peek-switch>
+```
+
+---
+
+### `<peek-drawer>`
+
+Slide-out panel using native `<dialog>`.
+
+#### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `open` | `boolean` | `false` | Whether drawer is open |
+| `position` | `'left' \| 'right' \| 'top' \| 'bottom'` | `'left'` | Slide direction |
+| `size` | `'sm' \| 'md' \| 'lg' \| 'full'` or CSS value | `'md'` | Drawer size |
+| `modal` | `boolean` | `true` | Show with backdrop |
+| `close-on-backdrop` | `boolean` | `true` | Close on backdrop click |
+| `close-on-escape` | `boolean` | `true` | Close on Escape key |
+| `contained` | `boolean` | `false` | Constrain to parent instead of viewport |
+
+#### Slots
+
+| Slot | Description |
+|------|-------------|
+| `header` | Drawer header/title |
+| (default) | Drawer content |
+| `footer` | Footer with actions |
+
+#### CSS Parts
+
+| Part | Description |
+|------|-------------|
+| `drawer` | The dialog element |
+| `header` | Header section |
+| `body` | Body section |
+| `footer` | Footer section |
+
+#### Events
+
+| Event | Detail | Description |
+|-------|--------|-------------|
+| `open` | — | When drawer opens |
+| `close` | `{ reason }` | When drawer closes (`'escape' \| 'backdrop' \| 'close' \| 'api'`) |
+
+#### Methods
+
+| Method | Description |
+|--------|-------------|
+| `show()` | Open the drawer |
+| `showModal()` | Open as modal |
+| `close()` | Close the drawer |
+
+#### Example
+
+```html
+<peek-drawer id="settingsDrawer" position="right" size="400px">
+  <span slot="header">Settings</span>
+
+  <peek-list>
+    <peek-list-item>Profile</peek-list-item>
+    <peek-list-item>Preferences</peek-list-item>
+    <peek-list-item>Security</peek-list-item>
+  </peek-list>
+
+  <div slot="footer">
+    <peek-button @click=${() => settingsDrawer.close()}>Close</peek-button>
+  </div>
+</peek-drawer>
+
+<peek-button @click=${() => settingsDrawer.show()}>Open Settings</peek-button>
+```
+
+---
+
+### `<peek-tooltip>`
+
+Hover-triggered tooltip using Popover API.
+
+#### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `content` | `string` | `''` | Tooltip text |
+| `position` | `'top' \| 'bottom' \| 'left' \| 'right'` | `'top'` | Position relative to target |
+| `delay` | `number` | `200` | Delay before showing (ms) |
+| `disabled` | `boolean` | `false` | Disable the tooltip |
+
+#### Slots
+
+| Slot | Description |
+|------|-------------|
+| (default) | Target element |
+
+#### Methods
+
+| Method | Description |
+|--------|-------------|
+| `show()` | Show tooltip immediately |
+| `hide()` | Hide tooltip |
+
+#### Example
+
+```html
+<!-- Basic tooltip -->
+<peek-tooltip content="Save your changes">
+  <peek-button>Save</peek-button>
+</peek-tooltip>
+
+<!-- Different positions -->
+<peek-tooltip content="Top" position="top">
+  <span>Hover me</span>
+</peek-tooltip>
+
+<peek-tooltip content="Right side" position="right" delay="0">
+  <span>Instant tooltip</span>
+</peek-tooltip>
+```
+
+---
+
+### `<peek-button-group>`, `<peek-button-group-item>`
+
+Segmented controls and tag sets with selection.
+
+#### `<peek-button-group>` Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `value` | `string` | `''` | Selected value (single selection) |
+| `values` | `Array` | `[]` | Selected values (multiple selection) |
+| `selection` | `'none' \| 'single' \| 'multiple'` | `'single'` | Selection mode |
+| `variant` | `'outline' \| 'ghost'` | `'outline'` | Visual style |
+| `size` | `'sm' \| 'md' \| 'lg'` | `'md'` | Button size |
+| `disabled` | `boolean` | `false` | Disable all buttons |
+
+#### `<peek-button-group-item>` Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `value` | `string` | `''` | Item value |
+| `disabled` | `boolean` | `false` | Disable this item |
+
+#### Slots
+
+**`<peek-button-group-item>`:**
+| Slot | Description |
+|------|-------------|
+| `prefix` | Icon before label |
+| (default) | Button label |
+| `suffix` | Icon after label |
+
+#### Events
+
+| Event | Detail | Description |
+|-------|--------|-------------|
+| `change` | `{ value, values }` | When selection changes |
+
+#### Methods
+
+| Method | Description |
+|--------|-------------|
+| `select(value)` | Select an item |
+| `deselect(value)` | Deselect an item |
+| `clear()` | Clear all selections |
+
+#### Example
+
+```html
+<!-- Segmented control (single selection) -->
+<peek-button-group value="day" @change=${(e) => setView(e.detail.value)}>
+  <peek-button-group-item value="day">Day</peek-button-group-item>
+  <peek-button-group-item value="week">Week</peek-button-group-item>
+  <peek-button-group-item value="month">Month</peek-button-group-item>
+</peek-button-group>
+
+<!-- Tag set (multiple selection) -->
+<peek-button-group
+  selection="multiple"
+  variant="ghost"
+  .values=${['urgent', 'work']}
+>
+  <peek-button-group-item value="urgent">Urgent</peek-button-group-item>
+  <peek-button-group-item value="work">Work</peek-button-group-item>
+  <peek-button-group-item value="personal">Personal</peek-button-group-item>
+</peek-button-group>
+
+<!-- With icons -->
+<peek-button-group selection="single" size="sm">
+  <peek-button-group-item value="list">
+    <svg slot="prefix">...</svg>
+  </peek-button-group-item>
+  <peek-button-group-item value="grid">
+    <svg slot="prefix">...</svg>
+  </peek-button-group-item>
+</peek-button-group>
+```
+
+---
+
 ## Browser Support
 
 Components use modern CSS and HTML features:

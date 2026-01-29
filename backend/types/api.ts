@@ -25,11 +25,104 @@ export enum ApiScope {
   GLOBAL = 3
 }
 
+// ==================== Command Scopes ====================
+
+/**
+ * Command scope determines where a command applies:
+ * - 'global': Applies to the entire app (e.g., quit, settings)
+ * - 'window': Applies to a specific window (e.g., theme for window)
+ * - 'page': Applies to specific page content (e.g., bookmark this page)
+ */
+export type CommandScope = 'global' | 'window' | 'page';
+
+// ==================== Modes ====================
+
+/**
+ * Major modes define the primary context for user interaction.
+ * Only one major mode can be active per window at a time.
+ * Inspired by Emacs major modes.
+ */
+export type MajorModeId = 'page' | 'group' | 'settings' | 'default';
+
+/**
+ * Minor modes are optional features that can be combined.
+ * Multiple minor modes can be active simultaneously.
+ * Inspired by Emacs minor modes.
+ */
+export type MinorModeId = 'preview' | 'edit' | 'annotate' | 'search';
+
+/**
+ * Mode metadata for display and behavior
+ */
+export interface ModeInfo {
+  id: MajorModeId | MinorModeId;
+  name: string;
+  description?: string;
+  /** Whether this is a major (exclusive) or minor (stackable) mode */
+  type: 'major' | 'minor';
+}
+
+/**
+ * Current mode state for a window
+ */
+export interface WindowModeState {
+  /** Current major mode */
+  major: MajorModeId;
+  /** Active minor modes */
+  minors: MinorModeId[];
+}
+
+/**
+ * Context passed to canExecute and mode-conditional functions
+ */
+export interface CommandContext {
+  /** ID of the target window (null for global commands) */
+  windowId: number | null;
+  /** Current mode state of the target window */
+  mode: WindowModeState | null;
+  /** URL of the target window */
+  url: string | null;
+  /** Title of the target window */
+  title: string | null;
+  /** Whether a page/content is selected */
+  hasSelection: boolean;
+}
+
+/**
+ * Modes API for querying and changing modes
+ */
+export interface IModesApi {
+  /** Get the current mode state for a window */
+  getWindowMode(windowId?: number | null): Promise<ApiResult<WindowModeState>>;
+
+  /** Set the major mode for a window */
+  setMajorMode(mode: MajorModeId, windowId?: number | null): Promise<ApiResult<void>>;
+
+  /** Enable a minor mode for a window */
+  enableMinorMode(mode: MinorModeId, windowId?: number | null): Promise<ApiResult<void>>;
+
+  /** Disable a minor mode for a window */
+  disableMinorMode(mode: MinorModeId, windowId?: number | null): Promise<ApiResult<void>>;
+
+  /** Toggle a minor mode for a window */
+  toggleMinorMode(mode: MinorModeId, windowId?: number | null): Promise<ApiResult<boolean>>;
+
+  /** Get all available modes */
+  listModes(): Promise<ApiResult<ModeInfo[]>>;
+
+  /** Subscribe to mode changes for a window */
+  onModeChange(callback: (state: WindowModeState, windowId: number) => void): void;
+}
+
 // ==================== Shortcuts ====================
 
 export interface ShortcutOptions {
   /** If true, shortcut works even when app doesn't have focus */
   global?: boolean;
+  /** Only trigger shortcut when in this major mode */
+  mode?: MajorModeId;
+  /** Only trigger shortcut when these minor modes are active */
+  minorModes?: MinorModeId[];
 }
 
 export interface IShortcutsApi {
@@ -37,7 +130,7 @@ export interface IShortcutsApi {
    * Register a keyboard shortcut
    * @param shortcut - Key combination (e.g., 'Alt+1', 'CommandOrControl+Q')
    * @param callback - Function called when shortcut is triggered
-   * @param options - Optional configuration
+   * @param options - Optional configuration (global, mode conditions)
    */
   register(shortcut: string, callback: () => void, options?: ShortcutOptions): void;
 
@@ -238,6 +331,12 @@ export interface IDatastoreApi {
 export interface Command {
   name: string;
   description?: string;
+  /** Command scope: 'global' (app-wide), 'window' (target window), 'page' (page content) */
+  scope?: CommandScope;
+  /** Required major mode(s) for this command to be available */
+  modes?: MajorModeId[];
+  /** Guard function - return false to disable command in current context */
+  canExecute?: (context: CommandContext) => boolean | Promise<boolean>;
   execute: (msg?: unknown) => void | Promise<void>;
 }
 
@@ -245,6 +344,12 @@ export interface CommandInfo {
   name: string;
   description: string;
   source: string;
+  /** Command scope */
+  scope: CommandScope;
+  /** Required major modes (empty = available in all modes) */
+  modes: MajorModeId[];
+  /** Whether the command can execute in current context */
+  canExecute?: boolean;
 }
 
 export interface ICommandsApi {
@@ -256,6 +361,12 @@ export interface ICommandsApi {
 
   /** Get all registered commands */
   getAll(): Promise<CommandInfo[]>;
+
+  /** Get command context for current state */
+  getContext(): Promise<ApiResult<CommandContext>>;
+
+  /** Check if a command can execute in current context */
+  canExecute(name: string): Promise<boolean>;
 }
 
 // ==================== PubSub ====================
@@ -407,6 +518,9 @@ export interface IPeekApi {
 
   /** Escape key handling */
   escape: IEscapeApi;
+
+  /** Modes API for context-aware commands */
+  modes: IModesApi;
 }
 
 // Declare global for TypeScript

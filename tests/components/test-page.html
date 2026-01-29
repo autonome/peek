@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Peek Components Test Page</title>
+  <style>
+    :root {
+      --theme-bg: #ffffff;
+      --theme-bg-secondary: #fafafa;
+      --theme-bg-tertiary: #f5f5f5;
+      --theme-text: #333333;
+      --theme-text-secondary: #666666;
+      --theme-text-muted: #999999;
+      --theme-accent: #007aff;
+      --theme-border: #e0e0e0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 20px;
+      background: var(--theme-bg);
+      color: var(--theme-text);
+    }
+    .test-section {
+      margin-bottom: 40px;
+      padding: 20px;
+      border: 1px solid var(--theme-border);
+      border-radius: 8px;
+    }
+    .test-section h2 {
+      margin-top: 0;
+      margin-bottom: 16px;
+      font-size: 18px;
+    }
+    .test-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Peek Components Test Page</h1>
+
+  <!-- Button Tests -->
+  <section class="test-section" id="button-tests">
+    <h2>peek-button</h2>
+    <div class="test-row">
+      <peek-button id="btn-default">Default</peek-button>
+      <peek-button id="btn-primary" variant="primary">Primary</peek-button>
+      <peek-button id="btn-secondary" variant="secondary">Secondary</peek-button>
+      <peek-button id="btn-ghost" variant="ghost">Ghost</peek-button>
+      <peek-button id="btn-danger" variant="danger">Danger</peek-button>
+    </div>
+    <div class="test-row">
+      <peek-button id="btn-sm" size="sm">Small</peek-button>
+      <peek-button id="btn-md" size="md">Medium</peek-button>
+      <peek-button id="btn-lg" size="lg">Large</peek-button>
+    </div>
+    <div class="test-row">
+      <peek-button id="btn-disabled" disabled>Disabled</peek-button>
+      <peek-button id="btn-loading" loading>Loading</peek-button>
+    </div>
+  </section>
+
+  <!-- Card Tests -->
+  <section class="test-section" id="card-tests">
+    <h2>peek-card</h2>
+    <div class="test-row">
+      <peek-card id="card-basic">
+        <span slot="header">Card Header</span>
+        <p>Card body content</p>
+        <span slot="footer">Card Footer</span>
+      </peek-card>
+      <peek-card id="card-interactive" interactive>
+        <span slot="header">Interactive Card</span>
+        <p>Click me</p>
+      </peek-card>
+      <peek-card id="card-selected" selected>
+        <span slot="header">Selected Card</span>
+        <p>I'm selected</p>
+      </peek-card>
+    </div>
+  </section>
+
+  <!-- List Tests -->
+  <section class="test-section" id="list-tests">
+    <h2>peek-list</h2>
+    <peek-list id="list-single" selection="single">
+      <peek-list-item value="item1">Item 1</peek-list-item>
+      <peek-list-item value="item2">Item 2</peek-list-item>
+      <peek-list-item value="item3" disabled>Item 3 (disabled)</peek-list-item>
+    </peek-list>
+  </section>
+
+  <!-- Input Tests -->
+  <section class="test-section" id="input-tests">
+    <h2>peek-input</h2>
+    <div class="test-row">
+      <peek-input id="input-basic" placeholder="Type here..."></peek-input>
+      <peek-input id="input-disabled" placeholder="Disabled" disabled></peek-input>
+    </div>
+    <div class="test-row">
+      <peek-input id="input-suggestions" placeholder="Type to filter..."></peek-input>
+    </div>
+  </section>
+
+  <!-- Select Tests -->
+  <section class="test-section" id="select-tests">
+    <h2>peek-select</h2>
+    <div class="test-row">
+      <peek-select id="select-native" placeholder="Native select"></peek-select>
+      <peek-select id="select-custom" mode="custom" placeholder="Custom select"></peek-select>
+    </div>
+  </section>
+
+  <!-- Switch Tests -->
+  <section class="test-section" id="switch-tests">
+    <h2>peek-switch</h2>
+    <div class="test-row">
+      <peek-switch id="switch-off">Off by default</peek-switch>
+      <peek-switch id="switch-on" checked>On by default</peek-switch>
+      <peek-switch id="switch-disabled" disabled>Disabled</peek-switch>
+    </div>
+  </section>
+
+  <!-- Dialog Tests -->
+  <section class="test-section" id="dialog-tests">
+    <h2>peek-dialog</h2>
+    <peek-button id="open-dialog">Open Dialog</peek-button>
+    <peek-dialog id="test-dialog">
+      <span slot="header">Test Dialog</span>
+      <p>Dialog content</p>
+      <div slot="footer">
+        <peek-button id="close-dialog" variant="ghost">Close</peek-button>
+      </div>
+    </peek-dialog>
+  </section>
+
+  <!-- Tabs Tests -->
+  <section class="test-section" id="tabs-tests">
+    <h2>peek-tabs</h2>
+    <peek-tabs id="test-tabs">
+      <peek-tab>Tab 1</peek-tab>
+      <peek-tab>Tab 2</peek-tab>
+      <peek-tab disabled>Tab 3 (disabled)</peek-tab>
+      <peek-tab-panel id="panel-1">Panel 1 content</peek-tab-panel>
+      <peek-tab-panel id="panel-2">Panel 2 content</peek-tab-panel>
+      <peek-tab-panel id="panel-3">Panel 3 content</peek-tab-panel>
+    </peek-tabs>
+  </section>
+
+  <!-- Details Tests -->
+  <section class="test-section" id="details-tests">
+    <h2>peek-details</h2>
+    <peek-details id="details-closed">
+      <span slot="summary">Click to expand</span>
+      <p>Hidden content</p>
+    </peek-details>
+    <peek-details id="details-open" open>
+      <span slot="summary">Already expanded</span>
+      <p>Visible content</p>
+    </peek-details>
+  </section>
+
+  <!-- Dropdown Tests -->
+  <section class="test-section" id="dropdown-tests">
+    <h2>peek-dropdown</h2>
+    <peek-dropdown id="test-dropdown">
+      <peek-button slot="trigger">Open Dropdown</peek-button>
+      <peek-dropdown-item value="edit">Edit</peek-dropdown-item>
+      <peek-dropdown-item value="duplicate">Duplicate</peek-dropdown-item>
+      <peek-dropdown-divider></peek-dropdown-divider>
+      <peek-dropdown-item value="delete" danger>Delete</peek-dropdown-item>
+    </peek-dropdown>
+  </section>
+
+  <!-- Tooltip Tests -->
+  <section class="test-section" id="tooltip-tests">
+    <h2>peek-tooltip</h2>
+    <div class="test-row">
+      <peek-tooltip id="tooltip-top" content="Tooltip on top" position="top">
+        <peek-button>Top</peek-button>
+      </peek-tooltip>
+      <peek-tooltip id="tooltip-bottom" content="Tooltip on bottom" position="bottom">
+        <peek-button>Bottom</peek-button>
+      </peek-tooltip>
+    </div>
+  </section>
+
+  <!-- Button Group Tests -->
+  <section class="test-section" id="button-group-tests">
+    <h2>peek-button-group</h2>
+    <peek-button-group id="btn-group-single" selection="single" value="opt2">
+      <peek-button-group-item value="opt1">Option 1</peek-button-group-item>
+      <peek-button-group-item value="opt2">Option 2</peek-button-group-item>
+      <peek-button-group-item value="opt3">Option 3</peek-button-group-item>
+    </peek-button-group>
+  </section>
+
+  <!-- Drawer Tests -->
+  <section class="test-section" id="drawer-tests">
+    <h2>peek-drawer</h2>
+    <peek-button id="open-drawer">Open Drawer</peek-button>
+    <peek-drawer id="test-drawer" position="right">
+      <span slot="header">Test Drawer</span>
+      <p>Drawer content</p>
+    </peek-drawer>
+  </section>
+
+  <script type="module">
+    // Import all components
+    import '../../app/components/index.js';
+
+    // Setup test helpers
+    window.testHelpers = {
+      getComponent: (id) => document.getElementById(id),
+      getShadowRoot: (id) => document.getElementById(id)?.shadowRoot,
+      queryShadow: (id, selector) => document.getElementById(id)?.shadowRoot?.querySelector(selector),
+      click: (id) => document.getElementById(id)?.click(),
+      dispatch: (id, event, detail) => {
+        document.getElementById(id)?.dispatchEvent(new CustomEvent(event, { detail, bubbles: true }));
+      }
+    };
+
+    // Setup select options
+    document.getElementById('select-native').options = ['Red', 'Green', 'Blue'];
+    document.getElementById('select-custom').options = [
+      { value: 'sm', label: 'Small' },
+      { value: 'md', label: 'Medium' },
+      { value: 'lg', label: 'Large' }
+    ];
+
+    // Setup input suggestions
+    document.getElementById('input-suggestions').suggestions = ['Apple', 'Banana', 'Cherry', 'Date'];
+
+    // Dialog handlers
+    document.getElementById('open-dialog').addEventListener('click', () => {
+      document.getElementById('test-dialog').show();
+    });
+    document.getElementById('close-dialog').addEventListener('click', () => {
+      document.getElementById('test-dialog').close();
+    });
+
+    // Drawer handler
+    document.getElementById('open-drawer').addEventListener('click', () => {
+      document.getElementById('test-drawer').show();
+    });
+
+    // Signal ready
+    window.componentsReady = true;
+    document.body.dataset.ready = 'true';
+  </script>
+</body>
+</html>

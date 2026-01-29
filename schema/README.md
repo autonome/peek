@@ -2,6 +2,29 @@
 
 Single source of truth for sync schema definitions across all backends.
 
+## PRIORITY TODO: Mobile Schema Migration
+
+**Tauri Mobile has known schema drift that needs migration:**
+
+| Issue | Canonical | Mobile (Current) |
+|-------|-----------|------------------|
+| Column naming | camelCase | snake_case (`sync_id`, `created_at`) |
+| Timestamp type | INTEGER (Unix ms) | TEXT (ISO strings) |
+| tags.id | TEXT (UUID) | INTEGER AUTOINCREMENT |
+| item_tags.tagId | TEXT | INTEGER |
+
+**Why it's deferred:** The migration requires synchronized changes to both Rust (~4000 lines) and Swift Share Extension (~2000 lines). Sync still works because the wire format (JSON) is independent of local schema.
+
+**Migration plan:**
+1. Update Rust fresh install schema to canonical
+2. Add v1→v2 migration for existing databases
+3. Update all Rust SQL queries (~100+ places)
+4. Update Swift record structs and initializations
+5. Update Swift SQL queries
+6. Test migration with real iOS databases
+
+See `notes/sync-architecture-review.md` for full analysis.
+
 ## Quick Start
 
 ```bash

@@ -145,7 +145,8 @@
   "dependencies": {
     "archiver": "^7.0.0",
     "better-sqlite3": "^12.5.0",
-    "electron-unhandled": "^5.0.0"
+    "electron-unhandled": "^5.0.0",
+    "lit": "^3.3.2"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.2",

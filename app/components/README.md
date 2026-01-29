@@ -578,6 +578,203 @@ class MyComponent extends EventBusMixin(PeekElement) {
 
 ---
 
+## Complex Components
+
+### `<peek-carousel>`
+
+A scroll-snap based carousel for horizontal or vertical content.
+
+#### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `direction` | `'horizontal' \| 'vertical'` | `'horizontal'` | Scroll direction |
+| `snap` | `'start' \| 'center' \| 'end'` | `'start'` | Snap alignment |
+| `loop` | `boolean` | `false` | Wrap at ends |
+| `controls` | `boolean` | `false` | Show prev/next buttons |
+| `indicators` | `boolean` | `false` | Show position dots |
+| `gap` | `number` | `12` | Gap between items (px) |
+
+#### Events
+
+| Event | Detail | Description |
+|-------|--------|-------------|
+| `slide-change` | `{ index, element }` | Active slide changed |
+
+#### Methods
+
+| Method | Description |
+|--------|-------------|
+| `goTo(index)` | Navigate to slide |
+| `next()` | Go to next slide |
+| `prev()` | Go to previous slide |
+
+#### Example
+
+```html
+<peek-carousel controls indicators loop>
+  <img src="slide1.jpg" alt="Slide 1">
+  <img src="slide2.jpg" alt="Slide 2">
+  <img src="slide3.jpg" alt="Slide 3">
+</peek-carousel>
+
+<!-- Vertical carousel -->
+<peek-carousel direction="vertical" style="--peek-carousel-height: 400px">
+  <div>Item 1</div>
+  <div>Item 2</div>
+</peek-carousel>
+```
+
+---
+
+### `<peek-input>`
+
+Input field with autocomplete suggestions dropdown.
+
+#### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `value` | `string` | `''` | Current value |
+| `placeholder` | `string` | `''` | Placeholder text |
+| `type` | `'text' \| 'search' \| 'email' \| 'url'` | `'text'` | Input type |
+| `disabled` | `boolean` | `false` | Disable input |
+| `suggestions` | `Array` | `[]` | Suggestion items |
+| `suggestion-key` | `string` | `null` | Property for label (if objects) |
+| `min-chars` | `number` | `1` | Min chars before suggestions |
+
+#### Slots
+
+| Slot | Description |
+|------|-------------|
+| `prefix` | Content before input (e.g., search icon) |
+| `suffix` | Content after input (e.g., clear button) |
+
+#### Events
+
+| Event | Detail | Description |
+|-------|--------|-------------|
+| `suggestion-select` | `{ value, item }` | Suggestion selected |
+
+#### Example
+
+```html
+<peek-input
+  placeholder="Search tags..."
+  .suggestions=${['work', 'personal', 'urgent', 'todo']}
+  @suggestion-select=${(e) => addTag(e.detail.value)}
+>
+  <svg slot="prefix"><!-- search icon --></svg>
+</peek-input>
+
+<!-- With object suggestions -->
+<peek-input
+  .suggestions=${[{ id: 1, name: 'Alice' }, { id: 2, name: 'Bob' }]}
+  suggestion-key="name"
+></peek-input>
+```
+
+---
+
+### `<peek-grid>`
+
+Responsive CSS Grid layout with auto-fit columns.
+
+#### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `min-item-width` | `number` | `250` | Min item width (px) |
+| `gap` | `number` | `16` | Gap between items (px) |
+| `columns` | `number` | `null` | Fixed columns (overrides auto-fit) |
+| `align` | `'start' \| 'center' \| 'end' \| 'stretch'` | `'stretch'` | Item alignment |
+| `dense` | `boolean` | `false` | Dense packing |
+
+#### Example
+
+```html
+<!-- Auto-fit grid -->
+<peek-grid min-item-width="300" gap="20">
+  <peek-card>Card 1</peek-card>
+  <peek-card>Card 2</peek-card>
+  <peek-card>Card 3</peek-card>
+</peek-grid>
+
+<!-- Fixed 3-column grid -->
+<peek-grid columns="3">
+  <div>Item 1</div>
+  <div>Item 2</div>
+  <div>Item 3</div>
+</peek-grid>
+
+<!-- With spanning items -->
+<peek-grid>
+  <peek-grid-item col-span="2">Wide item</peek-grid-item>
+  <peek-grid-item>Normal</peek-grid-item>
+  <peek-grid-item row-span="2">Tall item</peek-grid-item>
+</peek-grid>
+```
+
+---
+
+### `<peek-dialog>`
+
+Modal/non-modal dialog using native `<dialog>` element.
+
+#### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `open` | `boolean` | `false` | Whether dialog is open |
+| `modal` | `boolean` | `true` | Modal (with backdrop) vs non-modal |
+| `close-on-backdrop` | `boolean` | `true` | Close on backdrop click |
+| `close-on-escape` | `boolean` | `true` | Close on Escape key |
+| `size` | `'sm' \| 'md' \| 'lg' \| 'full'` | `'md'` | Dialog size |
+
+#### Slots
+
+| Slot | Description |
+|------|-------------|
+| (default) | Dialog body content |
+| `header` | Dialog header/title |
+| `footer` | Footer with action buttons |
+
+#### Events
+
+| Event | Detail | Description |
+|-------|--------|-------------|
+| `open` | — | Dialog opened |
+| `close` | `{ reason }` | Dialog closed (`'escape' \| 'backdrop' \| 'close' \| 'api'`) |
+
+#### Methods
+
+| Method | Description |
+|--------|-------------|
+| `show()` | Open the dialog |
+| `showModal()` | Open as modal |
+| `close()` | Close the dialog |
+
+#### Example
+
+```html
+<peek-dialog id="confirmDialog" size="sm">
+  <span slot="header">Confirm Delete</span>
+  <p>Are you sure you want to delete this item?</p>
+  <div slot="footer">
+    <peek-button variant="ghost" onclick="confirmDialog.close()">
+      Cancel
+    </peek-button>
+    <peek-button variant="danger" onclick="deleteItem()">
+      Delete
+    </peek-button>
+  </div>
+</peek-dialog>
+
+<peek-button onclick="confirmDialog.show()">Delete Item</peek-button>
+```
+
+---
+
 ## Browser Support
 
 Components use modern CSS features:

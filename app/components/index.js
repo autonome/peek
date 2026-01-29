@@ -35,12 +35,22 @@ export { DataBoundElement, DataBindingMixin, createDataComponent } from './data-
 // Event bus
 export { bus, on, once, emit, channel, typedEvent, waitFor, EventBusMixin } from './events.js';
 
-// Components
+// Components - Basic
 export { PeekButton } from './peek-button.js';
 export { PeekCard } from './peek-card.js';
 export { PeekList, PeekListItem } from './peek-list.js';
+
+// Components - Complex
+export { PeekCarousel } from './peek-carousel.js';
+export { PeekInput } from './peek-input.js';
+export { PeekGrid, PeekGridItem } from './peek-grid.js';
+export { PeekDialog } from './peek-dialog.js';
 
 // Side-effect imports to register all components
 import './peek-button.js';
 import './peek-card.js';
 import './peek-list.js';
+import './peek-carousel.js';
+import './peek-input.js';
+import './peek-grid.js';
+import './peek-dialog.js';

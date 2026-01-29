@@ -46,6 +46,11 @@ export { PeekInput } from './peek-input.js';
 export { PeekGrid, PeekGridItem } from './peek-grid.js';
 export { PeekDialog } from './peek-dialog.js';
 
+// Components - Native/Open UI
+export { PeekPopover } from './peek-popover.js';
+export { PeekTabs, PeekTab, PeekTabPanel } from './peek-tabs.js';
+export { PeekDetails } from './peek-details.js';
+
 // Side-effect imports to register all components
 import './peek-button.js';
 import './peek-card.js';
@@ -54,3 +59,6 @@ import './peek-carousel.js';
 import './peek-input.js';
 import './peek-grid.js';
 import './peek-dialog.js';
+import './peek-popover.js';
+import './peek-tabs.js';
+import './peek-details.js';

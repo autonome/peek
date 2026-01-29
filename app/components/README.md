@@ -1,6 +1,13 @@
 # Peek UI Components
 
-A lightweight, themeable web component library built on [Lit.js](https://lit.dev/). Components use Shadow DOM for style encapsulation and CSS custom properties for theming.
+A lightweight, themeable web component library with a "native-first" approach. Uses [Lit.js](https://lit.dev/) minimally for reactive rendering while maximizing native browser APIs and following [Open UI](https://open-ui.org/) specifications.
+
+**Native APIs Used:**
+- `<dialog>` - Dialogs
+- `<details>`/`<summary>` - Disclosure/accordion
+- Popover API - Floating content, dropdowns
+- CSS scroll-snap - Carousels
+- ARIA patterns - Accessibility
 
 ## Quick Start
 
@@ -775,12 +782,248 @@ Modal/non-modal dialog using native `<dialog>` element.
 
 ---
 
+## Native/Open UI Components
+
+### `<peek-popover>`
+
+Native Popover API wrapper for tooltips, dropdowns, and floating content.
+
+#### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `mode` | `'auto' \| 'manual'` | `'auto'` | 'auto' enables light-dismiss (click outside closes) |
+| `open` | `boolean` | `false` | Whether popover is open |
+| `position` | `'top' \| 'bottom' \| 'left' \| 'right'` | `'bottom'` | Position relative to trigger |
+| `offset` | `number` | `8` | Offset from anchor (px) |
+
+#### Slots
+
+| Slot | Description |
+|------|-------------|
+| `trigger` | Element that triggers the popover (auto-wired) |
+| (default) | Popover content |
+
+#### CSS Parts
+
+| Part | Description |
+|------|-------------|
+| `popover` | The popover container |
+
+#### Events
+
+| Event | Detail | Description |
+|-------|--------|-------------|
+| `toggle` | `{ open }` | When open state changes |
+
+#### Methods
+
+| Method | Description |
+|--------|-------------|
+| `show()` | Open the popover |
+| `hide()` | Close the popover |
+| `toggle()` | Toggle open state |
+
+#### Example
+
+```html
+<!-- Basic popover -->
+<peek-popover>
+  <peek-button slot="trigger">Open Menu</peek-button>
+  <div>Popover content here</div>
+</peek-popover>
+
+<!-- Tooltip-style (top position) -->
+<peek-popover position="top" offset="4">
+  <span slot="trigger">Hover target</span>
+  <span>Tooltip text</span>
+</peek-popover>
+
+<!-- Manual control (no light-dismiss) -->
+<peek-popover mode="manual" id="menuPopover">
+  <peek-button slot="trigger">Settings</peek-button>
+  <peek-list>
+    <peek-list-item @click=${() => menuPopover.hide()}>Option 1</peek-list-item>
+    <peek-list-item @click=${() => menuPopover.hide()}>Option 2</peek-list-item>
+  </peek-list>
+</peek-popover>
+```
+
+---
+
+### `<peek-tabs>`, `<peek-tab>`, `<peek-tab-panel>`
+
+Accessible tabs following Open UI tablist/tab/tabpanel pattern with full ARIA support.
+
+#### `<peek-tabs>` Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `selected` | `number` | `0` | Selected tab index |
+| `activation` | `'auto' \| 'manual'` | `'auto'` | 'auto' selects on arrow keys, 'manual' requires Enter |
+
+#### `<peek-tab>` Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `selected` | `boolean` | `false` | Whether tab is selected (managed by parent) |
+| `disabled` | `boolean` | `false` | Disable this tab |
+
+#### Slots
+
+**`<peek-tabs>`:** Contains `<peek-tab>` elements (in tablist) and `<peek-tab-panel>` elements
+
+**`<peek-tab>`:** Tab label content
+
+**`<peek-tab-panel>`:** Panel content
+
+#### CSS Parts
+
+| Part | Element | Description |
+|------|---------|-------------|
+| `tablist` | `<peek-tabs>` | The tablist container |
+| `tab` | `<peek-tab>` | Individual tab button |
+| `panel` | `<peek-tab-panel>` | Tab panel container |
+
+#### Events
+
+| Event | Detail | Description |
+|-------|--------|-------------|
+| `tab-change` | `{ index, tab, panel }` | When selected tab changes |
+
+#### Keyboard Navigation
+
+| Key | Action |
+|-----|--------|
+| `ArrowLeft` / `ArrowUp` | Previous tab |
+| `ArrowRight` / `ArrowDown` | Next tab |
+| `Home` | First tab |
+| `End` | Last tab |
+
+#### Methods
+
+| Method | Description |
+|--------|-------------|
+| `select(index)` | Select tab by index |
+
+#### Example
+
+```html
+<peek-tabs @tab-change=${handleTabChange}>
+  <peek-tab>General</peek-tab>
+  <peek-tab>Advanced</peek-tab>
+  <peek-tab disabled>Locked</peek-tab>
+
+  <peek-tab-panel>
+    <p>General settings content</p>
+  </peek-tab-panel>
+  <peek-tab-panel>
+    <p>Advanced settings content</p>
+  </peek-tab-panel>
+  <peek-tab-panel>
+    <p>This panel is not accessible</p>
+  </peek-tab-panel>
+</peek-tabs>
+
+<!-- Manual activation (requires Enter to select) -->
+<peek-tabs activation="manual">
+  <peek-tab>Tab 1</peek-tab>
+  <peek-tab>Tab 2</peek-tab>
+  <peek-tab-panel>Content 1</peek-tab-panel>
+  <peek-tab-panel>Content 2</peek-tab-panel>
+</peek-tabs>
+```
+
+---
+
+### `<peek-details>`
+
+Native `<details>`/`<summary>` wrapper with styling and accordion support.
+
+#### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `open` | `boolean` | `false` | Whether expanded |
+| `name` | `string` | `null` | Accordion group name (native exclusive behavior) |
+
+#### Slots
+
+| Slot | Description |
+|------|-------------|
+| `summary` | Trigger/header content |
+| (default) | Expandable content |
+
+#### CSS Parts
+
+| Part | Description |
+|------|-------------|
+| `details` | The native details element |
+| `summary` | The summary/trigger |
+| `content` | The expandable content area |
+
+#### Events
+
+| Event | Detail | Description |
+|-------|--------|-------------|
+| `toggle` | `{ open }` | When open state changes |
+
+#### Methods
+
+| Method | Description |
+|--------|-------------|
+| `show()` | Expand the details |
+| `hide()` | Collapse the details |
+| `toggle()` | Toggle open state |
+
+#### Example
+
+```html
+<!-- Single disclosure -->
+<peek-details>
+  <span slot="summary">Click to expand</span>
+  <p>Hidden content revealed when expanded.</p>
+</peek-details>
+
+<!-- Initially open -->
+<peek-details open>
+  <span slot="summary">Already expanded</span>
+  <p>This content is visible by default.</p>
+</peek-details>
+
+<!-- Exclusive accordion (native behavior) -->
+<peek-details name="faq">
+  <span slot="summary">Question 1</span>
+  <p>Answer 1</p>
+</peek-details>
+<peek-details name="faq">
+  <span slot="summary">Question 2</span>
+  <p>Answer 2</p>
+</peek-details>
+<peek-details name="faq">
+  <span slot="summary">Question 3</span>
+  <p>Answer 3</p>
+</peek-details>
+```
+
+---
+
 ## Browser Support
 
-Components use modern CSS features:
+Components use modern CSS and HTML features:
+
+**CSS:**
 - CSS custom properties
 - `color-mix()` for color adjustments
 - `:focus-visible` for keyboard focus styles
 - CSS Grid and Flexbox
+- CSS scroll-snap (carousels)
+- `@starting-style` for entry animations
 
-Supported in all modern browsers (Chrome, Firefox, Safari, Edge).
+**Native APIs:**
+- Popover API (`popover` attribute, `showPopover()`) - Chrome 114+, Safari 17+, Firefox 125+
+- `<dialog>` element - All modern browsers
+- `<details>`/`<summary>` elements - All modern browsers
+- `name` attribute for exclusive accordions - Chrome 120+, Safari 17.2+
+
+Supported in all modern browsers (Chrome 120+, Firefox 125+, Safari 17.2+, Edge 120+).

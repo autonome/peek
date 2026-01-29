@@ -8,10 +8,10 @@
  * Usage:
  *   import 'peek://app/components/index.js';
  *
- * Or import individual components:
- *   import 'peek://app/components/peek-button.js';
- *   import 'peek://app/components/peek-card.js';
- *   import 'peek://app/components/peek-list.js';
+ * Or import individual modules:
+ *   import { signal, effect } from 'peek://app/components/signals.js';
+ *   import { on, emit } from 'peek://app/components/events.js';
+ *   import { DataBoundElement } from 'peek://app/components/data-binding.js';
  *
  * Components automatically register with the custom elements registry.
  *
@@ -22,6 +22,18 @@
 
 // Base utilities
 export { PeekElement, sharedStyles } from './base.js';
+
+// Reactive system
+export { signal, computed, effect, batch, watch, fromExternal } from './signals.js';
+
+// Schema validation
+export { validate, createValidator, assertValid, isValid, Schema } from './schema.js';
+
+// Data binding
+export { DataBoundElement, DataBindingMixin, createDataComponent } from './data-binding.js';
+
+// Event bus
+export { bus, on, once, emit, channel, typedEvent, waitFor, EventBusMixin } from './events.js';
 
 // Components
 export { PeekButton } from './peek-button.js';

@@ -342,6 +342,242 @@ customElements.define('my-component', MyComponent);
 
 ---
 
+## Reactive System
+
+### Signals
+
+Reactive primitives for state management. Native JavaScript implementation following the TC39 Signals proposal pattern.
+
+```javascript
+import { signal, computed, effect, batch, watch } from 'peek://app/components/signals.js';
+
+// Create reactive value
+const count = signal(0);
+console.log(count.value); // 0
+
+// Computed values auto-update
+const doubled = computed(() => count.value * 2);
+
+// Effects run when dependencies change
+const dispose = effect(() => {
+  console.log(`Count: ${count.value}, Doubled: ${doubled.value}`);
+});
+
+// Update triggers effect
+count.value = 5; // Logs: "Count: 5, Doubled: 10"
+
+// Batch multiple updates
+batch(() => {
+  count.value = 10;
+  // other updates...
+}); // Effects run once at end
+
+// Watch specific signal
+const stop = watch(count, (newVal, oldVal) => {
+  console.log(`Changed from ${oldVal} to ${newVal}`);
+});
+
+// Cleanup
+dispose();
+stop();
+```
+
+#### Signal API
+
+| Function | Description |
+|----------|-------------|
+| `signal(value)` | Create reactive value with `.value` getter/setter |
+| `computed(fn)` | Create derived value that auto-updates |
+| `effect(fn)` | Run side effects when dependencies change |
+| `batch(fn)` | Batch updates, run effects once at end |
+| `watch(signal, handler)` | Watch specific signal for changes |
+| `fromExternal(get, set, subscribe)` | Bridge external state to signals |
+
+---
+
+### Schema Validation
+
+Lightweight JSON Schema validation for component data.
+
+```javascript
+import { validate, createValidator, Schema } from 'peek://app/components/schema.js';
+
+// Define schema
+const userSchema = {
+  type: 'object',
+  required: ['name', 'email'],
+  properties: {
+    name: { type: 'string', minLength: 1 },
+    email: { type: 'string', format: 'email' },
+    age: { type: 'integer', minimum: 0, default: 0 }
+  }
+};
+
+// Validate data
+const result = validate({ name: 'Alice', email: 'alice@example.com' }, userSchema);
+// { valid: true, errors: [], data: { name: 'Alice', email: 'alice@example.com', age: 0 } }
+
+// Create reusable validator
+const validateUser = createValidator(userSchema);
+validateUser({ name: '', email: 'invalid' });
+// { valid: false, errors: [...] }
+
+// Schema builders
+const schema = Schema.object({
+  title: Schema.string({ minLength: 1 }),
+  count: Schema.integer({ minimum: 0 }),
+  tags: Schema.array(Schema.string())
+}, { required: ['title'] });
+```
+
+#### Supported Keywords
+
+| Keyword | Types | Description |
+|---------|-------|-------------|
+| `type` | all | `string`, `number`, `integer`, `boolean`, `array`, `object`, `null` |
+| `required` | object | Array of required property names |
+| `properties` | object | Property schemas |
+| `items` | array | Schema for array items |
+| `enum` | all | Allowed values |
+| `minimum`, `maximum` | number | Number bounds |
+| `minLength`, `maxLength` | string | String length |
+| `minItems`, `maxItems` | array | Array length |
+| `pattern` | string | Regex pattern |
+| `format` | string | `email`, `uri`, `date`, `date-time`, `uuid` |
+| `default` | all | Default value |
+
+---
+
+### Data Binding
+
+Bind components to reactive data sources with automatic updates.
+
+```javascript
+import { DataBoundElement, createDataComponent } from 'peek://app/components/data-binding.js';
+import { signal } from 'peek://app/components/signals.js';
+import { html, css } from 'lit';
+
+// Extend DataBoundElement
+class UserCard extends DataBoundElement {
+  static dataSchema = {
+    type: 'object',
+    properties: {
+      name: { type: 'string' },
+      avatar: { type: 'string', format: 'uri' }
+    }
+  };
+
+  render() {
+    return html`
+      <img src=${this.data.avatar}>
+      <span>${this.data.name}</span>
+    `;
+  }
+}
+customElements.define('user-card', UserCard);
+
+// Bind to signal
+const userData = signal({ name: 'Alice', avatar: 'https://...' });
+const card = document.querySelector('user-card');
+card.bindTo(userData);
+
+// Updates automatically when signal changes
+userData.value = { name: 'Bob', avatar: 'https://...' };
+
+// Or create data component dynamically
+const StatusBadge = createDataComponent('status-badge', {
+  schema: { type: 'object', properties: { status: { type: 'string' } } },
+  render: (data) => html`<span class=${data.status}>${data.status}</span>`
+});
+```
+
+#### DataBoundElement API
+
+| Method | Description |
+|--------|-------------|
+| `bindTo(source, options)` | Bind to signal, observable, or data source |
+| `unbind()` | Disconnect from data source |
+| `updateData(key, value)` | Update single property |
+| `mergeData(partial)` | Merge partial data into current |
+| `data` | Get/set the data object |
+| `isBound` | Check if bound to a source |
+
+---
+
+### Event Bus
+
+Cross-component communication that works across Shadow DOM.
+
+```javascript
+import { on, emit, channel, waitFor, EventBusMixin } from 'peek://app/components/events.js';
+
+// Subscribe to events
+const unsubscribe = on('user:login', (user) => {
+  console.log('User logged in:', user.name);
+});
+
+// Emit events
+emit('user:login', { name: 'Alice', id: 123 });
+
+// Wildcard subscriptions
+on('user:*', (data, eventName) => {
+  console.log(`User event: ${eventName}`, data);
+});
+
+// Namespaced channels
+const userChannel = channel('user');
+userChannel.on('login', handler);
+userChannel.emit('login', userData);
+userChannel.onAny(handler); // All 'user:*' events
+
+// Promise-based waiting
+const user = await waitFor('user:login', { timeout: 5000 });
+
+// Replay last value
+emit('config:loaded', config, { retain: true });
+on('config:loaded', handler, { replay: true }); // Gets config immediately
+
+// Unsubscribe
+unsubscribe.unsubscribe();
+```
+
+#### Component Integration
+
+```javascript
+import { EventBusMixin } from 'peek://app/components/events.js';
+import { PeekElement } from 'peek://app/components/base.js';
+
+class MyComponent extends EventBusMixin(PeekElement) {
+  connectedCallback() {
+    super.connectedCallback();
+    // Auto-cleanup on disconnect
+    this.subscribe('data:update', this.handleUpdate);
+  }
+
+  handleUpdate = (data) => {
+    this.data = data;
+  }
+
+  save() {
+    this.publish('data:saved', this.data);
+  }
+}
+```
+
+#### Event Bus API
+
+| Function | Description |
+|----------|-------------|
+| `on(event, handler, options)` | Subscribe to event |
+| `once(event, handler)` | Subscribe once |
+| `emit(event, data, options)` | Emit event |
+| `channel(namespace)` | Create namespaced channel |
+| `waitFor(event, options)` | Promise-based event waiting |
+| `typedEvent(name)` | Create typed event emitter |
+| `EventBusMixin(Base)` | Mixin for auto-cleanup subscriptions |
+
+---
+
 ## Browser Support
 
 Components use modern CSS features:

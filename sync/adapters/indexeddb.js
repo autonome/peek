@@ -6,7 +6,7 @@
  */
 
 const DB_NAME = 'peek-datastore';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 export function createIndexedDBAdapter() {
   let db = null;
@@ -45,6 +45,11 @@ export function createIndexedDBAdapter() {
   }
 
   return {
+    // Expose raw db for test cleanup (getRawDb in datastore.js wrapper)
+    get db() {
+      return db;
+    },
+
     // ==================== Lifecycle ====================
 
     async open() {
@@ -78,6 +83,10 @@ export function createIndexedDBAdapter() {
             itemTags.createIndex('tagId', 'tagId', { unique: false });
 
             database.createObjectStore('settings', { keyPath: 'key' });
+
+            // extension_settings for profile-specific settings
+            const extSettings = database.createObjectStore('extension_settings', { keyPath: 'id' });
+            extSettings.createIndex('extensionId', 'extensionId', { unique: false });
           }
 
           if (oldVersion >= 1 && oldVersion < 2) {
@@ -102,6 +111,14 @@ export function createIndexedDBAdapter() {
             }
             if (!database.objectStoreNames.contains('settings')) {
               database.createObjectStore('settings', { keyPath: 'key' });
+            }
+          }
+
+          if (oldVersion >= 1 && oldVersion < 3) {
+            // v2 → v3: add extension_settings store
+            if (!database.objectStoreNames.contains('extension_settings')) {
+              const extSettings = database.createObjectStore('extension_settings', { keyPath: 'id' });
+              extSettings.createIndex('extensionId', 'extensionId', { unique: false });
             }
           }
         };

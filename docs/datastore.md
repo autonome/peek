@@ -1,6 +1,6 @@
 # Peek Datastore
 
-The Peek Personal Datastore stores addresses, navigation history, tags, notes, and other user data. It uses SQLite with a unified schema across all backends (Electron, Tauri, Server).
+The Peek Personal Datastore stores URLs, navigation history, tags, notes, and other user data. It uses SQLite with a unified schema across desktop backends (Electron, Tauri). The browser extension uses IndexedDB with the same logical schema.
 
 ## Architecture
 
@@ -44,24 +44,42 @@ Stores all user content types: URLs, text notes, tagsets, images.
 | id | TEXT | Primary key (UUID) |
 | type | TEXT | `url`, `text`, `tagset`, `image` |
 | content | TEXT | The actual content (URL, note text, etc.) |
-| title | TEXT | Display title |
+| mimeType | TEXT | MIME type (e.g., `text/html`) |
 | metadata | TEXT | JSON for flexible extra data |
-| createdAt | TEXT | ISO timestamp |
-| updatedAt | TEXT | ISO timestamp |
-| syncedAt | TEXT | Last sync timestamp |
-| sync_id | TEXT | Server-assigned ID for sync |
+| syncId | TEXT | Server-assigned ID for sync |
+| syncSource | TEXT | Origin of sync (`server`, `history`, etc.) |
+| syncedAt | INTEGER | Last sync timestamp (ms) |
+| createdAt | INTEGER | Creation timestamp (ms) |
+| updatedAt | INTEGER | Last update timestamp (ms) |
+| deletedAt | INTEGER | Soft-delete timestamp (0 if active) |
+| starred | INTEGER | 1 if starred |
+| archived | INTEGER | 1 if archived |
+| visitCount | INTEGER | Total visit count |
+| lastVisitAt | INTEGER | Most recent visit timestamp |
+| frecencyScore | INTEGER | Calculated frecency for ranking |
+| title | TEXT | Display title (denormalized for URLs) |
+| domain | TEXT | Domain (denormalized for URLs) |
+| favicon | TEXT | Favicon URL (denormalized for URLs) |
 
-#### `visits` - Navigation History
-Tracks page visits with timing and context.
+#### `item_visits` - Navigation History
+Tracks page visits with timing, context, and navigation chaining. Local-only (not synced).
 
 | Column | Type | Description |
 |--------|------|-------------|
 | id | TEXT | Primary key |
-| addressId | TEXT | FK to items |
+| itemId | TEXT | FK to items |
 | timestamp | INTEGER | Unix timestamp (ms) |
 | duration | INTEGER | Time spent (ms) |
-| source | TEXT | `peek`, `slide`, `direct`, `link` |
-| windowType | TEXT | `modal`, `persistent`, `main` |
+| source | TEXT | `direct`, `link`, `bookmark`, `reload`, etc. |
+| sourceId | TEXT | ID of referring visit/item |
+| windowType | TEXT | `main`, `modal`, `panel` |
+| metadata | TEXT | JSON for extra context |
+| scrollDepth | INTEGER | How far user scrolled (0-100) |
+| interacted | INTEGER | 1 if user interacted (clicked, typed) |
+| prevId | TEXT | Previous visit in chain |
+| nextId | TEXT | Next visit in chain |
+
+**Frecency Scoring**: Each device calculates frecency from its local visits using time-decay weighting. Recent visits and interactions score higher.
 
 #### `tags` - Tag Definitions
 | Column | Type | Description |
@@ -95,20 +113,24 @@ Access via `window.app.datastore` in any `peek://` page.
 const result = await api.datastore.addItem({
   type: 'url',
   content: 'https://example.com',
-  title: 'Example',
-  tags: ['bookmark', 'work']
+  metadata: { title: 'Example' }
 });
 
 // Query items
 const urls = await api.datastore.queryItems({ type: 'url' });
-const tagged = await api.datastore.queryItems({ tag: 'bookmark' });
+const recent = await api.datastore.queryItems({ type: 'url', sortBy: 'lastVisit', limit: 20 });
+const popular = await api.datastore.queryItems({ type: 'url', sortBy: 'frecency', limit: 20 });
+const searched = await api.datastore.queryItems({ type: 'url', search: 'github' });
 
 // Update item
-await api.datastore.updateItem(id, { title: 'New Title' });
+await api.datastore.updateItem(id, { metadata: { title: 'New Title' } });
 
-// Delete item
+// Delete item (soft delete)
 await api.datastore.deleteItem(id);
 ```
+
+**Query filters**: `type`, `starred`, `archived`, `domain`, `search`, `limit`, `includeDeleted`
+**Sort options**: `created`, `updated`, `frecency`, `lastVisit`, `visitCount`
 
 ### Tags
 
@@ -129,21 +151,34 @@ const tags = await api.datastore.getItemTags(itemId);
 const items = await api.datastore.getItemsByTag(tagId);
 ```
 
-### Visits
+### Visits & Navigation
 
 ```javascript
-// Record visit
-await api.datastore.addVisit(addressId, {
-  source: 'peek',
-  windowType: 'modal'
+// Track a navigation (finds/creates item, records visit, updates frecency)
+const result = await api.datastore.trackNavigation('https://example.com', {
+  source: 'link',
+  title: 'Example Page',
+  favicon: 'https://example.com/favicon.ico'
+});
+// Returns: { visitId, itemId, created: true/false }
+
+// Record visit to existing item
+await api.datastore.recordItemVisit(itemId, {
+  source: 'direct',
+  interacted: 1
 });
 
-// Query visits
-const history = await api.datastore.queryVisits({
-  limit: 100,
-  offset: 0
+// Get visits for an item
+const visits = await api.datastore.getItemVisits(itemId, { limit: 50 });
+
+// Query by frecency (optimized for omnibox/history)
+const topUrls = await api.datastore.queryItemsByFrecency({
+  search: 'github',
+  limit: 10
 });
 ```
+
+**Visit sources**: `direct`, `link`, `bookmark`, `reload`, `form`, `generated`, `frame`, `other`
 
 ### Settings
 

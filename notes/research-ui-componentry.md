@@ -607,11 +607,24 @@ class PeekDropdown extends LitElement {
 3. Grid with responsive CSS Grid
 4. Dialog/modal with native `<dialog>`
 
-**Phase 4: Shoelace Integration**
-1. Review which Shoelace components to bundle
-2. Bundle minimal subset (button, input, select, etc.)
-3. Create extension loader/theming system
-4. Documentation for extension developers
+**Phase 4: Component Completion & Extension System**
+1. Build remaining components (native-first, Lit-based):
+   - `peek-select` / `peek-combobox` - full select with native `<select>` or listbox
+   - `peek-dropdown` - action menus, context menus (using Popover API)
+   - `peek-switch` - toggle switch (native checkbox-based)
+   - `peek-drawer` - slide-out sidebar/panel (using native `<dialog>`)
+   - `peek-tooltip` - hover-triggered hints (using Popover API)
+   - `peek-button-group` - segmented controls, tag sets
+2. Create extension loader/theming system:
+   - Theme registration API
+   - Dynamic theme switching
+   - Token inheritance (extensions extend base tokens)
+   - CSS injection helpers for content scripts
+3. Documentation for extension developers:
+   - Component API reference
+   - Extension integration guide
+   - Theming/customization patterns
+   - Usage examples
 
 **Phase 5: Extension Distribution**
 1. Module Federation or shared `.js` bundle

@@ -51,6 +51,14 @@ export { PeekPopover } from './peek-popover.js';
 export { PeekTabs, PeekTab, PeekTabPanel } from './peek-tabs.js';
 export { PeekDetails } from './peek-details.js';
 
+// Components - Phase 4
+export { PeekSelect } from './peek-select.js';
+export { PeekDropdown, PeekDropdownItem, PeekDropdownDivider } from './peek-dropdown.js';
+export { PeekSwitch } from './peek-switch.js';
+export { PeekDrawer } from './peek-drawer.js';
+export { PeekTooltip } from './peek-tooltip.js';
+export { PeekButtonGroup, PeekButtonGroupItem } from './peek-button-group.js';
+
 // Side-effect imports to register all components
 import './peek-button.js';
 import './peek-card.js';
@@ -62,3 +70,9 @@ import './peek-dialog.js';
 import './peek-popover.js';
 import './peek-tabs.js';
 import './peek-details.js';
+import './peek-select.js';
+import './peek-dropdown.js';
+import './peek-switch.js';
+import './peek-drawer.js';
+import './peek-tooltip.js';
+import './peek-button-group.js';

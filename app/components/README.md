@@ -2113,3 +2113,72 @@ __PEEK_DEV__.stats();
 __PEEK_DEV__.theme.current();
 __PEEK_DEV__.registry.names();
 ```
+
+---
+
+## Testing
+
+Component tests use Playwright with an embedded HTTP server for ESM module loading.
+
+### Running Tests
+
+```bash
+npx playwright test tests/components/ --project=components
+```
+
+### Test Coverage
+
+56 tests covering all 16 components:
+
+| Component | Tests | Coverage |
+|-----------|-------|----------|
+| `peek-button` | 6 | variants, sizes, disabled, loading, events |
+| `peek-card` | 3 | slots, interactive, selected |
+| `peek-list` | 2 | items, disabled |
+| `peek-input` | 2 | value, disabled |
+| `peek-select` | 2 | native mode, custom mode |
+| `peek-switch` | 3 | default, checked, toggle |
+| `peek-dialog` | 2 | open, close |
+| `peek-tabs` | 3 | selection, panel visibility |
+| `peek-details` | 2 | closed, open |
+| `peek-dropdown` | 1 | closed default |
+| `peek-button-group` | 1 | initial selection |
+| `peek-carousel` | 6 | slides, controls, indicators, navigation |
+| `peek-grid` | 4 | container, auto-fit, fixed columns, gap |
+| `peek-popover` | 3 | state, trigger slot, popover element |
+| `peek-drawer` | 4 | state, dialog, open/close |
+| `peek-tooltip` | 4 | content, mode, role, position |
+
+Plus 4 component combo tests and 4 accessibility tests.
+
+### Test Infrastructure
+
+- `tests/components/test-page.html` - Test fixtures with all components
+- `tests/components/components.spec.ts` - Playwright test suite
+- Embedded HTTP server serves ESM modules with proper MIME types
+- Import maps resolve `lit` and dependencies from `node_modules`
+
+### Writing Tests
+
+Tests use `waitForFunction` for deterministic state checks:
+
+```typescript
+// Wait for dialog to open (deterministic)
+await page.waitForFunction(() => {
+  const el = document.querySelector('#my-dialog') as any;
+  return el?.open === true;
+});
+
+// Avoid arbitrary timeouts (flaky)
+// await page.waitForTimeout(100);  // Don't do this
+```
+
+Access shadow DOM via `page.evaluate`:
+
+```typescript
+const hasSpinner = await page.evaluate(() => {
+  const el = document.querySelector('#btn-loading');
+  const spinner = el?.shadowRoot?.querySelector('.spinner');
+  return !!spinner;
+});
+```

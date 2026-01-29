@@ -8,9 +8,21 @@
  * - Shortcut parsing and matching
  */
 
-import { globalShortcut, BrowserWindow } from 'electron';
 import { DEBUG } from './config.js';
 import { checkModeConditions, type MajorModeId, type MinorModeId } from './modes.js';
+
+// Lazy-load Electron modules to allow testing without Electron
+let globalShortcut: typeof import('electron').globalShortcut | null = null;
+let BrowserWindow: typeof import('electron').BrowserWindow | null = null;
+
+try {
+  const electron = await import('electron');
+  globalShortcut = electron.globalShortcut;
+  BrowserWindow = electron.BrowserWindow;
+} catch {
+  // Electron not available (e.g., in unit tests)
+  DEBUG && console.log('[shortcuts] Running without Electron (test mode)');
+}
 
 // Maps for tracking shortcuts
 // Global shortcuts: shortcut string -> source address
@@ -147,6 +159,12 @@ export function registerGlobalShortcut(
 ): Error | undefined {
   DEBUG && console.log('registerGlobalShortcut', shortcut);
 
+  // globalShortcut not available in test mode
+  if (!globalShortcut) {
+    globalShortcuts.set(shortcut, source);
+    return undefined;
+  }
+
   if (globalShortcut.isRegistered(shortcut)) {
     console.error('Shortcut already registered, unregistering first:', shortcut);
     globalShortcut.unregister(shortcut);
@@ -171,6 +189,12 @@ export function registerGlobalShortcut(
  */
 export function unregisterGlobalShortcut(shortcut: string): Error | undefined {
   DEBUG && console.log('unregisterGlobalShortcut', shortcut);
+
+  // globalShortcut not available in test mode
+  if (!globalShortcut) {
+    globalShortcuts.delete(shortcut);
+    return undefined;
+  }
 
   if (!globalShortcut.isRegistered(shortcut)) {
     console.error('Unable to unregister shortcut because not registered:', shortcut);
@@ -269,7 +293,7 @@ export function handleLocalShortcut(input: InputEvent, focusedWindowId?: number)
         // Check mode conditions if specified
         if (entry.modeConditions?.majorMode || entry.modeConditions?.minorModes?.length) {
           // Need a window ID to check mode
-          if (focusedWindowId === undefined) {
+          if (focusedWindowId === undefined && BrowserWindow) {
             // Try to get focused window
             const focused = BrowserWindow.getFocusedWindow();
             focusedWindowId = focused?.id;
@@ -338,5 +362,8 @@ export function getGlobalShortcutSource(shortcut: string): string | undefined {
  * Check if a global shortcut is registered
  */
 export function isGlobalShortcutRegistered(shortcut: string): boolean {
+  if (!globalShortcut) {
+    return globalShortcuts.has(shortcut);
+  }
   return globalShortcut.isRegistered(shortcut);
 }

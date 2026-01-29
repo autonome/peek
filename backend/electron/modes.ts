@@ -23,9 +23,30 @@
  * 4. Scope-aware command targeting
  */
 
-import { BrowserWindow } from 'electron';
-import { publish, scopes as PubSubScopes, getSystemAddress } from './pubsub.js';
 import { DEBUG } from './config.js';
+
+// Lazy-load Electron modules to allow testing without Electron
+let BrowserWindow: typeof import('electron').BrowserWindow | null = null;
+let publish: typeof import('./pubsub.js').publish | null = null;
+let PubSubScopes: typeof import('./pubsub.js').scopes | null = null;
+let getSystemAddress: typeof import('./pubsub.js').getSystemAddress | null = null;
+
+async function loadElectronModules(): Promise<void> {
+  try {
+    const electron = await import('electron');
+    BrowserWindow = electron.BrowserWindow;
+    const pubsub = await import('./pubsub.js');
+    publish = pubsub.publish;
+    PubSubScopes = pubsub.scopes;
+    getSystemAddress = pubsub.getSystemAddress;
+  } catch {
+    // Electron not available (e.g., in unit tests)
+    DEBUG && console.log('[modes] Running without Electron (test mode)');
+  }
+}
+
+// Initialize asynchronously
+loadElectronModules();
 
 // ============================================================================
 // Types
@@ -228,11 +249,14 @@ export function cleanupWindowMode(windowId: number): void {
  * Publish mode change event via pubsub
  */
 function publishModeChange(windowId: number, state: WindowModeState): void {
-  publish(getSystemAddress(), PubSubScopes.GLOBAL, 'modes:changed', {
-    windowId,
-    major: state.major,
-    minors: [...state.minors],
-  });
+  // Only publish if pubsub is available (not in test mode)
+  if (publish && PubSubScopes && getSystemAddress) {
+    publish(getSystemAddress(), PubSubScopes.GLOBAL, 'modes:changed', {
+      windowId,
+      major: state.major,
+      minors: [...state.minors],
+    });
+  }
 }
 
 // ============================================================================
@@ -321,11 +345,17 @@ export function buildCommandContext(targetWindowId: number | null): CommandConte
   };
 
   if (targetWindowId !== null) {
-    const win = BrowserWindow.fromId(targetWindowId);
-    if (win && !win.isDestroyed()) {
+    // BrowserWindow may not be available in test mode
+    if (BrowserWindow) {
+      const win = BrowserWindow.fromId(targetWindowId);
+      if (win && !win.isDestroyed()) {
+        context.mode = getWindowModeState(targetWindowId);
+        context.url = win.webContents.getURL();
+        context.title = win.getTitle();
+      }
+    } else {
+      // Test mode - just get mode state without window info
       context.mode = getWindowModeState(targetWindowId);
-      context.url = win.webContents.getURL();
-      context.title = win.getTitle();
     }
   }
 

@@ -597,7 +597,7 @@ async function pushSingleItem(
   }
 
   if (item.deletedAt > 0) {
-    body.deletedAt = item.deletedAt;
+    body.deleted_at = item.deletedAt;
   }
 
   // POST to server with profile parameter

@@ -17,62 +17,114 @@ const debug = api?.debug;
 // Editor layout instance
 let editorLayout = null;
 
-// Settings store for vim mode preference
-let settingsStore = null;
-const SETTINGS_KEY = 'vimMode';
+// Settings key for vim mode preference
+const SETTINGS_KEY = 'editor.vimMode';
 
 /**
- * Sample markdown content for new documents
+ * Sample markdown content for testing folding features.
+ * Tests: headers (6 levels), nested lists, code blocks.
  */
-const SAMPLE_CONTENT = `# Welcome to the Editor
+const SAMPLE_CONTENT = `# Level 1 Header - Main Document
 
-This is a **markdown editor** with live preview and outline navigation.
+This content is under a level 1 header.
 
-## Features
+## Level 2 - Features
 
-- **Outline sidebar** - Click headers to jump to them
-- **Live preview** - See rendered markdown as you type
-- **Vim mode** - Toggle vim keybindings in the toolbar
-- **Focus mode** - Distraction-free editing
+Content under level 2.
 
-## Getting Started
+### Level 3 - Folding Types
 
-Start typing to edit this document. Use the toolbar buttons to toggle sidebars.
+We support multiple folding types.
 
-### Keyboard Shortcuts
+#### Level 4 - Header Folding
 
-- \`Cmd+Shift+O\` - Toggle outline sidebar
-- \`Cmd+Shift+P\` - Toggle preview sidebar
-- \`Escape\` - Exit focus mode
+Headers fold everything until the next header of same or higher level.
 
-## Code Example
+##### Level 5 - Deep Nesting
+
+This is deeply nested content.
+
+###### Level 6 - Maximum Depth
+
+This is the deepest header level supported.
+
+Back to level 5 content.
+
+##### Level 5 - Another Section
+
+Another level 5 section.
+
+#### Level 4 - List Folding
+
+Lists with children are foldable:
+
+- Parent item with children
+  - Child item one
+  - Child item two
+    - Grandchild item
+    - Another grandchild
+  - Child item three
+- Simple item (no children)
+- Another parent
+  - Single child
+
+Numbered lists also fold:
+
+1. First parent
+   1. Sub-item one
+   2. Sub-item two
+2. Second parent
+   - Mixed child
+   - Another mixed
+
+#### Level 4 - Code Block Folding
+
+Top-level code blocks fold their contents:
 
 \`\`\`javascript
-function greet(name) {
-  return \`Hello, \${name}!\`;
+function example() {
+    if (condition) {
+        doSomething();
+    }
+    return result;
+}
+
+class MyClass {
+    constructor() {
+        this.x = 1;
+    }
+
+    method() {
+        return this.x;
+    }
 }
 \`\`\`
 
-## Lists
+### Level 3 - Vim Fold Commands
 
-- Item one
-- Item two
-- Item three
+Test these vim commands (enable vim mode first):
 
-1. First
-2. Second
-3. Third
+| Command | Action |
+|---------|--------|
+| \`za\` | Toggle fold under cursor |
+| \`zo\` | Open fold under cursor |
+| \`zc\` | Close fold under cursor |
+| \`zR\` | Open all folds |
+| \`zM\` | Close all folds |
+| \`zr\` | Reduce folding (open one level) |
+| \`zm\` | More folding (close one level) |
 
-## Links and Images
+## Level 2 - Another Top Section
 
-[Visit GitHub](https://github.com)
+This tests that level 2 properly ends the previous level 2 section.
 
-> This is a blockquote.
-> It can span multiple lines.
+### Level 3 - Final Nested
 
----
+Final nested content.
 
-*Happy writing!*
+## Level 2 - Conclusion
+
+End of test document.
 `;
 
 /**
@@ -87,16 +139,13 @@ const init = async () => {
     return;
   }
 
-  // Load vim mode preference
+  // Load vim mode preference from localStorage
   let vimMode = false;
-  if (api?.utils?.createDatastoreStore) {
-    try {
-      settingsStore = await api.utils.createDatastoreStore('editor', { vimMode: false });
-      vimMode = settingsStore.get(SETTINGS_KEY) || false;
-      debug && console.log('[editor] Loaded vimMode setting:', vimMode);
-    } catch (err) {
-      debug && console.log('[editor] Failed to load settings:', err);
-    }
+  try {
+    vimMode = localStorage.getItem(SETTINGS_KEY) === 'true';
+    debug && console.log('[editor] Loaded vimMode setting:', vimMode);
+  } catch (err) {
+    debug && console.log('[editor] Failed to load settings:', err);
   }
 
   // Check URL params for content or file path
@@ -129,6 +178,7 @@ const init = async () => {
     initialContent,
     vimMode,
     onContentChange: handleContentChange,
+    onVimModeChange: handleVimModeChange,
   });
 
   // Set up escape handler
@@ -142,22 +192,6 @@ const init = async () => {
     });
   }
 
-  // Listen for vim mode changes to persist
-  const vimCheckbox = document.querySelector('.vim-toggle input');
-  if (vimCheckbox) {
-    vimCheckbox.addEventListener('change', async () => {
-      const enabled = vimCheckbox.checked;
-      if (settingsStore) {
-        try {
-          await settingsStore.set(SETTINGS_KEY, enabled);
-          debug && console.log('[editor] Saved vimMode setting:', enabled);
-        } catch (err) {
-          debug && console.log('[editor] Failed to save vimMode setting:', err);
-        }
-      }
-    });
-  }
-
   debug && console.log('[editor] Editor initialized');
 };
 
@@ -168,6 +202,18 @@ const handleContentChange = (content) => {
   // Publish change event for other extensions
   if (api?.publish) {
     api.publish('editor:contentChanged', { content }, api.scopes.GLOBAL);
+  }
+};
+
+/**
+ * Handle vim mode changes - persist to localStorage
+ */
+const handleVimModeChange = (enabled) => {
+  try {
+    localStorage.setItem(SETTINGS_KEY, enabled ? 'true' : 'false');
+    console.log('[editor] Saved vimMode setting:', enabled);
+  } catch (err) {
+    console.error('[editor] Failed to save vimMode setting:', err);
   }
 };
 

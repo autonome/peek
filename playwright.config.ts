@@ -31,6 +31,14 @@ export default defineConfig({
         browserName: 'chromium',
       },
     },
+    {
+      name: 'editor',
+      testMatch: /editor\/.*\.spec\.ts/,
+      use: {
+        // Editor tests run in browser
+        browserName: 'chromium',
+      },
+    },
     // Future projects:
     // { name: 'mobile', testMatch: /mobile\/.*\.spec\.ts/ },
     // { name: 'extension', testMatch: /extension\/.*\.spec\.ts/ },

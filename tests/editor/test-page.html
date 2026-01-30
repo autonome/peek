@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Editor Folding Test Page</title>
+  <script type="importmap">
+  {
+    "imports": {
+      "@codemirror/state": "/node_modules/@codemirror/state/dist/index.js",
+      "@codemirror/view": "/node_modules/@codemirror/view/dist/index.js",
+      "@codemirror/commands": "/node_modules/@codemirror/commands/dist/index.js",
+      "@codemirror/language": "/node_modules/@codemirror/language/dist/index.js",
+      "@codemirror/autocomplete": "/node_modules/@codemirror/autocomplete/dist/index.js",
+      "@codemirror/lang-markdown": "/node_modules/@codemirror/lang-markdown/dist/index.js",
+      "@codemirror/lang-html": "/node_modules/@codemirror/lang-html/dist/index.js",
+      "@codemirror/lang-css": "/node_modules/@codemirror/lang-css/dist/index.js",
+      "@codemirror/lang-javascript": "/node_modules/@codemirror/lang-javascript/dist/index.js",
+      "@codemirror/theme-one-dark": "/node_modules/@codemirror/theme-one-dark/dist/index.js",
+      "@codemirror/search": "/node_modules/@codemirror/search/dist/index.js",
+      "@replit/codemirror-vim": "/node_modules/@replit/codemirror-vim/dist/index.js",
+      "@lezer/common": "/node_modules/@lezer/common/dist/index.js",
+      "@lezer/highlight": "/node_modules/@lezer/highlight/dist/index.js",
+      "@lezer/lr": "/node_modules/@lezer/lr/dist/index.js",
+      "@lezer/markdown": "/node_modules/@lezer/markdown/dist/index.js",
+      "@lezer/html": "/node_modules/@lezer/html/dist/index.js",
+      "@lezer/css": "/node_modules/@lezer/css/dist/index.js",
+      "@lezer/javascript": "/node_modules/@lezer/javascript/dist/index.js",
+      "crelt": "/node_modules/crelt/index.js",
+      "style-mod": "/node_modules/style-mod/src/style-mod.js",
+      "w3c-keyname": "/node_modules/w3c-keyname/index.js",
+      "@marijn/find-cluster-break": "/node_modules/@marijn/find-cluster-break/src/index.js"
+    }
+  }
+  </script>
+  <style>
+    :root {
+      /* Base16 Tomorrow Night theme */
+      --base00: #1d1f21;
+      --base01: #282a2e;
+      --base02: #373b41;
+      --base03: #969896;
+      --base04: #b4b7b4;
+      --base05: #c5c8c6;
+      --base06: #e0e0e0;
+      --base07: #ffffff;
+      --base08: #cc6666;
+      --base09: #de935f;
+      --base0A: #f0c674;
+      --base0B: #b5bd68;
+      --base0C: #8abeb7;
+      --base0D: #81a2be;
+      --base0E: #b294bb;
+      --base0F: #a3685a;
+      --theme-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    body {
+      margin: 0;
+      padding: 20px;
+      background: var(--base00);
+      color: var(--base05);
+      font-family: var(--theme-font-mono);
+    }
+    #editor-container {
+      width: 100%;
+      height: 600px;
+      border: 1px solid var(--base02);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .cm-editor {
+      height: 100%;
+    }
+    #controls {
+      margin-bottom: 16px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    button {
+      background: var(--base02);
+      color: var(--base05);
+      border: 1px solid var(--base03);
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    button:hover {
+      background: var(--base03);
+    }
+    label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #status {
+      margin-top: 16px;
+      padding: 12px;
+      background: var(--base01);
+      border-radius: 4px;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <label>
+      <input type="checkbox" id="vim-toggle">
+      Vim Mode
+    </label>
+    <button id="fold-all">Fold All (zM)</button>
+    <button id="unfold-all">Unfold All (zR)</button>
+  </div>
+
+  <div id="editor-container"></div>
+
+  <!-- Vim-style status line -->
+  <div id="vim-status-line" style="display: none; justify-content: space-between; align-items: center; padding: 4px 12px; background: var(--base00); border-top: 1px solid var(--base02); min-height: 22px; font-family: var(--theme-font-mono); font-size: 12px;">
+    <span class="vim-mode-indicator" style="color: var(--base0A); font-weight: 600;">NORMAL</span>
+    <span class="vim-position-info" style="color: var(--base04);">Ln 1, Col 1</span>
+  </div>
+
+  <div id="status">
+    <div id="fold-count">Folds: 0</div>
+    <div id="cursor-pos">Cursor: 1:1</div>
+  </div>
+
+  <script type="module">
+    import { EditorState, Compartment } from '@codemirror/state';
+    import {
+      EditorView,
+      keymap,
+      lineNumbers,
+      highlightActiveLine,
+      highlightActiveLineGutter,
+      drawSelection
+    } from '@codemirror/view';
+    import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
+    import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
+    import {
+      syntaxHighlighting,
+      defaultHighlightStyle,
+      bracketMatching,
+      indentOnInput,
+      foldGutter,
+      foldService,
+      codeFolding,
+      foldAll,
+      unfoldAll,
+      foldCode,
+      unfoldCode,
+      foldable,
+      foldedRanges,
+      foldEffect,
+      unfoldEffect
+    } from '@codemirror/language';
+    import { vim, Vim, getCM } from '@replit/codemirror-vim';
+    import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
+
+    // Helper: Find folded range at a position
+    function findFoldedRangeAt(state, pos) {
+      const folded = foldedRanges(state);
+      let result = null;
+      folded.between(0, state.doc.length, (from, to) => {
+        if (pos >= from && pos <= to) {
+          result = { from, to };
+        }
+      });
+      return result;
+    }
+
+    // Define vim fold commands using folditall-style region finding
+    Vim.defineAction('foldAll', (cm) => {
+      foldAll(cm.cm6);
+    });
+
+    Vim.defineAction('unfoldAll', (cm) => {
+      unfoldAll(cm.cm6);
+    });
+
+    Vim.defineAction('foldCode', (cm) => {
+      const view = cm.cm6;
+      const pos = view.state.selection.main.head;
+      const lineNum = view.state.doc.lineAt(pos).number;
+
+      const foldStart = findContainingFoldStart(view.state, lineNum);
+      if (foldStart !== null) {
+        const foldRange = foldable(view.state, foldStart, foldStart);
+        if (foldRange) {
+          view.dispatch({
+            effects: foldEffect.of({ from: foldRange.from, to: foldRange.to })
+          });
+        }
+      }
+    });
+
+    Vim.defineAction('unfoldCode', (cm) => {
+      const view = cm.cm6;
+      const pos = view.state.selection.main.head;
+      const line = view.state.doc.lineAt(pos);
+      const lineNum = line.number;
+
+      // First check if we're in a folded range
+      const foldedRange = findFoldedRangeAt(view.state, pos);
+      if (foldedRange) {
+        view.dispatch({
+          effects: unfoldEffect.of({ from: foldedRange.from, to: foldedRange.to })
+        });
+        return;
+      }
+
+      // Check if there's a fold starting at the end of current line
+      const foldAtLineEnd = findFoldedRangeAt(view.state, line.to);
+      if (foldAtLineEnd) {
+        view.dispatch({
+          effects: unfoldEffect.of({ from: foldAtLineEnd.from, to: foldAtLineEnd.to })
+        });
+        return;
+      }
+
+      const foldStart = findContainingFoldStart(view.state, lineNum);
+      if (foldStart !== null) {
+        const foldStartLine = view.state.doc.lineAt(foldStart);
+        const foldRange = foldable(view.state, foldStartLine.from, foldStartLine.to);
+        if (foldRange) {
+          const folded = foldedRanges(view.state);
+          let isFolded = false;
+          folded.between(foldRange.from, foldRange.to, (from) => {
+            if (from === foldRange.from) isFolded = true;
+          });
+          if (isFolded) {
+            view.dispatch({
+              effects: unfoldEffect.of({ from: foldRange.from, to: foldRange.to })
+            });
+          }
+        }
+      }
+    });
+
+    Vim.defineAction('toggleFold', (cm) => {
+      const view = cm.cm6;
+      const pos = view.state.selection.main.head;
+      const lineNum = view.state.doc.lineAt(pos).number;
+
+      const foldStart = findContainingFoldStart(view.state, lineNum);
+      if (foldStart === null) return;
+
+      const line = view.state.doc.lineAt(foldStart);
+      const foldRange = foldable(view.state, line.from, line.to);
+      if (!foldRange) return;
+
+      const folded = foldedRanges(view.state);
+      let isFolded = false;
+      folded.between(foldRange.from, foldRange.to, (from) => {
+        if (from === foldRange.from) isFolded = true;
+      });
+
+      if (isFolded) {
+        view.dispatch({
+          effects: unfoldEffect.of({ from: foldRange.from, to: foldRange.to })
+        });
+      } else {
+        view.dispatch({
+          effects: foldEffect.of({ from: foldRange.from, to: foldRange.to })
+        });
+      }
+    });
+
+    // Map vim fold commands
+    Vim.mapCommand('zc', 'action', 'foldCode', {}, { context: 'normal' });
+    Vim.mapCommand('zo', 'action', 'unfoldCode', {}, { context: 'normal' });
+    Vim.mapCommand('za', 'action', 'toggleFold', {}, { context: 'normal' });
+    Vim.mapCommand('zM', 'action', 'foldAll', {}, { context: 'normal' });
+    Vim.mapCommand('zR', 'action', 'unfoldAll', {}, { context: 'normal' });
+    Vim.mapCommand('zr', 'action', 'unfoldAll', {}, { context: 'normal' });
+    Vim.mapCommand('zm', 'action', 'foldAll', {}, { context: 'normal' });
+    // Space toggles fold (like za) - folditall behavior
+    Vim.mapCommand('<Space>', 'action', 'toggleFold', {}, { context: 'normal' });
+
+    // Test content with all folding types
+    const TEST_CONTENT = `# Level 1 Header - Main Document
+
+This content is under a level 1 header.
+
+## Level 2 - Features
+
+Content under level 2.
+
+### Level 3 - Folding Types
+
+We support multiple folding types.
+
+#### Level 4 - Header Folding
+
+Headers fold everything until the next header of same or higher level.
+
+##### Level 5 - Deep Nesting
+
+This is deeply nested content.
+
+###### Level 6 - Maximum Depth
+
+This is the deepest header level supported.
+
+Back to level 5 content.
+
+##### Level 5 - Another Section
+
+Another level 5 section.
+
+#### Level 4 - List Folding
+
+Lists with children are foldable:
+
+- Parent item with children
+  - Child item one
+  - Child item two
+    - Grandchild item
+    - Another grandchild
+  - Child item three
+- Simple item (no children)
+- Another parent
+  - Single child
+
+Numbered lists also fold:
+
+1. First parent
+   1. Sub-item one
+   2. Sub-item two
+2. Second parent
+   - Mixed child
+   - Another mixed
+
+#### Level 4 - Code Block Folding
+
+Top-level code blocks fold their contents:
+
+\`\`\`javascript
+function example() {
+    if (condition) {
+        doSomething();
+    }
+    return result;
+}
+
+class MyClass {
+    constructor() {
+        this.x = 1;
+    }
+
+    method() {
+        return this.x;
+    }
+}
+\`\`\`
+
+### Level 3 - Vim Fold Commands
+
+Test these vim commands (enable vim mode first):
+
+| Command | Action |
+|---------|--------|
+| \`za\` | Toggle fold under cursor |
+| \`zo\` | Open fold under cursor |
+| \`zc\` | Close fold under cursor |
+| \`zR\` | Open all folds |
+| \`zM\` | Close all folds |
+| \`zr\` | Reduce folding (open one level) |
+| \`zm\` | More folding (close one level) |
+
+## Level 2 - Another Top Section
+
+This tests that level 2 properly ends the previous level 2 section.
+
+### Level 3 - Final Nested
+
+Final nested content.
+
+## Level 2 - Conclusion
+
+End of test document.
+`;
+
+    // Compartments for runtime-reconfigurable extensions
+    const vimCompartment = new Compartment();
+
+    // ========================================================================
+    // Folditall Algorithm Helpers
+    // ========================================================================
+
+    function getHeaderLevel(text) {
+      const match = text.match(/^(#{1,6})\s+/);
+      return match ? match[1].length : 0;
+    }
+
+    function isListItem(text) {
+      return /^\s*[-*+]\s/.test(text) || /^\s*\d+[.)]\s/.test(text);
+    }
+
+    function getIndent(text) {
+      let indent = 0;
+      for (const char of text) {
+        if (char === ' ') indent++;
+        else if (char === '\t') indent += 2;
+        else break;
+      }
+      return indent;
+    }
+
+    function isBlankLine(text) {
+      return /^\s*$/.test(text);
+    }
+
+    function isFencedCodeBlockOpener(text) {
+      return /^(`{3,}|~{3,})/.test(text.trim());
+    }
+
+    function findClosingFence(doc, openerLineNum) {
+      const openerLine = doc.line(openerLineNum);
+      const openerText = openerLine.text.trim();
+      const match = openerText.match(/^(`{3,}|~{3,})/);
+      if (!match) return null;
+
+      const fenceChar = match[1][0];
+      const fenceLen = match[1].length;
+      const totalLines = doc.lines;
+
+      for (let i = openerLineNum + 1; i <= totalLines; i++) {
+        const line = doc.line(i);
+        const trimmed = line.text.trim();
+        const closeMatch = trimmed.match(new RegExp(`^${fenceChar}{${fenceLen},}$`));
+        if (closeMatch) {
+          return i;
+        }
+      }
+      return null;
+    }
+
+    function findNextNonBlank(doc, lineNum) {
+      const totalLines = doc.lines;
+      for (let i = lineNum + 1; i <= totalLines; i++) {
+        const line = doc.line(i);
+        if (!isBlankLine(line.text)) {
+          return i;
+        }
+      }
+      return null;
+    }
+
+    function canStartFold(text) {
+      if (getHeaderLevel(text) > 0) return true;
+      if (isListItem(text)) return true;
+      if (isFencedCodeBlockOpener(text)) return true;
+      if (getIndent(text) === 0 && !isBlankLine(text)) return true;
+      return false;
+    }
+
+    function hasFoldableChildren(doc, lineNum) {
+      const line = doc.line(lineNum);
+      const text = line.text;
+
+      if (getHeaderLevel(text) > 0) return true;
+
+      if (isFencedCodeBlockOpener(text)) {
+        return findClosingFence(doc, lineNum) !== null;
+      }
+
+      const currentIndent = getIndent(text);
+      const nextNonBlankNum = findNextNonBlank(doc, lineNum);
+
+      if (nextNonBlankNum === null) return false;
+
+      const nextLine = doc.line(nextNonBlankNum);
+      const nextText = nextLine.text;
+
+      if (getHeaderLevel(nextText) > 0) return false;
+
+      return getIndent(nextText) > currentIndent;
+    }
+
+    function findFoldEnd(doc, lineNum) {
+      const line = doc.line(lineNum);
+      const text = line.text;
+      const totalLines = doc.lines;
+      const headerLevel = getHeaderLevel(text);
+
+      if (headerLevel > 0) {
+        for (let i = lineNum + 1; i <= totalLines; i++) {
+          const checkLine = doc.line(i);
+          const checkLevel = getHeaderLevel(checkLine.text);
+          if (checkLevel > 0 && checkLevel <= headerLevel) {
+            return i - 1;
+          }
+        }
+        return totalLines;
+      }
+
+      if (isFencedCodeBlockOpener(text)) {
+        const closingLine = findClosingFence(doc, lineNum);
+        return closingLine !== null ? closingLine : lineNum;
+      }
+
+      const startIndent = getIndent(text);
+      let lastContentLine = lineNum;
+
+      for (let i = lineNum + 1; i <= totalLines; i++) {
+        const checkLine = doc.line(i);
+        const checkText = checkLine.text;
+
+        if (isBlankLine(checkText)) continue;
+
+        if (getHeaderLevel(checkText) > 0) {
+          return lastContentLine;
+        }
+
+        const checkIndent = getIndent(checkText);
+
+        if (checkIndent <= startIndent) {
+          return lastContentLine;
+        }
+
+        lastContentLine = i;
+      }
+
+      return lastContentLine;
+    }
+
+    function findContainingFoldStart(state, lineNum) {
+      const doc = state.doc;
+      const currentLine = doc.line(lineNum);
+      const currentText = currentLine.text;
+
+      if (canStartFold(currentText) && hasFoldableChildren(doc, lineNum)) {
+        return currentLine.from;
+      }
+
+      const currentIndent = getIndent(currentText);
+
+      for (let i = lineNum - 1; i >= 1; i--) {
+        const line = doc.line(i);
+        const text = line.text;
+
+        if (isBlankLine(text)) continue;
+
+        const lineIndent = getIndent(text);
+        const headerLevel = getHeaderLevel(text);
+
+        if (headerLevel > 0) {
+          const foldEnd = findFoldEnd(doc, i);
+          if (foldEnd >= lineNum) {
+            return line.from;
+          }
+          continue;
+        }
+
+        if (lineIndent < currentIndent && canStartFold(text) && hasFoldableChildren(doc, i)) {
+          const foldEnd = findFoldEnd(doc, i);
+          if (foldEnd >= lineNum) {
+            return line.from;
+          }
+        }
+      }
+
+      return null;
+    }
+
+    // Folditall-style fold service
+    const folditallFoldService = foldService.of((state, lineStart, lineEnd) => {
+      const doc = state.doc;
+      const line = doc.lineAt(lineStart);
+      const text = line.text;
+      const lineNum = line.number;
+
+      if (isBlankLine(text)) return null;
+      if (!canStartFold(text)) return null;
+      if (!hasFoldableChildren(doc, lineNum)) return null;
+
+      const endLineNum = findFoldEnd(doc, lineNum);
+      if (endLineNum <= lineNum) return null;
+
+      const endLine = doc.line(endLineNum);
+      return { from: line.to, to: endLine.to };
+    });
+
+    // Create editor theme
+    const editorTheme = EditorView.theme({
+      '&': {
+        fontSize: '14px',
+        fontFamily: 'var(--theme-font-mono)',
+        backgroundColor: 'var(--base01)',
+        color: 'var(--base05)',
+      },
+      '&.cm-focused': {
+        outline: 'none',
+      },
+      '.cm-content': {
+        padding: '10px 14px',
+        caretColor: 'var(--base05)',
+      },
+      '.cm-cursor, .cm-dropCursor': {
+        borderLeftColor: 'var(--base05)',
+      },
+      '.cm-selectionBackground, ::selection': {
+        backgroundColor: 'var(--base02)',
+      },
+      '.cm-activeLine': {
+        backgroundColor: 'var(--base02)',
+      },
+      '.cm-activeLineGutter': {
+        backgroundColor: 'var(--base02)',
+      },
+      '.cm-gutters': {
+        backgroundColor: 'var(--base01)',
+        color: 'var(--base03)',
+        border: 'none',
+        borderRight: '1px solid var(--base02)',
+      },
+      '.cm-lineNumbers .cm-gutterElement': {
+        padding: '0 8px 0 4px',
+      },
+      '.cm-foldGutter': {
+        width: '12px',
+      },
+      '.cm-header': {
+        color: 'var(--base0D)',
+        fontWeight: '600',
+      },
+      '.cm-fat-cursor': {
+        backgroundColor: 'var(--base05) !important',
+        color: 'var(--base00) !important',
+      },
+      '&:not(.cm-focused) .cm-fat-cursor': {
+        backgroundColor: 'transparent !important',
+        outline: '1px solid var(--base05)',
+      },
+      '.cm-vim-panel': {
+        padding: '4px 10px',
+        backgroundColor: 'var(--base00)',
+        borderTop: '1px solid var(--base02)',
+        fontFamily: 'var(--theme-font-mono)',
+        fontSize: '13px',
+        color: 'var(--base04)',
+      },
+      '.cm-vim-panel input': {
+        backgroundColor: 'transparent',
+        border: 'none',
+        outline: 'none',
+        color: 'var(--base05)',
+        fontFamily: 'inherit',
+        fontSize: 'inherit',
+      },
+    }, { dark: true });
+
+    // Build extensions
+    const extensions = [
+      history(),
+      drawSelection(),
+      indentOnInput(),
+      bracketMatching(),
+      highlightActiveLine(),
+      highlightActiveLineGutter(),
+      highlightSelectionMatches(),
+
+      keymap.of([
+        ...defaultKeymap,
+        ...historyKeymap,
+        ...searchKeymap,
+        indentWithTab,
+      ]),
+
+      markdown({ base: markdownLanguage }),
+      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+
+      // Folding support
+      codeFolding(),
+      folditallFoldService,
+      lineNumbers(),
+      foldGutter(),
+
+      // Theme
+      editorTheme,
+
+      // Vim mode (starts disabled)
+      vimCompartment.of([]),
+
+      // Update listener for status
+      EditorView.updateListener.of(update => {
+        if (update.selectionSet) {
+          const pos = update.state.selection.main.head;
+          const line = update.state.doc.lineAt(pos);
+          const col = pos - line.from + 1;
+          document.getElementById('cursor-pos').textContent =
+            `Cursor: ${line.number}:${col}`;
+
+          // Update vim status line position
+          const posInfo = document.querySelector('.vim-position-info');
+          if (posInfo) {
+            posInfo.textContent = `Ln ${line.number}, Col ${col}`;
+          }
+        }
+
+        // Check for vim mode changes
+        const statusLine = document.getElementById('vim-status-line');
+        if (statusLine && statusLine.style.display !== 'none') {
+          try {
+            const cm = getCM(update.view);
+            if (cm && cm.state && cm.state.vim) {
+              const vimState = cm.state.vim;
+              let currentMode = 'normal';
+              let modeLabel = 'NORMAL';
+              let modeColor = 'var(--base0A)';
+
+              if (vimState.insertMode) {
+                currentMode = 'insert';
+                modeLabel = '-- INSERT --';
+                modeColor = 'var(--base0B)';
+              } else if (vimState.visualMode) {
+                if (vimState.visualLine) {
+                  currentMode = 'visual-line';
+                  modeLabel = '-- V-LINE --';
+                } else if (vimState.visualBlock) {
+                  currentMode = 'visual-block';
+                  modeLabel = '-- V-BLOCK --';
+                } else {
+                  currentMode = 'visual';
+                  modeLabel = '-- VISUAL --';
+                }
+                modeColor = 'var(--base0E)';
+              }
+
+              const modeIndicator = document.querySelector('.vim-mode-indicator');
+              if (modeIndicator) {
+                modeIndicator.textContent = modeLabel;
+                modeIndicator.style.color = modeColor;
+              }
+            }
+          } catch (e) {
+            // Vim not active
+          }
+        }
+      }),
+    ];
+
+    // Create editor
+    const state = EditorState.create({
+      doc: TEST_CONTENT,
+      extensions,
+    });
+
+    const view = new EditorView({
+      state,
+      parent: document.getElementById('editor-container'),
+    });
+
+    // Expose for testing
+    window.editorView = view;
+    window.editorState = state;
+    window.foldAll = () => foldAll(view);
+    window.unfoldAll = () => unfoldAll(view);
+
+    // Folditall-aware foldCode: folds the containing fold region
+    window.foldCode = (pos) => {
+      const lineNum = view.state.doc.lineAt(pos).number;
+      const foldStart = findContainingFoldStart(view.state, lineNum);
+      if (foldStart !== null) {
+        const foldRange = foldable(view.state, foldStart, foldStart);
+        if (foldRange) {
+          view.dispatch({
+            effects: foldEffect.of({ from: foldRange.from, to: foldRange.to })
+          });
+          return true;
+        }
+      }
+      return false;
+    };
+
+    // Folditall-aware unfoldCode
+    window.unfoldCode = (pos) => {
+      const line = view.state.doc.lineAt(pos);
+      const lineNum = line.number;
+
+      // Check if cursor is in a folded range
+      const foldedRange = findFoldedRangeAt(view.state, pos);
+      if (foldedRange) {
+        view.dispatch({
+          effects: unfoldEffect.of({ from: foldedRange.from, to: foldedRange.to })
+        });
+        return true;
+      }
+
+      // Check if there's a fold starting at the end of current line
+      const foldAtLineEnd = findFoldedRangeAt(view.state, line.to);
+      if (foldAtLineEnd) {
+        view.dispatch({
+          effects: unfoldEffect.of({ from: foldAtLineEnd.from, to: foldAtLineEnd.to })
+        });
+        return true;
+      }
+
+      const foldStart = findContainingFoldStart(view.state, lineNum);
+      if (foldStart !== null) {
+        const foldStartLine = view.state.doc.lineAt(foldStart);
+        const foldRange = foldable(view.state, foldStartLine.from, foldStartLine.to);
+        if (foldRange) {
+          const folded = foldedRanges(view.state);
+          let isFolded = false;
+          folded.between(foldRange.from, foldRange.to, (from) => {
+            if (from === foldRange.from) isFolded = true;
+          });
+          if (isFolded) {
+            view.dispatch({
+              effects: unfoldEffect.of({ from: foldRange.from, to: foldRange.to })
+            });
+            return true;
+          }
+        }
+      }
+      return false;
+    };
+
+    window.foldable = (pos) => foldable(view.state, pos, pos);
+
+    window.setVimMode = (enabled) => {
+      view.dispatch({
+        effects: vimCompartment.reconfigure(enabled ? vim() : []),
+      });
+
+      // Show/hide vim status line
+      const statusLine = document.getElementById('vim-status-line');
+      if (statusLine) {
+        statusLine.style.display = enabled ? 'flex' : 'none';
+        if (enabled) {
+          const modeIndicator = document.querySelector('.vim-mode-indicator');
+          if (modeIndicator) {
+            modeIndicator.textContent = 'NORMAL';
+            modeIndicator.style.color = 'var(--base0A)';
+          }
+        }
+      }
+    };
+
+    window.getCursorLine = () => {
+      const pos = view.state.selection.main.head;
+      return view.state.doc.lineAt(pos).number;
+    };
+
+    window.setCursorLine = (lineNum) => {
+      const line = view.state.doc.line(lineNum);
+      view.dispatch({
+        selection: { anchor: line.from },
+        scrollIntoView: true,
+      });
+      view.focus();
+    };
+
+    window.getFoldedRanges = () => {
+      // Get all folded ranges from the fold state
+      const foldState = view.state.field(codeFolding().spec.provides, false);
+      if (!foldState) return [];
+      // Note: This is a simplified check - full implementation would iterate decorations
+      return [];
+    };
+
+    window.isFolded = (lineNum) => {
+      const line = view.state.doc.line(lineNum);
+      // Check if the line is at a fold point and is currently folded
+      const foldRange = foldable(view.state, line.from, line.to);
+      if (!foldRange) return false;
+
+      // Check the fold decorations
+      // A line is considered folded if the next visible line is not lineNum + 1
+      // This is a heuristic - better would be to check fold state directly
+      return false; // Placeholder - actual implementation needs fold state access
+    };
+
+    window.simulateVimCommand = (keys) => {
+      // Simulate vim keystrokes
+      view.focus();
+      for (const key of keys) {
+        const event = new KeyboardEvent('keydown', {
+          key: key,
+          code: `Key${key.toUpperCase()}`,
+          bubbles: true,
+          cancelable: true,
+        });
+        view.contentDOM.dispatchEvent(event);
+      }
+    };
+
+    // UI Controls
+    document.getElementById('vim-toggle').addEventListener('change', (e) => {
+      window.setVimMode(e.target.checked);
+    });
+
+    document.getElementById('fold-all').addEventListener('click', () => {
+      window.foldAll();
+    });
+
+    document.getElementById('unfold-all').addEventListener('click', () => {
+      window.unfoldAll();
+    });
+
+    // Signal ready
+    document.body.dataset.ready = 'true';
+    console.log('[test] Editor ready');
+  </script>
+</body>
+</html>

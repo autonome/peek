@@ -6,17 +6,20 @@
 
 import { OutlineSidebar } from './outline-sidebar.js';
 import { PreviewSidebar } from './preview-sidebar.js';
+import { StatusLine } from './status-line.js';
 import * as CodeMirror from './codemirror.js';
 
 export class EditorLayout {
   constructor(options) {
     this.container = options.container;
     this.onContentChange = options.onContentChange;
+    this.onVimModeChange = options.onVimModeChange;
     this.initialContent = options.initialContent || '';
     this.vimMode = options.vimMode || false;
 
     this.outlineSidebar = null;
     this.previewSidebar = null;
+    this.statusLine = null;
     this.cmEditor = null;
     this.lastContent = '';
     this.rafId = null;
@@ -51,25 +54,14 @@ export class EditorLayout {
     this.cmContainer.className = 'cm-container';
     this.editorContainer.appendChild(this.cmContainer);
 
+    // Status line container (below editor, above toolbar)
+    this.statusLineContainer = document.createElement('div');
+    this.statusLineContainer.className = 'status-line-container';
+    this.editorContainer.appendChild(this.statusLineContainer);
+
     // Toolbar below editor
     this.toolbar = document.createElement('div');
     this.toolbar.className = 'editor-toolbar';
-
-    // Vim mode toggle
-    this.vimToggle = document.createElement('label');
-    this.vimToggle.className = 'vim-toggle';
-
-    this.vimCheckbox = document.createElement('input');
-    this.vimCheckbox.type = 'checkbox';
-    this.vimCheckbox.checked = this.vimMode;
-    this.vimCheckbox.addEventListener('change', () => this.handleVimToggle());
-
-    const vimLabel = document.createElement('span');
-    vimLabel.textContent = 'Vim';
-
-    this.vimToggle.appendChild(this.vimCheckbox);
-    this.vimToggle.appendChild(vimLabel);
-    this.toolbar.appendChild(this.vimToggle);
 
     // Sidebar toggles
     const sidebarToggles = document.createElement('div');
@@ -112,6 +104,16 @@ export class EditorLayout {
 
     this.container.appendChild(this.wrapper);
 
+    // Initialize status line (only shown when vim mode is enabled)
+    this.statusLine = new StatusLine({
+      container: this.statusLineContainer,
+    });
+
+    // Hide status line initially if vim mode is off
+    if (!this.vimMode) {
+      this.statusLine.hide();
+    }
+
     // Initialize CodeMirror
     this.cmEditor = CodeMirror.createEditor({
       parent: this.cmContainer,
@@ -119,6 +121,8 @@ export class EditorLayout {
       vimMode: this.vimMode,
       showLineNumbers: true,
       onChange: (content) => this.handleContentChange(content),
+      onSelectionChange: (line, col) => this.handleSelectionChange(line, col),
+      onVimModeChange: (mode) => this.handleVimModeUpdate(mode),
     });
 
     // Default sidebars to collapsed
@@ -270,10 +274,46 @@ export class EditorLayout {
     }
   }
 
-  handleVimToggle() {
-    this.vimMode = this.vimCheckbox.checked;
+  /**
+   * Update vim mode state (called from setVimMode).
+   */
+  updateVimModeState(enabled) {
+    this.vimMode = enabled;
     if (this.cmEditor) {
       CodeMirror.setVimMode(this.cmEditor, this.vimMode);
+    }
+
+    // Show/hide status line based on vim mode
+    if (this.statusLine) {
+      if (this.vimMode) {
+        this.statusLine.show();
+        this.statusLine.updateMode('normal');
+      } else {
+        this.statusLine.hide();
+      }
+    }
+
+    // Notify parent of vim mode change for persistence
+    if (this.onVimModeChange) {
+      this.onVimModeChange(this.vimMode);
+    }
+  }
+
+  /**
+   * Handle cursor position changes.
+   */
+  handleSelectionChange(line, col) {
+    if (this.statusLine) {
+      this.statusLine.updatePosition(line, col);
+    }
+  }
+
+  /**
+   * Handle vim mode state changes (normal, insert, visual, etc.)
+   */
+  handleVimModeUpdate(mode) {
+    if (this.statusLine && this.vimMode) {
+      this.statusLine.updateMode(mode);
     }
   }
 
@@ -408,11 +448,7 @@ export class EditorLayout {
    * Set vim mode.
    */
   setVimMode(enabled) {
-    this.vimMode = enabled;
-    this.vimCheckbox.checked = enabled;
-    if (this.cmEditor) {
-      CodeMirror.setVimMode(this.cmEditor, enabled);
-    }
+    this.updateVimModeState(enabled);
   }
 
   /**
@@ -447,6 +483,7 @@ export class EditorLayout {
       this.cmEditor = null;
     }
 
+    this.statusLine?.destroy();
     this.outlineSidebar?.destroy();
     this.previewSidebar?.destroy();
     this.wrapper.remove();

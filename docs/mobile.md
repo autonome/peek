@@ -278,6 +278,29 @@ npm run build:ios:release
 | `xcode` | Copy libraries and open Xcode (no build) |
 | `dev:ios` | Full dev setup with server (for sync testing) |
 
+### CLI Build Scripts (from repo root)
+
+**Simulator builds:**
+| Script | Description |
+|--------|-------------|
+| `mobile:ios:xcodebuild:full` | Full debug build + install on simulator |
+| `mobile:ios:xcodebuild:release:full` | Full release build + install on simulator |
+| `mobile:ios:sim:run` | Boot simulator + build + install + launch |
+| `mobile:ios:sim:boot` | Boot iPhone 17 Pro simulator |
+| `mobile:ios:sim:launch` | Launch app on booted simulator |
+
+**Device builds:**
+| Script | Description |
+|--------|-------------|
+| `mobile:ios:xcodebuild:device:full` | Full release build + install on USB device |
+| `mobile:ios:device:launch` | Launch app on connected device |
+| `mobile:ios:device:list` | List connected iOS devices |
+
+**One-liner for device deployment:**
+```bash
+yarn mobile:ios:xcodebuild:device:full && yarn mobile:ios:device:launch
+```
+
 **Important Notes:**
 - Debug uses `Externals/arm64/Debug/libapp.a` and target `aarch64-apple-ios-sim`
 - Release uses `Externals/arm64/Release/libapp.a` and target `aarch64-apple-ios`

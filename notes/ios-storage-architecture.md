@@ -361,7 +361,69 @@ Based on [Apple's Technical Note TN2408](https://developer.apple.com/library/arc
 
 ---
 
-## 7. References
+## 7. Case Study: INTEGER→TEXT Tag Migration (January 2026)
+
+This section documents the practical impact of the dual-codebase architecture during a real schema migration.
+
+### The Problem
+
+Mobile tags used `INTEGER PRIMARY KEY AUTOINCREMENT` for `tags.id` while server/desktop used `TEXT` UUIDs. This broke tag sync completely—tags created on mobile couldn't sync because their IDs were incompatible.
+
+### Migration Scope
+
+| Task | Rust (lib.rs) | Swift (ShareViewController.swift) |
+|------|---------------|-----------------------------------|
+| Schema version bump | 1 location | 1 location |
+| ID generator function | New function | New function |
+| Migration function | ~60 lines | ~50 lines |
+| Type declaration changes | ~15 locations | ~8 locations |
+| Query updates | ~10 locations | ~4 locations |
+| Test updates | ~5 locations | N/A |
+
+**Total: ~40 code changes across 2 files in 2 languages**
+
+### What Would Have Been Different with UniFFI
+
+With a unified Rust core linked to both main app and Share Extension:
+
+| Task | Unified Rust Core |
+|------|-------------------|
+| Schema version bump | 1 location |
+| ID generator function | 1 function |
+| Migration function | ~60 lines (once) |
+| Type declaration changes | ~15 locations (once) |
+| Query updates | ~10 locations (once) |
+| Swift changes | **0** (auto-generated bindings) |
+
+**Total: ~20 code changes in 1 file, 1 language**
+
+### Risk Comparison
+
+| Risk | Dual Codebase | UniFFI |
+|------|---------------|--------|
+| Type mismatch between codepaths | High (manual sync) | None (single source) |
+| Migration logic divergence | High | None |
+| ID format inconsistency | Medium (copy-paste errors) | None |
+| First-writer-wins race condition | Must implement twice | Implement once |
+| Testing coverage | Test both paths | Test once |
+
+### Conclusion
+
+The migration succeeded, but required:
+- Implementing identical logic twice (Rust + Swift)
+- Coordinating transaction safety in two different SQLite libraries
+- Ensuring ID format strings match exactly
+- Updating schema fidelity tests to track the fix
+
+**With UniFFI, this would have been a single-codebase change with auto-generated Swift bindings.** The upfront investment in UniFFI (~1-2 weeks) would pay off in reduced migration risk and maintenance burden for any future schema changes.
+
+### Recommendation Update
+
+Based on this experience, **Option A (UniFFI)** should be prioritized higher than originally assessed. The complexity cost of dual codepaths compounds with each schema change, and the tag migration demonstrated concrete examples of divergence risk.
+
+---
+
+## 8. References
 
 - [Apple TN2408: Accessing Shared Data](https://developer.apple.com/library/archive/technotes/tn2408/_index.html)
 - [iOS App Extensions Data Sharing](https://dmtopolog.com/ios-app-extensions-data-sharing/)

@@ -421,6 +421,9 @@ misc
 - [ ] in url saves/views, show oembed, or at least page title
 - [ ] for url saves, save title and any other metadata
 - [ ] investigate detecting which app a share came from
+- [ ] fix xcodebuild CLI builds (see notes/research-xcodebuild-environment-issues.md)
+  - isolate DerivedData paths for CLI vs GUI
+  - set up proper build script with environment isolation
 
 ## Session & State Management
 
@@ -443,11 +446,12 @@ Search
 - [ ] OpenSearch
 
 Web extensions
-- [ ] WebExtension integration for priority only, on some platforms, some back-ends
-- [ ] Electron first, using https://github.com/samuelmaddock/electron-browser-shell/tree/master/packages/electron-chrome-extensions
-- [ ] uBlock Origin
-- [ ] Proton Pass
-- [ ] Bypass Paywalls Clean
+- [ ] WebExtension integration for bundled extensions only (not user-installable)
+- [ ] Electron first, using electron-chrome-extensions (Polypane fork for MV3)
+- [ ] @cliqz/adblocker-electron for ad blocking (native, not extension)
+- [ ] Proton Pass for password management
+- [ ] Consent-O-Matic for cookie consent auto-handling (MIT, Aarhus University)
+- [ ] Enable/disable toggles in Settings UI
 
 ## Feeds, time-series, scripts
 

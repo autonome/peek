@@ -83,18 +83,46 @@ Bundling a small set of extensions (uBlock Origin, Proton Pass) with Peek for El
 - ✅ MV3 compatible without major changes
 - ⚠️ Requires Proton account for full sync features
 
+### Consent-O-Matic (cookie consent auto-handler)
+
+**Repository**: [cavi-au/Consent-O-Matic](https://github.com/cavi-au/Consent-O-Matic)
+
+**License**: MIT - free to bundle with attribution
+
+**Attribution Required**:
+> "Janus Bager Kristensen and Rolf Bagge, CAVI - Center for Advanced Visualization and Interaction, Aarhus University"
+
+**What it does**:
+- Automatically detects and handles cookie consent banners
+- Supports 200+ Consent Management Platforms (OneTrust, CookieBot, UserCentrics, etc.)
+- **Privacy-first**: Rejects all optional cookies by default
+- Does NOT phone home or collect browsing data (only fetches rule updates)
+
+**APIs Required**:
+- chrome.tabs (content script injection)
+- chrome.storage (user preferences)
+- chrome.runtime (messaging)
+- Content scripts on all sites (DOM access for popup detection)
+
+**Viability in Peek**:
+- ✅ Works with electron-chrome-extensions (MV2)
+- ✅ No conflicts with ad blocker or Proton Pass
+- ✅ MIT license (easier than GPL)
+- ⚠️ Monitor upstream for MV3 migration
+
 ---
 
 ## 4. API Coverage Matrix
 
-| API | uBlock | Proton Pass | Electron Support | MV3 Status |
-|-----|--------|-------------|------------------|------------|
-| webRequest (blocking) | ✅ Critical | ❌ Not needed | ✅ Yes (conflicts) | ❌ Restricted |
-| webRequest (non-blocking) | ❌ Insufficient | ✅ Yes | ✅ Yes | ✅ Yes |
-| tabs | ✅ Yes | ✅ Yes | ✅ Customizable | ✅ Yes |
-| storage | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
-| cookies | ✅ Optional | ❌ No | ✅ Yes | ✅ Yes |
-| declarativeNetRequest | ❌ (MV3 only) | ✅ Can use | ⚠️ Partial | ✅ Yes |
+| API | uBlock | Proton Pass | Consent-O-Matic | Electron Support | MV3 Status |
+|-----|--------|-------------|-----------------|------------------|------------|
+| webRequest (blocking) | ✅ Critical | ❌ Not needed | ❌ Not needed | ✅ Yes (conflicts) | ❌ Restricted |
+| webRequest (non-blocking) | ❌ Insufficient | ✅ Yes | ❌ Not needed | ✅ Yes | ✅ Yes |
+| tabs | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Customizable | ✅ Yes |
+| storage | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
+| cookies | ✅ Optional | ❌ No | ❌ No | ✅ Yes | ✅ Yes |
+| content_scripts | ✅ Yes | ✅ Yes | ✅ Critical | ✅ Yes | ✅ Yes |
+| declarativeNetRequest | ❌ (MV3 only) | ✅ Can use | ❌ Not needed | ⚠️ Partial | ✅ Yes |
 
 ---
 
@@ -121,6 +149,7 @@ Bundling a small set of extensions (uBlock Origin, Proton Pass) with Peek for El
 |-----------|---------|--------------|-------|
 | uBlock Origin | GPLv3 | ✅ Yes | Must acknowledge GPL, include source |
 | Proton Pass | GPLv3 | ✅ Yes | Open source + proprietary service |
+| Consent-O-Matic | MIT | ✅ Yes | Attribution required (Aarhus University CAVI) |
 
 **Disclosure Requirements**:
 - Display list of bundled extensions with versions in Settings
@@ -183,18 +212,25 @@ Bundling a small set of extensions (uBlock Origin, Proton Pass) with Peek for El
 
 ## 10. Recommended Path Forward
 
-**Immediate (MVP)**:
+**Bundled Extensions (Final List)**:
+1. **@cliqz/adblocker-electron** - Native ad blocker (not an extension)
+2. **Proton Pass** - Password manager extension
+3. **Consent-O-Matic** - Cookie consent auto-handler extension
+
+**Implementation Order**:
+
+**Phase 1 (MVP)**:
 1. Use [Polypane/electron-chrome-extensions](https://github.com/Polypane/electron-chrome-extensions) (MV3-ready)
-2. Bundle **Proton Pass only** (best compatibility, no licensing issues)
-3. Implement toggle in Settings UI
+2. Integrate @cliqz/adblocker-electron as native ad blocker
+3. Implement enable/disable toggles in Settings UI
 
-**Short-term**:
-4. Add **@cliqz/adblocker-electron** as native ad blocker (no webRequest conflicts)
-5. Monitor uBlock Origin MV3 progress; defer until stable
+**Phase 2**:
+4. Bundle Proton Pass extension
+5. Bundle Consent-O-Matic extension
 
-**Long-term**:
-7. If uBlock MV3 becomes viable, bundle as opt-in
-8. Consider extension update mechanism
+**Phase 3**:
+6. Add licensing/attribution UI in About dialog
+7. Monitor upstream for MV3 migrations
 
 ---
 
@@ -205,5 +241,6 @@ Bundling a small set of extensions (uBlock Origin, Proton Pass) with Peek for El
 - [Electron Extension Support](https://www.electronjs.org/docs/latest/api/extensions)
 - [uBlock Origin](https://github.com/gorhill/uBlock)
 - [Proton Pass](https://proton.me/pass)
+- [Consent-O-Matic](https://github.com/cavi-au/Consent-O-Matic)
 - [@cliqz/adblocker-electron](https://www.npmjs.com/package/@cliqz/adblocker-electron)
 - [Chrome MV3 Overview](https://developer.chrome.com/docs/extensions/develop/migrate/what-is-mv3)

@@ -2,6 +2,7 @@ import appConfig from '../config.js';
 import { createDatastoreStore } from '../utils.js';
 import api from '../api.js';
 import fc from '../features.js';
+import izui from '../izui.js';
 
 const DEBUG = api.debug;
 const clear = false;
@@ -1211,7 +1212,7 @@ const renderExtensionsSettings = async () => {
       const allExtensions = [];
 
       // Get all builtin extension IDs from the loader
-      const builtinExtIds = ['cmd', 'editor', 'groups', 'peeks', 'slides', 'windows'];
+      const builtinExtIds = ['cmd', 'groups', 'peeks', 'slides', 'windows'];
 
       // Add builtin extensions (whether running or not)
       builtinExtIds.forEach(extId => {
@@ -2523,7 +2524,7 @@ const init = async () => {
   datastoreNav.textContent = 'Datastore';
   datastoreNav.style.cursor = 'pointer';
   datastoreNav.addEventListener('click', () => {
-    api.window.open('peek://app/datastore/viewer.html', {
+    izui.openChildWindow('peek://app/datastore/viewer.html', {
       width: 900,
       height: 600,
       key: 'datastore-viewer'
@@ -2537,7 +2538,7 @@ const init = async () => {
   diagnosticNav.textContent = 'Diagnostic';
   diagnosticNav.style.cursor = 'pointer';
   diagnosticNav.addEventListener('click', () => {
-    api.window.open('peek://app/diagnostic.html', {
+    izui.openChildWindow('peek://app/diagnostic.html', {
       width: 900,
       height: 700,
       key: 'diagnostic-tool'
@@ -2572,6 +2573,9 @@ const init = async () => {
 };
 
 window.addEventListener('load', init);
+
+// Initialize IZUI for focus restoration when child windows close
+izui.init({ canHaveChildren: true });
 
 window.addEventListener('blur', () => {
   console.log('core settings blur');

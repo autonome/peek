@@ -47,8 +47,13 @@
   <div id="output"></div>
 
   <script type="module">
+    import izui from './izui.js';
+
     const api = window.app;
     const output = document.getElementById('output');
+
+    // Initialize IZUI - notify parent on close
+    izui.init({ canHaveChildren: false });
 
     function log(title, content) {
       const section = document.createElement('div');

@@ -198,8 +198,9 @@ async function launchElectron(profile: string, options: LaunchOptions = {}): Pro
   });
 
   // Wait for background window to be ready (API loaded)
-  const bgWindow = await waitForWindowHelper(() => electronApp.windows(), 'app/background.html', 15000);
-  await waitForAppReady(bgWindow, 10000);
+  // Use 30s timeout to handle slow launches after previous test cleanup
+  const bgWindow = await waitForWindowHelper(() => electronApp.windows(), 'app/background.html', 30000);
+  await waitForAppReady(bgWindow, 15000);
 
   // Hybrid mode: wait for extension host (built-in) AND separate windows (external like 'example')
   const waitForHybridExtensions = async (timeout: number): Promise<void> => {
@@ -336,6 +337,9 @@ async function launchElectron(profile: string, options: LaunchOptions = {}): Pro
       if (isRunning(pid)) {
         console.error(`[test] WARNING: Process ${pid} still running after SIGKILL`);
       }
+
+      // Allow extra time for OS to fully release resources (ports, files, etc.)
+      await sleep(500);
     }
   };
 }

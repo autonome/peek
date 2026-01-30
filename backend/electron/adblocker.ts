@@ -47,9 +47,7 @@ export async function initAdblocker(): Promise<void> {
   const startTime = Date.now();
 
   try {
-    blocker = await ElectronBlocker.fromPrebuiltAdsAndTracking(fetch, {
-      enableCompression: true,
-    });
+    blocker = await ElectronBlocker.fromPrebuiltAdsAndTracking(fetch);
 
     blocker.on('request-blocked', (request: Request) => {
       blockedCount++;

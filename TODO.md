@@ -421,9 +421,9 @@ misc
 - [ ] in url saves/views, show oembed, or at least page title
 - [ ] for url saves, save title and any other metadata
 - [ ] investigate detecting which app a share came from
-- [ ] fix xcodebuild CLI builds (see notes/research-xcodebuild-environment-issues.md)
-  - isolate DerivedData paths for CLI vs GUI
-  - set up proper build script with environment isolation
+- [x] fix xcodebuild CLI builds (DONE - uses /tmp/peek-xcodebuild for isolated DerivedData)
+  - yarn mobile:ios:xcodebuild for CLI builds
+  - yarn interactive-test:e2e:full-sync:auto for fully automated e2e tests
 
 ## Session & State Management
 

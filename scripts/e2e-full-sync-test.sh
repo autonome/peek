@@ -2,21 +2,20 @@
 # Full E2E Sync Test: Server + Desktop (headless) + iOS Simulator
 #
 # ┌─────────────────────────────────────────────────────────────────┐
-# │  INTERACTIVE TEST - Run in background, monitor output manually  │
+# │  E2E Sync Test - Server + Desktop + iOS Simulator               │
 # │                                                                 │
 # │  Usage:                                                         │
-# │    npm run interactive-test:e2e:full-sync -- --interactive &    │
+# │    # Interactive mode (opens Xcode, manual sync taps)           │
+# │    yarn interactive-test:e2e:full-sync                          │
 # │                                                                 │
-# │  Then watch output and follow prompts to tap buttons in the     │
-# │  iOS simulator when instructed. Do NOT run this blocking in     │
-# │  an automated context - it requires human interaction.          │
+# │    # Headless mode (auto-sync, requires pre-built app)          │
+# │    yarn interactive-test:e2e:full-sync -- --headless            │
 # │                                                                 │
-# │  For semi-automated mode (auto-relaunch, no prompts):           │
-# │    npm run interactive-test:e2e:full-sync -- --headless         │
+# │    # Fully automated (builds with xcodebuild CLI + auto-sync)   │
+# │    yarn interactive-test:e2e:full-sync -- --headless --build    │
 # │                                                                 │
-# │  In headless mode, the script auto-relaunches the iOS app but   │
-# │  still requires manual "Sync All" taps OR the iOS app must      │
-# │  support PEEK_AUTO_SYNC=true env var for auto-sync on launch.   │
+# │  The --build flag uses xcodebuild CLI with isolated DerivedData │
+# │  path (/tmp/peek-xcodebuild) to avoid conflicts with Xcode GUI. │
 # └─────────────────────────────────────────────────────────────────┘
 #
 # Clean-room test covering all sync permutations:
@@ -38,10 +37,14 @@ XCODE_PROJECT="$TAURI_DIR/src-tauri/gen/apple/peek-save.xcodeproj"
 
 # --- Parse arguments ---
 HEADLESS=false
+CLI_BUILD=false
 for arg in "$@"; do
     case "$arg" in
         --headless|--auto)
             HEADLESS=true
+            ;;
+        --build)
+            CLI_BUILD=true
             ;;
     esac
 done
@@ -116,7 +119,11 @@ prompt_or_continue() {
 echo "=========================================="
 echo "  Full E2E Sync Test (Clean Room)"
 if [ "$HEADLESS" = true ]; then
-    echo "  Mode: HEADLESS (auto-relaunch, no prompts)"
+    if [ "$CLI_BUILD" = true ]; then
+        echo "  Mode: HEADLESS + CLI BUILD (fully automated)"
+    else
+        echo "  Mode: HEADLESS (auto-relaunch, no prompts)"
+    fi
 else
     echo "  Mode: INTERACTIVE (manual prompts)"
 fi
@@ -530,10 +537,38 @@ echo "  Press Ctrl+C at any time to stop and clean up."
 echo "=========================================="
 echo ""
 
-# --- Open Xcode (now that everything is ready) ---
+# --- Build and/or open Xcode ---
+
+if [ "$CLI_BUILD" = true ]; then
+    echo ""
+    echo "Building iOS app with xcodebuild (CLI)..."
+    cd "$PROJECT_DIR"
+
+    # Build with xcodebuild using isolated DerivedData path
+    cd backend/tauri-mobile/src-tauri/gen/apple
+    xcodebuild -scheme peek-save_iOS -configuration Debug -sdk iphonesimulator \
+        -derivedDataPath /tmp/peek-xcodebuild \
+        -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+        build 2>&1 | grep -E "(BUILD|error:|warning:.*error)" || true
+
+    if [ $? -eq 0 ]; then
+        echo "  iOS app built successfully"
+    else
+        echo "  ERROR: xcodebuild failed"
+        exit 1
+    fi
+
+    # Install to simulator
+    echo "  Installing to simulator..."
+    xcrun simctl install booted '/tmp/peek-xcodebuild/Build/Products/debug-iphonesimulator/Peek Save.app'
+    echo "  iOS app installed"
+    cd "$PROJECT_DIR"
+fi
 
 if [ "$HEADLESS" = true ]; then
-    echo "[HEADLESS] Skipping Xcode open. Ensure iOS app is already built and installed."
+    if [ "$CLI_BUILD" = false ]; then
+        echo "[HEADLESS] Skipping Xcode open. Ensure iOS app is already built and installed."
+    fi
     echo "[HEADLESS] Relaunching iOS app with PEEK_AUTO_SYNC=true..."
     relaunch_ios_app "pick up fresh test profile + auto-sync" "true"
     echo ""

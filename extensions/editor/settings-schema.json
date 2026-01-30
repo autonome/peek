@@ -1,0 +1,24 @@
+{
+  "prefs": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "peek.editor.prefs.schema.json",
+    "title": "Editor preferences",
+    "description": "Peek app Editor user preferences",
+    "type": "object",
+    "properties": {
+      "vimMode": {
+        "description": "Enable vim keybindings in the text editor",
+        "type": "boolean",
+        "default": false
+      }
+    }
+  },
+  "storageKeys": {
+    "PREFS": "prefs"
+  },
+  "defaults": {
+    "prefs": {
+      "vimMode": false
+    }
+  }
+}

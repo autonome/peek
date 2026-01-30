@@ -29,7 +29,7 @@ const topicFeatureToggle = 'core:feature:toggle';
 
 // Built-in extensions (now loaded by main process ExtensionManager)
 // cmd is first so it's ready to receive command registrations from other extensions
-const builtinExtensions = ['cmd', 'groups', 'peeks', 'slides'];
+const builtinExtensions = ['cmd', 'editor', 'groups', 'peeks', 'slides'];
 
 let _settingsWin = null;
 

@@ -5,6 +5,49 @@ Completed work, grouped by week of year.
 
 Newly done items go here, grouped under third-level headings by week of year.
 
+### 2026-W05
+
+Schema & Data Layer
+- [x] feat(schema): add schema codegen system with single source of truth
+- [x] feat(schema): integrate codegen into build system with Rust backend tests
+- [x] feat(schema): comprehensive test coverage for generated types
+- [x] chore(server): align Node engine to repo-wide v22 policy
+
+Testing Infrastructure
+- [x] test(components): add component test infrastructure
+- [x] test(components): expand coverage to 56 tests with deterministic waits
+- [x] docs(components): add Testing section to README
+
+Editor
+- [x] feat(editor): integrate CodeMirror markdown editor with three-panel layout
+  - Outline sidebar with header navigation
+  - Live markdown preview sidebar
+  - Vim mode toggle (persisted in settings)
+  - Resizable panels, focus mode
+  - Full syntax highlighting
+
+Web Extensions
+- [x] feat(web-ext): add bundled web extensions infrastructure
+- [x] feat(extensions): bundle Consent-O-Matic for automatic cookie consent handling
+- [x] docs: add research on bundled web extensions (uBlock, Proton Pass, Consent-O-Matic)
+- [x] Integrated @cliqz/adblocker-electron for native ad blocking
+
+Mobile / iOS
+- [x] feat(mobile): add Release CLI builds via xcodebuild
+  - Fix Share Extension configuration inheritance (CONFIGURATION=Release override)
+  - Add yarn mobile:ios:xcodebuild:release command
+  - Add yarn mobile:ios:xcodebuild:install:release command
+- [x] feat(tests): iOS e2e testing improvements and window utilities
+  - Add PEEK_AUTO_SYNC env var support
+  - Add --headless and --build flags to e2e-full-sync-test.sh
+- [x] docs: add research on xcodebuild CLI vs Xcode GUI environment issues
+
+Developer Tooling
+- [x] chore: add multi-agent workflow with jj workspaces
+- [x] chore: update agent-setup to handle both install and update
+- [x] docs: add CLAUDE.coordinator.md for coordinator agents
+- [x] docs: update jj workflow - always commit before operations
+
 ### 2026-W04
 
 - [x][desktop] history & addressability: track peek:// loads, all window/webview loads, in-page navigation, JS window.open child windows (mkylrnxy)

@@ -1,11 +1,12 @@
 /**
- * Editor Extension - View, add, and edit saved items
+ * Editor Extension - Markdown editor with sidebars
  *
  * Provides:
- * - Full item CRUD (URLs, text notes, tagsets, images)
- * - Tag editing on items
- * - Type filtering and search
- * - Pubsub integration (editor:open, editor:add, editor:changed)
+ * - Three-panel layout: outline | editor | preview
+ * - CodeMirror-based markdown editing
+ * - Optional vim mode
+ * - Resizable panels
+ * - Pubsub integration
  */
 
 // Feature detection
@@ -13,7 +14,7 @@ const hasPeekAPI = typeof window.app !== 'undefined';
 const api = hasPeekAPI ? window.app : null;
 
 /**
- * Open the editor home window
+ * Open the editor window
  */
 function openEditor(params) {
   if (hasPeekAPI) {
@@ -24,8 +25,8 @@ function openEditor(params) {
     }
     api.window.open(url, {
       key: 'editor-home',
-      width: 900,
-      height: 700,
+      width: 1200,
+      height: 800,
       title: 'Editor'
     });
   } else {
@@ -45,7 +46,7 @@ const extension = {
   registerCommands() {
     api.commands.register({
       name: 'open editor',
-      description: 'Open the item editor',
+      description: 'Open the markdown editor',
       execute: () => openEditor()
     });
 
@@ -71,25 +72,16 @@ const extension = {
     // Register global shortcut Option+e
     api.shortcuts.register('Option+e', () => openEditor());
 
-    // Subscribe to editor:open — other extensions request item editing
+    // Subscribe to editor:open — open editor with optional content
     api.subscribe('editor:open', (msg) => {
-      if (msg && msg.itemId) {
-        openEditor({ itemId: msg.itemId });
-      } else {
-        openEditor();
-      }
-    }, api.scopes.GLOBAL);
-
-    // Subscribe to editor:add — other extensions request add mode
-    api.subscribe('editor:add', (msg) => {
       const params = {};
-      if (msg) {
-        if (msg.type) params.addType = msg.type;
-        if (msg.content) params.addContent = msg.content;
-        if (msg.url) params.addUrl = msg.url;
+      if (msg?.content) {
+        params.content = msg.content;
       }
-      params.mode = 'add';
-      openEditor(params);
+      if (msg?.file) {
+        params.file = msg.file;
+      }
+      openEditor(Object.keys(params).length > 0 ? params : undefined);
     }, api.scopes.GLOBAL);
 
     console.log('[editor] Extension loaded');

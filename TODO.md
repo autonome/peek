@@ -50,17 +50,24 @@ once we have cardinal ui
 - [ ] pop up a board of built-in shortcuts/actions
 - [ ] pop up a board of common shortcuts/actions you use
 
-## Addessibility / Core history / feeds
+## Use cases
 
-For record/replay, daily ribbon, state feedback loops and observability, etc we need a complete chained history.
-All of those require addressibility of all primary actions, and connections to prev/next actions.
-Includes any peek:// invocation and parameters passed.
-May require the connector/parameter context for each invocation, tbd.
-Requires explicit chaining.
+key capabilities from application history chain + addressibility
+
+- record/replay
+- state feedback loops
+- observability
+
+to build
+- [ ] daily ribbon along bottom of screen, populated with actions and favicons of pages loaded (filter on web only?)
+- [ ] step counter: app level interaction tracing/counting. when is reset? when does action end and new one start?
+
+maybe todo
+- app level interaction tracing/counting - when is reset? what makes a discrete action start/stop/change?
+- may require connector/parameter context for each peek address load and connector invocation in a chained command
+- peeks/slides as addresses + metadata? or urls? eg open({json of peek url + context}) => localhost in left slide, or peek://slide?where=top&url=http://localhost? both?
 
 Review against impl
-- [ ] step counter: app level interaction tracing/counting. when is reset? when does action end and new one start?
-- [ ] peeks/slides as tagged addresses with metadata properties? or urls?
 
 ## UI Componentry
 
@@ -225,11 +232,20 @@ syncing history
 
 ## Izui
 
-- [ ] formalize model
-- [ ] make izui stack manager (part of window mgr?)
-- [ ] esc stack: from feature settings back to core settings
-- [ ] add to izui stack (and ix w/ history?)
-- [ ] interactions/sec-policy between peek:// and other
+formalizing and stabilizing Peek’s window management system
+
+immediate
+- [ ] hotfix: disable escape-to-close window when peek app is focused application in the OS
+
+model formalization
+- [ ] review the windowing approach used in ./app to manage windows by analyzing the source code of it and the peek extensions
+- [ ] formalize that review into a state machine or other declarative set of rules which let’s us easily reason about, revise, and generate code and tests for it
+- [ ] implement izui window manager based on those rules
+
+key pieces
+- [ ] esc works when global hotkeys are executed and peek is not focused
+- [ ] in-app navigations with escape, eg moving from sub items in settings back to settings default pane
+- [ ] centralized place we add to history chain
 
 ## Polish
 
@@ -263,10 +279,11 @@ Used for
 - editing in command chaining interstitials (edit cmd can apply to anything text-ish)
 - OS level handler for editing files on filesystem
 
-Implementation 
-- [ ] import from ~/misc/peek-editor, put in ./extensions/editor for now
-- [ ] evaluate using raw codemirror which is like “toolkit for an editor"
-- [ ] evaluate using https://github.com/MarkEdit-app/MarkEdit or its approach
+Implementation
+- [x] CodeMirror integrated with three-panel layout (outline, editor, preview)
+- [x] Vim mode toggle with settings persistence
+- [x] Live markdown preview sidebar
+- [x] Outline navigation from headers
 
 Features
 - [ ] add support for paste operations
@@ -421,9 +438,6 @@ misc
 - [ ] in url saves/views, show oembed, or at least page title
 - [ ] for url saves, save title and any other metadata
 - [ ] investigate detecting which app a share came from
-- [x] fix xcodebuild CLI builds (DONE - uses /tmp/peek-xcodebuild for isolated DerivedData)
-  - yarn mobile:ios:xcodebuild for CLI builds
-  - yarn interactive-test:e2e:full-sync:auto for fully automated e2e tests
 
 ## Session & State Management
 
@@ -446,11 +460,10 @@ Search
 - [ ] OpenSearch
 
 Web extensions
-- [ ] WebExtension integration for bundled extensions only (not user-installable)
-- [ ] Electron first, using electron-chrome-extensions (Polypane fork for MV3)
-- [ ] @cliqz/adblocker-electron for ad blocking (native, not extension)
+- [x] WebExtension integration for bundled extensions (Electron, using electron-chrome-extensions)
+- [x] @cliqz/adblocker-electron for native ad blocking
+- [x] Consent-O-Matic for automatic cookie consent handling (MIT, Aarhus University)
 - [ ] Proton Pass for password management
-- [ ] Consent-O-Matic for cookie consent auto-handling (MIT, Aarhus University)
 - [ ] Enable/disable toggles in Settings UI
 
 ## Feeds, time-series, scripts

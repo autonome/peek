@@ -225,11 +225,20 @@ syncing history
 
 ## Izui
 
-- [ ] formalize model
-- [ ] make izui stack manager (part of window mgr?)
-- [ ] esc stack: from feature settings back to core settings
-- [ ] add to izui stack (and ix w/ history?)
-- [ ] interactions/sec-policy between peek:// and other
+formalizing and stabilizing Peek’s window management system
+
+immediate
+- [ ] hotfix: disable escape-to-close window when peek app is focused application in the OS
+
+model formalization
+- [ ] review the windowing approach used in ./app to manage windows by analyzing the source code of it and the peek extensions
+- [ ] formalize that review into a state machine or other declarative set of rules which let’s us easily reason about, revise, and generate code and tests for it
+- [ ] implement izui window manager based on those rules
+
+key pieces
+- [ ] esc works when global hotkeys are executed and peek is not focused
+- [ ] in-app navigations with escape, eg moving from sub items in settings back to settings default pane
+- [ ] centralized place we add to history chain
 
 ## Polish
 

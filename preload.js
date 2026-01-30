@@ -724,6 +724,84 @@ api.profiles = {
   }
 };
 
+// ========== Bundled Web Extensions API ==========
+
+/**
+ * Adblocker API - Native ad blocking powered by @cliqz/adblocker-electron
+ */
+api.adblocker = {
+  /**
+   * Get adblocker status
+   * @returns {Promise<{success: boolean, data?: {initialized: boolean, enabled: boolean, blockedCount: number}, error?: string}>}
+   */
+  getStatus: () => {
+    return ipcRenderer.invoke('adblocker:getStatus');
+  },
+
+  /**
+   * Enable ad blocking
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  enable: () => {
+    return ipcRenderer.invoke('adblocker:enable');
+  },
+
+  /**
+   * Disable ad blocking
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  disable: () => {
+    return ipcRenderer.invoke('adblocker:disable');
+  },
+
+  /**
+   * Get count of blocked requests
+   * @returns {Promise<{success: boolean, data?: number, error?: string}>}
+   */
+  getBlockedCount: () => {
+    return ipcRenderer.invoke('adblocker:getBlockedCount');
+  }
+};
+
+/**
+ * Chrome Extensions API - Bundled Chrome extension management
+ */
+api.chromeExtensions = {
+  /**
+   * List all bundled chrome extensions
+   * @returns {Promise<{success: boolean, data?: Array<{id: string, name: string, version: string, description: string, enabled: boolean, loaded: boolean}>, error?: string}>}
+   */
+  list: () => {
+    return ipcRenderer.invoke('chrome-ext:list');
+  },
+
+  /**
+   * Enable a chrome extension
+   * @param {string} id - Extension ID
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  enable: (id) => {
+    return ipcRenderer.invoke('chrome-ext:enable', { id });
+  },
+
+  /**
+   * Disable a chrome extension
+   * @param {string} id - Extension ID
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  disable: (id) => {
+    return ipcRenderer.invoke('chrome-ext:disable', { id });
+  },
+
+  /**
+   * Get chrome extension manager status
+   * @returns {Promise<{success: boolean, data?: {initialized: boolean, discoveredCount: number, loadedCount: number}, error?: string}>}
+   */
+  getStatus: () => {
+    return ipcRenderer.invoke('chrome-ext:getStatus');
+  }
+};
+
 // Track per-window color scheme override (null = use global)
 let windowColorSchemeOverride = null;
 

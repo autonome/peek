@@ -246,3 +246,41 @@ export type {
   ISettingsApi,
   IEscapeApi,
 } from '../types/api.js';
+
+// Adblocker module
+export {
+  initAdblocker,
+  enableBlocking,
+  disableBlocking,
+  toggleBlocking,
+  isBlockingEnabled,
+  getBlockedCount,
+  resetBlockedCount,
+  getAdblockerStatus,
+  applyAdblockerConfig,
+  cleanupAdblocker,
+  enableBlockingInSession,
+  disableBlockingInSession,
+} from './adblocker.js';
+
+export type { AdblockerConfig } from './adblocker.js';
+
+// Chrome extension manager
+export {
+  initChromeExtensionManager,
+  loadEnabledChromeExtensions,
+  getChromeExtensions,
+  enableChromeExtension,
+  disableChromeExtension,
+  isChromeExtensionEnabled,
+  isChromeExtensionLoaded,
+  getChromeExtensionStatus,
+  cleanupChromeExtensions,
+} from './chrome-extensions.js';
+
+export type {
+  ChromeManifest,
+  ChromeExtensionInfo,
+  LoadedChromeExtension,
+  ChromeExtensionSetting,
+} from './chrome-extensions.js';

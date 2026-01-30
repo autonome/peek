@@ -147,8 +147,10 @@
     "lint": "echo \"No linting configured\""
   },
   "dependencies": {
+    "@cliqz/adblocker-electron": "^1.27.6",
     "archiver": "^7.0.0",
     "better-sqlite3": "^12.5.0",
+    "cross-fetch": "^4.0.0",
     "electron-unhandled": "^5.0.0",
     "lit": "^3.3.2"
   },

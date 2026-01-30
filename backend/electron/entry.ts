@@ -63,6 +63,15 @@ import {
 import { startHotReload, stopHotReload } from './hotreload.js';
 import { checkAndRunDailyBackup } from './backup.js';
 import {
+  applyAdblockerConfig,
+  cleanupAdblocker,
+} from './adblocker.js';
+import {
+  initChromeExtensionManager,
+  loadEnabledChromeExtensions,
+  cleanupChromeExtensions,
+} from './chrome-extensions.js';
+import {
   initProfilesDb,
   migrateExistingProfiles,
   ensureDefaultProfile,
@@ -228,9 +237,12 @@ let _quitShortcut: string | null = null;
 setPrefsGetter(() => _prefs);
 
 // Define onQuit for use in IPC handlers and shortcuts
-const onQuit = () => {
+const onQuit = async () => {
   // Clean up dev extensions before quitting
   cleanupDevExtensions();
+  // Clean up web extensions
+  cleanupAdblocker();
+  await cleanupChromeExtensions();
   stopHotReload();
   quitApp();
 };
@@ -290,6 +302,10 @@ const onReady = async () => {
 
   // Discover and register built-in themes from themes/ folder
   discoverBuiltinThemes(path.join(ROOT_DIR, 'themes'));
+
+  // Initialize bundled web extensions infrastructure
+  const chromeExtensionsDir = path.join(ROOT_DIR, 'resources', 'chrome-extensions');
+  initChromeExtensionManager(chromeExtensionsDir);
 
   // Restore saved theme preference (must be after themes are discovered)
   restoreSavedTheme();
@@ -400,6 +416,20 @@ const onReady = async () => {
         const devCount = await loadDevExtensions();
         DEBUG && console.log(`[ext:dev] Loaded ${devCount} dev extension(s)`);
       }
+
+      // Load bundled web extensions (chrome extensions + adblocker)
+      // Adblocker: enabled by default, check prefs for override
+      const adBlockerEnabled = prefsMsg.prefs.adBlockerEnabled !== false;
+      if (adBlockerEnabled) {
+        applyAdblockerConfig({ enabled: true }).catch(err => {
+          console.error('[startup] Adblocker init failed:', err);
+        });
+      }
+
+      // Load enabled chrome extensions
+      loadEnabledChromeExtensions().catch(err => {
+        console.error('[startup] Chrome extensions init failed:', err);
+      });
 
       const extTime = Date.now() - extStart;
       const totalTime = Date.now() - ((global as Record<string, unknown>).__startupStart as number);

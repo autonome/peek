@@ -3061,6 +3061,115 @@ export function registerModesHandlers(): void {
 }
 
 /**
+ * Register IPC handlers for bundled web extensions (adblocker + chrome extensions)
+ */
+export function registerWebExtensionHandlers(): void {
+  const DEBUG = !!process.env.DEBUG;
+
+  // ========== Adblocker Handlers ==========
+
+  // Get adblocker status
+  ipcMain.handle('adblocker:getStatus', async () => {
+    try {
+      const { getAdblockerStatus } = await import('./adblocker.js');
+      const status = getAdblockerStatus();
+      return { success: true, data: status };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // Enable adblocker
+  ipcMain.handle('adblocker:enable', async () => {
+    try {
+      const { applyAdblockerConfig } = await import('./adblocker.js');
+      await applyAdblockerConfig({ enabled: true });
+      return { success: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // Disable adblocker
+  ipcMain.handle('adblocker:disable', async () => {
+    try {
+      const { disableBlocking } = await import('./adblocker.js');
+      disableBlocking();
+      return { success: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // Get blocked count
+  ipcMain.handle('adblocker:getBlockedCount', async () => {
+    try {
+      const { getBlockedCount } = await import('./adblocker.js');
+      const count = getBlockedCount();
+      return { success: true, data: count };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // ========== Chrome Extension Handlers ==========
+
+  // Get all chrome extensions
+  ipcMain.handle('chrome-ext:list', async () => {
+    try {
+      const { getChromeExtensions } = await import('./chrome-extensions.js');
+      const extensions = getChromeExtensions();
+      return { success: true, data: extensions };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // Enable a chrome extension
+  ipcMain.handle('chrome-ext:enable', async (_ev, data: { id: string }) => {
+    try {
+      const { enableChromeExtension } = await import('./chrome-extensions.js');
+      const result = await enableChromeExtension(data.id);
+      return { success: result };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // Disable a chrome extension
+  ipcMain.handle('chrome-ext:disable', async (_ev, data: { id: string }) => {
+    try {
+      const { disableChromeExtension } = await import('./chrome-extensions.js');
+      const result = await disableChromeExtension(data.id);
+      return { success: result };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  // Get chrome extension manager status
+  ipcMain.handle('chrome-ext:getStatus', async () => {
+    try {
+      const { getChromeExtensionStatus } = await import('./chrome-extensions.js');
+      const status = getChromeExtensionStatus();
+      return { success: true, data: status };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, error: message };
+    }
+  });
+
+  DEBUG && console.log('[ipc] Web extension handlers registered');
+}
+
+/**
  * Register all IPC handlers
  */
 export function registerAllHandlers(onQuit: () => void): void {
@@ -3072,5 +3181,6 @@ export function registerAllHandlers(onQuit: () => void): void {
   registerBackupHandlers();
   registerProfileHandlers();
   registerModesHandlers();
+  registerWebExtensionHandlers();
   registerMiscHandlers(onQuit);
 }

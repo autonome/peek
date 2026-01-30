@@ -587,6 +587,188 @@ const renderThemesSettings = async () => {
   return container;
 };
 
+// Render privacy & web extensions settings (adblocker + bundled chrome extensions)
+const renderPrivacySettings = async () => {
+  const container = document.createElement('div');
+
+  // ========== Ad Blocker Section ==========
+  const adBlockerSection = document.createElement('div');
+  adBlockerSection.className = 'form-section';
+
+  const adBlockerTitle = document.createElement('h3');
+  adBlockerTitle.className = 'form-section-title';
+  adBlockerTitle.textContent = 'Ad Blocker';
+  adBlockerSection.appendChild(adBlockerTitle);
+
+  const adBlockerDesc = document.createElement('p');
+  adBlockerDesc.className = 'help-text';
+  adBlockerDesc.style.marginBottom = '12px';
+  adBlockerDesc.textContent = 'Block ads and trackers for faster, cleaner browsing. Powered by EasyList and EasyPrivacy filter lists.';
+  adBlockerSection.appendChild(adBlockerDesc);
+
+  // Load adblocker status
+  let adBlockerEnabled = true;
+  let blockedCount = 0;
+
+  try {
+    const statusResult = await api.adblocker.getStatus();
+    if (statusResult.success && statusResult.data) {
+      adBlockerEnabled = statusResult.data.enabled;
+      blockedCount = statusResult.data.blockedCount || 0;
+    }
+  } catch (err) {
+    console.error('[settings] Failed to load adblocker status:', err);
+  }
+
+  // Stats display
+  const statsDiv = document.createElement('div');
+  statsDiv.className = 'help-text';
+  statsDiv.style.marginBottom = '12px';
+  statsDiv.innerHTML = `<strong>${blockedCount.toLocaleString()}</strong> requests blocked this session`;
+  adBlockerSection.appendChild(statsDiv);
+
+  // Toggle checkbox
+  const adBlockerToggle = createCheckbox('Enable Ad Blocker', adBlockerEnabled, async (newVal) => {
+    try {
+      if (newVal) {
+        await api.adblocker.enable();
+      } else {
+        await api.adblocker.disable();
+      }
+    } catch (err) {
+      console.error('[settings] Failed to toggle adblocker:', err);
+    }
+  });
+  adBlockerSection.appendChild(adBlockerToggle);
+
+  container.appendChild(adBlockerSection);
+
+  // ========== Bundled Extensions Section ==========
+  const chromeExtSection = document.createElement('div');
+  chromeExtSection.className = 'form-section';
+  chromeExtSection.style.marginTop = '24px';
+
+  const chromeExtTitle = document.createElement('h3');
+  chromeExtTitle.className = 'form-section-title';
+  chromeExtTitle.textContent = 'Bundled Extensions';
+  chromeExtSection.appendChild(chromeExtTitle);
+
+  const chromeExtDesc = document.createElement('p');
+  chromeExtDesc.className = 'help-text';
+  chromeExtDesc.style.marginBottom = '12px';
+  chromeExtDesc.textContent = 'Chrome extensions bundled with Peek. These run in isolated processes for security.';
+  chromeExtSection.appendChild(chromeExtDesc);
+
+  // Load chrome extensions list
+  const extListDiv = document.createElement('div');
+  extListDiv.className = 'extension-list';
+
+  const refreshExtList = async () => {
+    extListDiv.innerHTML = '';
+
+    try {
+      const result = await api.chromeExtensions.list();
+      if (result.success && result.data && result.data.length > 0) {
+        for (const ext of result.data) {
+          const extItem = document.createElement('div');
+          extItem.className = 'form-group-inline';
+          extItem.style.padding = '8px 0';
+          extItem.style.borderBottom = '1px solid var(--border-color, #333)';
+
+          const extInfo = document.createElement('div');
+          extInfo.style.flex = '1';
+
+          const extName = document.createElement('div');
+          extName.style.fontWeight = 'bold';
+          extName.textContent = ext.name;
+          extInfo.appendChild(extName);
+
+          if (ext.description) {
+            const extDescText = document.createElement('div');
+            extDescText.className = 'help-text';
+            extDescText.style.fontSize = '12px';
+            extDescText.textContent = ext.description;
+            extInfo.appendChild(extDescText);
+          }
+
+          const extVersion = document.createElement('div');
+          extVersion.className = 'help-text';
+          extVersion.style.fontSize = '11px';
+          extVersion.textContent = `v${ext.version}`;
+          extInfo.appendChild(extVersion);
+
+          extItem.appendChild(extInfo);
+
+          // Toggle
+          const toggleWrapper = document.createElement('div');
+          toggleWrapper.className = 'checkbox-wrapper';
+
+          const toggle = document.createElement('input');
+          toggle.type = 'checkbox';
+          toggle.checked = ext.enabled;
+          toggle.addEventListener('change', async (e) => {
+            try {
+              if (e.target.checked) {
+                await api.chromeExtensions.enable(ext.id);
+              } else {
+                await api.chromeExtensions.disable(ext.id);
+              }
+            } catch (err) {
+              console.error('[settings] Failed to toggle chrome extension:', err);
+              // Revert toggle
+              e.target.checked = !e.target.checked;
+            }
+          });
+
+          toggleWrapper.appendChild(toggle);
+          extItem.appendChild(toggleWrapper);
+
+          extListDiv.appendChild(extItem);
+        }
+      } else {
+        const noExt = document.createElement('p');
+        noExt.className = 'help-text';
+        noExt.textContent = 'No bundled extensions installed. Add unpacked extensions to resources/chrome-extensions/';
+        extListDiv.appendChild(noExt);
+      }
+    } catch (err) {
+      console.error('[settings] Failed to load chrome extensions:', err);
+      const errorMsg = document.createElement('p');
+      errorMsg.className = 'help-text';
+      errorMsg.style.color = 'var(--error-color, #f44)';
+      errorMsg.textContent = 'Failed to load extensions: ' + err.message;
+      extListDiv.appendChild(errorMsg);
+    }
+  };
+
+  await refreshExtList();
+  chromeExtSection.appendChild(extListDiv);
+
+  container.appendChild(chromeExtSection);
+
+  // ========== Attribution Section ==========
+  const attrSection = document.createElement('div');
+  attrSection.className = 'form-section';
+  attrSection.style.marginTop = '24px';
+
+  const attrTitle = document.createElement('h3');
+  attrTitle.className = 'form-section-title';
+  attrTitle.textContent = 'Attribution';
+  attrSection.appendChild(attrTitle);
+
+  const attrText = document.createElement('p');
+  attrText.className = 'help-text';
+  attrText.innerHTML = `
+    Ad blocking powered by <a href="https://github.com/nickshanks/adblocker" target="_blank" style="color: var(--link-color, #88f);">@cliqz/adblocker</a> (MPL-2.0).<br>
+    Filter lists: <a href="https://easylist.to/" target="_blank" style="color: var(--link-color, #88f);">EasyList</a> and <a href="https://easylist.to/easylist/easyprivacy.txt" target="_blank" style="color: var(--link-color, #88f);">EasyPrivacy</a>.
+  `;
+  attrSection.appendChild(attrText);
+
+  container.appendChild(attrSection);
+
+  return container;
+};
+
 // Render sync settings
 const renderSyncSettings = async () => {
   const container = document.createElement('div');
@@ -2233,7 +2415,32 @@ const init = async () => {
     }
   }, api.scopes.GLOBAL);
 
-  // Add Sync management section (between Extensions and Themes)
+  // Add Privacy section (adblocker + bundled chrome extensions)
+  const privacyNav = document.createElement('a');
+  privacyNav.className = 'nav-item';
+  privacyNav.textContent = 'Privacy';
+  privacyNav.dataset.section = 'privacy';
+  privacyNav.addEventListener('click', () => showSection('privacy'));
+  sidebarNav.appendChild(privacyNav);
+
+  // Create privacy section with async content
+  const privacySection = document.createElement('div');
+  privacySection.className = 'section';
+  privacySection.id = 'section-privacy';
+
+  const privacyTitle = document.createElement('h2');
+  privacyTitle.className = 'section-title';
+  privacyTitle.textContent = 'Privacy';
+  privacySection.appendChild(privacyTitle);
+
+  // Load privacy content async
+  renderPrivacySettings().then(content => {
+    privacySection.appendChild(content);
+  });
+
+  contentArea.appendChild(privacySection);
+
+  // Add Sync management section (between Privacy and Themes)
   const syncNav = document.createElement('a');
   syncNav.className = 'nav-item';
   syncNav.textContent = 'Sync';

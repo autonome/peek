@@ -454,6 +454,17 @@ api.datastore = {
   // History operations (visits joined with addresses)
   getHistory: (filter = {}) => {
     return ipcRenderer.invoke('datastore-get-history', { filter });
+  },
+
+  // Item visit operations (modern URL history API)
+  queryItemVisits: (filter = {}) => {
+    return ipcRenderer.invoke('datastore-query-item-visits', { filter });
+  },
+  getItemVisits: (itemId, filter = {}) => {
+    return ipcRenderer.invoke('datastore-get-item-visits', { itemId, filter });
+  },
+  recordItemVisit: (itemId, options = {}) => {
+    return ipcRenderer.invoke('datastore-record-item-visit', { itemId, options });
   }
 };
 

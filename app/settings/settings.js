@@ -760,7 +760,9 @@ const renderPrivacySettings = async () => {
   attrText.className = 'help-text';
   attrText.innerHTML = `
     Ad blocking powered by <a href="https://github.com/nickshanks/adblocker" target="_blank" style="color: var(--link-color, #88f);">@cliqz/adblocker</a> (MPL-2.0).<br>
-    Filter lists: <a href="https://easylist.to/" target="_blank" style="color: var(--link-color, #88f);">EasyList</a> and <a href="https://easylist.to/easylist/easyprivacy.txt" target="_blank" style="color: var(--link-color, #88f);">EasyPrivacy</a>.
+    Filter lists: <a href="https://easylist.to/" target="_blank" style="color: var(--link-color, #88f);">EasyList</a> and <a href="https://easylist.to/easylist/easyprivacy.txt" target="_blank" style="color: var(--link-color, #88f);">EasyPrivacy</a>.<br><br>
+    Cookie consent handling by <a href="https://github.com/cavi-au/Consent-O-Matic" target="_blank" style="color: var(--link-color, #88f);">Consent-O-Matic</a> (MIT).<br>
+    Developed by Janus Bager Kristensen and Rolf Bagge, <a href="https://cavi.au.dk/" target="_blank" style="color: var(--link-color, #88f);">CAVI</a> - Center for Advanced Visualization and Interaction, Aarhus University.
   `;
   attrSection.appendChild(attrText);
 

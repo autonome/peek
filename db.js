@@ -5,8 +5,9 @@ const fs = require("fs");
 const { DATASTORE_VERSION } = require("./version");
 
 // Load canonical schema for validation
+// Note: schema.json is copied from schema/v1.json during deploy
 const SCHEMA = JSON.parse(
-  fs.readFileSync(path.join(__dirname, "../../schema/v1.json"), "utf-8")
+  fs.readFileSync(path.join(__dirname, "schema.json"), "utf-8")
 );
 const REQUIRED_SYNC_COLUMNS = SCHEMA.validation.required_sync_columns;
 

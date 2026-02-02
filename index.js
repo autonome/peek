@@ -5,7 +5,12 @@ const path = require("path");
 const db = require("./db");
 const users = require("./users");
 const backup = require("./backup");
+const { loadConfig, isSingleUserMode } = require("./config");
+const { createAuthMiddleware } = require("./auth");
 const { DATASTORE_VERSION, PROTOCOL_VERSION } = require("./version");
+
+// Load configuration
+const config = loadConfig();
 
 const app = new Hono();
 
@@ -16,28 +21,8 @@ app.use("*", async (c, next) => {
   c.header("X-Peek-Protocol-Version", String(PROTOCOL_VERSION));
 });
 
-// Auth middleware - looks up user by API key
-app.use("*", async (c, next) => {
-  // Health check is public
-  if (c.req.path === "/") {
-    return next();
-  }
-
-  const auth = c.req.header("Authorization");
-  if (!auth || !auth.startsWith("Bearer ")) {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
-
-  const apiKey = auth.slice(7); // Remove "Bearer " prefix
-  const userId = users.getUserIdFromApiKey(apiKey);
-
-  if (!userId) {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
-
-  c.set("userId", userId);
-  return next();
-});
+// Auth middleware - uses factory based on config
+app.use("*", createAuthMiddleware(config));
 
 // Version check middleware for sync endpoints
 // Rejects requests with mismatched version headers (HTTP 409)
@@ -747,20 +732,27 @@ function deduplicateAllUsers() {
   }
 }
 
-migrateFromLegacyApiKey();
-migrateUserDataToProfiles();
-users.migrateProfileFoldersToUuid();
-deduplicateAllUsers();
+// Multi-user mode: run migrations and user-based operations
+if (!isSingleUserMode(config)) {
+  migrateFromLegacyApiKey();
+  migrateUserDataToProfiles();
+  users.migrateProfileFoldersToUuid();
+  deduplicateAllUsers();
 
-// Force backup of all users on every deploy/restart (before serving requests)
-backup.createAllBackups().then(() => {
-  console.log("Pre-deploy backup complete");
-}).catch((err) => {
-  console.error("Pre-deploy backup failed:", err);
-});
+  // Force backup of all users on every deploy/restart (before serving requests)
+  backup.createAllBackups().then(() => {
+    console.log("Pre-deploy backup complete");
+  }).catch((err) => {
+    console.error("Pre-deploy backup failed:", err);
+  });
 
-// Set up hourly backup check (runs if >24h since last backup)
-setInterval(() => backup.checkAndRunDailyBackups(), 60 * 60 * 1000);
+  // Set up hourly backup check (runs if >24h since last backup)
+  setInterval(() => backup.checkAndRunDailyBackups(), 60 * 60 * 1000);
+} else {
+  console.log("[config] Running in single-user mode");
+  console.log(`[config] User ID: ${config.singleUser.userId}`);
+  console.log(`[config] Token auth: ${config.singleUser.token ? "enabled" : "disabled"}`);
+}
 
 serve({ fetch: app.fetch, port }, (info) => {
   console.log(`Server running on http://localhost:${info.port}`);

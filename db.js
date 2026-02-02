@@ -1,5 +1,6 @@
 const { sqlFactory } = require("./sql");
 const { createStorageAdapter } = require("./storage");
+const { loadConfig, isSingleUserMode } = require("./config");
 const path = require("path");
 const crypto = require("crypto");
 const fs = require("fs");
@@ -14,12 +15,31 @@ const REQUIRED_SYNC_COLUMNS = SCHEMA.validation.required_sync_columns;
 
 const DATA_DIR = process.env.DATA_DIR || "./data";
 
+// Load config once at startup
+const serverConfig = loadConfig();
+
 // Connection pool - one connection per user:profile
 // Now stores SqlAdapter instances instead of raw Database instances
 const connections = new Map();
 
 // Storage adapter pool - one per user:profile
 const storageAdapters = new Map();
+
+/**
+ * Get the profile directory path based on server mode.
+ * - Multi-user: DATA_DIR/{userId}/profiles/{profileId}
+ * - Single-user: DATA_DIR/profiles/{profileId}
+ *
+ * @param {string} userId
+ * @param {string} profileId
+ * @returns {string}
+ */
+function getProfileDir(userId, profileId) {
+  if (isSingleUserMode(serverConfig)) {
+    return path.join(DATA_DIR, "profiles", profileId);
+  }
+  return path.join(DATA_DIR, userId, "profiles", profileId);
+}
 
 /**
  * Get storage adapter for a user's profile.
@@ -33,7 +53,7 @@ function getStorageAdapter(userId, profileId = "default") {
     return storageAdapters.get(key);
   }
 
-  const profileDir = path.join(DATA_DIR, userId, "profiles", profileId);
+  const profileDir = getProfileDir(userId, profileId);
   const imagesDir = path.join(profileDir, "images");
 
   const adapter = createStorageAdapter({
@@ -56,8 +76,8 @@ function getConnection(userId, profileId = "default") {
     return connections.get(connectionKey);
   }
 
-  // Create user's profile directory
-  const profileDir = path.join(DATA_DIR, userId, "profiles", profileId);
+  // Create profile directory
+  const profileDir = getProfileDir(userId, profileId);
   if (!fs.existsSync(profileDir)) {
     fs.mkdirSync(profileDir, { recursive: true });
   }
@@ -799,7 +819,7 @@ function closeConnection(userId, profileId = "default") {
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 function getUserImagesDir(userId, profileId = "default") {
-  const profileDir = path.join(DATA_DIR, userId, "profiles", profileId);
+  const profileDir = getProfileDir(userId, profileId);
   return path.join(profileDir, "images");
 }
 

@@ -46,18 +46,18 @@ function generateBackupFilename(userId) {
 function getTableCounts(conn) {
   const counts = {};
 
-  const itemTypes = conn.prepare(`
+  const itemTypes = conn.all(`
     SELECT type, COUNT(*) as count
     FROM items
     WHERE CAST(deletedAt AS INTEGER) = 0
     GROUP BY type
-  `).all();
+  `);
 
   for (const row of itemTypes) {
     counts[row.type + "s"] = row.count;
   }
 
-  const tagCount = conn.prepare("SELECT COUNT(*) as count FROM tags").get();
+  const tagCount = conn.get("SELECT COUNT(*) as count FROM tags");
   counts.tags = tagCount.count;
 
   return counts;
@@ -65,6 +65,11 @@ function getTableCounts(conn) {
 
 /**
  * Create a backup for a single user
+ *
+ * TODO: DO SQLite backup - VACUUM INTO is not available in Cloudflare Durable Objects SQLite.
+ * When deploying to DO, implement an alternative backup strategy:
+ * - Export data as JSON to R2
+ * - Or use DO's built-in point-in-time recovery features
  */
 async function createBackup(userId) {
   console.log(`Creating backup for user: ${userId}`);
@@ -84,7 +89,7 @@ async function createBackup(userId) {
     fs.mkdirSync(userBackupDir, { recursive: true });
   }
 
-  // Get database connection
+  // Get database connection (SqlAdapter)
   const conn = db.getConnection(userId);
 
   const backupFilename = generateBackupFilename(userId);
@@ -93,6 +98,8 @@ async function createBackup(userId) {
 
   try {
     // Use VACUUM INTO for consistent snapshot (non-blocking)
+    // Note: This only works with better-sqlite3 adapter.
+    // TODO: For DO SQLite, implement JSON export to R2 instead.
     conn.exec(`VACUUM INTO '${tempDbPath}'`);
 
     // Get table counts for manifest

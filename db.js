@@ -1,4 +1,4 @@
-const Database = require("better-sqlite3");
+const { sqlFactory } = require("./sql");
 const path = require("path");
 const crypto = require("crypto");
 const fs = require("fs");
@@ -14,6 +14,7 @@ const REQUIRED_SYNC_COLUMNS = SCHEMA.validation.required_sync_columns;
 const DATA_DIR = process.env.DATA_DIR || "./data";
 
 // Connection pool - one connection per user:profile
+// Now stores SqlAdapter instances instead of raw Database instances
 const connections = new Map();
 
 function getConnection(userId, profileId = "default") {
@@ -34,25 +35,25 @@ function getConnection(userId, profileId = "default") {
   }
 
   const dbPath = path.join(profileDir, "datastore.sqlite");
-  const db = new Database(dbPath);
-  db.pragma("journal_mode = WAL");
+  const adapter = sqlFactory.open(dbPath);
+  sqlFactory.init(adapter);
 
-  initializeSchema(db);
-  connections.set(connectionKey, db);
+  initializeSchema(adapter);
+  connections.set(connectionKey, adapter);
 
-  return db;
+  return adapter;
 }
 
 /**
  * Rename snake_case columns to camelCase if the old names exist.
  * SQLite 3.25+ supports ALTER TABLE RENAME COLUMN.
  */
-function migrateColumns(db, table, renames) {
-  const cols = db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name);
+function migrateColumns(adapter, table, renames) {
+  const cols = adapter.all(`PRAGMA table_info(${table})`).map(c => c.name);
   for (const [oldName, newName] of Object.entries(renames)) {
     if (cols.includes(oldName) && !cols.includes(newName)) {
       try {
-        db.exec(`ALTER TABLE ${table} RENAME COLUMN ${oldName} TO ${newName}`);
+        adapter.exec(`ALTER TABLE ${table} RENAME COLUMN ${oldName} TO ${newName}`);
       } catch (error) {
         console.error(`[schema] Failed to rename ${table}.${oldName} → ${newName}: ${error.message}`);
       }
@@ -67,8 +68,8 @@ function migrateColumns(db, table, renames) {
  *
  * @param {boolean} forceRebuild - Force rebuild even if no renames pending (e.g., for type changes)
  */
-function rebuildTableIfNeeded(db, table, createSQL, renames, forceRebuild = false) {
-  const currentCols = db.prepare(`PRAGMA table_info(${table})`).all();
+function rebuildTableIfNeeded(adapter, table, createSQL, renames, forceRebuild = false) {
+  const currentCols = adapter.all(`PRAGMA table_info(${table})`);
   const currentColNames = new Set(currentCols.map(c => c.name));
 
   // Check if any renames are still pending (old name exists, new doesn't)
@@ -92,11 +93,11 @@ function rebuildTableIfNeeded(db, table, createSQL, renames, forceRebuild = fals
     .replace(`CREATE TABLE IF NOT EXISTS ${table}`, `CREATE TABLE "${tempTable}"`)
     .replace(`CREATE TABLE ${table}`, `CREATE TABLE "${tempTable}"`);
 
-  db.exec(`DROP TABLE IF EXISTS "${tempTable}"`);
-  db.exec(tempCreateSQL);
+  adapter.exec(`DROP TABLE IF EXISTS "${tempTable}"`);
+  adapter.exec(tempCreateSQL);
 
   // Map target columns to source expressions
-  const targetCols = db.prepare(`PRAGMA table_info("${tempTable}")`).all();
+  const targetCols = adapter.all(`PRAGMA table_info("${tempTable}")`);
   const insertCols = [];
   const selectExprs = [];
 
@@ -115,11 +116,11 @@ function rebuildTableIfNeeded(db, table, createSQL, renames, forceRebuild = fals
   }
 
   // Atomic rebuild: if any step fails, the original table is preserved
-  db.transaction(() => {
-    db.exec(`INSERT INTO "${tempTable}" (${insertCols.join(", ")}) SELECT ${selectExprs.join(", ")} FROM "${table}"`);
-    db.exec(`DROP TABLE "${table}"`);
-    db.exec(`ALTER TABLE "${tempTable}" RENAME TO "${table}"`);
-  })();
+  adapter.transaction(() => {
+    adapter.exec(`INSERT INTO "${tempTable}" (${insertCols.join(", ")}) SELECT ${selectExprs.join(", ")} FROM "${table}"`);
+    adapter.exec(`DROP TABLE "${table}"`);
+    adapter.exec(`ALTER TABLE "${tempTable}" RENAME TO "${table}"`);
+  });
 }
 
 /**
@@ -133,9 +134,9 @@ function rebuildTableIfNeeded(db, table, createSQL, renames, forceRebuild = fals
  * Handles both camelCase and snake_case column names — safe to call before
  * or after migrateColumns renames them.
  */
-function migrateTimestamps(db, table, columns) {
+function migrateTimestamps(adapter, table, columns) {
   const actualCols = new Set(
-    db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name)
+    adapter.all(`PRAGMA table_info(${table})`).map(c => c.name)
   );
   for (const col of columns) {
     // If the camelCase column doesn't exist yet, try the snake_case equivalent
@@ -150,13 +151,13 @@ function migrateTimestamps(db, table, columns) {
       }
     }
     // Convert ISO 8601 strings (contain 'T') to Unix ms
-    db.exec(`
+    adapter.exec(`
       UPDATE ${table}
       SET ${actualCol} = CAST(strftime('%s', ${actualCol}) AS INTEGER) * 1000
       WHERE typeof(${actualCol}) = 'text' AND ${actualCol} LIKE '%T%'
     `);
     // Convert stringified numbers ("1769559596439.0") to integers
-    db.exec(`
+    adapter.exec(`
       UPDATE ${table}
       SET ${actualCol} = CAST(CAST(${actualCol} AS REAL) AS INTEGER)
       WHERE typeof(${actualCol}) = 'text' AND ${actualCol} NOT LIKE '%T%'
@@ -169,12 +170,12 @@ function migrateTimestamps(db, table, columns) {
  * Fails fast with a clear error instead of letting the server boot with
  * a broken schema that crashes on the first query.
  */
-function validateSchema(db) {
+function validateSchema(adapter) {
   // Use canonical schema from schema/v1.json
   const required = REQUIRED_SYNC_COLUMNS;
   const missing = [];
   for (const [table, cols] of Object.entries(required)) {
-    const actual = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name));
+    const actual = new Set(adapter.all(`PRAGMA table_info(${table})`).map(c => c.name));
     for (const col of cols) {
       if (!actual.has(col)) {
         missing.push(`${table}.${col}`);
@@ -184,7 +185,7 @@ function validateSchema(db) {
   if (missing.length > 0) {
     // Log actual schema state for debugging before throwing
     for (const table of Object.keys(required)) {
-      const actual = db.prepare(`PRAGMA table_info(${table})`).all();
+      const actual = adapter.all(`PRAGMA table_info(${table})`);
       console.error(`[schema] ${table} actual columns: ${actual.map(c => c.name).join(", ")}`);
     }
     throw new Error(
@@ -194,9 +195,9 @@ function validateSchema(db) {
   }
 }
 
-function initializeSchema(db) {
+function initializeSchema(adapter) {
   // Canonical camelCase schema — matches sync engine
-  db.exec(`
+  adapter.exec(`
     CREATE TABLE IF NOT EXISTS items (
       id TEXT PRIMARY KEY,
       type TEXT NOT NULL CHECK(type IN ('url', 'text', 'tagset', 'image')),
@@ -225,11 +226,11 @@ function initializeSchema(db) {
     "deleted_at": "deletedAt",
   };
   // Diagnostic: log actual items schema before migration
-  const itemColsPre = db.prepare("PRAGMA table_info(items)").all();
+  const itemColsPre = adapter.all("PRAGMA table_info(items)");
   console.log(`[schema] items columns before migration: ${itemColsPre.map(c => c.name).join(", ")}`);
 
-  migrateColumns(db, "items", itemRenames);
-  rebuildTableIfNeeded(db, "items", `CREATE TABLE items (
+  migrateColumns(adapter, "items", itemRenames);
+  rebuildTableIfNeeded(adapter, "items", `CREATE TABLE items (
     id TEXT PRIMARY KEY,
     type TEXT NOT NULL,
     content TEXT,
@@ -244,36 +245,36 @@ function initializeSchema(db) {
 
   // Add columns that may not exist in any form.
   // Check both camelCase AND snake_case to avoid creating duplicates if rename failed.
-  const itemColSet = new Set(db.prepare("PRAGMA table_info(items)").all().map(c => c.name));
+  const itemColSet = new Set(adapter.all("PRAGMA table_info(items)").map(c => c.name));
   if (!itemColSet.has("syncId") && !itemColSet.has("sync_id")) {
-    db.exec("ALTER TABLE items ADD COLUMN syncId TEXT DEFAULT ''");
+    adapter.exec("ALTER TABLE items ADD COLUMN syncId TEXT DEFAULT ''");
   }
   if (!itemColSet.has("syncSource") && !itemColSet.has("sync_source")) {
-    db.exec("ALTER TABLE items ADD COLUMN syncSource TEXT DEFAULT ''");
+    adapter.exec("ALTER TABLE items ADD COLUMN syncSource TEXT DEFAULT ''");
   }
   if (!itemColSet.has("syncedAt") && !itemColSet.has("synced_at")) {
-    db.exec("ALTER TABLE items ADD COLUMN syncedAt INTEGER DEFAULT 0");
+    adapter.exec("ALTER TABLE items ADD COLUMN syncedAt INTEGER DEFAULT 0");
   }
   if (!itemColSet.has("deletedAt") && !itemColSet.has("deleted_at")) {
-    db.exec("ALTER TABLE items ADD COLUMN deletedAt INTEGER DEFAULT 0");
+    adapter.exec("ALTER TABLE items ADD COLUMN deletedAt INTEGER DEFAULT 0");
   }
 
   // Convert any TEXT timestamps to INTEGER (Unix ms)
-  migrateTimestamps(db, "items", ["createdAt", "updatedAt", "syncedAt", "deletedAt"]);
+  migrateTimestamps(adapter, "items", ["createdAt", "updatedAt", "syncedAt", "deletedAt"]);
 
   // Convert NULL deletedAt to 0 (old schema used NULL for not-deleted, new uses 0)
-  db.exec("UPDATE items SET deletedAt = 0 WHERE deletedAt IS NULL");
+  adapter.exec("UPDATE items SET deletedAt = 0 WHERE deletedAt IS NULL");
 
   // Create indexes only if referenced columns exist (rename may have failed)
-  const itemColsPost = new Set(db.prepare("PRAGMA table_info(items)").all().map(c => c.name));
+  const itemColsPost = new Set(adapter.all("PRAGMA table_info(items)").map(c => c.name));
   if (itemColsPost.has("syncId")) {
-    db.exec("CREATE INDEX IF NOT EXISTS idx_items_syncId ON items(syncId)");
+    adapter.exec("CREATE INDEX IF NOT EXISTS idx_items_syncId ON items(syncId)");
   }
   if (itemColsPost.has("deletedAt")) {
-    db.exec("CREATE INDEX IF NOT EXISTS idx_items_deletedAt ON items(deletedAt)");
+    adapter.exec("CREATE INDEX IF NOT EXISTS idx_items_deletedAt ON items(deletedAt)");
   }
 
-  db.exec(`
+  adapter.exec(`
     CREATE TABLE IF NOT EXISTS tags (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
@@ -294,21 +295,21 @@ function initializeSchema(db) {
   };
 
   // Diagnostic: log actual tags schema before migration
-  const tagColsPre = db.prepare("PRAGMA table_info(tags)").all();
+  const tagColsPre = adapter.all("PRAGMA table_info(tags)");
   console.log(`[schema] tags columns before migration: ${tagColsPre.map(c => c.name).join(", ")}`);
 
-  migrateColumns(db, "tags", tagRenames);
+  migrateColumns(adapter, "tags", tagRenames);
 
   // Check if tags.id needs type migration (INTEGER AUTOINCREMENT → TEXT)
   // This happens when the production DB was created with the original schema.
   // rebuildTableIfNeeded only checks for column renames, not type changes.
-  const tagsIdCol = db.prepare("PRAGMA table_info(tags)").all().find(c => c.name === "id");
+  const tagsIdCol = adapter.all("PRAGMA table_info(tags)").find(c => c.name === "id");
   const needsIdTypeRebuild = tagsIdCol && tagsIdCol.type.toUpperCase() === "INTEGER";
   if (needsIdTypeRebuild) {
     console.log("[schema] tags.id is INTEGER, forcing rebuild for TEXT PRIMARY KEY migration");
   }
 
-  rebuildTableIfNeeded(db, "tags", `CREATE TABLE tags (
+  rebuildTableIfNeeded(adapter, "tags", `CREATE TABLE tags (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
     frequency INTEGER DEFAULT 1,
@@ -319,33 +320,33 @@ function initializeSchema(db) {
   )`, tagRenames, needsIdTypeRebuild);
 
   // Safety net: add any missing columns (handles unknown legacy schemas)
-  const tagColSet = new Set(db.prepare("PRAGMA table_info(tags)").all().map(c => c.name));
+  const tagColSet = new Set(adapter.all("PRAGMA table_info(tags)").map(c => c.name));
   if (!tagColSet.has("lastUsed") && !tagColSet.has("last_used_at")) {
     console.log("[schema] Adding missing column tags.lastUsed");
-    db.exec("ALTER TABLE tags ADD COLUMN lastUsed INTEGER NOT NULL DEFAULT 0");
+    adapter.exec("ALTER TABLE tags ADD COLUMN lastUsed INTEGER NOT NULL DEFAULT 0");
   }
   if (!tagColSet.has("frecencyScore") && !tagColSet.has("frecency_score")) {
     console.log("[schema] Adding missing column tags.frecencyScore");
-    db.exec("ALTER TABLE tags ADD COLUMN frecencyScore REAL DEFAULT 0.0");
+    adapter.exec("ALTER TABLE tags ADD COLUMN frecencyScore REAL DEFAULT 0.0");
   }
   if (!tagColSet.has("createdAt") && !tagColSet.has("created_at")) {
     console.log("[schema] Adding missing column tags.createdAt");
-    db.exec("ALTER TABLE tags ADD COLUMN createdAt INTEGER NOT NULL DEFAULT 0");
+    adapter.exec("ALTER TABLE tags ADD COLUMN createdAt INTEGER NOT NULL DEFAULT 0");
   }
   if (!tagColSet.has("updatedAt") && !tagColSet.has("updated_at")) {
     console.log("[schema] Adding missing column tags.updatedAt");
-    db.exec("ALTER TABLE tags ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0");
+    adapter.exec("ALTER TABLE tags ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0");
   }
   if (!tagColSet.has("frequency")) {
     console.log("[schema] Adding missing column tags.frequency");
-    db.exec("ALTER TABLE tags ADD COLUMN frequency INTEGER DEFAULT 1");
+    adapter.exec("ALTER TABLE tags ADD COLUMN frequency INTEGER DEFAULT 1");
   }
 
   // Re-run rename/rebuild after ADD COLUMN (columns may now exist with snake_case from ADD)
-  const tagColsAfterAdd = new Set(db.prepare("PRAGMA table_info(tags)").all().map(c => c.name));
+  const tagColsAfterAdd = new Set(adapter.all("PRAGMA table_info(tags)").map(c => c.name));
   if ([...Object.values(tagRenames)].some(n => !tagColsAfterAdd.has(n))) {
-    migrateColumns(db, "tags", tagRenames);
-    rebuildTableIfNeeded(db, "tags", `CREATE TABLE tags (
+    migrateColumns(adapter, "tags", tagRenames);
+    rebuildTableIfNeeded(adapter, "tags", `CREATE TABLE tags (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
       frequency INTEGER DEFAULT 1,
@@ -356,15 +357,15 @@ function initializeSchema(db) {
     )`, tagRenames);
   }
 
-  migrateTimestamps(db, "tags", ["lastUsed", "createdAt", "updatedAt"]);
+  migrateTimestamps(adapter, "tags", ["lastUsed", "createdAt", "updatedAt"]);
 
-  db.exec("CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name)");
-  const tagColsPost = new Set(db.prepare("PRAGMA table_info(tags)").all().map(c => c.name));
+  adapter.exec("CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name)");
+  const tagColsPost = new Set(adapter.all("PRAGMA table_info(tags)").map(c => c.name));
   if (tagColsPost.has("frecencyScore")) {
-    db.exec("CREATE INDEX IF NOT EXISTS idx_tags_frecency ON tags(frecencyScore DESC)");
+    adapter.exec("CREATE INDEX IF NOT EXISTS idx_tags_frecency ON tags(frecencyScore DESC)");
   }
 
-  db.exec(`
+  adapter.exec(`
     CREATE TABLE IF NOT EXISTS item_tags (
       itemId TEXT NOT NULL,
       tagId TEXT NOT NULL,
@@ -380,20 +381,20 @@ function initializeSchema(db) {
   };
 
   // Diagnostic: log actual item_tags schema before migration
-  const itColsPre = db.prepare("PRAGMA table_info(item_tags)").all();
+  const itColsPre = adapter.all("PRAGMA table_info(item_tags)");
   console.log(`[schema] item_tags columns before migration: ${itColsPre.map(c => c.name).join(", ")}`);
 
-  migrateColumns(db, "item_tags", itemTagRenames);
+  migrateColumns(adapter, "item_tags", itemTagRenames);
 
   // Check if item_tags.tag_id/tagId needs type migration (INTEGER → TEXT)
   // Production item_tags had tag_id INTEGER as foreign key to tags.id INTEGER
-  const itTagIdCol = db.prepare("PRAGMA table_info(item_tags)").all().find(c => c.name === "tag_id" || c.name === "tagId");
+  const itTagIdCol = adapter.all("PRAGMA table_info(item_tags)").find(c => c.name === "tag_id" || c.name === "tagId");
   const needsTagIdTypeRebuild = itTagIdCol && itTagIdCol.type.toUpperCase() === "INTEGER";
   if (needsTagIdTypeRebuild) {
     console.log("[schema] item_tags.tagId is INTEGER, forcing rebuild for TEXT migration");
   }
 
-  rebuildTableIfNeeded(db, "item_tags", `CREATE TABLE item_tags (
+  rebuildTableIfNeeded(adapter, "item_tags", `CREATE TABLE item_tags (
     itemId TEXT NOT NULL,
     tagId TEXT NOT NULL,
     createdAt INTEGER NOT NULL,
@@ -401,31 +402,31 @@ function initializeSchema(db) {
   )`, itemTagRenames, needsTagIdTypeRebuild);
 
   // Safety net: add any missing columns for item_tags
-  const itColSet = new Set(db.prepare("PRAGMA table_info(item_tags)").all().map(c => c.name));
+  const itColSet = new Set(adapter.all("PRAGMA table_info(item_tags)").map(c => c.name));
   if (!itColSet.has("itemId") && !itColSet.has("item_id")) {
     console.log("[schema] Adding missing column item_tags.itemId");
-    db.exec("ALTER TABLE item_tags ADD COLUMN itemId TEXT NOT NULL DEFAULT ''");
+    adapter.exec("ALTER TABLE item_tags ADD COLUMN itemId TEXT NOT NULL DEFAULT ''");
   }
   if (!itColSet.has("tagId") && !itColSet.has("tag_id")) {
     console.log("[schema] Adding missing column item_tags.tagId");
-    db.exec("ALTER TABLE item_tags ADD COLUMN tagId TEXT NOT NULL DEFAULT ''");
+    adapter.exec("ALTER TABLE item_tags ADD COLUMN tagId TEXT NOT NULL DEFAULT ''");
   }
   if (!itColSet.has("createdAt") && !itColSet.has("created_at")) {
     console.log("[schema] Adding missing column item_tags.createdAt");
-    db.exec("ALTER TABLE item_tags ADD COLUMN createdAt INTEGER NOT NULL DEFAULT 0");
+    adapter.exec("ALTER TABLE item_tags ADD COLUMN createdAt INTEGER NOT NULL DEFAULT 0");
   }
 
-  migrateTimestamps(db, "item_tags", ["createdAt"]);
+  migrateTimestamps(adapter, "item_tags", ["createdAt"]);
 
-  const itColsPost = new Set(db.prepare("PRAGMA table_info(item_tags)").all().map(c => c.name));
+  const itColsPost = new Set(adapter.all("PRAGMA table_info(item_tags)").map(c => c.name));
   if (itColsPost.has("itemId")) {
-    db.exec("CREATE INDEX IF NOT EXISTS idx_item_tags_itemId ON item_tags(itemId)");
+    adapter.exec("CREATE INDEX IF NOT EXISTS idx_item_tags_itemId ON item_tags(itemId)");
   }
   if (itColsPost.has("tagId")) {
-    db.exec("CREATE INDEX IF NOT EXISTS idx_item_tags_tagId ON item_tags(tagId)");
+    adapter.exec("CREATE INDEX IF NOT EXISTS idx_item_tags_tagId ON item_tags(tagId)");
   }
 
-  db.exec(`
+  adapter.exec(`
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT
@@ -433,12 +434,12 @@ function initializeSchema(db) {
   `);
 
   // Fail fast if migration left the schema incomplete
-  validateSchema(db);
+  validateSchema(adapter);
 
   // Write datastore version after schema init
-  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(
-    "datastore_version",
-    String(DATASTORE_VERSION)
+  adapter.run(
+    "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+    ["datastore_version", String(DATASTORE_VERSION)]
   );
 }
 
@@ -471,23 +472,23 @@ function calculateFrecency(frequency, lastUsed) {
 
 // Internal helper - needs conn passed directly
 function getOrCreateTagWithConn(conn, name, timestamp) {
-  const existing = conn.prepare("SELECT id, frequency FROM tags WHERE name = ?").get(name);
+  const existing = conn.get("SELECT id, frequency FROM tags WHERE name = ?", [name]);
 
   if (existing) {
     const newFrequency = existing.frequency + 1;
     const frecencyScore = calculateFrecency(newFrequency, timestamp);
-    conn.prepare(`
-      UPDATE tags SET frequency = ?, lastUsed = ?, frecencyScore = ?, updatedAt = ?
-      WHERE id = ?
-    `).run(newFrequency, timestamp, frecencyScore, timestamp, existing.id);
+    conn.run(
+      "UPDATE tags SET frequency = ?, lastUsed = ?, frecencyScore = ?, updatedAt = ? WHERE id = ?",
+      [newFrequency, timestamp, frecencyScore, timestamp, existing.id]
+    );
     return existing.id;
   } else {
     const tagId = generateUUID();
     const frecencyScore = calculateFrecency(1, timestamp);
-    conn.prepare(`
-      INSERT INTO tags (id, name, frequency, lastUsed, frecencyScore, createdAt, updatedAt)
-      VALUES (?, ?, 1, ?, ?, ?, ?)
-    `).run(tagId, name, timestamp, frecencyScore, timestamp, timestamp);
+    conn.run(
+      "INSERT INTO tags (id, name, frequency, lastUsed, frecencyScore, createdAt, updatedAt) VALUES (?, ?, 1, ?, ?, ?, ?)",
+      [tagId, name, timestamp, frecencyScore, timestamp, timestamp]
+    );
     return tagId;
   }
 }
@@ -504,9 +505,10 @@ function saveItem(userId, type, content, tags = [], metadata = null, syncId = nu
     // Sync path: match by syncId only. No content-based fallback — syncId is canonical.
 
     // Check if syncId matches a server item by its own ID (client sends server ID on re-push)
-    const existingById = conn.prepare(
-      "SELECT id, deletedAt FROM items WHERE id = ?"
-    ).get(syncId);
+    const existingById = conn.get(
+      "SELECT id, deletedAt FROM items WHERE id = ?",
+      [syncId]
+    );
 
     if (existingById) {
       itemId = existingById.id;
@@ -514,9 +516,10 @@ function saveItem(userId, type, content, tags = [], metadata = null, syncId = nu
 
     // Check syncId column (client's local ID from first push)
     if (!itemId) {
-      const existingBySyncId = conn.prepare(
-        "SELECT id, deletedAt FROM items WHERE syncId = ?"
-      ).get(syncId);
+      const existingBySyncId = conn.get(
+        "SELECT id, deletedAt FROM items WHERE syncId = ?",
+        [syncId]
+      );
 
       if (existingBySyncId) {
         itemId = existingBySyncId.id;
@@ -527,15 +530,17 @@ function saveItem(userId, type, content, tags = [], metadata = null, syncId = nu
     if (itemId) {
       if (deletedAt) {
         // Push a tombstone
-        conn.prepare(
-          "UPDATE items SET deletedAt = ?, updatedAt = ? WHERE id = ?"
-        ).run(deletedAt, timestamp, itemId);
+        conn.run(
+          "UPDATE items SET deletedAt = ?, updatedAt = ? WHERE id = ?",
+          [deletedAt, timestamp, itemId]
+        );
       } else {
         // Push live content and ensure item is not deleted (undelete case)
-        conn.prepare(
-          "UPDATE items SET type = ?, content = ?, metadata = COALESCE(?, metadata), deletedAt = 0, updatedAt = ? WHERE id = ?"
-        ).run(type, content, metadataJson, timestamp, itemId);
-        conn.prepare("DELETE FROM item_tags WHERE itemId = ?").run(itemId);
+        conn.run(
+          "UPDATE items SET type = ?, content = ?, metadata = COALESCE(?, metadata), deletedAt = 0, updatedAt = ? WHERE id = ?",
+          [type, content, metadataJson, timestamp, itemId]
+        );
+        conn.run("DELETE FROM item_tags WHERE itemId = ?", [itemId]);
       }
     }
   }
@@ -543,29 +548,35 @@ function saveItem(userId, type, content, tags = [], metadata = null, syncId = nu
   // Non-sync path: content-based dedup (when no syncId provided)
   if (!syncId && !itemId) {
     if (content) {
-      const existing = conn.prepare(
-        "SELECT id FROM items WHERE type = ? AND content = ? AND CAST(deletedAt AS INTEGER) = 0"
-      ).get(type, content);
+      const existing = conn.get(
+        "SELECT id FROM items WHERE type = ? AND content = ? AND CAST(deletedAt AS INTEGER) = 0",
+        [type, content]
+      );
       if (existing) {
         itemId = existing.id;
-        conn.prepare("UPDATE items SET metadata = COALESCE(?, metadata), updatedAt = ? WHERE id = ?")
-          .run(metadataJson, timestamp, itemId);
-        conn.prepare("DELETE FROM item_tags WHERE itemId = ?").run(itemId);
+        conn.run(
+          "UPDATE items SET metadata = COALESCE(?, metadata), updatedAt = ? WHERE id = ?",
+          [metadataJson, timestamp, itemId]
+        );
+        conn.run("DELETE FROM item_tags WHERE itemId = ?", [itemId]);
       }
     } else if (type === 'tagset' && tags.length > 0) {
       const sortedNewTags = [...tags].sort().join('\0');
-      const existingTagsets = conn.prepare(
+      const existingTagsets = conn.all(
         "SELECT id FROM items WHERE type = 'tagset' AND CAST(deletedAt AS INTEGER) = 0"
-      ).all();
+      );
       for (const ts of existingTagsets) {
-        const existingTags = conn.prepare(
-          "SELECT t.name FROM tags t JOIN item_tags it ON t.id = it.tagId WHERE it.itemId = ?"
-        ).all(ts.id).map(t => t.name).sort().join('\0');
+        const existingTags = conn.all(
+          "SELECT t.name FROM tags t JOIN item_tags it ON t.id = it.tagId WHERE it.itemId = ?",
+          [ts.id]
+        ).map(t => t.name).sort().join('\0');
         if (existingTags === sortedNewTags) {
           itemId = ts.id;
-          conn.prepare("UPDATE items SET metadata = COALESCE(?, metadata), updatedAt = ? WHERE id = ?")
-            .run(metadataJson, timestamp, itemId);
-          conn.prepare("DELETE FROM item_tags WHERE itemId = ?").run(itemId);
+          conn.run(
+            "UPDATE items SET metadata = COALESCE(?, metadata), updatedAt = ? WHERE id = ?",
+            [metadataJson, timestamp, itemId]
+          );
+          conn.run("DELETE FROM item_tags WHERE itemId = ?", [itemId]);
           break;
         }
       }
@@ -575,18 +586,18 @@ function saveItem(userId, type, content, tags = [], metadata = null, syncId = nu
   // Create new item if no match found
   if (!itemId) {
     itemId = generateUUID();
-    conn.prepare(`
-      INSERT INTO items (id, type, content, metadata, syncId, syncSource, syncedAt, createdAt, updatedAt, deletedAt)
-      VALUES (?, ?, ?, ?, ?, '', 0, ?, ?, ?)
-    `).run(itemId, type, content, metadataJson, syncId || '', timestamp, timestamp, deletedAt || 0);
+    conn.run(
+      "INSERT INTO items (id, type, content, metadata, syncId, syncSource, syncedAt, createdAt, updatedAt, deletedAt) VALUES (?, ?, ?, ?, ?, '', 0, ?, ?, ?)",
+      [itemId, type, content, metadataJson, syncId || '', timestamp, timestamp, deletedAt || 0]
+    );
   }
 
   for (const tagName of tags) {
     const tagId = getOrCreateTagWithConn(conn, tagName, timestamp);
-    conn.prepare(`
-      INSERT OR IGNORE INTO item_tags (itemId, tagId, createdAt)
-      VALUES (?, ?, ?)
-    `).run(itemId, tagId, timestamp);
+    conn.run(
+      "INSERT OR IGNORE INTO item_tags (itemId, tagId, createdAt) VALUES (?, ?, ?)",
+      [itemId, tagId, timestamp]
+    );
   }
 
   return itemId;
@@ -625,14 +636,7 @@ function getItems(userId, type = null, profileId = "default", includeDeleted = f
 
   query += " ORDER BY createdAt DESC";
 
-  const items = conn.prepare(query).all(...params);
-
-  const getTagsStmt = conn.prepare(`
-    SELECT t.name
-    FROM tags t
-    JOIN item_tags it ON t.id = it.tagId
-    WHERE it.itemId = ?
-  `);
+  const items = conn.all(query, params);
 
   return items.map((row) => {
     const result = {
@@ -642,7 +646,10 @@ function getItems(userId, type = null, profileId = "default", includeDeleted = f
       createdAt: toTimestamp(row.createdAt),
       updatedAt: toTimestamp(row.updatedAt),
       deletedAt: toTimestamp(row.deletedAt),
-      tags: getTagsStmt.all(row.id).map((t) => t.name),
+      tags: conn.all(
+        "SELECT t.name FROM tags t JOIN item_tags it ON t.id = it.tagId WHERE it.itemId = ?",
+        [row.id]
+      ).map((t) => t.name),
     };
     if (row.metadata) {
       result.metadata = JSON.parse(row.metadata);
@@ -694,19 +701,18 @@ function getTagsets(userId, profileId = "default") {
 function getTagsByFrecency(userId, profileId = "default") {
   const conn = getConnection(userId, profileId);
 
-  return conn.prepare(`
-    SELECT name, frequency, lastUsed, frecencyScore
-    FROM tags
-    ORDER BY frecencyScore DESC
-  `).all();
+  return conn.all(
+    "SELECT name, frequency, lastUsed, frecencyScore FROM tags ORDER BY frecencyScore DESC"
+  );
 }
 
 function deleteItem(userId, id, profileId = "default") {
   const conn = getConnection(userId, profileId);
   const timestamp = now();
-  conn.prepare(
-    "UPDATE items SET deletedAt = ?, updatedAt = ? WHERE id = ? AND CAST(deletedAt AS INTEGER) = 0"
-  ).run(timestamp, timestamp, id);
+  conn.run(
+    "UPDATE items SET deletedAt = ?, updatedAt = ? WHERE id = ? AND CAST(deletedAt AS INTEGER) = 0",
+    [timestamp, timestamp, id]
+  );
 }
 
 function deleteUrl(userId, id, profileId = "default") {
@@ -717,17 +723,17 @@ function updateItemTags(userId, id, tags, profileId = "default") {
   const conn = getConnection(userId, profileId);
   const timestamp = now();
 
-  conn.prepare("DELETE FROM item_tags WHERE itemId = ?").run(id);
+  conn.run("DELETE FROM item_tags WHERE itemId = ?", [id]);
 
   for (const tagName of tags) {
     const tagId = getOrCreateTagWithConn(conn, tagName, timestamp);
-    conn.prepare(`
-      INSERT OR IGNORE INTO item_tags (itemId, tagId, createdAt)
-      VALUES (?, ?, ?)
-    `).run(id, tagId, timestamp);
+    conn.run(
+      "INSERT OR IGNORE INTO item_tags (itemId, tagId, createdAt) VALUES (?, ?, ?)",
+      [id, tagId, timestamp]
+    );
   }
 
-  conn.prepare("UPDATE items SET updatedAt = ? WHERE id = ?").run(timestamp, id);
+  conn.run("UPDATE items SET updatedAt = ? WHERE id = ?", [timestamp, id]);
 }
 
 function updateUrlTags(userId, id, tags, profileId = "default") {
@@ -736,17 +742,17 @@ function updateUrlTags(userId, id, tags, profileId = "default") {
 
 function getSetting(userId, key, profileId = "default") {
   const conn = getConnection(userId, profileId);
-  const row = conn.prepare("SELECT value FROM settings WHERE key = ?").get(key);
+  const row = conn.get("SELECT value FROM settings WHERE key = ?", [key]);
   return row ? row.value : null;
 }
 
 function setSetting(userId, key, value, profileId = "default") {
   const conn = getConnection(userId, profileId);
-  conn.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(key, value);
+  conn.run("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", [key, value]);
 }
 
 function closeAllConnections() {
-  for (const [userId, conn] of connections) {
+  for (const [connectionKey, conn] of connections) {
     conn.close();
   }
   connections.clear();
@@ -828,18 +834,18 @@ function saveImage(userId, filename, buffer, mimeType, tags = [], profileId = "d
     ext: ext,
   });
 
-  conn.prepare(`
-    INSERT INTO items (id, type, content, metadata, syncId, syncSource, syncedAt, createdAt, updatedAt, deletedAt)
-    VALUES (?, 'image', ?, ?, '', '', 0, ?, ?, 0)
-  `).run(itemId, filename, metadata, timestamp, timestamp);
+  conn.run(
+    "INSERT INTO items (id, type, content, metadata, syncId, syncSource, syncedAt, createdAt, updatedAt, deletedAt) VALUES (?, 'image', ?, ?, '', '', 0, ?, ?, 0)",
+    [itemId, filename, metadata, timestamp, timestamp]
+  );
 
   // Add tags
   for (const tagName of tags) {
     const tagId = getOrCreateTagWithConn(conn, tagName, timestamp);
-    conn.prepare(`
-      INSERT OR IGNORE INTO item_tags (itemId, tagId, createdAt)
-      VALUES (?, ?, ?)
-    `).run(itemId, tagId, timestamp);
+    conn.run(
+      "INSERT OR IGNORE INTO item_tags (itemId, tagId, createdAt) VALUES (?, ?, ?)",
+      [itemId, tagId, timestamp]
+    );
   }
 
   return itemId;
@@ -848,19 +854,9 @@ function saveImage(userId, filename, buffer, mimeType, tags = [], profileId = "d
 function getImages(userId, profileId = "default") {
   const conn = getConnection(userId, profileId);
 
-  const items = conn.prepare(`
-    SELECT id, content, metadata, createdAt, updatedAt
-    FROM items
-    WHERE type = 'image' AND CAST(deletedAt AS INTEGER) = 0
-    ORDER BY createdAt DESC
-  `).all();
-
-  const getTagsStmt = conn.prepare(`
-    SELECT t.name
-    FROM tags t
-    JOIN item_tags it ON t.id = it.tagId
-    WHERE it.itemId = ?
-  `);
+  const items = conn.all(
+    "SELECT id, content, metadata, createdAt, updatedAt FROM items WHERE type = 'image' AND CAST(deletedAt AS INTEGER) = 0 ORDER BY createdAt DESC"
+  );
 
   return items.map((row) => {
     const metadata = row.metadata ? JSON.parse(row.metadata) : {};
@@ -871,7 +867,10 @@ function getImages(userId, profileId = "default") {
       size: metadata.size,
       createdAt: toTimestamp(row.createdAt),
       updatedAt: toTimestamp(row.updatedAt),
-      tags: getTagsStmt.all(row.id).map((t) => t.name),
+      tags: conn.all(
+        "SELECT t.name FROM tags t JOIN item_tags it ON t.id = it.tagId WHERE it.itemId = ?",
+        [row.id]
+      ).map((t) => t.name),
     };
   });
 }
@@ -879,11 +878,10 @@ function getImages(userId, profileId = "default") {
 function getImageById(userId, itemId, profileId = "default") {
   const conn = getConnection(userId, profileId);
 
-  const row = conn.prepare(`
-    SELECT id, content, metadata, createdAt, updatedAt
-    FROM items
-    WHERE id = ? AND type = 'image' AND CAST(deletedAt AS INTEGER) = 0
-  `).get(itemId);
+  const row = conn.get(
+    "SELECT id, content, metadata, createdAt, updatedAt FROM items WHERE id = ? AND type = 'image' AND CAST(deletedAt AS INTEGER) = 0",
+    [itemId]
+  );
 
   if (!row) return null;
 
@@ -908,9 +906,10 @@ function deleteImage(userId, itemId, profileId = "default") {
 
   // Soft-delete the item record (same as deleteItem)
   const timestamp = now();
-  conn.prepare(
-    "UPDATE items SET deletedAt = ?, updatedAt = ? WHERE id = ? AND CAST(deletedAt AS INTEGER) = 0"
-  ).run(timestamp, timestamp, itemId);
+  conn.run(
+    "UPDATE items SET deletedAt = ?, updatedAt = ? WHERE id = ? AND CAST(deletedAt AS INTEGER) = 0",
+    [timestamp, timestamp, itemId]
+  );
 }
 
 /**
@@ -936,14 +935,7 @@ function getItemsSince(userId, timestamp, type = null, profileId = "default") {
 
   query += " ORDER BY updatedAt ASC";
 
-  const items = conn.prepare(query).all(...params);
-
-  const getTagsStmt = conn.prepare(`
-    SELECT t.name
-    FROM tags t
-    JOIN item_tags it ON t.id = it.tagId
-    WHERE it.itemId = ?
-  `);
+  const items = conn.all(query, params);
 
   return items.map((row) => {
     const result = {
@@ -953,7 +945,10 @@ function getItemsSince(userId, timestamp, type = null, profileId = "default") {
       createdAt: toTimestamp(row.createdAt),
       updatedAt: toTimestamp(row.updatedAt),
       deletedAt: toTimestamp(row.deletedAt),
-      tags: getTagsStmt.all(row.id).map((t) => t.name),
+      tags: conn.all(
+        "SELECT t.name FROM tags t JOIN item_tags it ON t.id = it.tagId WHERE it.itemId = ?",
+        [row.id]
+      ).map((t) => t.name),
     };
     if (row.metadata) {
       result.metadata = JSON.parse(row.metadata);
@@ -968,20 +963,12 @@ function getItemsSince(userId, timestamp, type = null, profileId = "default") {
 function getItemById(userId, itemId, profileId = "default") {
   const conn = getConnection(userId, profileId);
 
-  const row = conn.prepare(`
-    SELECT id, type, content, metadata, createdAt, updatedAt
-    FROM items
-    WHERE id = ? AND CAST(deletedAt AS INTEGER) = 0
-  `).get(itemId);
+  const row = conn.get(
+    "SELECT id, type, content, metadata, createdAt, updatedAt FROM items WHERE id = ? AND CAST(deletedAt AS INTEGER) = 0",
+    [itemId]
+  );
 
   if (!row) return null;
-
-  const getTagsStmt = conn.prepare(`
-    SELECT t.name
-    FROM tags t
-    JOIN item_tags it ON t.id = it.tagId
-    WHERE it.itemId = ?
-  `);
 
   const result = {
     id: row.id,
@@ -989,7 +976,10 @@ function getItemById(userId, itemId, profileId = "default") {
     content: row.content,
     createdAt: toTimestamp(row.createdAt),
     updatedAt: toTimestamp(row.updatedAt),
-    tags: getTagsStmt.all(row.id).map((t) => t.name),
+    tags: conn.all(
+      "SELECT t.name FROM tags t JOIN item_tags it ON t.id = it.tagId WHERE it.itemId = ?",
+      [row.id]
+    ).map((t) => t.name),
   };
   if (row.metadata) {
     result.metadata = JSON.parse(row.metadata);
@@ -1008,50 +998,45 @@ function deduplicateItems(userId, profileId = "default") {
   let totalRemoved = 0;
 
   // --- Deduplicate url/text items by (type, content) ---
-  const dupGroups = conn.prepare(`
+  const dupGroups = conn.all(`
     SELECT type, content, COUNT(*) as cnt
     FROM items
     WHERE CAST(deletedAt AS INTEGER) = 0 AND type IN ('url', 'text') AND content IS NOT NULL AND content != ''
     GROUP BY type, content
     HAVING cnt > 1
-  `).all();
+  `);
 
   for (const group of dupGroups) {
-    const items = conn.prepare(`
-      SELECT id, syncId, updatedAt
-      FROM items
-      WHERE type = ? AND content = ? AND CAST(deletedAt AS INTEGER) = 0
-      ORDER BY
-        CASE WHEN syncId IS NOT NULL AND syncId != '' THEN 0 ELSE 1 END,
-        updatedAt DESC
-    `).all(group.type, group.content);
+    const items = conn.all(
+      `SELECT id, syncId, updatedAt
+       FROM items
+       WHERE type = ? AND content = ? AND CAST(deletedAt AS INTEGER) = 0
+       ORDER BY
+         CASE WHEN syncId IS NOT NULL AND syncId != '' THEN 0 ELSE 1 END,
+         updatedAt DESC`,
+      [group.type, group.content]
+    );
 
     // Keep first (best), delete the rest
     for (let i = 1; i < items.length; i++) {
-      conn.prepare("DELETE FROM item_tags WHERE itemId = ?").run(items[i].id);
-      conn.prepare("DELETE FROM items WHERE id = ?").run(items[i].id);
+      conn.run("DELETE FROM item_tags WHERE itemId = ?", [items[i].id]);
+      conn.run("DELETE FROM items WHERE id = ?", [items[i].id]);
       totalRemoved++;
     }
   }
 
   // --- Deduplicate tagsets by sorted tag names ---
-  const tagsets = conn.prepare(`
-    SELECT id, syncId, updatedAt
-    FROM items
-    WHERE type = 'tagset' AND CAST(deletedAt AS INTEGER) = 0
-  `).all();
-
-  const getTagNamesStmt = conn.prepare(`
-    SELECT t.name FROM tags t
-    JOIN item_tags it ON t.id = it.tagId
-    WHERE it.itemId = ?
-    ORDER BY t.name
-  `);
+  const tagsets = conn.all(
+    "SELECT id, syncId, updatedAt FROM items WHERE type = 'tagset' AND CAST(deletedAt AS INTEGER) = 0"
+  );
 
   // Group tagsets by their sorted tag string
   const tagsetGroups = new Map();
   for (const ts of tagsets) {
-    const tagNames = getTagNamesStmt.all(ts.id).map(t => t.name).join('\0');
+    const tagNames = conn.all(
+      "SELECT t.name FROM tags t JOIN item_tags it ON t.id = it.tagId WHERE it.itemId = ? ORDER BY t.name",
+      [ts.id]
+    ).map(t => t.name).join('\0');
     if (!tagsetGroups.has(tagNames)) {
       tagsetGroups.set(tagNames, []);
     }
@@ -1071,8 +1056,8 @@ function deduplicateItems(userId, profileId = "default") {
 
     // Keep first, delete rest
     for (let i = 1; i < items.length; i++) {
-      conn.prepare("DELETE FROM item_tags WHERE itemId = ?").run(items[i].id);
-      conn.prepare("DELETE FROM items WHERE id = ?").run(items[i].id);
+      conn.run("DELETE FROM item_tags WHERE itemId = ?", [items[i].id]);
+      conn.run("DELETE FROM items WHERE id = ?", [items[i].id]);
       totalRemoved++;
     }
   }

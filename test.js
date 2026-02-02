@@ -613,7 +613,7 @@ describe("Database Tests", () => {
   describe("Sync Columns Schema", () => {
     it("should have sync columns in schema", () => {
       const conn = db.getConnection(TEST_USER_ID);
-      const tableInfo = conn.prepare("PRAGMA table_info(items)").all();
+      const tableInfo = conn.all("PRAGMA table_info(items)");
       const columnNames = tableInfo.map((col) => col.name);
 
       assert.ok(columnNames.includes("syncId"), "should have syncId column");
@@ -623,7 +623,7 @@ describe("Database Tests", () => {
 
     it("should have sync_id index", () => {
       const conn = db.getConnection(TEST_USER_ID);
-      const indexes = conn.prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='items'").all();
+      const indexes = conn.all("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='items'");
       const indexNames = indexes.map((idx) => idx.name);
 
       assert.ok(indexNames.includes("idx_items_syncId"), "should have idx_items_syncId index");
@@ -684,17 +684,17 @@ describe("Database Tests", () => {
       const conn = freshDb.getConnection("legacy-user");
 
       // Verify columns were renamed
-      const itemCols = conn.prepare("PRAGMA table_info(items)").all().map(c => c.name);
+      const itemCols = conn.all("PRAGMA table_info(items)").map(c => c.name);
       assert.ok(itemCols.includes("syncId"), "items.sync_id should be renamed to syncId");
       assert.ok(itemCols.includes("createdAt"), "items.created_at should be renamed to createdAt");
       assert.ok(itemCols.includes("deletedAt"), "items.deleted_at should be renamed to deletedAt");
       assert.ok(!itemCols.includes("sync_id"), "items should not have snake_case sync_id");
 
-      const tagCols = conn.prepare("PRAGMA table_info(tags)").all().map(c => c.name);
+      const tagCols = conn.all("PRAGMA table_info(tags)").map(c => c.name);
       assert.ok(tagCols.includes("lastUsed"), "tags.last_used_at should be renamed to lastUsed");
       assert.ok(tagCols.includes("frecencyScore"), "tags.frecency_score should be renamed to frecencyScore");
 
-      const itCols = conn.prepare("PRAGMA table_info(item_tags)").all().map(c => c.name);
+      const itCols = conn.all("PRAGMA table_info(item_tags)").map(c => c.name);
       assert.ok(itCols.includes("itemId"), "item_tags.item_id should be renamed to itemId");
       assert.ok(itCols.includes("tagId"), "item_tags.tag_id should be renamed to tagId");
 
@@ -776,25 +776,25 @@ describe("Database Tests", () => {
       const conn = freshDb.getConnection("rebuild-user");
 
       // Verify all columns are camelCase after rebuild
-      const itemCols = new Set(conn.prepare("PRAGMA table_info(items)").all().map(c => c.name));
+      const itemCols = new Set(conn.all("PRAGMA table_info(items)").map(c => c.name));
       assert.ok(itemCols.has("createdAt"), "items should have createdAt");
       assert.ok(itemCols.has("deletedAt"), "items should have deletedAt");
       assert.ok(itemCols.has("syncId"), "items should have syncId");
 
-      const tagCols = new Set(conn.prepare("PRAGMA table_info(tags)").all().map(c => c.name));
+      const tagCols = new Set(conn.all("PRAGMA table_info(tags)").map(c => c.name));
       assert.ok(tagCols.has("lastUsed"), "tags should have lastUsed (was last_used)");
       assert.ok(tagCols.has("frecencyScore"), "tags should have frecencyScore");
       assert.ok(tagCols.has("createdAt"), "tags should have createdAt");
       // Verify tags.id is now TEXT (was INTEGER AUTOINCREMENT)
-      const tagIdCol = conn.prepare("PRAGMA table_info(tags)").all().find(c => c.name === "id");
+      const tagIdCol = conn.all("PRAGMA table_info(tags)").find(c => c.name === "id");
       assert.ok(tagIdCol, "tags should have id column");
       assert.strictEqual(tagIdCol.type, "TEXT", "tags.id should be TEXT after rebuild");
 
-      const itCols = new Set(conn.prepare("PRAGMA table_info(item_tags)").all().map(c => c.name));
+      const itCols = new Set(conn.all("PRAGMA table_info(item_tags)").map(c => c.name));
       assert.ok(itCols.has("itemId"), "item_tags should have itemId");
       assert.ok(itCols.has("tagId"), "item_tags should have tagId");
       // Verify item_tags.tagId is now TEXT (was INTEGER)
-      const itTagIdCol = conn.prepare("PRAGMA table_info(item_tags)").all().find(c => c.name === "tagId");
+      const itTagIdCol = conn.all("PRAGMA table_info(item_tags)").find(c => c.name === "tagId");
       assert.ok(itTagIdCol, "item_tags should have tagId column");
       assert.strictEqual(itTagIdCol.type, "TEXT", "item_tags.tagId should be TEXT after rebuild");
 
@@ -865,7 +865,7 @@ describe("Database Tests", () => {
       const conn = freshDb.getConnection("missing-cols-user");
 
       // Verify all required columns exist
-      const tagCols = new Set(conn.prepare("PRAGMA table_info(tags)").all().map(c => c.name));
+      const tagCols = new Set(conn.all("PRAGMA table_info(tags)").map(c => c.name));
       assert.ok(tagCols.has("lastUsed"), "tags should have lastUsed after safety net");
       assert.ok(tagCols.has("frecencyScore"), "tags should have frecencyScore after safety net");
       assert.ok(tagCols.has("createdAt"), "tags should have createdAt after safety net");
@@ -952,10 +952,10 @@ describe("Database Tests", () => {
       // DB values are numeric (ISO converted to Unix ms, float strings to integers)
       // but may remain TEXT type due to column TEXT affinity from legacy schema.
       // The toTimestamp() safety net in response code ensures API returns integers.
-      const row1 = conn.prepare("SELECT CAST(createdAt AS INTEGER) as v FROM items WHERE id = 'iso-1'").get();
+      const row1 = conn.get("SELECT CAST(createdAt AS INTEGER) as v FROM items WHERE id = 'iso-1'");
       assert.ok(row1.v > 1700000000000, `ISO timestamp should be Unix ms, got ${row1.v}`);
 
-      const row2 = conn.prepare("SELECT CAST(createdAt AS INTEGER) as v, CAST(deletedAt AS INTEGER) as dv FROM items WHERE id = 'num-1'").get();
+      const row2 = conn.get("SELECT CAST(createdAt AS INTEGER) as v, CAST(deletedAt AS INTEGER) as dv FROM items WHERE id = 'num-1'");
       assert.strictEqual(row2.v, 1769559596558, `Should preserve value: ${row2.v}`);
       assert.strictEqual(row2.dv, 1769509253170);
 
@@ -1046,16 +1046,16 @@ describe("Database Tests", () => {
       const conn = freshDb.getConnection("prod-user");
 
       // Verify columns were renamed to camelCase
-      const itemCols = new Set(conn.prepare("PRAGMA table_info(items)").all().map(c => c.name));
+      const itemCols = new Set(conn.all("PRAGMA table_info(items)").map(c => c.name));
       assert.ok(itemCols.has("syncId"), "sync_id should be renamed to syncId");
       assert.ok(itemCols.has("createdAt"), "created_at should be renamed to createdAt");
       assert.ok(itemCols.has("deletedAt"), "deleted_at should be renamed to deletedAt");
 
-      const tagCols = new Set(conn.prepare("PRAGMA table_info(tags)").all().map(c => c.name));
+      const tagCols = new Set(conn.all("PRAGMA table_info(tags)").map(c => c.name));
       assert.ok(tagCols.has("lastUsed"), "last_used_at should be renamed to lastUsed");
       assert.ok(tagCols.has("frecencyScore"), "frecency_score should be renamed to frecencyScore");
 
-      const itCols = new Set(conn.prepare("PRAGMA table_info(item_tags)").all().map(c => c.name));
+      const itCols = new Set(conn.all("PRAGMA table_info(item_tags)").map(c => c.name));
       assert.ok(itCols.has("itemId"), "item_id should be renamed to itemId");
       assert.ok(itCols.has("tagId"), "tag_id should be renamed to tagId");
 

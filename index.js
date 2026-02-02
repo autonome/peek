@@ -335,22 +335,16 @@ app.get("/images/:id", (c) => {
   const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
   const id = c.req.param("id");
 
-  const image = db.getImageById(userId, id, profileId);
-  if (!image) {
+  const imageData = db.getImageData(userId, id, profileId);
+  if (!imageData) {
     return c.json({ error: "image not found" }, 404);
   }
 
-  const imagePath = db.getImagePath(userId, id, profileId);
-  if (!imagePath || !fs.existsSync(imagePath)) {
-    return c.json({ error: "image file not found" }, 404);
-  }
-
-  const fileBuffer = fs.readFileSync(imagePath);
-  return new Response(fileBuffer, {
+  return new Response(imageData.buffer, {
     headers: {
-      "Content-Type": image.metadata.mime,
-      "Content-Length": fileBuffer.length.toString(),
-      "Content-Disposition": `inline; filename="${image.filename}"`,
+      "Content-Type": imageData.metadata.mime,
+      "Content-Length": imageData.buffer.length.toString(),
+      "Content-Disposition": `inline; filename="${imageData.filename}"`,
     },
   });
 });

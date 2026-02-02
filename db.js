@@ -1,4 +1,5 @@
 const { sqlFactory } = require("./sql");
+const { createStorageAdapter } = require("./storage");
 const path = require("path");
 const crypto = require("crypto");
 const fs = require("fs");
@@ -16,6 +17,33 @@ const DATA_DIR = process.env.DATA_DIR || "./data";
 // Connection pool - one connection per user:profile
 // Now stores SqlAdapter instances instead of raw Database instances
 const connections = new Map();
+
+// Storage adapter pool - one per user:profile
+const storageAdapters = new Map();
+
+/**
+ * Get storage adapter for a user's profile.
+ * @param {string} userId
+ * @param {string} [profileId='default']
+ * @returns {import('./storage/types').StorageAdapter}
+ */
+function getStorageAdapter(userId, profileId = "default") {
+  const key = `${userId}:${profileId}`;
+  if (storageAdapters.has(key)) {
+    return storageAdapters.get(key);
+  }
+
+  const profileDir = path.join(DATA_DIR, userId, "profiles", profileId);
+  const imagesDir = path.join(profileDir, "images");
+
+  const adapter = createStorageAdapter({
+    type: "filesystem",
+    basePath: imagesDir,
+  });
+
+  storageAdapters.set(key, adapter);
+  return adapter;
+}
 
 function getConnection(userId, profileId = "default") {
   if (!userId) {
@@ -805,25 +833,19 @@ function saveImage(userId, filename, buffer, mimeType, tags = [], profileId = "d
   }
 
   const conn = getConnection(userId, profileId);
+  const storage = getStorageAdapter(userId, profileId);
   const timestamp = now();
 
-  // Compute hash for file deduplication (not item dedup)
+  // Compute hash for content-addressable storage
   const hash = hashBuffer(buffer);
   const ext = getExtensionFromMime(mimeType);
-  const imageFilename = `${hash}.${ext}`;
 
-  // Ensure images directory exists
-  const imagesDir = getUserImagesDir(userId, profileId);
-  if (!fs.existsSync(imagesDir)) {
-    fs.mkdirSync(imagesDir, { recursive: true });
-  }
+  // Storage key is hash-based for easy backend switching
+  // Key format: {hash}.{ext} (e.g., "abc123...def.jpg")
+  const storageKey = `${hash}.${ext}`;
 
-  const imagePath = path.join(imagesDir, imageFilename);
-
-  // Write file only if it doesn't exist (file-level dedup)
-  if (!fs.existsSync(imagePath)) {
-    fs.writeFileSync(imagePath, buffer);
-  }
+  // Store via adapter (uses sync method for filesystem adapter)
+  storage.putSync(storageKey, buffer, { mime: mimeType });
 
   // Create item record
   const itemId = generateUUID();
@@ -899,6 +921,32 @@ function getImagePath(userId, itemId, profileId = "default") {
 
   const imagesDir = getUserImagesDir(userId, profileId);
   return path.join(imagesDir, `${image.metadata.hash}.${image.metadata.ext}`);
+}
+
+/**
+ * Get image data using storage adapter.
+ * Returns the raw image buffer for serving.
+ *
+ * @param {string} userId
+ * @param {string} itemId
+ * @param {string} [profileId='default']
+ * @returns {{buffer: Buffer, metadata: Object, filename: string} | null}
+ */
+function getImageData(userId, itemId, profileId = "default") {
+  const image = getImageById(userId, itemId, profileId);
+  if (!image || !image.metadata.hash) return null;
+
+  const storage = getStorageAdapter(userId, profileId);
+  const storageKey = `${image.metadata.hash}.${image.metadata.ext}`;
+
+  const buffer = storage.getSync(storageKey);
+  if (!buffer) return null;
+
+  return {
+    buffer,
+    metadata: image.metadata,
+    filename: image.filename,
+  };
 }
 
 function deleteImage(userId, itemId, profileId = "default") {
@@ -1073,6 +1121,7 @@ module.exports = {
   getConnection,
   closeAllConnections,
   closeConnection,
+  getStorageAdapter,
   // Unified functions
   saveItem,
   getItems,
@@ -1090,6 +1139,7 @@ module.exports = {
   getImages,
   getImageById,
   getImagePath,
+  getImageData,
   deleteImage,
   MAX_IMAGE_SIZE,
   // Backward-compatible (URLs)

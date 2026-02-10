@@ -617,7 +617,6 @@ describe("Database Tests", () => {
       const columnNames = tableInfo.map((col) => col.name);
 
       assert.ok(columnNames.includes("syncId"), "should have syncId column");
-      assert.ok(columnNames.includes("syncSource"), "should have syncSource column");
       assert.ok(columnNames.includes("syncedAt"), "should have syncedAt column");
     });
 

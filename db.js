@@ -252,7 +252,6 @@ function initializeSchema(adapter) {
       content TEXT,
       metadata TEXT,
       syncId TEXT DEFAULT '',
-      syncSource TEXT DEFAULT '',
       syncedAt INTEGER DEFAULT 0,
       createdAt INTEGER NOT NULL,
       updatedAt INTEGER NOT NULL,
@@ -267,7 +266,6 @@ function initializeSchema(adapter) {
   // both adding missing columns AND renaming snake_case → camelCase.
   const itemRenames = {
     "sync_id": "syncId",
-    "sync_source": "syncSource",
     "synced_at": "syncedAt",
     "created_at": "createdAt",
     "updated_at": "updatedAt",
@@ -284,7 +282,6 @@ function initializeSchema(adapter) {
     content TEXT,
     metadata TEXT,
     syncId TEXT DEFAULT '',
-    syncSource TEXT DEFAULT '',
     syncedAt INTEGER DEFAULT 0,
     createdAt INTEGER NOT NULL,
     updatedAt INTEGER NOT NULL,
@@ -296,9 +293,6 @@ function initializeSchema(adapter) {
   const itemColSet = new Set(adapter.all("PRAGMA table_info(items)").map(c => c.name));
   if (!itemColSet.has("syncId") && !itemColSet.has("sync_id")) {
     adapter.exec("ALTER TABLE items ADD COLUMN syncId TEXT DEFAULT ''");
-  }
-  if (!itemColSet.has("syncSource") && !itemColSet.has("sync_source")) {
-    adapter.exec("ALTER TABLE items ADD COLUMN syncSource TEXT DEFAULT ''");
   }
   if (!itemColSet.has("syncedAt") && !itemColSet.has("synced_at")) {
     adapter.exec("ALTER TABLE items ADD COLUMN syncedAt INTEGER DEFAULT 0");
@@ -635,7 +629,7 @@ function saveItem(userId, type, content, tags = [], metadata = null, syncId = nu
   if (!itemId) {
     itemId = generateUUID();
     conn.run(
-      "INSERT INTO items (id, type, content, metadata, syncId, syncSource, syncedAt, createdAt, updatedAt, deletedAt) VALUES (?, ?, ?, ?, ?, '', 0, ?, ?, ?)",
+      "INSERT INTO items (id, type, content, metadata, syncId, syncedAt, createdAt, updatedAt, deletedAt) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)",
       [itemId, type, content, metadataJson, syncId || '', timestamp, timestamp, deletedAt || 0]
     );
   }
@@ -877,7 +871,7 @@ function saveImage(userId, filename, buffer, mimeType, tags = [], profileId = "d
   });
 
   conn.run(
-    "INSERT INTO items (id, type, content, metadata, syncId, syncSource, syncedAt, createdAt, updatedAt, deletedAt) VALUES (?, 'image', ?, ?, '', '', 0, ?, ?, 0)",
+    "INSERT INTO items (id, type, content, metadata, syncId, syncedAt, createdAt, updatedAt, deletedAt) VALUES (?, 'image', ?, ?, '', 0, ?, ?, 0)",
     [itemId, filename, metadata, timestamp, timestamp]
   );
 

@@ -43,10 +43,18 @@ function singleUserMiddleware(singleUser) {
       return next();
     }
 
+    // Skip auth in e2e test mode
+    if (process.env.E2E_TEST === 'true') {
+      c.set("userId", userId);
+      return next();
+    }
+
     // If token is configured, require it
     if (token) {
       const auth = c.req.header("Authorization");
-      if (!auth || auth !== `Bearer ${token}`) {
+      const expected = `Bearer ${token}`;
+
+      if (!auth || auth !== expected) {
         return c.json({ error: "Unauthorized" }, 401);
       }
     }
@@ -67,6 +75,12 @@ function multiUserMiddleware() {
   return async (c, next) => {
     // Health check is public
     if (c.req.path === "/") {
+      return next();
+    }
+
+    // Skip auth in e2e test mode (use 'default' user)
+    if (process.env.E2E_TEST === 'true') {
+      c.set("userId", "default");
       return next();
     }
 

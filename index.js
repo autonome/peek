@@ -752,6 +752,18 @@ if (!isSingleUserMode(config)) {
   console.log("[config] Running in single-user mode");
   console.log(`[config] User ID: ${config.singleUser.userId}`);
   console.log(`[config] Token auth: ${config.singleUser.token ? "enabled" : "disabled"}`);
+
+  // Ensure single-user mode user exists in the database
+  try {
+    const existingUsers = users.listUsers();
+    const userExists = existingUsers.some(u => u.id === config.singleUser.userId);
+    if (!userExists) {
+      console.log(`[config] Creating user '${config.singleUser.userId}' for single-user mode`);
+      users.createUser(config.singleUser.userId);
+    }
+  } catch (e) {
+    console.error("[config] Error ensuring single-user mode user exists:", e.message);
+  }
 }
 
 serve({ fetch: app.fetch, port }, (info) => {

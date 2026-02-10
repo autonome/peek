@@ -44,12 +44,6 @@
           "sync": true,
           "description": "ID from originating device (for dedup during sync)"
         },
-        "syncSource": {
-          "type": "text",
-          "default": "''",
-          "sync": true,
-          "description": "Source device/platform identifier"
-        },
         "syncedAt": {
           "type": "integer",
           "default": "0",
@@ -264,7 +258,7 @@
     "timestamp_unit": "milliseconds",
     "id_type": "text",
     "required_sync_columns": {
-      "items": ["id", "type", "content", "syncId", "syncSource", "syncedAt", "createdAt", "updatedAt", "deletedAt"],
+      "items": ["id", "type", "content", "syncId", "syncedAt", "createdAt", "updatedAt", "deletedAt"],
       "tags": ["id", "name", "frequency", "lastUsed", "frecencyScore", "createdAt", "updatedAt"],
       "item_tags": ["itemId", "tagId", "createdAt"]
     }

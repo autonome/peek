@@ -248,7 +248,7 @@ function initializeSchema(adapter) {
   adapter.exec(`
     CREATE TABLE IF NOT EXISTS items (
       id TEXT PRIMARY KEY,
-      type TEXT NOT NULL CHECK(type IN ('url', 'text', 'tagset', 'image')),
+      type TEXT NOT NULL CHECK(type IN ('url', 'text', 'tagset', 'image', 'series', 'feed', 'entity')),
       content TEXT,
       metadata TEXT,
       syncId TEXT DEFAULT '',
@@ -467,6 +467,21 @@ function initializeSchema(adapter) {
   if (itColsPost.has("tagId")) {
     adapter.exec("CREATE INDEX IF NOT EXISTS idx_item_tags_tagId ON item_tags(tagId)");
   }
+
+  // item_events: append-only time-series data for series and feeds
+  adapter.exec(`
+    CREATE TABLE IF NOT EXISTS item_events (
+      id TEXT PRIMARY KEY,
+      itemId TEXT NOT NULL,
+      content TEXT,
+      value REAL,
+      occurredAt INTEGER NOT NULL,
+      metadata TEXT DEFAULT '{}',
+      createdAt INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_item_events_item_time ON item_events(itemId, occurredAt DESC);
+    CREATE INDEX IF NOT EXISTS idx_item_events_occurred ON item_events(occurredAt DESC);
+  `);
 
   adapter.exec(`
     CREATE TABLE IF NOT EXISTS settings (

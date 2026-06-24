@@ -42,6 +42,32 @@ function getSystemDb() {
       );
       CREATE INDEX IF NOT EXISTS idx_profiles_user ON profiles(user_id);
     `);
+
+    // Initialize devices table.
+    //
+    // Each device/install gets its OWN api key (hashed), bound to a user but
+    // individually revocable. This replaces the single shared api_key model
+    // (one key baked into every instance, no per-instance identity, no
+    // individual revocation) that caused the 2026-06-24 rogue-sync incident.
+    // The legacy shared key is migrated in as a device row labeled
+    // "legacy-shared" (see migrateLegacyKeysToDevices) so existing installs
+    // keep working until each device is re-enrolled with its own minted key.
+    //
+    // revoked_at NULL = active; non-NULL = revoked (auth rejects it).
+    systemDb.exec(`
+      CREATE TABLE IF NOT EXISTS devices (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        label TEXT NOT NULL,
+        key_hash TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        last_seen_at TEXT,
+        revoked_at TEXT,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_devices_hash ON devices(key_hash);
+      CREATE INDEX IF NOT EXISTS idx_devices_user ON devices(user_id);
+    `);
   }
   return systemDb;
 }
@@ -160,6 +186,201 @@ function closeSystemDb() {
   if (systemDb) {
     systemDb.close();
     systemDb = null;
+  }
+}
+
+// ==================== Device Management ====================
+//
+// Per-device credentials. Each device/install authenticates with its own
+// minted key (hashed) bound to a user, and can be revoked individually without
+// affecting other devices. Auth resolves through resolveDevice (see auth.js).
+
+/**
+ * Mint a new device credential for a user.
+ * The raw API key is returned ONCE and never stored (only its hash).
+ *
+ * @param {string} userId - The owning user
+ * @param {string} label - Human-readable device label (e.g. "iPhone 15", "MacBook")
+ * @returns {{ deviceId: string, userId: string, label: string, apiKey: string }}
+ */
+function createDevice(userId, label) {
+  const db = getSystemDb();
+
+  const user = db.get("SELECT id FROM users WHERE id = ?", [userId]);
+  if (!user) {
+    throw new Error(`User '${userId}' does not exist`);
+  }
+  if (!label || !String(label).trim()) {
+    throw new Error("Device label is required");
+  }
+
+  const deviceId = crypto.randomUUID();
+  const apiKey = generateApiKey();
+  const keyHash = hashApiKey(apiKey);
+  const timestamp = new Date().toISOString();
+
+  db.run(
+    "INSERT INTO devices (id, user_id, label, key_hash, created_at, last_seen_at, revoked_at) VALUES (?, ?, ?, ?, ?, NULL, NULL)",
+    [deviceId, userId, String(label).trim(), keyHash, timestamp]
+  );
+
+  return { deviceId, userId, label: String(label).trim(), apiKey };
+}
+
+/**
+ * Register a device with a caller-supplied existing key (used to migrate the
+ * legacy shared api_key into the devices table). Idempotent on key_hash:
+ * if a device already owns this hash, it is returned unchanged.
+ *
+ * @param {string} userId
+ * @param {string} label
+ * @param {string} existingKey - The raw api key to bind (its hash is stored)
+ * @returns {{ deviceId: string, userId: string, label: string }}
+ */
+function createDeviceWithKey(userId, label, existingKey) {
+  const db = getSystemDb();
+
+  const user = db.get("SELECT id FROM users WHERE id = ?", [userId]);
+  if (!user) {
+    throw new Error(`User '${userId}' does not exist`);
+  }
+
+  const keyHash = hashApiKey(existingKey);
+  const existing = db.get("SELECT id, user_id, label FROM devices WHERE key_hash = ?", [keyHash]);
+  if (existing) {
+    return { deviceId: existing.id, userId: existing.user_id, label: existing.label };
+  }
+
+  const deviceId = crypto.randomUUID();
+  const timestamp = new Date().toISOString();
+  db.run(
+    "INSERT INTO devices (id, user_id, label, key_hash, created_at, last_seen_at, revoked_at) VALUES (?, ?, ?, ?, ?, NULL, NULL)",
+    [deviceId, userId, label, keyHash, timestamp]
+  );
+
+  return { deviceId, userId, label };
+}
+
+/**
+ * Resolve an api key to its device + owning user.
+ *
+ * Returns:
+ *   { userId, deviceId, label }            — active device credential
+ *   { revoked: true }                      — key matches a REVOKED device (reject)
+ *   { userId, deviceId: null, legacy: true } — key matches only the legacy
+ *                                              users.api_key_hash (pre-migration safety net)
+ *   null                                   — no match (reject)
+ *
+ * On a successful active-device match, last_seen_at is bumped (cheap audit).
+ *
+ * @param {string} apiKey
+ * @returns {object|null}
+ */
+function resolveDevice(apiKey) {
+  if (!apiKey) return null;
+
+  const db = getSystemDb();
+  const keyHash = hashApiKey(apiKey);
+
+  const device = db.get(
+    "SELECT id, user_id, label, revoked_at FROM devices WHERE key_hash = ?",
+    [keyHash]
+  );
+  if (device) {
+    if (device.revoked_at) {
+      return { revoked: true };
+    }
+    // Bump last_seen_at for audit/visibility ("which devices are active").
+    db.run("UPDATE devices SET last_seen_at = ? WHERE id = ?", [
+      new Date().toISOString(),
+      device.id,
+    ]);
+    return { userId: device.user_id, deviceId: device.id, label: device.label };
+  }
+
+  // Pre-migration safety net: key may still live only in the users table
+  // (migrateLegacyKeysToDevices not yet run, or single-user bootstrap). Accept
+  // it but without a device identity.
+  const userId = getUserIdFromApiKey(apiKey);
+  if (userId) {
+    return { userId, deviceId: null, legacy: true };
+  }
+
+  return null;
+}
+
+/**
+ * List a user's devices (no key material). Includes revoked devices so an
+ * admin can see history.
+ *
+ * @param {string} userId
+ * @returns {Array<{id,label,created_at,last_seen_at,revoked_at}>}
+ */
+function listDevices(userId) {
+  const db = getSystemDb();
+  return db.all(
+    "SELECT id, label, created_at, last_seen_at, revoked_at FROM devices WHERE user_id = ? ORDER BY created_at",
+    [userId]
+  );
+}
+
+/**
+ * Revoke a device by id (verifies ownership). Idempotent — re-revoking keeps
+ * the original revoked_at. Returns true if a device was newly revoked.
+ *
+ * @param {string} userId
+ * @param {string} deviceId
+ * @returns {boolean}
+ */
+function revokeDevice(userId, deviceId) {
+  const db = getSystemDb();
+  const device = db.get(
+    "SELECT id, revoked_at FROM devices WHERE id = ? AND user_id = ?",
+    [deviceId, userId]
+  );
+  if (!device) {
+    throw new Error(`Device '${deviceId}' not found for user '${userId}'`);
+  }
+  if (device.revoked_at) {
+    return false;
+  }
+  db.run("UPDATE devices SET revoked_at = ? WHERE id = ?", [
+    new Date().toISOString(),
+    deviceId,
+  ]);
+  return true;
+}
+
+/**
+ * Migrate each user's legacy shared api_key (users.api_key_hash) into the
+ * devices table as a "legacy-shared" device, so the existing key keeps
+ * authenticating AND becomes individually revocable once every real device has
+ * been re-enrolled with its own minted key. Idempotent — skips hashes already
+ * present in devices. Safe to call on every boot.
+ */
+function migrateLegacyKeysToDevices() {
+  const db = getSystemDb();
+  const allUsers = db.all("SELECT id, api_key_hash, created_at FROM users");
+  let migrated = 0;
+
+  for (const user of allUsers) {
+    const existing = db.get(
+      "SELECT id FROM devices WHERE key_hash = ?",
+      [user.api_key_hash]
+    );
+    if (existing) continue;
+
+    const deviceId = crypto.randomUUID();
+    db.run(
+      "INSERT INTO devices (id, user_id, label, key_hash, created_at, last_seen_at, revoked_at) VALUES (?, ?, ?, ?, ?, NULL, NULL)",
+      [deviceId, user.id, "legacy-shared", user.api_key_hash, user.created_at || new Date().toISOString()]
+    );
+    migrated++;
+    console.log(`[devices] Migrated legacy key for user '${user.id}' into device ${deviceId} (legacy-shared)`);
+  }
+
+  if (migrated > 0) {
+    console.log(`[devices] Legacy-key migration complete: ${migrated} device(s) created`);
   }
 }
 
@@ -480,6 +701,13 @@ module.exports = {
   listUsers,
   regenerateApiKey,
   closeSystemDb,
+  // Device management
+  createDevice,
+  createDeviceWithKey,
+  resolveDevice,
+  listDevices,
+  revokeDevice,
+  migrateLegacyKeysToDevices,
   // Profile management
   createProfile,
   createProfileWithId,

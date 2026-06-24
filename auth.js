@@ -43,6 +43,12 @@ function singleUserMiddleware(singleUser) {
       return next();
     }
 
+    // /admin/* has its own ADMIN_TOKEN gate (see adminMiddleware) — never
+    // authenticate it with a user/device credential.
+    if (c.req.path.startsWith("/admin")) {
+      return next();
+    }
+
     // Skip auth in e2e test mode
     if (process.env.E2E_TEST === 'true') {
       c.set("userId", userId);
@@ -78,9 +84,16 @@ function multiUserMiddleware() {
       return next();
     }
 
+    // /admin/* has its own ADMIN_TOKEN gate (see adminMiddleware) — never
+    // authenticate it with a user/device credential.
+    if (c.req.path.startsWith("/admin")) {
+      return next();
+    }
+
     // Skip auth in e2e test mode (use 'default' user)
     if (process.env.E2E_TEST === 'true') {
       c.set("userId", "default");
+      c.set("deviceId", "e2e-test");
       return next();
     }
 
@@ -90,13 +103,19 @@ function multiUserMiddleware() {
     }
 
     const apiKey = auth.slice(7); // Remove "Bearer " prefix
-    const userId = users.getUserIdFromApiKey(apiKey);
 
-    if (!userId) {
+    // Resolve the key to a per-device credential. A revoked device is rejected
+    // here even though its key is otherwise well-formed — this is the
+    // individual-revocation guarantee that the old shared-key model lacked.
+    const cred = users.resolveDevice(apiKey);
+    if (!cred || cred.revoked || !cred.userId) {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
-    c.set("userId", userId);
+    c.set("userId", cred.userId);
+    // deviceId is null only for a pre-migration legacy-key match; downstream
+    // attribution treats that as an empty origin.
+    c.set("deviceId", cred.deviceId || "");
     return next();
   };
 }

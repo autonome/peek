@@ -1352,6 +1352,196 @@ describe("Users Module Tests", () => {
   });
 });
 
+describe("Devices Module Tests", () => {
+  let users;
+
+  beforeEach(() => {
+    delete require.cache[require.resolve("./users")];
+    cleanTestDir();
+    users = require("./users");
+    users.createUser("owner");
+  });
+
+  after(() => {
+    if (users && users.closeSystemDb) {
+      users.closeSystemDb();
+    }
+  });
+
+  describe("createDevice", () => {
+    it("should mint a device key bound to the user", () => {
+      const d = users.createDevice("owner", "iPhone");
+      assert.ok(d.deviceId, "should return a deviceId");
+      assert.strictEqual(d.userId, "owner");
+      assert.strictEqual(d.label, "iPhone");
+      assert.strictEqual(d.apiKey.length, 64, "key should be 64 hex chars");
+
+      const cred = users.resolveDevice(d.apiKey);
+      assert.strictEqual(cred.userId, "owner");
+      assert.strictEqual(cred.deviceId, d.deviceId);
+      assert.strictEqual(cred.label, "iPhone");
+    });
+
+    it("should give each device a distinct key", () => {
+      const a = users.createDevice("owner", "phone");
+      const b = users.createDevice("owner", "laptop");
+      assert.notStrictEqual(a.apiKey, b.apiKey);
+      assert.notStrictEqual(a.deviceId, b.deviceId);
+    });
+
+    it("should reject an unknown user", () => {
+      assert.throws(() => users.createDevice("nobody", "x"), /does not exist/);
+    });
+
+    it("should reject an empty label", () => {
+      assert.throws(() => users.createDevice("owner", ""), /label is required/);
+      assert.throws(() => users.createDevice("owner", "   "), /label is required/);
+    });
+  });
+
+  describe("resolveDevice", () => {
+    it("should return null for an unknown key", () => {
+      assert.strictEqual(users.resolveDevice("nope"), null);
+      assert.strictEqual(users.resolveDevice(""), null);
+      assert.strictEqual(users.resolveDevice(null), null);
+    });
+
+    it("should fall back to a legacy users-table key (pre-migration)", () => {
+      // A key that only lives in the users table (no device row) still
+      // authenticates, but without a device identity.
+      const { apiKey } = users.createUser("legacyuser");
+      const cred = users.resolveDevice(apiKey);
+      assert.strictEqual(cred.userId, "legacyuser");
+      assert.strictEqual(cred.deviceId, null);
+      assert.strictEqual(cred.legacy, true);
+    });
+
+    it("should bump last_seen_at on a successful resolve", () => {
+      const d = users.createDevice("owner", "watch");
+      users.resolveDevice(d.apiKey);
+      const [dev] = users.listDevices("owner").filter((x) => x.id === d.deviceId);
+      assert.ok(dev.last_seen_at, "last_seen_at should be set after a resolve");
+    });
+  });
+
+  describe("revokeDevice", () => {
+    it("should reject a revoked device key without affecting others", () => {
+      const a = users.createDevice("owner", "rogue");
+      const b = users.createDevice("owner", "keeper");
+
+      const revoked = users.revokeDevice("owner", a.deviceId);
+      assert.strictEqual(revoked, true);
+
+      // Revoked key is rejected (well-formed but no longer valid).
+      assert.deepStrictEqual(users.resolveDevice(a.apiKey), { revoked: true });
+      // Other device is unaffected — the whole point of per-device creds.
+      assert.strictEqual(users.resolveDevice(b.apiKey).deviceId, b.deviceId);
+    });
+
+    it("should be idempotent", () => {
+      const d = users.createDevice("owner", "x");
+      assert.strictEqual(users.revokeDevice("owner", d.deviceId), true);
+      assert.strictEqual(users.revokeDevice("owner", d.deviceId), false);
+    });
+
+    it("should reject revoking another user's / unknown device", () => {
+      assert.throws(() => users.revokeDevice("owner", "no-such-device"), /not found/);
+    });
+  });
+
+  describe("listDevices", () => {
+    it("should list devices without key material, including revoked", () => {
+      const a = users.createDevice("owner", "one");
+      users.createDevice("owner", "two");
+      users.revokeDevice("owner", a.deviceId);
+
+      const list = users.listDevices("owner");
+      assert.strictEqual(list.length, 2);
+      for (const dev of list) {
+        assert.ok(!dev.key_hash, "must not expose key_hash");
+        assert.ok(!dev.apiKey, "must not expose apiKey");
+      }
+      const revoked = list.find((d) => d.id === a.deviceId);
+      assert.ok(revoked.revoked_at, "revoked device should show revoked_at");
+    });
+  });
+
+  describe("migrateLegacyKeysToDevices", () => {
+    it("should migrate a user's legacy key into a device and keep it working", () => {
+      users.createUserWithKey("legacyowner", "shared-legacy-key");
+
+      users.migrateLegacyKeysToDevices();
+
+      const devices = users.listDevices("legacyowner");
+      assert.strictEqual(devices.length, 1);
+      assert.strictEqual(devices[0].label, "legacy-shared");
+
+      const cred = users.resolveDevice("shared-legacy-key");
+      assert.strictEqual(cred.userId, "legacyowner");
+      assert.ok(cred.deviceId, "legacy key should now resolve to a device id");
+      assert.ok(!cred.legacy, "should no longer be a legacy fallback after migration");
+
+      // The migrated device is individually revocable.
+      assert.strictEqual(users.revokeDevice("legacyowner", cred.deviceId), true);
+      assert.deepStrictEqual(users.resolveDevice("shared-legacy-key"), { revoked: true });
+    });
+
+    it("should be idempotent", () => {
+      users.createUserWithKey("idem", "k");
+      users.migrateLegacyKeysToDevices();
+      users.migrateLegacyKeysToDevices();
+      assert.strictEqual(users.listDevices("idem").length, 1);
+    });
+  });
+});
+
+describe("Write Attribution Tests", () => {
+  let db;
+  let users;
+
+  beforeEach(() => {
+    delete require.cache[require.resolve("./db")];
+    delete require.cache[require.resolve("./users")];
+    cleanTestDir();
+    db = require("./db");
+    users = require("./users");
+    users.createUser("attr");
+  });
+
+  after(() => {
+    if (db && db.closeAllConnections) db.closeAllConnections();
+    if (users && users.closeSystemDb) users.closeSystemDb();
+  });
+
+  it("should stamp createdByDevice on a new item and expose it on read", () => {
+    const dev = users.createDevice("attr", "phone");
+    const id = db.saveItem("attr", "text", "hello", [], null, null, "default", null, dev.deviceId);
+
+    const item = db.getItemById("attr", id);
+    assert.strictEqual(item.createdByDevice, dev.deviceId);
+
+    const all = db.getItems("attr");
+    assert.strictEqual(all.find((i) => i.id === id).createdByDevice, dev.deviceId);
+  });
+
+  it("should default createdByDevice to empty string when no device given", () => {
+    const id = db.saveItem("attr", "text", "anon", [], null, null, "default");
+    assert.strictEqual(db.getItemById("attr", id).createdByDevice, "");
+  });
+
+  it("should not overwrite createdByDevice on a sync update from another device", () => {
+    // Creation stamps device A; a later sync push (matched by syncId) is an
+    // UPDATE and must NOT change the original creator attribution.
+    const a = users.createDevice("attr", "deviceA");
+    const id = db.saveItem("attr", "text", "v1", [], null, "sync-1", "default", null, a.deviceId);
+    db.saveItem("attr", "text", "v2", [], null, "sync-1", "default", null, "deviceB");
+
+    const item = db.getItemById("attr", id);
+    assert.strictEqual(item.content, "v2", "content should update");
+    assert.strictEqual(item.createdByDevice, a.deviceId, "creator attribution should be preserved");
+  });
+});
+
 describe("API Tests", () => {
   let app;
   let db;

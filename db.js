@@ -255,7 +255,8 @@ function initializeSchema(adapter) {
       syncedAt INTEGER DEFAULT 0,
       createdAt INTEGER NOT NULL,
       updatedAt INTEGER NOT NULL,
-      deletedAt INTEGER DEFAULT 0
+      deletedAt INTEGER DEFAULT 0,
+      createdByDevice TEXT DEFAULT ''
     );
     CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
   `);
@@ -285,7 +286,8 @@ function initializeSchema(adapter) {
     syncedAt INTEGER DEFAULT 0,
     createdAt INTEGER NOT NULL,
     updatedAt INTEGER NOT NULL,
-    deletedAt INTEGER DEFAULT 0
+    deletedAt INTEGER DEFAULT 0,
+    createdByDevice TEXT DEFAULT ''
   )`, itemRenames);
 
   // Add columns that may not exist in any form.
@@ -299,6 +301,11 @@ function initializeSchema(adapter) {
   }
   if (!itemColSet.has("deletedAt") && !itemColSet.has("deleted_at")) {
     adapter.exec("ALTER TABLE items ADD COLUMN deletedAt INTEGER DEFAULT 0");
+  }
+  // Write attribution: which device credential created this item (server stamps
+  // it from the authenticated token, so it can't be spoofed by the client).
+  if (!itemColSet.has("createdByDevice") && !itemColSet.has("created_by_device")) {
+    adapter.exec("ALTER TABLE items ADD COLUMN createdByDevice TEXT DEFAULT ''");
   }
 
   // Convert any TEXT timestamps to INTEGER (Unix ms)
@@ -551,7 +558,7 @@ function getOrCreateTagWithConn(conn, name, timestamp) {
 }
 
 // Unified save function for all item types
-function saveItem(userId, type, content, tags = [], metadata = null, syncId = null, profileId = "default", deletedAt = null) {
+function saveItem(userId, type, content, tags = [], metadata = null, syncId = null, profileId = "default", deletedAt = null, createdByDevice = "") {
   const conn = getConnection(userId, profileId);
   const timestamp = now();
   const metadataJson = metadata ? JSON.stringify(metadata) : null;
@@ -644,8 +651,8 @@ function saveItem(userId, type, content, tags = [], metadata = null, syncId = nu
   if (!itemId) {
     itemId = generateUUID();
     conn.run(
-      "INSERT INTO items (id, type, content, metadata, syncId, syncedAt, createdAt, updatedAt, deletedAt) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)",
-      [itemId, type, content, metadataJson, syncId || '', timestamp, timestamp, deletedAt || 0]
+      "INSERT INTO items (id, type, content, metadata, syncId, syncedAt, createdAt, updatedAt, deletedAt, createdByDevice) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)",
+      [itemId, type, content, metadataJson, syncId || '', timestamp, timestamp, deletedAt || 0, createdByDevice || '']
     );
   }
 
@@ -676,7 +683,7 @@ function getItems(userId, type = null, profileId = "default", includeDeleted = f
   const conn = getConnection(userId, profileId);
 
   let query = `
-    SELECT id, type, content, metadata, createdAt, updatedAt, deletedAt
+    SELECT id, type, content, metadata, createdAt, updatedAt, deletedAt, createdByDevice
     FROM items
     WHERE 1=1
   `;
@@ -703,6 +710,7 @@ function getItems(userId, type = null, profileId = "default", includeDeleted = f
       createdAt: toTimestamp(row.createdAt),
       updatedAt: toTimestamp(row.updatedAt),
       deletedAt: toTimestamp(row.deletedAt),
+      createdByDevice: row.createdByDevice || "",
       tags: conn.all(
         "SELECT t.name FROM tags t JOIN item_tags it ON t.id = it.tagId WHERE it.itemId = ?",
         [row.id]
@@ -852,7 +860,7 @@ function getExtensionFromMime(mimeType) {
   return mimeToExt[mimeType] || "bin";
 }
 
-function saveImage(userId, filename, buffer, mimeType, tags = [], profileId = "default") {
+function saveImage(userId, filename, buffer, mimeType, tags = [], profileId = "default", createdByDevice = "") {
   if (buffer.length > MAX_IMAGE_SIZE) {
     throw new Error(`Image exceeds maximum size of ${MAX_IMAGE_SIZE / 1024 / 1024} MB`);
   }
@@ -886,8 +894,8 @@ function saveImage(userId, filename, buffer, mimeType, tags = [], profileId = "d
   });
 
   conn.run(
-    "INSERT INTO items (id, type, content, metadata, syncId, syncedAt, createdAt, updatedAt, deletedAt) VALUES (?, 'image', ?, ?, '', 0, ?, ?, 0)",
-    [itemId, filename, metadata, timestamp, timestamp]
+    "INSERT INTO items (id, type, content, metadata, syncId, syncedAt, createdAt, updatedAt, deletedAt, createdByDevice) VALUES (?, 'image', ?, ?, '', 0, ?, ?, 0, ?)",
+    [itemId, filename, metadata, timestamp, timestamp, createdByDevice || '']
   );
 
   // Add tags
@@ -999,7 +1007,7 @@ function getItemsSince(userId, timestamp, type = null, profileId = "default") {
   // CAST handles TEXT-affinity columns from legacy schemas where timestamps
   // are stored as strings (ISO 8601 or stringified numbers)
   let query = `
-    SELECT id, type, content, metadata, createdAt, updatedAt, deletedAt
+    SELECT id, type, content, metadata, createdAt, updatedAt, deletedAt, createdByDevice
     FROM items
     WHERE CAST(updatedAt AS INTEGER) > ?
   `;
@@ -1022,6 +1030,7 @@ function getItemsSince(userId, timestamp, type = null, profileId = "default") {
       createdAt: toTimestamp(row.createdAt),
       updatedAt: toTimestamp(row.updatedAt),
       deletedAt: toTimestamp(row.deletedAt),
+      createdByDevice: row.createdByDevice || "",
       tags: conn.all(
         "SELECT t.name FROM tags t JOIN item_tags it ON t.id = it.tagId WHERE it.itemId = ?",
         [row.id]
@@ -1041,7 +1050,7 @@ function getItemById(userId, itemId, profileId = "default") {
   const conn = getConnection(userId, profileId);
 
   const row = conn.get(
-    "SELECT id, type, content, metadata, createdAt, updatedAt FROM items WHERE id = ? AND CAST(deletedAt AS INTEGER) = 0",
+    "SELECT id, type, content, metadata, createdAt, updatedAt, createdByDevice FROM items WHERE id = ? AND CAST(deletedAt AS INTEGER) = 0",
     [itemId]
   );
 
@@ -1053,6 +1062,7 @@ function getItemById(userId, itemId, profileId = "default") {
     content: row.content,
     createdAt: toTimestamp(row.createdAt),
     updatedAt: toTimestamp(row.updatedAt),
+    createdByDevice: row.createdByDevice || "",
     tags: conn.all(
       "SELECT t.name FROM tags t JOIN item_tags it ON t.id = it.tagId WHERE it.itemId = ?",
       [row.id]

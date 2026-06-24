@@ -1,5 +1,6 @@
 const { Hono } = require("hono");
 const { serve } = require("@hono/node-server");
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const db = require("./db");
@@ -355,6 +356,7 @@ app.patch("/images/:id/tags", async (c) => {
 
 app.post("/items", async (c) => {
   const userId = c.get("userId");
+  const deviceId = c.get("deviceId") || "";
   const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
   const body = await c.req.json();
   const { type, content, tags = [], metadata = null, sync_id = null, syncId = null, deletedAt } = body;
@@ -407,14 +409,14 @@ app.post("/items", async (c) => {
     }
 
     try {
-      const id = db.saveImage(userId, body.filename, buffer, body.mime, tags, profileId);
+      const id = db.saveImage(userId, body.filename, buffer, body.mime, tags, profileId, deviceId);
       return c.json({ id, type, created: true });
     } catch (e) {
       return c.json({ error: e.message }, 400);
     }
   }
 
-  const id = db.saveItem(userId, type, content || null, tags, metadata, effectiveSyncId, profileId, deletedAt);
+  const id = db.saveItem(userId, type, content || null, tags, metadata, effectiveSyncId, profileId, deletedAt, deviceId);
   return c.json({ id, type, created: true });
 });
 
@@ -553,6 +555,73 @@ app.delete("/profiles/:profileId", (c) => {
   try {
     users.deleteProfile(userId, profileId);
     return c.json({ deleted: true });
+  } catch (e) {
+    return c.json({ error: e.message }, 400);
+  }
+});
+
+// === Admin endpoints (per-device credential management) ===
+//
+// Gated by the ADMIN_TOKEN env var, independent of user/device api keys. When
+// ADMIN_TOKEN is unset the entire /admin surface is disabled (503) so a default
+// deploy never exposes an open admin API. Auth is a constant-time compare.
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "";
+
+function adminTokenMatches(provided) {
+  if (!ADMIN_TOKEN || !provided) return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(ADMIN_TOKEN);
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
+app.use("/admin/*", async (c, next) => {
+  if (!ADMIN_TOKEN) {
+    return c.json({ error: "Admin API disabled (ADMIN_TOKEN not set)" }, 503);
+  }
+  const auth = c.req.header("Authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  if (!adminTokenMatches(token)) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  return next();
+});
+
+// POST /admin/devices  { userId, label }  -> mint a new device key.
+// The raw apiKey is returned ONCE in this response and is never recoverable.
+app.post("/admin/devices", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const { userId, label } = body;
+  if (!userId || !label) {
+    return c.json({ error: "userId and label are required" }, 400);
+  }
+  try {
+    const device = users.createDevice(userId, label);
+    return c.json({ device });
+  } catch (e) {
+    return c.json({ error: e.message }, 400);
+  }
+});
+
+// GET /admin/devices?userId=...  -> list a user's devices (no key material).
+app.get("/admin/devices", (c) => {
+  const userId = c.req.query("userId");
+  if (!userId) {
+    return c.json({ error: "userId query param is required" }, 400);
+  }
+  return c.json({ devices: users.listDevices(userId) });
+});
+
+// DELETE /admin/devices/:deviceId?userId=...  -> revoke a device individually.
+app.delete("/admin/devices/:deviceId", (c) => {
+  const userId = c.req.query("userId");
+  const deviceId = c.req.param("deviceId");
+  if (!userId) {
+    return c.json({ error: "userId query param is required" }, 400);
+  }
+  try {
+    const revoked = users.revokeDevice(userId, deviceId);
+    return c.json({ revoked });
   } catch (e) {
     return c.json({ error: e.message }, 400);
   }
@@ -737,6 +806,7 @@ if (!isSingleUserMode(config)) {
   migrateFromLegacyApiKey();
   migrateUserDataToProfiles();
   users.migrateProfileFoldersToUuid();
+  users.migrateLegacyKeysToDevices();
   deduplicateAllUsers();
 
   // Force backup of all users on every deploy/restart (before serving requests)

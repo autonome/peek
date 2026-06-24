@@ -1476,16 +1476,6 @@ describe("API Tests", () => {
     });
   });
 
-  after(() => {
-    if (db && db.closeAllConnections) {
-      db.closeAllConnections();
-    }
-    if (users && users.closeSystemDb) {
-      users.closeSystemDb();
-    }
-    cleanTestDir();
-  });
-
   function authHeaders() {
     return { Authorization: `Bearer ${TEST_API_KEY}` };
   }
@@ -1889,5 +1879,167 @@ describe("API Tests", () => {
       assert.strictEqual(json2.urls.length, 1);
       assert.strictEqual(json2.urls[0].url, "https://user2.com");
     });
+  });
+});
+
+// Regression suite for the cross-profile data-leak bug.
+//
+// The bug: resolveProfileId() used to SILENTLY fall back to the "default"
+// profile whenever it received a valid-format profile UUID it hadn't seen
+// before. Because every /items route resolves
+//   resolveProfileId(userId, c.req.query("profile") || "default")
+// and getConnection() keys the SQLite file by userId:profileId, the fallback
+// collapsed every unseen profile onto the single "default" bucket — so two
+// distinct profiles read and wrote each other's items.
+//
+// These tests wire a profile-aware app exactly like index.js (resolve the
+// ?profile= query param through users.resolveProfileId before hitting db) and
+// assert that distinct, never-registered profile identifiers stay isolated.
+describe("Profile Isolation (data-leak regression)", () => {
+  let app;
+  let db;
+  let users;
+  let TEST_API_KEY;
+  const TEST_USER = "isouser";
+
+  const UUID_A = "11111111-1111-4111-8111-111111111111";
+  const UUID_B = "22222222-2222-4222-8222-222222222222";
+
+  beforeEach(() => {
+    delete require.cache[require.resolve("./db")];
+    delete require.cache[require.resolve("./users")];
+    cleanTestDir();
+
+    db = require("./db");
+    users = require("./users");
+
+    const result = users.createUser(TEST_USER);
+    TEST_API_KEY = result.apiKey;
+
+    const { Hono } = require("hono");
+    app = new Hono();
+
+    app.use("*", async (c, next) => {
+      const auth = c.req.header("Authorization");
+      if (!auth || !auth.startsWith("Bearer ")) {
+        return c.json({ error: "Unauthorized" }, 401);
+      }
+      const userId = users.getUserIdFromApiKey(auth.slice(7));
+      if (!userId) {
+        return c.json({ error: "Unauthorized" }, 401);
+      }
+      c.set("userId", userId);
+      return next();
+    });
+
+    // Wired identically to index.js: profile query param -> resolveProfileId.
+    app.post("/items", async (c) => {
+      const userId = c.get("userId");
+      const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
+      const body = await c.req.json();
+      const { type, content, tags = [] } = body;
+      const id = db.saveItem(userId, type, content || null, tags, null, null, profileId);
+      return c.json({ id, created: true });
+    });
+    app.get("/items", (c) => {
+      const userId = c.get("userId");
+      const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
+      const items = db.getItems(userId, c.req.query("type") || null, profileId);
+      return c.json({ items });
+    });
+  });
+
+  after(() => {
+    if (db && db.closeAllConnections) db.closeAllConnections();
+    if (users && users.closeSystemDb) users.closeSystemDb();
+    cleanTestDir();
+  });
+
+  it("an unknown profile UUID must NOT see another profile's items", async () => {
+    // Save an item under profile A.
+    await app.request("/items?profile=" + UUID_A, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${TEST_API_KEY}` },
+      body: JSON.stringify({ type: "url", content: "https://profile-a-secret.com" }),
+    });
+
+    // GET items under a DIFFERENT, never-registered profile B.
+    const res = await app.request("/items?profile=" + UUID_B, {
+      headers: { Authorization: `Bearer ${TEST_API_KEY}` },
+    });
+    const json = await res.json();
+
+    // Before the fix this returned A's item (both collapsed onto "default").
+    assert.strictEqual(
+      json.items.length,
+      0,
+      "profile B must not see profile A's items"
+    );
+  });
+
+  it("two distinct unknown UUIDs must not see each other's items", async () => {
+    await app.request("/items?profile=" + UUID_A, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${TEST_API_KEY}` },
+      body: JSON.stringify({ type: "url", content: "https://a.com" }),
+    });
+    await app.request("/items?profile=" + UUID_B, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${TEST_API_KEY}` },
+      body: JSON.stringify({ type: "url", content: "https://b.com" }),
+    });
+
+    const resA = await app.request("/items?profile=" + UUID_A, {
+      headers: { Authorization: `Bearer ${TEST_API_KEY}` },
+    });
+    const jsonA = await resA.json();
+    assert.strictEqual(jsonA.items.length, 1);
+    assert.strictEqual(jsonA.items[0].content, "https://a.com");
+
+    const resB = await app.request("/items?profile=" + UUID_B, {
+      headers: { Authorization: `Bearer ${TEST_API_KEY}` },
+    });
+    const jsonB = await resB.json();
+    assert.strictEqual(jsonB.items.length, 1);
+    assert.strictEqual(jsonB.items[0].content, "https://b.com");
+  });
+
+  it("an unknown UUID must not inherit the default bucket's data", async () => {
+    // Write under the explicit "default" profile.
+    await app.request("/items?profile=default", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${TEST_API_KEY}` },
+      body: JSON.stringify({ type: "url", content: "https://default-data.com" }),
+    });
+
+    // An unknown UUID must get its own empty bucket, not default's data.
+    const res = await app.request("/items?profile=" + UUID_A, {
+      headers: { Authorization: `Bearer ${TEST_API_KEY}` },
+    });
+    const json = await res.json();
+    assert.strictEqual(json.items.length, 0, "unknown UUID must not inherit default's data");
+  });
+
+  it("resolveProfileId is stable: same UUID resolves to the same bucket twice", () => {
+    const first = users.resolveProfileId(TEST_USER, UUID_A);
+    const second = users.resolveProfileId(TEST_USER, UUID_A);
+    assert.strictEqual(first, UUID_A, "resolved id should equal the passed UUID");
+    assert.strictEqual(first, second, "must resolve stably");
+  });
+
+  it("createProfileWithId is idempotent and uses the passed-in id", () => {
+    const p1 = users.createProfileWithId(TEST_USER, UUID_B, "Imported");
+    assert.strictEqual(p1.id, UUID_B);
+    const p2 = users.createProfileWithId(TEST_USER, UUID_B, "Imported");
+    assert.strictEqual(p2.id, UUID_B, "second call returns the same profile");
+    assert.strictEqual(p1.slug, p2.slug, "slug stable across idempotent calls");
+  });
+
+  it("an unknown non-default legacy slug does not collapse onto default", () => {
+    const defaultId = users.resolveProfileId(TEST_USER, "default");
+    const workId = users.resolveProfileId(TEST_USER, "work");
+    assert.notStrictEqual(workId, defaultId, "'work' slug must not share default's bucket");
+    // Stable on re-resolve.
+    assert.strictEqual(users.resolveProfileId(TEST_USER, "work"), workId);
   });
 });

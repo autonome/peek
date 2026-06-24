@@ -5,7 +5,7 @@ Webhook server for the Peek mobile app. Receives URLs, texts, tagsets, and image
 ## Commands
 
 ```bash
-# From this directory (backend/server/)
+# From this directory (apps/server/)
 npm install          # Install dependencies
 npm start            # Run the production server
 npm run dev          # Run with file watching (auto-restart on changes)
@@ -92,7 +92,7 @@ Configured for Railway (`railway.json`) using Nixpacks builder with npm. **Do no
 
 Deploy from the project root:
 ```bash
-yarn server:deploy    # Subtree-splits backend/server/ and pushes to GitHub
+yarn server:deploy    # Subtree-splits apps/server/ and pushes to GitHub
 ```
 
 Railway auto-deploys from the `deploy/server` branch on GitHub.

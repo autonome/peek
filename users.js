@@ -204,6 +204,70 @@ function createProfile(userId, name) {
 }
 
 /**
+ * Create a profile using a caller-supplied UUID as the primary key.
+ *
+ * Unlike createProfile (which mints a fresh crypto.randomUUID()), this inserts
+ * the profiles row with the PASSED-IN `id`. Used by resolveProfileId so that an
+ * unknown-but-valid profile UUID gets its OWN isolated bucket instead of
+ * silently collapsing onto the "default" profile (the cross-profile data-leak
+ * bug this replaces).
+ *
+ * Idempotent: if a profile with `id` already exists for the user, it is
+ * returned unchanged. The slug is derived to be unique (suffixed with a short
+ * slice of the id) so it never collides with an existing profile's slug and
+ * trips the UNIQUE(user_id, slug) constraint.
+ *
+ * @param {string} userId - The user ID
+ * @param {string} id - The profile UUID to use as the primary key
+ * @param {string} name - User-visible profile name
+ * @returns {object} Profile object with id, userId, slug, name
+ */
+function createProfileWithId(userId, id, name) {
+  const db = getSystemDb();
+
+  // Check if user exists
+  const user = db.get("SELECT id FROM users WHERE id = ?", [userId]);
+  if (!user) {
+    throw new Error(`User '${userId}' does not exist`);
+  }
+
+  // Idempotent: if this exact profile id already exists, return it.
+  const existingById = getProfileById(userId, id);
+  if (existingById) {
+    return existingById;
+  }
+
+  // Derive a base slug from the name, then guarantee uniqueness by appending a
+  // short slice of the id. This avoids tripping UNIQUE(user_id, slug) when an
+  // unrelated profile already owns the name-derived slug (e.g. two "Imported"
+  // profiles from different unknown UUIDs).
+  const baseSlug = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+  const idSuffix = id.replace(/-/g, "").slice(0, 8);
+  let slug = baseSlug ? `${baseSlug}-${idSuffix}` : idSuffix;
+
+  // Extremely defensive: if even the suffixed slug somehow exists for a
+  // different profile id, widen the suffix until unique.
+  let attempt = 8;
+  while (
+    db.get("SELECT id FROM profiles WHERE user_id = ? AND slug = ?", [userId, slug]) &&
+    attempt < 32
+  ) {
+    attempt += 4;
+    const wider = id.replace(/-/g, "").slice(0, attempt);
+    slug = baseSlug ? `${baseSlug}-${wider}` : wider;
+  }
+
+  const timestamp = new Date().toISOString();
+
+  db.run(
+    "INSERT INTO profiles (id, user_id, slug, name, created_at, last_used_at) VALUES (?, ?, ?, ?, ?, ?)",
+    [id, userId, slug, name, timestamp, timestamp]
+  );
+
+  return { id, userId, slug, name, created_at: timestamp, last_used_at: timestamp };
+}
+
+/**
  * List all profiles for a user.
  * @param {string} userId - The user ID
  * @returns {Array} Array of profile objects
@@ -278,16 +342,18 @@ function resolveProfileId(userId, profileIdentifier) {
       return profile.id;
     }
 
-    // UUID not found - fall back to "default" profile's UUID
-    console.log(`[profiles] UUID ${profileIdentifier} not found for user ${userId}, falling back to default profile`);
-    const defaultProfile = getProfile(userId, "default");
-    if (defaultProfile) {
-      return defaultProfile.id;
-    }
-
-    // No default profile exists yet - create one
-    const newDefault = createProfile(userId, "Default");
-    return newDefault.id;
+    // UUID is well-formed but unknown to this server. DO NOT fall back to the
+    // "default" profile — that silent fallback collapsed every unseen profile
+    // onto a single bucket and caused cross-profile data contamination
+    // (read/write leakage between distinct profiles). Instead, give this UUID
+    // its OWN isolated bucket so its data stays separate.
+    console.warn(
+      `[profiles] UUID ${profileIdentifier} not registered for user ${userId}; ` +
+        `creating an isolated profile for it. (This replaces the old silent ` +
+        `fall-back-to-default behavior, which was a cross-profile data-leak bug.)`
+    );
+    const created = createProfileWithId(userId, profileIdentifier, "Imported");
+    return created.id;
   }
 
   // Not a UUID - legacy slug (e.g. "default", "work")
@@ -297,20 +363,29 @@ function resolveProfileId(userId, profileIdentifier) {
     return profile.id;
   }
 
-  // Legacy slug not found - create "default" profile
+  // Legacy slug "default" — preserve historical behavior: this is THE shared
+  // default bucket, and asking for "default" is the only way to land in it.
   if (profileIdentifier === "default") {
     const newDefault = createProfile(userId, "Default");
     return newDefault.id;
   }
 
-  // Unknown legacy slug - fall back to default
-  console.log(`[profiles] Legacy slug '${profileIdentifier}' not found for user ${userId}, falling back to default`);
-  const defaultProfile = getProfile(userId, "default");
-  if (defaultProfile) {
-    return defaultProfile.id;
+  // Unknown non-"default" legacy slug. DO NOT collapse onto default (same
+  // data-leak as the UUID path). Create a distinct profile keyed on this slug
+  // so the identifier gets its own isolated bucket. createProfile derives the
+  // slug from the name; since the name IS the slug here, the resulting profile
+  // is stably re-resolvable by the same slug on subsequent requests.
+  const existingBySlug = getProfile(userId, profileIdentifier);
+  if (existingBySlug) {
+    return existingBySlug.id;
   }
-  const newDefault = createProfile(userId, "Default");
-  return newDefault.id;
+  console.warn(
+    `[profiles] Legacy slug '${profileIdentifier}' not registered for user ${userId}; ` +
+      `creating an isolated profile for it. (This replaces the old silent ` +
+      `fall-back-to-default behavior, which was a cross-profile data-leak bug.)`
+  );
+  const createdFromSlug = createProfile(userId, profileIdentifier);
+  return createdFromSlug.id;
 }
 
 /**
@@ -407,6 +482,7 @@ module.exports = {
   closeSystemDb,
   // Profile management
   createProfile,
+  createProfileWithId,
   listProfiles,
   getProfile,
   getProfileById,

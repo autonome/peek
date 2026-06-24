@@ -8,7 +8,7 @@
  * - Items pushed without syncSource work correctly
  * - _sync metadata preserved through table rebuild
  *
- * Run: cd backend/server && node --test test-migration.js
+ * Run: cd apps/server && node --test test-migration.js
  */
 
 const { describe, it, before, after, beforeEach, afterEach } = require("node:test");

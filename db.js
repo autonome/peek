@@ -276,6 +276,20 @@ function initializeSchema(adapter) {
   const itemColsPre = adapter.all("PRAGMA table_info(items)");
   console.log(`[schema] items columns before migration: ${itemColsPre.map(c => c.name).join(", ")}`);
 
+  // Pre-2026-06 databases pinned `type` to a 4-value CHECK
+  // (url/text/tagset/image). The server now stores every type (entity/series/feed
+  // too — type validation lives in the API layer, see SYNCABLE_ITEM_TYPES in
+  // index.js), so an items table whose CHECK predates those types rejects them at
+  // INSERT with SQLITE_CONSTRAINT_CHECK. Detect that stale CHECK and force a rebuild
+  // into the CHECK-free shape below. Idempotent: a table with no CHECK (already
+  // rebuilt) or one that already lists 'entity' is left alone.
+  const itemsTableSql =
+    (adapter.all("SELECT sql FROM sqlite_master WHERE type='table' AND name='items'")[0] || {}).sql || "";
+  const hasStaleTypeCheck = itemsTableSql.includes("CHECK") && !itemsTableSql.includes("'entity'");
+  if (hasStaleTypeCheck) {
+    console.log("[schema] items has a stale type CHECK constraint — forcing rebuild to allow all item types");
+  }
+
   migrateColumns(adapter, "items", itemRenames);
   rebuildTableIfNeeded(adapter, "items", `CREATE TABLE items (
     id TEXT PRIMARY KEY,
@@ -288,7 +302,7 @@ function initializeSchema(adapter) {
     updatedAt INTEGER NOT NULL,
     deletedAt INTEGER DEFAULT 0,
     createdByDevice TEXT DEFAULT ''
-  )`, itemRenames);
+  )`, itemRenames, hasStaleTypeCheck);
 
   // Add columns that may not exist in any form.
   // Check both camelCase AND snake_case to avoid creating duplicates if rename failed.

@@ -814,6 +814,56 @@ describe("Database Tests", () => {
 
       freshDb.closeAllConnections();
     });
+
+    it("should drop a stale 4-type CHECK so entity/series/feed can be stored", () => {
+      // The prod-bucket state that 500'd: items already camelCase (no column
+      // renames pending), but the type column still carries the OLD 4-value CHECK.
+      // Only the dedicated stale-CHECK detection (not the rename path) rebuilds it.
+      const Database = require("better-sqlite3");
+      const ecDir = path.join(TEST_DATA_DIR, "entity-check-user", "profiles", "default");
+      fs.mkdirSync(ecDir, { recursive: true });
+      const ecDb = new Database(path.join(ecDir, "datastore.sqlite"));
+      ecDb.pragma("journal_mode = WAL");
+      ecDb.exec(`
+        CREATE TABLE items (
+          id TEXT PRIMARY KEY,
+          type TEXT NOT NULL CHECK(type IN ('url', 'text', 'tagset', 'image')),
+          content TEXT,
+          metadata TEXT,
+          syncId TEXT DEFAULT '',
+          syncedAt INTEGER DEFAULT 0,
+          createdAt INTEGER NOT NULL,
+          updatedAt INTEGER NOT NULL,
+          deletedAt INTEGER DEFAULT 0,
+          createdByDevice TEXT DEFAULT ''
+        );
+      `);
+      // A pre-existing url must survive the rebuild.
+      ecDb.prepare(
+        "INSERT INTO items (id, type, content, createdAt, updatedAt) VALUES ('ec-1','url','https://keep.example.com',1,1)"
+      ).run();
+      ecDb.close();
+
+      delete require.cache[require.resolve("./db")];
+      const freshDb = require("./db");
+      // getConnection -> initializeSchema must detect the stale CHECK and rebuild.
+      freshDb.getConnection("entity-check-user");
+
+      // The CHECK is gone: previously-rejected derived types now insert.
+      const entId = freshDb.saveItem("entity-check-user", "entity", null, [], { entityType: "person", name: "Ada" });
+      assert.ok(entId, "entity should save after the stale CHECK is dropped");
+      const feedId = freshDb.saveItem("entity-check-user", "feed", "https://example.com/feed.xml", []);
+      assert.ok(feedId, "feed should save too");
+
+      // Pre-existing data survived the rebuild.
+      const items = freshDb.getItems("entity-check-user");
+      const urls = items.filter((i) => i.type === "url");
+      assert.strictEqual(urls.length, 1, "the pre-existing url survived");
+      assert.strictEqual(urls[0].content, "https://keep.example.com");
+      assert.ok(items.some((i) => i.type === "entity"), "entity is stored");
+
+      freshDb.closeAllConnections();
+    });
   });
 
   describe("Missing Columns Safety Net", () => {

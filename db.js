@@ -707,9 +707,13 @@ function getItems(userId, type = null, profileId = "default", includeDeleted = f
     query += " AND CAST(deletedAt AS INTEGER) = 0";
   }
 
-  if (type) {
-    query += " AND type = ?";
-    params.push(type);
+  // `type` accepts a single type (string) or a list (array) — a list filters with
+  // `type IN (...)`. Lets a client pull only the types it syncs instead of the
+  // whole store (e.g. mobile fetching url/text/tagset/image, never entities).
+  const types = type == null ? [] : Array.isArray(type) ? type : [type];
+  if (types.length > 0) {
+    query += ` AND type IN (${types.map(() => "?").join(", ")})`;
+    params.push(...types);
   }
 
   query += " ORDER BY createdAt DESC";
@@ -1027,9 +1031,11 @@ function getItemsSince(userId, timestamp, type = null, profileId = "default") {
   `;
   const params = [timestamp];
 
-  if (type) {
-    query += " AND type = ?";
-    params.push(type);
+  // `type` accepts a single type (string) or a list (array); see getItems.
+  const types = type == null ? [] : Array.isArray(type) ? type : [type];
+  if (types.length > 0) {
+    query += ` AND type IN (${types.map(() => "?").join(", ")})`;
+    params.push(...types);
   }
 
   query += " ORDER BY updatedAt ASC";

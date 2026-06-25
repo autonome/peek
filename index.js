@@ -20,6 +20,25 @@ const SYNCABLE_ITEM_TYPES = ["url", "text", "tagset", "image", "series", "feed",
 // carry their data in `metadata` and are allowed to have null content.
 const CONTENT_REQUIRED_TYPES = ["url", "text"];
 
+// Resolve a pull/read type filter from the query string. `types` (comma-separated)
+// takes precedence over the legacy single `type`. Returns either an array of types,
+// a single type string, or null (no filter). Returns {error} if any type is unknown
+// so a client can't silently get an unfiltered response from a typo. This is what lets
+// a client fetch only the types it syncs (mobile: url/text/tagset/image) instead of
+// downloading the whole store and discarding the rest.
+function resolveTypeFilter(c) {
+  const typesParam = c.req.query("types");
+  if (typesParam) {
+    const types = typesParam.split(",").map((t) => t.trim()).filter(Boolean);
+    const bad = types.find((t) => !SYNCABLE_ITEM_TYPES.includes(t));
+    if (bad) return { error: bad };
+    return { filter: types.length > 0 ? types : null };
+  }
+  const type = c.req.query("type");
+  if (type && !SYNCABLE_ITEM_TYPES.includes(type)) return { error: type };
+  return { filter: type || null };
+}
+
 // Load configuration
 const config = loadConfig();
 
@@ -429,12 +448,12 @@ app.post("/items", async (c) => {
 app.get("/items", (c) => {
   const userId = c.get("userId");
   const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
-  const type = c.req.query("type");
   const includeDeleted = c.req.query("includeDeleted") === "true";
-  if (type && !SYNCABLE_ITEM_TYPES.includes(type)) {
+  const typeFilter = resolveTypeFilter(c);
+  if (typeFilter.error) {
     return c.json({ error: `type must be one of: ${SYNCABLE_ITEM_TYPES.join(", ")}` }, 400);
   }
-  const items = db.getItems(userId, type || null, profileId, includeDeleted);
+  const items = db.getItems(userId, typeFilter.filter, profileId, includeDeleted);
   return c.json({ items });
 });
 
@@ -462,7 +481,6 @@ app.get("/items/since/:timestamp", (c) => {
   const userId = c.get("userId");
   const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
   const rawTimestamp = c.req.param("timestamp");
-  const type = c.req.query("type");
 
   // Accept ISO 8601 string or Unix ms integer, convert to Unix ms for DB query
   let unixMs;
@@ -476,11 +494,12 @@ app.get("/items/since/:timestamp", (c) => {
     unixMs = date.getTime();
   }
 
-  if (type && !SYNCABLE_ITEM_TYPES.includes(type)) {
+  const typeFilter = resolveTypeFilter(c);
+  if (typeFilter.error) {
     return c.json({ error: `type must be one of: ${SYNCABLE_ITEM_TYPES.join(", ")}` }, 400);
   }
 
-  const items = db.getItemsSince(userId, unixMs, type || null, profileId);
+  const items = db.getItemsSince(userId, unixMs, typeFilter.filter, profileId);
   return c.json({ items, since: rawTimestamp });
 });
 

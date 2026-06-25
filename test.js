@@ -294,6 +294,35 @@ describe("Database Tests", () => {
       assert.strictEqual(tagsets.length, 1);
       assert.strictEqual(tagsets[0].type, "tagset");
     });
+
+    it("should filter items by a list of types (type IN ...)", () => {
+      db.saveUrl(TEST_USER_ID, "https://example.com");
+      db.saveText(TEST_USER_ID, "A note");
+      db.saveTagset(TEST_USER_ID, ["tag1"]);
+      db.saveItem(TEST_USER_ID, "entity", null, ["entity:person"], { name: "Ada" });
+
+      // A client that syncs url+text gets only those, never the entity.
+      const synced = db.getItems(TEST_USER_ID, ["url", "text"]);
+      assert.strictEqual(synced.length, 2);
+      assert.ok(synced.every((i) => i.type === "url" || i.type === "text"));
+      assert.ok(!synced.some((i) => i.type === "entity"));
+
+      // A single-element list behaves like the scalar form.
+      assert.strictEqual(db.getItems(TEST_USER_ID, ["entity"]).length, 1);
+    });
+  });
+
+  describe("getItemsSince (type list)", () => {
+    it("should filter incremental pulls by a list of types", () => {
+      db.saveUrl(TEST_USER_ID, "https://example.com");
+      db.saveText(TEST_USER_ID, "A note");
+      db.saveItem(TEST_USER_ID, "entity", null, ["entity:person"], { name: "Ada" });
+
+      // since=0 returns everything updated after epoch; the type list still excludes entity.
+      const synced = db.getItemsSince(TEST_USER_ID, 0, ["url", "text"], "default");
+      assert.ok(synced.length >= 2);
+      assert.ok(!synced.some((i) => i.type === "entity"));
+    });
   });
 
   describe("deleteItem", () => {

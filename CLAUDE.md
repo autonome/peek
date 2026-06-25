@@ -29,6 +29,32 @@ npm run test:api:local      # Test against local server (requires PEEK_LOCAL_KEY
 npm run test:api:prod       # Test against production (requires PEEK_PROD_KEY + PEEK_PROD_URL)
 ```
 
+### ⚠️ Native-module ABI: NEVER `npm rebuild better-sqlite3` at the repo root
+
+The root `node_modules/better-sqlite3` is a **shared native module built for
+Electron's ABI** (via the root `postinstall: electron-rebuild -f -w better-sqlite3`).
+The desktop app (`apps/desktop`) loads it inside Electron. The server runs under
+**system Node**, whose ABI differs from Electron's — so the same binary can't
+serve both.
+
+- To run server tests under system Node, give the server its **own** copy:
+  `npm install --prefix apps/server` (creates `apps/server/node_modules/better-sqlite3`
+  built for system Node). `require("better-sqlite3")` from `apps/server` resolves
+  there first, so the server never needs the root copy. `yarn server:test` then
+  works regardless of the root binary's ABI.
+- **Do NOT run `npm rebuild better-sqlite3` (or plain `npm rebuild`) at the repo
+  root** to "fix" a server-side ABI error — it clobbers the Electron build and
+  **breaks every Electron/desktop test** (`ERR_DLOPEN_FAILED`,
+  `NODE_MODULE_VERSION` mismatch). This caused a desktop-test outage on
+  2026-06-24.
+- If the root copy ever gets clobbered, restore it with the canonical command:
+  `node_modules/.bin/electron-rebuild -f -w better-sqlite3` (run from repo root),
+  then verify with `node scripts/check-native-modules.js`
+  (prints "better-sqlite3 loads in Electron — skip rebuild" when correct).
+- `.nvmrc` pins Node 22, but the machine default may be newer (e.g. v24). The
+  server's own `better-sqlite3` just needs to match whichever Node actually runs
+  the tests — install it with that Node.
+
 ---
 
 ## Deployment
@@ -47,6 +73,38 @@ This script (`scripts/deploy-server.sh`) subtree-splits `apps/server/` and force
 1. Connect Railway project to the `deploy/server` branch on GitHub
 2. Attach a volume, set `DATA_DIR` to the mount path
 3. Create users via admin commands (see `apps/server/README.md`)
+
+---
+
+## Operating the live server (logs / status / env)
+
+The `railway` CLI is installed and authenticated (`me@burrito.space`). You **do**
+have read/diagnostic access — don't tell the user you can't reach Railway. The
+peek server is Railway project **`amusing-courtesy`**, service **`peek-node`**
+(`peek-node.up.railway.app`, volume at `/app/data`). The repo root is linked to
+it; pass `--service peek-node` anyway so it works regardless of link state.
+
+Read-only — go ahead:
+
+```bash
+railway logs --service peek-node --lines 200     # runtime logs (recent, no stream)
+railway logs --service peek-node --build         # last build logs
+railway status --json                            # deploy state, domain, volume
+railway variables --service peek-node            # env vars
+```
+
+State-changing — **confirm with the user first** (production mutation):
+
+```bash
+railway redeploy --service peek-node             # re-run last deploy
+railway restart --service peek-node
+railway variables --service peek-node --set KEY=value
+```
+
+**Deploy is NOT a Railway-CLI op.** `yarn server:deploy` force-pushes a subtree
+to GitHub `deploy/server`, which Railway auto-builds. That's a push to an
+external remote → it needs explicit user authorization (never push unprompted).
+"I can't deploy" is correct; "I can't read logs" is not.
 
 ---
 

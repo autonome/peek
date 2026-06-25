@@ -10,6 +10,16 @@ const { loadConfig, isSingleUserMode } = require("./config");
 const { createAuthMiddleware } = require("./auth");
 const { DATASTORE_VERSION, PROTOCOL_VERSION } = require("./version");
 
+// Every item type the server will accept and store. The client decides WHICH of
+// these it actually syncs (e.g. mobile syncs only url/text/tagset/image), but the
+// server stores whatever any client chooses to push so all data can live remotely.
+// Must stay a subset of the `items.type` CHECK constraint in db.js.
+const SYNCABLE_ITEM_TYPES = ["url", "text", "tagset", "image", "series", "feed", "entity"];
+
+// Types whose payload lives in `content` and so require it on push. entity/series/feed
+// carry their data in `metadata` and are allowed to have null content.
+const CONTENT_REQUIRED_TYPES = ["url", "text"];
+
 // Load configuration
 const config = loadConfig();
 
@@ -375,16 +385,12 @@ app.post("/items", async (c) => {
   console.log("Tags:", tags.join(", ") || "(none)");
   console.log("==========================");
 
-  if (!type || !["url", "text", "tagset", "image"].includes(type)) {
-    return c.json({ error: "type must be 'url', 'text', 'tagset', or 'image'" }, 400);
+  if (!type || !SYNCABLE_ITEM_TYPES.includes(type)) {
+    return c.json({ error: `type must be one of: ${SYNCABLE_ITEM_TYPES.join(", ")}` }, 400);
   }
 
-  if (type === "url" && !content) {
-    return c.json({ error: "content (URL) is required for type 'url'" }, 400);
-  }
-
-  if (type === "text" && !content) {
-    return c.json({ error: "content is required for type 'text'" }, 400);
+  if (CONTENT_REQUIRED_TYPES.includes(type) && !content) {
+    return c.json({ error: `content is required for type '${type}'` }, 400);
   }
 
   if (type === "tagset" && (!tags || tags.length === 0)) {
@@ -425,8 +431,8 @@ app.get("/items", (c) => {
   const profileId = users.resolveProfileId(userId, c.req.query("profile") || "default");
   const type = c.req.query("type");
   const includeDeleted = c.req.query("includeDeleted") === "true";
-  if (type && !["url", "text", "tagset", "image"].includes(type)) {
-    return c.json({ error: "type must be 'url', 'text', 'tagset', or 'image'" }, 400);
+  if (type && !SYNCABLE_ITEM_TYPES.includes(type)) {
+    return c.json({ error: `type must be one of: ${SYNCABLE_ITEM_TYPES.join(", ")}` }, 400);
   }
   const items = db.getItems(userId, type || null, profileId, includeDeleted);
   return c.json({ items });
@@ -470,8 +476,8 @@ app.get("/items/since/:timestamp", (c) => {
     unixMs = date.getTime();
   }
 
-  if (type && !["url", "text", "tagset", "image"].includes(type)) {
-    return c.json({ error: "type must be 'url', 'text', 'tagset', or 'image'" }, 400);
+  if (type && !SYNCABLE_ITEM_TYPES.includes(type)) {
+    return c.json({ error: `type must be one of: ${SYNCABLE_ITEM_TYPES.join(", ")}` }, 400);
   }
 
   const items = db.getItemsSince(userId, unixMs, type || null, profileId);
